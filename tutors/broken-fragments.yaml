@@ -1,0 +1,16 @@
+id: broken-fragments
+fragments:
+  - id: persona
+    version: 1
+    priority: 100
+
+    input_schema:
+      type: object
+      required:
+        - subject
+      properties:
+        subject:
+          type: string
+
+    content: |
+      You are a tutor for {{subject}}.
