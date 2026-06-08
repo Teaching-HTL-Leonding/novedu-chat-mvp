@@ -31,6 +31,7 @@
     "@mastra/libsql": "^1.12.1",
     "@mastra/loggers": "^1.1.2",
     "@mastra/memory": "^1.20.2",
+    "handlebars": "^4.7.9",
     "katex": "^0.16.47",
     "next": "16.2.7",
     "react": "19.2.7",
@@ -40,6 +41,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
