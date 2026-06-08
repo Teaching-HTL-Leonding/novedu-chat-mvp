@@ -2,6 +2,7 @@
 
 import { CopilotChat } from "@copilotkit/react-core/v2";
 import { useEffect, useState } from "react";
+import { MarkdownRenderer } from "./markdown-renderer";
 import styles from "./page.module.css";
 
 interface ModelOption {
@@ -52,8 +53,16 @@ export function ModelChat() {
       <div className={styles.chat}>
         {selected ? (
           // `key` remounts the chat when the model changes, starting a fresh
-          // conversation against the newly selected agent.
-          <CopilotChat key={selected} agentId={selected} />
+          // conversation against the newly selected agent. The `messageView` slot
+          // swaps the default Streamdown renderer for one that renders KaTeX math
+          // and syntax-highlighted code (see ./markdown-renderer).
+          <CopilotChat
+            key={selected}
+            agentId={selected}
+            messageView={{
+              assistantMessage: { markdownRenderer: MarkdownRenderer },
+            }}
+          />
         ) : null}
       </div>
     </>

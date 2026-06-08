@@ -55,6 +55,17 @@ async function fetchModels(): Promise<ScchModel[]> {
 // values are guaranteed to match registered agent keys.
 export const scchModels: ScchModel[] = await fetchModels();
 
+// The frontend renders assistant markdown with KaTeX + Prism. Tell the model to
+// emit KaTeX-compatible LaTeX exactly once — some models (Gemma in particular)
+// otherwise append a Unicode pretty-printed copy next to the LaTeX.
+const INSTRUCTIONS = [
+  "You are a helpful, concise assistant. Answer clearly and accurately.",
+  "Format any math using KaTeX-compatible LaTeX: wrap inline math in single dollar",
+  "signs ($...$) and display math in double dollar signs ($$...$$). Do not escape the",
+  "dollar signs. Emit each formula exactly once — do not also include a Unicode",
+  "pretty-printed copy.",
+].join(" ");
+
 // One lightweight chat agent per model. The dropdown switches CopilotChat's
 // `agentId`, which @ag-ui/mastra resolves straight to the matching agent.
 export function buildScchAgents(): Record<string, Agent> {
@@ -64,7 +75,7 @@ export function buildScchAgents(): Record<string, Agent> {
       new Agent({
         id: m.id,
         name: m.label,
-        instructions: "You are a helpful, concise assistant. Answer clearly and accurately.",
+        instructions: INSTRUCTIONS,
         model: provider.chat(m.model),
       }),
     ]),

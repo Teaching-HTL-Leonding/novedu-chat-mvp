@@ -1,13 +1,7 @@
+/* Hard-coded light theme — intentionally independent of the system color scheme. */
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 html {
@@ -48,8 +42,8 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+/* Force the light color scheme so form controls (e.g. the model <select>) and
+   scrollbars don't render in the OS dark palette. */
+html {
+  color-scheme: light;
 }
