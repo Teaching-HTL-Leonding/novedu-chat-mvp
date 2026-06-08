@@ -31,10 +31,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/*
+ * Only normalize box-sizing globally. Do NOT zero padding/margin here:
+ * CopilotKit v2 ships compiled Tailwind v4, whose utilities live in CSS
+ * @layer blocks. Unlayered rules always beat layered ones, so an unlayered
+ * `* { padding: 0; margin: 0 }` silently wipes out every spacing utility
+ * inside the chat UI (e.g. the send button ends up flush against the border).
+ * Tailwind's own preflight already resets margins/padding within its layer.
+ */
 * {
   box-sizing: border-box;
-  padding: 0;
-  margin: 0;
 }
 
 a {

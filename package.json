@@ -21,9 +21,20 @@
     "qa:e2e": "npm run qa && npm run test:e2e"
   },
   "dependencies": {
+    "@ag-ui/client": "^0.0.55",
+    "@ag-ui/core": "^0.0.55",
+    "@ag-ui/mastra": "^1.0.3",
+    "@copilotkit/react-core": "^0.0.0-mme-ag-ui-0-0-46-20260227141603",
+    "@copilotkit/runtime": "^0.0.0-mme-ag-ui-0-0-46-20260227141603",
+    "@mastra/client-js": "^1.23.2",
+    "@mastra/core": "^1.41.0",
+    "@mastra/libsql": "^1.12.1",
+    "@mastra/loggers": "^1.1.2",
+    "@mastra/memory": "^1.20.2",
     "next": "16.2.7",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",
