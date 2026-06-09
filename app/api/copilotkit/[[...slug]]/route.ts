@@ -4,7 +4,8 @@ import { RequestContext } from "@mastra/core/request-context";
 import { mastra } from "@/app/mastra";
 
 // Identifies the memory resource (i.e. "user") that agent threads are scoped to.
-// Hard-coded for the prototype — swap for a real per-user id once auth exists.
+// Auth (Microsoft Entra ID) now gates the app, but per-user memory scoping is
+// deferred — still hard-coded. Swap for the signed-in user's id when wiring it up.
 const RESOURCE_ID = "chat-prototype";
 
 // The chat is driven by a tutor-definition YAML. Its public URL arrives in the

@@ -34,6 +34,7 @@
     "handlebars": "^4.7.9",
     "katex": "^0.16.47",
     "next": "16.2.7",
+    "next-auth": "^5.0.0-beta.31",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-markdown": "^10.1.0",
