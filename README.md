@@ -1,0 +1,120 @@
+# Chat Prototype
+
+A prototype web app for **YAML-defined AI tutors**. A user pastes the public URL of a
+*tutor-definition YAML*; the app fetches, validates and assembles it into a system prompt,
+then opens a chat with an LLM that is configured entirely by that YAML — its persona, rules
+and model all come from the tutor file, not from the app.
+
+It is a prototype: everything is in-memory (no database, no disk persistence), and access is
+gated behind Microsoft Entra ID sign-in.
+
+## What's in here
+
+| Area | Description |
+| --- | --- |
+| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` renders `TutorChat`, the paste-a-URL → validate → chat flow. |
+| **Tutor core** (`lib/tutors/`) | Framework-agnostic pipeline: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. Returns a structured `BuildResult` (never throws). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the tutor YAML, and fragment inputs may declare **defaults**. See [`tutors/README.md`](tutors/README.md) for the authoring guide. |
+| **Mastra agents** (`app/mastra/`) | `tutor` agent resolves its instructions + model per request from the tutor URL; `weatherAgent` is a tool-using demo. All agents are registered in `app/mastra/index.ts`. Memory/storage is in-memory LibSQL (`:memory:`). |
+| **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. |
+| **Model endpoint** (`app/mastra/scch.ts`) | A self-hosted, OpenAI-compatible vLLM GPU server ("SCCH"). The tutor's `llm.model` resolves against this endpoint; the API key stays server-side. |
+| **Auth** (`auth.ts`, `proxy.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate. Any signed-in user is allowed; everyone else is redirected to sign-in. JWT sessions, no DB adapter. |
+| **API routes** (`app/api/`) | `validate-tutor` (validate a tutor URL → prompt or structured errors), `copilotkit` (chat runtime), `auth` (sign-in). |
+
+### Request flow
+
+1. User signs in via Microsoft Entra ID (enforced by `proxy.ts`).
+2. User pastes a tutor YAML URL → `POST /api/validate-tutor` validates & assembles it.
+3. On success the URL drives the chat: it is sent on the `x-tutor-url` header to
+   `/api/copilotkit`, where the `tutor` agent reads it from the request context and resolves
+   its system prompt and model from the YAML (memoized per URL).
+
+## Prerequisites
+
+- **Node.js 24+** (developed against v24.15).
+- A reachable **OpenAI-compatible model endpoint** (the SCCH vLLM server) for tutor chats.
+- An **OpenAI API key** for the `weatherAgent` demo (`openai/gpt-5-mini`).
+- A **Microsoft Entra ID app registration** for sign-in.
+
+## Configuration (`.env`)
+
+Create a `.env` file in the project root with the following keys. **None of these are
+exposed to the browser** — they are read only in server-side modules.
+
+```bash
+# --- Self-hosted vLLM (OpenAI-compatible) endpoint that serves tutor chat models ---
+SCCH_BASE_URL=https://your-vllm-host/v1
+SCCH_API_KEY=your-vllm-api-key
+
+# --- OpenAI (used by the weatherAgent demo: openai/gpt-5-mini) ---
+OPENAI_API_KEY=sk-...
+
+# --- Microsoft Entra ID sign-in (Auth.js / NextAuth v5) ---
+AZURE_TENANT_ID=your-entra-tenant-id
+AZURE_CLIENT_ID=your-entra-app-client-id
+AZURE_CLIENT_SECRET=your-entra-app-client-secret
+
+# Secret used by Auth.js to sign JWT session tokens. Generate one with:
+#   openssl rand -base64 32
+AUTH_SECRET=your-generated-secret
+```
+
+Notes:
+
+- The app **fails fast at startup** if any `AZURE_*` value is missing.
+- If `SCCH_BASE_URL` / `SCCH_API_KEY` are unset, the app still starts but no SCCH chat
+  models are available (a warning is logged).
+- In your Entra app registration, add the redirect URI
+  `http://localhost:3000/api/auth/callback/microsoft-entra-id` (and the equivalent for any
+  deployed origin).
+
+## Running the app
+
+```bash
+# 1. Install dependencies
+npm install
+
+# 2. Create .env (see Configuration above)
+
+# 3. Start the dev server
+npm run dev
+```
+
+Then open **http://localhost:3000**, sign in with Microsoft Entra ID, paste a tutor YAML URL
+(see `tutors/` for samples), and start chatting.
+
+### Production build
+
+```bash
+npm run build
+npm run start
+```
+
+## Scripts
+
+| Script | What it does |
+| --- | --- |
+| `npm run dev` | Start the Next.js dev server. |
+| `npm run build` / `npm run start` | Production build / serve. |
+| `npm run check` | Biome lint + format check. (`check:fix` to auto-fix.) |
+| `npm run typecheck` | `tsc --noEmit`. |
+| `npm run test` | Vitest (unit + component). |
+| `npm run test:e2e` | Playwright end-to-end tests. |
+| `npm run qa` | `check` + `typecheck` + `test` + `build`. |
+
+> Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
+
+## Tutors
+
+The `tutors/` directory contains sample tutor and fragment YAML files, and
+[`tutors/README.md`](tutors/README.md) documents the full authoring format — fragments,
+priorities, `input_schema`, variable binding, relative fragment URLs, and optional inputs
+with defaults.
+
+## Notes & caveats (prototype)
+
+- **In-memory only** — chat memory and Mastra storage live in RAM and are lost on restart;
+  per-user memory scoping is not yet wired up (a single hard-coded resource id is used).
+- **SSRF** — `/api/validate-tutor` fetches an arbitrary user-supplied URL server-side. The
+  prototype only restricts the scheme to `http(s)`; a production deployment should also
+  allow-list hosts, block private IP ranges, and disable redirects.
+- **Authorization** — any authenticated Entra user is allowed; there is no group/role check.

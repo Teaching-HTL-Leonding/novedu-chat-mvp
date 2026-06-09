@@ -9,6 +9,19 @@ import type { Fetcher } from "./fetcher";
 import { parseYaml, validate } from "./parse";
 import { type FragmentFile, FragmentFileSchema, type Tutor, TutorSchema } from "./schemas";
 
+/**
+ * Resolve a fragment-file reference to an absolute URL. An absolute http(s) ref is used
+ * as-is; anything else is treated as relative to the tutor URL — standard URL resolution
+ * drops the tutor's filename and appends the relative path (so `general-fragments.yaml`
+ * next to `.../tutors/linked-list-tutor.yaml` becomes `.../tutors/general-fragments.yaml`,
+ * and `./` / `../` segments work too). Throws if a relative ref is unparseable; the schema
+ * already guarantees the only inputs here are http(s) URLs or relative paths.
+ */
+export function resolveFragmentUrl(ref: string, tutorUrl: string): string {
+  if (/^https?:\/\//i.test(ref)) return ref;
+  return new URL(ref, tutorUrl).href;
+}
+
 async function fetchText(
   url: string,
   fetchImpl: Fetcher,
@@ -67,15 +80,29 @@ export async function loadAndBuildTutorPrompt(
       ): Promise<
         { alias: string; file: FragmentFile } | { alias: string; error: ValidationError }
       > => {
-        const fetched = await fetchText(ref.url, fetchImpl);
+        // Relative refs are resolved against the tutor URL; absolute http(s) refs pass
+        // through. Report errors against the resolved URL (the thing actually fetched).
+        let fragmentUrl: string;
+        try {
+          fragmentUrl = resolveFragmentUrl(ref.url, url);
+        } catch {
+          return {
+            alias: ref.id,
+            error: error("INVALID_URL", `Invalid fragment URL: ${ref.url}`, {
+              url: ref.url,
+              fileAlias: ref.id,
+            }),
+          };
+        }
+        const fetched = await fetchText(fragmentUrl, fetchImpl);
         if (!fetched.ok) return { alias: ref.id, error: fetched.error };
-        const parsed = parseYaml(fetched.text, ref.url);
+        const parsed = parseYaml(fetched.text, fragmentUrl);
         if (!parsed.ok) return { alias: ref.id, error: parsed.error };
         const valid = validate<FragmentFile>(
           parsed.value,
           FragmentFileSchema,
           "FRAGMENT_FILE_SCHEMA_ERROR",
-          ref.url,
+          fragmentUrl,
         );
         if (!valid.ok) return { alias: ref.id, error: { ...valid.error, fileAlias: ref.id } };
         return { alias: ref.id, file: valid.data };

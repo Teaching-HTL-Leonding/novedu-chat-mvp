@@ -6,7 +6,7 @@ llm:
 prompt:
   fragment_files:
     - id: broken_fragments
-      url: "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/broken-fragments.yaml"
+      url: "broken-fragments.yaml"
 
   fragments:
     # ERROR 1 — the `persona` fragment requires a `subject` variable, but none is

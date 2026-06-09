@@ -6,9 +6,9 @@ llm:
 prompt:
   fragment_files:
     - id: general_fragments
-      url: "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/general-fragments.yaml"
+      url: "general-fragments.yaml"
     - id: linked_list_fragments
-      url: "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/linked-list-fragments.yaml"
+      url: "linked-list-fragments.yaml"
 
   fragments:
     - file: general_fragments

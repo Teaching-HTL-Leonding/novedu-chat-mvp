@@ -132,6 +132,10 @@ export function checkConsistency(
     const variables = ref.variables ?? {};
     const schema = fragment.input_schema;
 
+    // The variables actually handed to the renderer: the tutor's values plus any
+    // declared `default`s for optional inputs the tutor omitted (filled in below).
+    const merged: Record<string, VariableValue> = { ...variables };
+
     if (schema) {
       for (const name of schema.required) {
         if (!(name in variables)) {
@@ -173,6 +177,25 @@ export function checkConsistency(
           );
         }
       }
+
+      // Fill in defaults for optional inputs the tutor didn't supply. A `default` on a
+      // `required` input can never apply (the required check above already fired if it
+      // was absent), so flag that as a likely authoring mistake instead of injecting it.
+      const requiredSet = new Set(schema.required);
+      for (const [name, prop] of Object.entries(schema.properties)) {
+        if (prop.default === undefined) continue;
+        if (requiredSet.has(name)) {
+          warnings.push(
+            warning(
+              "REQUIRED_PROPERTY_HAS_DEFAULT",
+              `Variable "${name}" of "${ref.id}" is required, so its default is never used`,
+              { fileAlias: ref.file, fragmentId: ref.id, variable: name },
+            ),
+          );
+          continue;
+        }
+        if (!(name in merged)) merged[name] = prop.default; // a supplied value wins
+      }
     } else {
       for (const name of Object.keys(variables)) {
         warnings.push(
@@ -190,7 +213,7 @@ export function checkConsistency(
       fragmentId: ref.id,
       priority: fragment.priority,
       content: fragment.content,
-      variables,
+      variables: merged,
     });
   }
 

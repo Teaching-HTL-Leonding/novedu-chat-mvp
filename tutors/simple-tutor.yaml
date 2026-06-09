@@ -6,7 +6,7 @@ llm:
 prompt:
   fragment_files:
     - id: simple_fragments
-      url: "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/simple-fragments.yaml"
+      url: "simple-fragments.yaml"
 
   fragments:
     - file: simple_fragments

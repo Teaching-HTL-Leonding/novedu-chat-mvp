@@ -69,7 +69,12 @@ fragments:
       properties:
         subject:
           type: string
+        greeting: # optional — a default is used when the tutor omits it
+          type: string
+          default: "Hi there!"
     content: |
+      {{greeting}}
+
       You are a friendly, encouraging tutor for {{subject}}.
 
       Explain ideas simply and check the student's understanding with short questions.
@@ -104,13 +109,14 @@ llm:
 prompt:
   fragment_files:
     - id: simple_fragments
-      url: "https://raw.githubusercontent.com/.../tutors/simple-fragments.yaml"
+      url: "simple-fragments.yaml" # relative — sits next to this tutor file
 
   fragments:
     - file: simple_fragments
       id: persona
       variables:
         subject: "basic arithmetic"
+        # `greeting` is omitted on purpose, so its default ("Hi there!") is used.
 
     - file: simple_fragments
       id: ground_rules
@@ -128,6 +134,8 @@ prompt:
 The assembled system prompt becomes:
 
 ```text
+Hi there!
+
 You are a friendly, encouraging tutor for basic arithmetic.
 
 Explain ideas simply and check the student's understanding with short questions.
@@ -171,12 +179,24 @@ local **alias** you refer to later.
 ```yaml
 fragment_files:
   - id: simple_fragments # the alias (you choose this)
-    url: "https://.../simple-fragments.yaml" # public http(s) URL of the library
+    url: "simple-fragments.yaml" # the library file (relative to this tutor)
 ```
 
 - `id` — the alias used by your fragment entries. Pick something readable.
-- `url` — a **public** `http(s)` link to the library file. Must be reachable by
-  the server (a "raw" GitHub URL works well — see [Hosting](#8-hosting-your-files)).
+- `url` — where the library file lives. Two forms are allowed:
+  - **Absolute** — a full `http(s)://…` link (e.g. a "raw" GitHub URL). Use this
+    when the library lives somewhere else than your tutor file.
+  - **Relative** — just a path, like `simple-fragments.yaml` or
+    `../shared/general-fragments.yaml`. It is resolved **next to your tutor file**:
+    the system takes your tutor's own URL, drops its filename, and appends the path.
+    So if your tutor is published at
+    `https://.../tutors/my-tutor.yaml`, then `simple-fragments.yaml` is loaded from
+    `https://.../tutors/simple-fragments.yaml`. This is the easiest option when the
+    tutor and its libraries sit in the same folder (as the examples here do).
+
+  Either way the file must be reachable by the server (see
+  [Hosting](#8-hosting-your-files)). Only `http(s)` is allowed — an absolute URL
+  with any other scheme (e.g. `ftp:`) is rejected.
 
 ### `prompt.fragments`
 
@@ -269,6 +289,34 @@ The supported value types are:
 | `boolean`             | `true` or `false`    | `allow_solution: false` |
 | `array` (of `string`) | A list of text items | `rules: ["…", "…"]`     |
 
+### Optional inputs with a `default`
+
+An input that is **not** in `required` is optional. If its `content` references it, the
+tutor must still supply it — unless the property declares a `default`, which is used
+whenever the tutor omits the value:
+
+```yaml
+input_schema:
+  type: object
+  required:
+    - subject # must be supplied
+  properties:
+    subject:
+      type: string
+    greeting:
+      type: string
+      default: "Hello!" # optional — used when the tutor doesn't set `greeting`
+    allow_solution:
+      type: boolean
+      default: false # lets `{{#unless allow_solution}}` work without supplying it
+```
+
+- A `default` must match its property's `type` (a text default on a `boolean` property
+  is rejected).
+- A supplied `variables` value always wins over the default.
+- Putting a `default` on a `required` input is pointless — the value must be supplied
+  anyway, so the default can never apply. The validator flags this with a warning.
+
 ### Supplying values (`variables`)
 
 ```yaml
@@ -355,10 +403,14 @@ The easiest option is GitHub:
 1. Put your `.yaml` files in a public repository.
 2. Use the **raw** URL of each file, for example:
    `https://raw.githubusercontent.com/<org>/<repo>/refs/heads/main/tutors/your-fragments.yaml`
-3. Reference that raw URL in your tutor's `fragment_files[].url`.
+3. Reference each library from your tutor's `fragment_files[].url`. If the library sits
+   **in the same folder** as the tutor file (as the examples in this repo do), you can
+   use just the filename — e.g. `your-fragments.yaml` — and it is resolved next to the
+   tutor's own URL. Use a full raw URL when the library lives somewhere else.
 
 Remember to **commit and push** changes before validating — the server reads the
-published version, not your local copy.
+published version, not your local copy. (A relative reference is resolved against the
+tutor's published URL, so the library must be pushed too.)
 
 ---
 
@@ -392,6 +444,7 @@ The validator checks, in order:
 | `VARIABLE_TYPE_MISMATCH`                            | A value's type is wrong (e.g. text where a list is expected).  | Provide the declared type.                       |
 | `DUPLICATE_PRIORITY`                                | Two included fragments share a priority.                       | Give each a distinct `priority`.                 |
 | `UNDECLARED_VARIABLE` _(warning)_                   | You supplied a value the fragment doesn't use.                 | Usually a typo — remove or correct it.           |
+| `REQUIRED_PROPERTY_HAS_DEFAULT` _(warning)_         | A `required` input also declares a `default` it can never use. | Drop the `default`, or remove it from `required`. |
 
 ---
 
@@ -400,6 +453,6 @@ The validator checks, in order:
 - [ ] Each fragment has a **unique** `id` within its library.
 - [ ] Priorities are **unique** across the fragments a tutor uses.
 - [ ] Every `required` input is supplied with the **correct type**.
-- [ ] Every `{{variable}}` used in `content` is declared and supplied.
-- [ ] All `url`s are **public** and **pushed**.
+- [ ] Every `{{variable}}` used in `content` is declared and either supplied or has a `default`.
+- [ ] All `url`s are **public** and **pushed** (relative refs resolve against the tutor's URL).
 - [ ] You validated the tutor and the prompt looks right.

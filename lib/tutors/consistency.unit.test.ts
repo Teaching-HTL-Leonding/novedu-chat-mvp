@@ -129,3 +129,52 @@ describe("checkConsistency — warnings", () => {
     expect(result.warnings.map((w) => w.code)).toContain("DUPLICATE_FRAGMENT_REFERENCE");
   });
 });
+
+describe("checkConsistency — default values", () => {
+  // Add an optional `greeting` (with a default) to the socratic_tutor fragment's schema.
+  function withOptionalDefault(): { tutor: Tutor; files: Map<string, FragmentFile> } {
+    const { tutor, files } = fresh();
+    const schema = files
+      .get("general_fragments")
+      ?.fragments.find((f) => f.id === "socratic_tutor")?.input_schema;
+    if (schema) schema.properties.greeting = { type: "string", default: "Hello!" };
+    return { tutor, files };
+  }
+
+  it("injects a declared default for an optional variable the tutor omits", () => {
+    const { tutor, files } = withOptionalDefault();
+    const result = checkConsistency(tutor, files);
+    expect(result.errors).toEqual([]);
+    const resolved = result.plan.find((p) => p.fragmentId === "socratic_tutor");
+    expect(resolved?.variables.greeting).toBe("Hello!");
+  });
+
+  it("lets a supplied value win over the default", () => {
+    const { tutor, files } = withOptionalDefault();
+    const ref = tutor.prompt.fragments.find((f) => f.id === "socratic_tutor");
+    if (ref) ref.variables = { ...ref.variables, greeting: "Hi there" };
+    const result = checkConsistency(tutor, files);
+    expect(result.errors).toEqual([]);
+    const resolved = result.plan.find((p) => p.fragmentId === "socratic_tutor");
+    expect(resolved?.variables.greeting).toBe("Hi there");
+  });
+
+  it("does not inject anything for an optional variable without a default", () => {
+    const { tutor, files } = fresh();
+    const result = checkConsistency(tutor, files);
+    const resolved = result.plan.find((p) => p.fragmentId === "socratic_tutor");
+    expect(resolved?.variables).not.toHaveProperty("greeting");
+  });
+
+  it("REQUIRED_PROPERTY_HAS_DEFAULT when a required input also declares a default", () => {
+    const { tutor, files } = fresh();
+    // `domain` is required (and supplied by the real sample); giving it a default is futile.
+    const schema = files
+      .get("general_fragments")
+      ?.fragments.find((f) => f.id === "socratic_tutor")?.input_schema;
+    if (schema) schema.properties.domain = { type: "string", default: "anything" };
+    const result = checkConsistency(tutor, files);
+    expect(result.warnings.map((w) => w.code)).toContain("REQUIRED_PROPERTY_HAS_DEFAULT");
+    expect(result.errors).toEqual([]); // domain is still supplied → no MISSING_REQUIRED_VARIABLE
+  });
+});

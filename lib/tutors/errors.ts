@@ -21,7 +21,10 @@ export type ErrorCode =
   | "ASSEMBLY_ERROR";
 
 /** Non-fatal smells: the prompt still builds, but something is worth flagging. */
-export type WarningCode = "UNDECLARED_VARIABLE" | "DUPLICATE_FRAGMENT_REFERENCE";
+export type WarningCode =
+  | "UNDECLARED_VARIABLE"
+  | "DUPLICATE_FRAGMENT_REFERENCE"
+  | "REQUIRED_PROPERTY_HAS_DEFAULT";
 
 export interface ValidationError {
   code: ErrorCode;

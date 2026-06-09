@@ -6,20 +6,35 @@
 
 import { z } from "zod";
 
-/** An http(s) URL. `z.url()` alone also accepts e.g. `ftp:`/`mailto:`, so narrow the scheme. */
-const HttpUrl = z.url().refine((u) => /^https?:\/\//i.test(u), {
-  message: "URL must use http(s)",
-});
+/**
+ * A fragment-file reference: either an absolute http(s) URL or a relative path that
+ * `load.ts` resolves against the tutor YAML's own URL. We reject any *other* absolute
+ * scheme (`ftp:`, `mailto:`, …) so a typo can't smuggle in a non-http(s) target — the
+ * refine reads as "if it carries a URI scheme at all, that scheme must be http(s)".
+ * Strings without a scheme (relative paths) pass through and are resolved at load time.
+ */
+const FragmentUrlRef = z
+  .string()
+  .min(1)
+  .refine((u) => !/^[a-z][a-z0-9+.-]*:/i.test(u) || /^https?:\/\//i.test(u), {
+    message: "Must be an http(s) URL or a relative path",
+  });
 
 // --- input_schema (a constrained mini JSON-schema declared by a fragment) ---
 
-/** A declared property is a string, a boolean, or an array of strings. */
+/**
+ * A declared property is a string, a boolean, or an array of strings. Each may carry an
+ * optional `default`, typed to match its `type` (a string default on a boolean property
+ * is a schema error). When the tutor omits the variable, the default is used; supplying
+ * a value overrides it. See `consistency.ts` for where defaults are injected.
+ */
 const PropertySchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("string") }),
-  z.strictObject({ type: z.literal("boolean") }),
+  z.strictObject({ type: z.literal("string"), default: z.string().optional() }),
+  z.strictObject({ type: z.literal("boolean"), default: z.boolean().optional() }),
   z.strictObject({
     type: z.literal("array"),
     items: z.strictObject({ type: z.literal("string") }),
+    default: z.array(z.string()).optional(),
   }),
 ]);
 
@@ -61,7 +76,7 @@ export type VariableValue = z.infer<typeof VariableValueSchema>;
 
 const FragmentFileRefSchema = z.strictObject({
   id: z.string(),
-  url: HttpUrl,
+  url: FragmentUrlRef,
 });
 
 const FragmentRefSchema = z.strictObject({

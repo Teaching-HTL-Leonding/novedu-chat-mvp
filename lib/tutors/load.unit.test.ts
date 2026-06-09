@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { Fetcher } from "./fetcher";
-import { loadAndBuildTutorPrompt } from "./load";
+import { loadAndBuildTutorPrompt, resolveFragmentUrl } from "./load";
 import {
   fixtureFetcher,
   fixtureResponse,
   GENERAL_URL,
   LINKED_URL,
+  readFixture,
   TUTOR_URL,
 } from "./test-fixtures";
 
@@ -28,7 +29,78 @@ describe("loadAndBuildTutorPrompt — happy path", () => {
       return base(url);
     };
     await loadAndBuildTutorPrompt(TUTOR_URL, spy);
+    // The real fixture uses relative refs (`general-fragments.yaml`); seeing the
+    // absolute GENERAL_URL/LINKED_URL fetched proves they were resolved against TUTOR_URL.
     expect(new Set(seen)).toEqual(new Set([TUTOR_URL, GENERAL_URL, LINKED_URL]));
+  });
+});
+
+describe("resolveFragmentUrl", () => {
+  it("returns an absolute http(s) ref unchanged", () => {
+    expect(resolveFragmentUrl(GENERAL_URL, TUTOR_URL)).toBe(GENERAL_URL);
+    expect(resolveFragmentUrl("http://example.com/x.yaml", TUTOR_URL)).toBe(
+      "http://example.com/x.yaml",
+    );
+  });
+
+  it("resolves a bare filename against the tutor's directory (filename dropped)", () => {
+    expect(resolveFragmentUrl("general-fragments.yaml", TUTOR_URL)).toBe(GENERAL_URL);
+  });
+
+  it("resolves ./ and ../ segments", () => {
+    expect(resolveFragmentUrl("./general-fragments.yaml", TUTOR_URL)).toBe(GENERAL_URL);
+    // TUTOR_URL lives in `.../main/tutors/`; `../` steps up to `.../main/`.
+    expect(resolveFragmentUrl("../other/x.yaml", TUTOR_URL)).toBe(
+      "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/other/x.yaml",
+    );
+  });
+
+  it("lets an absolute ref to a different host override the base", () => {
+    expect(resolveFragmentUrl("https://other.example/z.yaml", TUTOR_URL)).toBe(
+      "https://other.example/z.yaml",
+    );
+  });
+});
+
+describe("loadAndBuildTutorPrompt — fragment URL resolution", () => {
+  // Rewrite the (now relative) fixture refs back to absolute to prove absolute still works.
+  const absoluteTutorBody = readFixture("linked-list-tutor.yaml")
+    .replace("general-fragments.yaml", GENERAL_URL)
+    .replace("linked-list-fragments.yaml", LINKED_URL);
+
+  it("still supports absolute fragment refs", async () => {
+    const seen: string[] = [];
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(absoluteTutorBody)]]);
+    const base = fixtureFetcher(overrides);
+    const spy: Fetcher = (url) => {
+      seen.push(url);
+      return base(url);
+    };
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, spy);
+    expect(result.ok).toBe(true);
+    expect(new Set(seen)).toEqual(new Set([TUTOR_URL, GENERAL_URL, LINKED_URL]));
+  });
+
+  it("supports a mix of absolute and relative refs in one tutor", async () => {
+    // general → absolute URL, linked-list → left relative.
+    const mixedBody = readFixture("linked-list-tutor.yaml").replace(
+      "general-fragments.yaml",
+      GENERAL_URL,
+    );
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(mixedBody)]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+  });
+
+  it("TUTOR_SCHEMA_ERROR for an absolute non-http(s) fragment ref", async () => {
+    const ftpBody = readFixture("linked-list-tutor.yaml").replace(
+      "general-fragments.yaml",
+      "ftp://example.com/frag.yaml",
+    );
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(ftpBody)]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("TUTOR_SCHEMA_ERROR");
   });
 });
 
@@ -64,6 +136,30 @@ describe("loadAndBuildTutorPrompt — failures", () => {
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]?.code).toBe("YAML_PARSE_ERROR");
+  });
+
+  it("FRAGMENT_FILE_SCHEMA_ERROR for a default whose type mismatches its property", async () => {
+    // A boolean property with a string default must be rejected at schema validation.
+    const badFragmentFile = [
+      "id: general-fragments",
+      "fragments:",
+      "  - id: socratic_tutor",
+      "    version: 1",
+      "    priority: 100",
+      "    input_schema:",
+      "      type: object",
+      "      properties:",
+      "        flag:",
+      "          type: boolean",
+      '          default: "not a boolean"',
+      "    content: hi",
+    ].join("\n");
+    const overrides = new Map([[GENERAL_URL, fixtureResponse(badFragmentFile)]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.map((e) => e.code)).toContain("FRAGMENT_FILE_SCHEMA_ERROR");
+    }
   });
 
   it("collects every failing fragment file (parallel, not short-circuited)", async () => {

@@ -83,4 +83,19 @@ describe("assembleSystemPrompt — real sample", () => {
     expect(out).toContain("singly linked lists vs. doubly linked lists");
     expect(out).toContain("[head] -> [ A");
   });
+
+  it("renders a fragment's default when the tutor omits the variable", () => {
+    // End-to-end: an optional `{{greeting}}` with a default, not supplied by the tutor.
+    // checkConsistency must inject the default so the strict renderer doesn't throw.
+    const tutor = loadRealTutor();
+    const files = loadRealFragmentFiles();
+    const frag = files.get("general_fragments")?.fragments.find((f) => f.id === "socratic_tutor");
+    if (frag?.input_schema) {
+      frag.input_schema.properties.greeting = { type: "string", default: "Hello from default" };
+      frag.content = `${frag.content}\n\nGreeting: {{greeting}}`;
+    }
+    const { plan, errors } = checkConsistency(tutor, files);
+    expect(errors).toEqual([]);
+    expect(assembleSystemPrompt(plan, tutor)).toContain("Greeting: Hello from default");
+  });
 });
