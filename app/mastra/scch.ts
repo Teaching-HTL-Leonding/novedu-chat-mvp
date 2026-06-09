@@ -1,15 +1,16 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { Agent } from "@mastra/core/agent";
 
 // Our self-hosted vLLM GPU server exposes an OpenAI-compatible API.
 // Base URL + key live in `.env` (SCCH_BASE_URL, SCCH_API_KEY) and never reach
-// the browser — the model list is proxied through /api/models.
+// the browser — only this server-side module talks to the endpoint.
 const BASE_URL = process.env.SCCH_BASE_URL;
 const API_KEY = process.env.SCCH_API_KEY;
 
 // `.chat()` pins the Chat Completions API. The default `provider(id)` in
 // @ai-sdk/openai v2 targets the newer Responses API, which vLLM does not serve.
-const provider = createOpenAI({ baseURL: BASE_URL, apiKey: API_KEY });
+// Exported so the tutor agent can resolve a tutor YAML's `llm.model` against the
+// same self-hosted endpoint (the API key never leaves the server).
+export const scchProvider = createOpenAI({ baseURL: BASE_URL, apiKey: API_KEY });
 
 // The endpoint also hosts embedding / speech / audio models that can't drive a
 // chat. Keep them out of the chat model dropdown.
@@ -50,34 +51,7 @@ async function fetchModels(): Promise<ScchModel[]> {
   }
 }
 
-// Resolved once when the server module loads. Shared by the Mastra registry
-// (which builds one agent per entry) and the /api/models route, so the dropdown
-// values are guaranteed to match registered agent keys.
+// Resolved once when the server module loads — fetching it also confirms the
+// endpoint is reachable. The tutor agent resolves a tutor's `llm.model` straight
+// through `scchProvider`; we no longer build one agent per model.
 export const scchModels: ScchModel[] = await fetchModels();
-
-// The frontend renders assistant markdown with KaTeX + Prism. Tell the model to
-// emit KaTeX-compatible LaTeX exactly once — some models (Gemma in particular)
-// otherwise append a Unicode pretty-printed copy next to the LaTeX.
-const INSTRUCTIONS = [
-  "You are a helpful, concise assistant. Answer clearly and accurately.",
-  "Format any math using KaTeX-compatible LaTeX: wrap inline math in single dollar",
-  "signs ($...$) and display math in double dollar signs ($$...$$). Do not escape the",
-  "dollar signs. Emit each formula exactly once — do not also include a Unicode",
-  "pretty-printed copy.",
-].join(" ");
-
-// One lightweight chat agent per model. The dropdown switches CopilotChat's
-// `agentId`, which @ag-ui/mastra resolves straight to the matching agent.
-export function buildScchAgents(): Record<string, Agent> {
-  return Object.fromEntries(
-    scchModels.map((m) => [
-      m.id,
-      new Agent({
-        id: m.id,
-        name: m.label,
-        instructions: INSTRUCTIONS,
-        model: provider.chat(m.model),
-      }),
-    ]),
-  );
-}

@@ -16,6 +16,7 @@ describe("loadAndBuildTutorPrompt — happy path", () => {
     if (result.ok) {
       expect(result.prompt).toContain("Knoten"); // German prose from a fragment
       expect(result.prompt).toContain("->"); // ASCII diagram, unescaped
+      expect(result.model).toBe("RedHatAI/gemma-4-31B-it-FP8-Dynamic"); // from the tutor's llm.model
     }
   });
 
