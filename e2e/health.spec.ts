@@ -40,7 +40,10 @@ test.describe("as a teacher", () => {
   // Live dependency probes (DB round-trip, SCCH fetch) + dev compilation.
   test.setTimeout(60_000);
 
-  test("renders the shell immediately and resolves all probes", async ({ page }) => {
+  // @live: probes hit the real Azure SQL DB + SCCH endpoint — excluded in CI (test:e2e:ci).
+  test("renders the shell immediately and resolves all probes", { tag: "@live" }, async ({
+    page,
+  }) => {
     await page.goto("/health");
 
     // Shell facts (session-derived, no probe round-trip) are correct at once.

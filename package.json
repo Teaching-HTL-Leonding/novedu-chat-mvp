@@ -16,6 +16,7 @@
     "test:unit": "vitest run --project unit",
     "test:component": "vitest run --project component",
     "test:e2e": "playwright test",
+    "test:e2e:ci": "playwright test --grep-invert @live",
     "test:e2e:ui": "playwright test --ui",
     "qa": "npm run check && npm run typecheck && npm run test && npm run build",
     "qa:e2e": "npm run qa && npm run test:e2e"

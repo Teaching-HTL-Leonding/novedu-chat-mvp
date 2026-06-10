@@ -5,11 +5,21 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   IMAGE_NAME: rstropek/novedu-chat-mvp
 
 jobs:
+  # Quality gate: nothing is built or published unless the full QA suite
+  # (check, typecheck, unit + component tests, build, hermetic e2e) is green.
+  qa:
+    uses: ./.github/workflows/qa.yml
+
   build-and-push:
+    needs: qa
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
