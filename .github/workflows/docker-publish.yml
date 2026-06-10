@@ -48,7 +48,11 @@ jobs:
       # Tell the Azure web app to pull the fresh :latest image (the secret is
       # the App Service container CI/CD webhook URL, which embeds credentials).
       - name: Trigger Azure App Service deployment
-        run: curl -fsS -X POST "${{ secrets.AZURE_WEBAPP_CI_CD_URL }}"
+        # Passed via env, not inline: the URL's basic-auth username starts
+        # with `$` and would be mangled by shell expansion in the run line.
+        env:
+          CI_CD_URL: ${{ secrets.AZURE_WEBAPP_CI_CD_URL }}
+        run: curl -fsS -X POST "$CI_CD_URL"
 
       # Keep the Docker Hub repository description in sync with the README.
       - name: Update Docker Hub description
