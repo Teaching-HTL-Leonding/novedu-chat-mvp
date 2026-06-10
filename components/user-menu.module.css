@@ -1,0 +1,86 @@
+.user {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.4rem 0.25rem 0.6rem;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.trigger:hover {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+
+.teacher {
+  display: inline-flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+  cursor: help;
+}
+
+.name {
+  max-width: 220px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--background);
+  background: color-mix(in srgb, var(--foreground) 65%, transparent);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 160px;
+  padding: 0.25rem;
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--foreground) 15%, transparent);
+}
+
+.menu form {
+  margin: 0;
+}
+
+.signOut {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  text-align: left;
+  color: var(--foreground);
+  background: transparent;
+  border: none;
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.signOut:hover {
+  background: color-mix(in srgb, var(--foreground) 7%, transparent);
+}
