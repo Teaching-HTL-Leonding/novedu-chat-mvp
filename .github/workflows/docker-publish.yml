@@ -55,7 +55,11 @@ jobs:
         run: curl -fsS -X POST "$CI_CD_URL"
 
       # Keep the Docker Hub repository description in sync with the README.
+      # Non-blocking: editing the description needs a Docker Hub PAT with
+      # Read/Write/Delete scope; the current DOCKER_PASSWORD can push images
+      # but gets "Forbidden" here.
       - name: Update Docker Hub description
+        continue-on-error: true
         uses: peter-evans/dockerhub-description@v5
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
