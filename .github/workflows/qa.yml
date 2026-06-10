@@ -1,0 +1,91 @@
+name: QA
+
+# Full quality gate: biome check, typecheck, unit + component tests, production
+# build, and the hermetic Playwright e2e suite. Runs standalone on pull requests
+# and as a reusable workflow (workflow_call) gating the Docker publish on main.
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
+
+# Test-only dummy values (NOT secrets). auth.ts requires the AZURE_* vars and
+# TEACHER_GROUP_ID at module load (also during `next build`); AUTH_SECRET and
+# SHARE_LINK_SECRET only need to match between the e2e helpers and the dev
+# server. e2e tests mint Auth.js session cookies directly, so no real Entra
+# round-trip happens. The two tests that need live infra (Azure SQL / SCCH) are
+# tagged @live and excluded via `npm run test:e2e:ci`. Next's loadEnvConfig
+# never overrides existing process.env, so no .env file is needed here.
+env:
+  AUTH_SECRET: ci-e2e-auth-secret
+  SHARE_LINK_SECRET: ci-e2e-share-link-secret
+  AZURE_CLIENT_ID: ci-placeholder
+  AZURE_CLIENT_SECRET: ci-placeholder
+  AZURE_TENANT_ID: ci-placeholder
+  TEACHER_GROUP_ID: ci-placeholder
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Component tests run in Vitest browser mode on Playwright Chromium.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run check
+
+      - run: npm run typecheck
+
+      - run: npm run test:unit
+
+      - run: npm run test:component
+
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - run: npx playwright install --with-deps chromium
+
+      # Skips @live tests; Playwright's webServer boots `npm run dev` itself.
+      - run: npm run test:e2e:ci
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
