@@ -21,10 +21,6 @@ jobs:
         id: version
         run: echo "version=$(jq -r .version package.json).${{ github.run_number }}" >> "$GITHUB_OUTPUT"
 
-      # QEMU + Buildx enable the multi-platform (amd64 + arm64) build below.
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -38,7 +34,10 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          # amd64 only: Azure App Service runs amd64, and building the arm64
+          # variant under QEMU emulation takes far too long. Build arm64
+          # locally on a Mac if ever needed (the Dockerfile is multi-arch).
+          platforms: linux/amd64
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
