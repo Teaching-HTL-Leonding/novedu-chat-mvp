@@ -20,6 +20,7 @@ const NAV_ITEMS = [
     teacherOnly: true,
   },
   { href: "/share-tutor", label: "Share Tutor", heading: "Share Tutor", teacherOnly: true },
+  { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
 ] as const;
 
 export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
