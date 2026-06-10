@@ -1,12 +1,12 @@
 import { lookup } from "node:dns/promises";
 import sql from "mssql";
 import { mastra } from "@/app/mastra";
-import { auth } from "@/auth";
-import { getTeacherView, type TeacherView } from "@/lib/student-mode";
 
-// Server-side health probes for the teacher-only /health page. Each probe is
-// independent and never throws — failures become `ok: false` indicators so a
-// broken dependency can't take the page down with it.
+// Server-side health probes behind the teacher-only /api/health endpoint. Each
+// probe is independent and never throws — failures become `ok: false` /
+// `error` results so a broken dependency can't take the health page down with
+// it. The probes are fetched one-by-one from the (client) health dashboard so
+// a slow or timing-out dependency never delays the others.
 
 const TIMEOUT_MS = 8_000;
 
@@ -21,15 +21,6 @@ export interface HostInfo {
   ips: string[];
   /** Set when the FQDN could not be determined or DNS resolution failed. */
   error?: string;
-}
-
-export interface HealthReport {
-  db: HealthIndicator;
-  scch: HealthIndicator;
-  user: { name?: string | null; email?: string | null; preferredUsername?: string } | null;
-  teacher: TeacherView;
-  sqlHost: HostInfo;
-  scchHost: HostInfo;
 }
 
 async function withTimeout<T>(work: Promise<T>, what: string): Promise<T> {
@@ -56,7 +47,7 @@ function errorMessage(e: unknown): string {
  * never exists still opens a pooled connection, authenticates and runs SQL —
  * exactly the path the tutor's memory uses.
  */
-async function checkDb(): Promise<HealthIndicator> {
+export async function checkDb(): Promise<HealthIndicator> {
   const storage = mastra.getStorage();
   if (!storage) {
     return { ok: false, detail: "Not configured (MSSQL_CONNECTION_STRING is missing)." };
@@ -72,7 +63,7 @@ async function checkDb(): Promise<HealthIndicator> {
 }
 
 /** Live model listing against the SCCH endpoint — the same call scch.ts makes. */
-async function checkScch(): Promise<HealthIndicator> {
+export async function checkScch(): Promise<HealthIndicator> {
   const baseUrl = process.env.SCCH_BASE_URL;
   const apiKey = process.env.SCCH_API_KEY;
   if (!baseUrl || !apiKey) {
@@ -123,31 +114,13 @@ function scchFqdn(): string | null {
   }
 }
 
-export async function collectHealth(): Promise<HealthReport> {
-  const session = await auth();
-  const [teacher, db, scch, sqlHost, scchHost] = await Promise.all([
-    getTeacherView(),
-    checkDb(),
-    checkScch(),
-    resolveHost(
-      sqlServerFqdn(),
-      "No SQL server host (MSSQL_CONNECTION_STRING missing or unparseable).",
-    ),
-    resolveHost(scchFqdn(), "No SCCH host (SCCH_BASE_URL missing or unparseable)."),
-  ]);
+export async function resolveSqlHost(): Promise<HostInfo> {
+  return resolveHost(
+    sqlServerFqdn(),
+    "No SQL server host (MSSQL_CONNECTION_STRING missing or unparseable).",
+  );
+}
 
-  return {
-    db,
-    scch,
-    user: session?.user
-      ? {
-          name: session.user.name,
-          email: session.user.email,
-          preferredUsername: session.user.preferredUsername,
-        }
-      : null,
-    teacher,
-    sqlHost,
-    scchHost,
-  };
+export async function resolveScchHost(): Promise<HostInfo> {
+  return resolveHost(scchFqdn(), "No SCCH host (SCCH_BASE_URL missing or unparseable).");
 }

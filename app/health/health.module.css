@@ -66,6 +66,11 @@
   background: color-mix(in srgb, #d23434 18%, transparent);
 }
 
+.pending {
+  color: color-mix(in srgb, var(--foreground) 65%, transparent);
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+}
+
 .mono {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
   font-size: 0.82rem;
