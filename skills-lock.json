@@ -73,6 +73,12 @@
       "skillPath": "skills/mastra/SKILL.md",
       "computedHash": "f0ca76d36d67a345064f471a9577e752beb2b20ab46acdf154ed223905e1d3a4"
     },
+    "microsoft-docs": {
+      "source": "microsoft/skills",
+      "sourceType": "github",
+      "skillPath": ".github/skills/microsoft-docs/SKILL.md",
+      "computedHash": "0acd8d2629937e021d605fd1426e641295909e13bab47cad1153793f5564e85e"
+    },
     "next-browser": {
       "source": "vercel-labs/next-browser",
       "sourceType": "github",
