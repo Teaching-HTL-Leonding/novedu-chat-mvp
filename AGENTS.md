@@ -8,15 +8,19 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Load the `mastra` skill BEFORE any Mastra work. Never rely on cached knowledge — APIs change between versions.
 
-## Rules
+### Rules
 
 - Register all agents, tools, workflows, and scorers in `src/mastra/index.ts`
 - Use the `dev` and `build` scripts from `package.json` instead of running `mastra dev` / `mastra build` directly
 
-## Resources
+### Resources
 
 - [Mastra Documentation](https://mastra.ai/llms.txt)
 - [Skills Discovery](https://mastra.ai/.well-known/skills/index.json)
+
+## Pushing Changes to GitHub
+
+Do **NOT** push changes to GitHub if not explitly told by the user.
 
 ## Authentication
 
