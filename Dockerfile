@@ -21,7 +21,9 @@ ENV AZURE_CLIENT_ID=build-placeholder \
     AUTH_SECRET=build-placeholder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# public/ is empty and not git-tracked, so it is absent in CI checkouts;
+# the runner stage COPYs it unconditionally.
+RUN mkdir -p public && npm run build
 
 FROM node:24-alpine AS runner
 WORKDIR /app
