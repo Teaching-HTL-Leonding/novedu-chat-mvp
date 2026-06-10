@@ -5,8 +5,8 @@ A prototype web app for **YAML-defined AI tutors**. A user pastes the public URL
 then opens a chat with an LLM that is configured entirely by that YAML — its persona, rules
 and model all come from the tutor file, not from the app.
 
-It is a prototype: everything is in-memory (no database, no disk persistence), and access is
-gated behind Microsoft Entra ID sign-in.
+It is a prototype: access is gated behind Microsoft Entra ID sign-in, and agent
+memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL password).
 
 ## What's in here
 
@@ -14,7 +14,7 @@ gated behind Microsoft Entra ID sign-in.
 | --- | --- |
 | **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` renders `TutorChat`, the paste-a-URL → validate → chat flow. |
 | **Tutor core** (`lib/tutors/`) | Framework-agnostic pipeline: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. Returns a structured `BuildResult` (never throws). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the tutor YAML, and fragment inputs may declare **defaults**. See [`tutors/README.md`](tutors/README.md) for the authoring guide. |
-| **Mastra agents** (`app/mastra/`) | `tutor` agent resolves its instructions + model per request from the tutor URL; `weatherAgent` is a tool-using demo. All agents are registered in `app/mastra/index.ts`. Memory/storage is in-memory LibSQL (`:memory:`). |
+| **Mastra agents** (`app/mastra/`) | The `tutor` agent resolves its instructions + model per request from the tutor URL and persists each conversation via Mastra `Memory`. Agents are registered in `app/mastra/index.ts`. Memory/storage is **Azure SQL** via `@mastra/mssql`, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. |
 | **Model endpoint** (`app/mastra/scch.ts`) | A self-hosted, OpenAI-compatible vLLM GPU server ("SCCH"). The tutor's `llm.model` resolves against this endpoint; the API key stays server-side. |
 | **Auth** (`auth.ts`, `proxy.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate. Any signed-in user is allowed; everyone else is redirected to sign-in. JWT sessions, no DB adapter. |
@@ -32,8 +32,10 @@ gated behind Microsoft Entra ID sign-in.
 
 - **Node.js 24+** (developed against v24.15).
 - A reachable **OpenAI-compatible model endpoint** (the SCCH vLLM server) for tutor chats.
-- An **OpenAI API key** for the `weatherAgent` demo (`openai/gpt-5-mini`).
 - A **Microsoft Entra ID app registration** for sign-in.
+- An **Azure SQL database** for persistent agent memory/storage, with your Entra
+  identity granted a database user (the app authenticates via Entra — no SQL password).
+  Locally that identity is your `az login`; on Azure it is the app's Managed Identity.
 
 ## Configuration (`.env`)
 
@@ -45,9 +47,6 @@ exposed to the browser** — they are read only in server-side modules.
 SCCH_BASE_URL=https://your-vllm-host/v1
 SCCH_API_KEY=your-vllm-api-key
 
-# --- OpenAI (used by the weatherAgent demo: openai/gpt-5-mini) ---
-OPENAI_API_KEY=sk-...
-
 # --- Microsoft Entra ID sign-in (Auth.js / NextAuth v5) ---
 AZURE_TENANT_ID=your-entra-tenant-id
 AZURE_CLIENT_ID=your-entra-app-client-id
@@ -56,6 +55,17 @@ AZURE_CLIENT_SECRET=your-entra-app-client-secret
 # Secret used by Auth.js to sign JWT session tokens. Generate one with:
 #   openssl rand -base64 32
 AUTH_SECRET=your-generated-secret
+
+# --- Azure SQL (Microsoft SQL Server) — persistent Mastra memory/storage ---
+# Standard ADO.NET connection string. Auth is handled by the app via Microsoft Entra
+# (your `az login` identity locally, the app's Managed Identity on Azure) — there is NO
+# SQL password here. The `Authentication=...` keyword is ignored if present; the app
+# always overrides it with Entra auth. Required to chat — the tutor's memory needs a store.
+MSSQL_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
+# Entra tenant of the SQL database, used for the local `az login` credential. SEPARATE
+# from AZURE_TENANT_ID above (the user sign-in tenant), because the database lives in a
+# different tenant. Optional — if unset, the az credential uses its ambient default tenant.
+MSSQL_TENANT_ID=your-sql-database-tenant-id
 ```
 
 Notes:
@@ -63,6 +73,11 @@ Notes:
 - The app **fails fast at startup** if any `AZURE_*` value is missing.
 - If `SCCH_BASE_URL` / `SCCH_API_KEY` are unset, the app still starts but no SCCH chat
   models are available (a warning is logged).
+- `MSSQL_CONNECTION_STRING` is **required to chat**: the `tutor` agent's memory needs a
+  store, so a tutor chat fails with a server error if it is unset (the rest of the app —
+  e.g. tutor validation — still boots). When set, the Mastra schema (`mastra_*` tables) is
+  created automatically on first use, so the configured Entra identity needs table-creation
+  rights (e.g. `db_owner`) the first time.
 - In your Entra app registration, add the redirect URI
   `http://localhost:3000/api/auth/callback/microsoft-entra-id` (and the equivalent for any
   deployed origin).
@@ -112,8 +127,13 @@ with defaults.
 
 ## Notes & caveats (prototype)
 
-- **In-memory only** — chat memory and Mastra storage live in RAM and are lost on restart;
-  per-user memory scoping is not yet wired up (a single hard-coded resource id is used).
+- **Storage** — Mastra memory/storage is persisted to Azure SQL (`@mastra/mssql`) using
+  Microsoft Entra auth (`token-credential` + an explicit `az login`/Managed Identity
+  credential chain; tokens are fetched and auto-refreshed per pooled connection). The
+  `tutor` agent's memory requires this store, so `MSSQL_CONNECTION_STRING` must be set to
+  chat — there is no in-memory fallback (a tutor chat errors if it is missing). Per-user
+  memory scoping is not yet wired up: threads are persisted under a single hard-coded
+  resource id (`chat-prototype`).
 - **SSRF** — `/api/validate-tutor` fetches an arbitrary user-supplied URL server-side. The
   prototype only restricts the scheme to `http(s)`; a production deployment should also
   allow-list hosts, block private IP ranges, and disable redirects.

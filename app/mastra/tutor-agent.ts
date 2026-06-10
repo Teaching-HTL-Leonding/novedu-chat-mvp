@@ -1,5 +1,6 @@
 import { Agent } from "@mastra/core/agent";
 import type { RequestContext } from "@mastra/core/request-context";
+import { Memory } from "@mastra/memory";
 import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
 import { scchProvider } from "./scch";
 
@@ -54,4 +55,20 @@ export const tutorAgent = new Agent({
   instructions: async ({ requestContext }) => (await loadTutor(tutorUrl(requestContext))).prompt,
   model: async ({ requestContext }) =>
     scchProvider.chat((await loadTutor(tutorUrl(requestContext))).model),
+  // Persist the conversation so the tutor remembers earlier turns. No explicit
+  // storage here: Memory inherits the Mastra instance's Azure SQL store (see
+  // `index.ts`), so threads/messages land in the `mastra_*` tables. The frontend
+  // supplies the thread id and the CopilotKit route the resource id. `semanticRecall`
+  // is disabled — it would require a vector store + embedder we don't run; plain
+  // recent-message history is all the tutor needs.
+  //
+  // NOTE: `Memory` REQUIRES a storage provider — if `MSSQL_CONNECTION_STRING` is
+  // unset, the instance has no store and a tutor chat fails ("Memory requires a
+  // storage provider"). That's acceptable: storage is effectively required to chat.
+  memory: new Memory({
+    options: {
+      lastMessages: 20,
+      semanticRecall: false,
+    },
+  }),
 });

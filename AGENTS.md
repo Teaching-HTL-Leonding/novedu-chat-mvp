@@ -17,3 +17,7 @@ Load the `mastra` skill BEFORE any Mastra work. Never rely on cached knowledge â
 
 - [Mastra Documentation](https://mastra.ai/llms.txt)
 - [Skills Discovery](https://mastra.ai/.well-known/skills/index.json)
+
+## Authentication
+
+This app is gated by Microsoft Entra ID. However, e2e tests are configured to work without manual authentication.
