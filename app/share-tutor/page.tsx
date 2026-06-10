@@ -1,13 +1,13 @@
 import { AccessDenied } from "@/components/notice";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 import pageStyles from "../page.module.css";
-import { ValidateTutorForm } from "./validate-tutor-form";
+import { ShareTutorForm } from "./share-tutor-form";
 
-// Teacher-only: validating tutor definitions is an authoring concern. The API
-// route this form posts to (/api/validate-tutor) enforces the same rule
-// server-side; this page-level check is for honest UX, not security.
+// Teacher-only: creates signed deep links that grant students time-windowed
+// access to a tutor chat. The server action enforces the same rule; this
+// page-level check is for honest UX, not security.
 // "Effective" teacher: a teacher in student mode is denied like a student.
-export default async function ValidateTutorPage() {
+export default async function ShareTutorPage() {
   if (!(await isEffectiveTeacher())) {
     return (
       <main className={pageStyles.main}>
@@ -17,7 +17,7 @@ export default async function ValidateTutorPage() {
   }
   return (
     <main className={pageStyles.main}>
-      <ValidateTutorForm />
+      <ShareTutorForm />
     </main>
   );
 }

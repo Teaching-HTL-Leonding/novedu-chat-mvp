@@ -1,6 +1,7 @@
 "use client";
 
 import { signOutAction } from "@/lib/auth-actions";
+import { enterStudentModeAction, exitStudentModeAction } from "@/lib/student-mode-actions";
 import { usePopover } from "./use-popover";
 import styles from "./user-menu.module.css";
 
@@ -18,13 +19,32 @@ function initials(name: string): string {
   return (first + last).toUpperCase() || "?";
 }
 
-export function UserMenu({ user }: { user: StatusBarUser | null }) {
+export function UserMenu({
+  user,
+  studentMode = false,
+}: {
+  // `user.isTeacher` is the EFFECTIVE status (false while simulating a
+  // student), so it gates both the badge and the "View as student" item.
+  user: StatusBarUser | null;
+  // True while a (real) teacher is simulating a student. Shows the always-
+  // visible pill with the exit control — the one teacher capability that
+  // student mode keeps.
+  studentMode?: boolean;
+}) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>();
   if (!user) return null;
   const name = user.name?.trim() || "Signed in";
 
   return (
     <div className={styles.user} ref={ref}>
+      {studentMode && (
+        <form action={exitStudentModeAction} className={styles.studentMode}>
+          <span className={styles.studentModeLabel}>Student mode</span>
+          <button type="submit" className={styles.studentModeExit}>
+            Exit
+          </button>
+        </form>
+      )}
       <button
         type="button"
         className={styles.trigger}
@@ -65,8 +85,18 @@ export function UserMenu({ user }: { user: StatusBarUser | null }) {
       </button>
       {open && (
         <div className={styles.menu} role="menu">
+          {user.isTeacher && (
+            // NOTE: no onClick-close here — unmounting the form before React
+            // processes the submission would cancel the action. The route
+            // refresh after the action re-renders the bar without this item.
+            <form action={enterStudentModeAction}>
+              <button type="submit" role="menuitem" className={styles.menuAction}>
+                View as student
+              </button>
+            </form>
+          )}
           <form action={signOutAction}>
-            <button type="submit" role="menuitem" className={styles.signOut}>
+            <button type="submit" role="menuitem" className={styles.menuAction}>
               Sign out
             </button>
           </form>

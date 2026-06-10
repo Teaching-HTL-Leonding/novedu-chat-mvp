@@ -66,6 +66,18 @@ MSSQL_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;Initial Ca
 # from AZURE_TENANT_ID above (the user sign-in tenant), because the database lives in a
 # different tenant. Optional — if unset, the az credential uses its ambient default tenant.
 MSSQL_TENANT_ID=your-sql-database-tenant-id
+
+# --- Tutor share links ---
+# Server-only secret for HMAC-SHA256-signing tutor share links (the deep links
+# teachers create under "Share Tutor"). The chat is ONLY reachable through such a
+# signed link. Generate one with:
+#   openssl rand -hex 32
+SHARE_LINK_SECRET=your-generated-share-link-secret
+# Public origin the generated share links point at, e.g. https://novedu.example.org
+# RECOMMENDED IN PRODUCTION: without it the origin is derived from the request's
+# x-forwarded-host/-proto headers, which is only as reliable as the proxy chain
+# (and falls back to http://). Optional for local dev (localhost works).
+SHARE_LINK_ORIGIN=https://your-public-origin
 ```
 
 Notes:
@@ -78,6 +90,8 @@ Notes:
   e.g. tutor validation — still boots). When set, the Mastra schema (`mastra_*` tables) is
   created automatically on first use, so the configured Entra identity needs table-creation
   rights (e.g. `db_owner`) the first time.
+- `SHARE_LINK_SECRET` protects the chat deep links from tampering. Rotating it
+  invalidates all previously created share links.
 - In your Entra app registration, add the redirect URI
   `http://localhost:3000/api/auth/callback/microsoft-entra-id` (and the equivalent for any
   deployed origin).

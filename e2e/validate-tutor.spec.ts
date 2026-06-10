@@ -1,14 +1,15 @@
 import { expect, test } from "@playwright/test";
+import { TEACHER_STORAGE_STATE } from "./auth.constants";
+import { BROKEN_TUTOR_URL, VALID_TUTOR_URL } from "./share-link.utils";
 
 // These tests exercise the full stack: the page POSTs a public URL to
 // /api/validate-tutor, which fetches the stable sample tutors from GitHub,
 // validates + assembles them, and returns the result. The sample files under
 // tutors/ are kept stable on `main` precisely so these URLs stay valid.
-
-const RAW =
-  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors";
-const VALID_TUTOR_URL = `${RAW}/simple-tutor.yaml`;
-const BROKEN_TUTOR_URL = `${RAW}/broken-tutor.yaml`;
+//
+// Validate Tutor is teacher-only now, so this spec runs with the minted teacher
+// session (the student-side denial is covered by permissions.spec.ts).
+test.use({ storageState: TEACHER_STORAGE_STATE });
 
 // Network round-trip to GitHub + Next dev compilation — give it room.
 test.setTimeout(60_000);

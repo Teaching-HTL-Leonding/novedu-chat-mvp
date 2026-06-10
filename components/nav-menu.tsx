@@ -8,15 +8,25 @@ import { usePopover } from "./use-popover";
 const BRAND = "HTBLA Leonding - Novedu";
 
 // Single source of truth for both the burger menu items and the per-route page
-// heading shown after the brand in the status bar.
+// heading shown after the brand in the status bar. Teacher-only items are hidden
+// from the menu for non-teachers (the pages themselves enforce the rule
+// server-side; this is just honest navigation).
 const NAV_ITEMS = [
-  { href: "/", label: "Chat", heading: "Chat Prototype" },
-  { href: "/validate-tutor", label: "Validate Tutor", heading: "Validate Tutor" },
+  { href: "/", label: "Chat", heading: "Chat Prototype", teacherOnly: false },
+  {
+    href: "/validate-tutor",
+    label: "Validate Tutor",
+    heading: "Validate Tutor",
+    teacherOnly: true,
+  },
+  { href: "/share-tutor", label: "Share Tutor", heading: "Share Tutor", teacherOnly: true },
 ] as const;
 
-export function NavMenu() {
+export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
   const pathname = usePathname();
   const { open, setOpen, ref } = usePopover<HTMLDivElement>();
+  const items = NAV_ITEMS.filter((item) => isTeacher || !item.teacherOnly);
+  // Heading lookup spans ALL items so a directly-opened URL still gets a title.
   const current = NAV_ITEMS.find((item) => item.href === pathname);
   const title = current ? `${BRAND} / ${current.heading}` : BRAND;
 
@@ -38,7 +48,7 @@ export function NavMenu() {
       {open && (
         <nav className={styles.menu} aria-label="Primary">
           <ul className={styles.menuList}>
-            {NAV_ITEMS.map((item) => (
+            {items.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}

@@ -18,3 +18,17 @@ test("unauthenticated users cannot reach the tutor-validation page", async ({ pa
 
   await expect(page).toHaveURL(/\/api\/auth\/signin/);
 });
+
+test("unauthenticated users cannot reach the share-tutor page", async ({ page }) => {
+  await page.goto("/share-tutor");
+
+  await expect(page).toHaveURL(/\/api\/auth\/signin/);
+});
+
+test("a valid share link still requires sign-in", async ({ page }) => {
+  // Anonymous users cannot use the app even with a genuine deep link — the
+  // signature only authorizes the tutor + window, never the user.
+  await page.goto("/?tutor=https%3A%2F%2Fexample.com%2Ft.yaml&start=1&end=2&sig=abc");
+
+  await expect(page).toHaveURL(/\/api\/auth\/signin/);
+});

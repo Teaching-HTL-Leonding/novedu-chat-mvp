@@ -2,30 +2,65 @@ import { MastraAgent } from "@ag-ui/mastra";
 import { CopilotRuntime, createCopilotEndpoint } from "@copilotkit/runtime/v2";
 import { RequestContext } from "@mastra/core/request-context";
 import { mastra } from "@/app/mastra";
+import { auth } from "@/auth";
+import { getShareLinkSecret, type ShareLinkRejection, verifyShareLink } from "@/lib/share-links";
 
-// Identifies the memory resource (i.e. "user") that agent threads are scoped to.
-// Auth (Microsoft Entra ID) now gates the app, but per-user memory scoping is
-// deferred — still hard-coded. Swap for the signed-in user's id when wiring it up.
-const RESOURCE_ID = "chat-prototype";
+// Human-readable rejection texts: a 403 can surface mid-session in the chat's
+// error UI (e.g. when the window closes while the student is typing), so the
+// message should explain, not just name a reason code.
+const REJECTION_MESSAGES: Record<ShareLinkRejection, string> = {
+  "missing-params": "The chat requires a tutor share link.",
+  "invalid-signature": "The tutor share link is invalid.",
+  "not-started": "This tutor's availability window has not started yet.",
+  expired: "This tutor's availability window has ended.",
+};
 
-// The chat is driven by a tutor-definition YAML. Its public URL arrives in the
-// `x-tutor-url` header (set by the frontend's CopilotKitProvider once validation
-// passes) and is handed to the `tutor` agent via RequestContext, where its
-// dynamic `instructions`/`model` resolvers read it. (A header — not a query
-// string — because CopilotKit appends sub-paths like `/info` to the runtime URL,
-// which a query string would corrupt.) We build the runtime per request so each
-// request carries its own context; the heavy work (fetch + assemble the YAML) is
-// memoized inside the tutor agent, so this stays cheap.
-function handler(req: Request): Response | Promise<Response> {
-  const tutor = req.headers.get("x-tutor-url") ?? "";
+// The chat backend. Two server-side checks gate every runtime request — the
+// frontend already performed both, but headers are client-controlled, so they
+// are re-verified here where they actually matter:
+//
+//  1. AUTHENTICATION — a valid Entra session is required. The signed-in user's
+//     stable id (the token's `sub`) becomes the Mastra memory `resourceId`, so
+//     every user gets their own thread/message storage.
+//  2. SHARE LINK — the tutor URL only counts when it arrives with the teacher's
+//     HMAC signature and the current time is inside the signed window. Checked
+//     on EVERY request, so an open chat stops accepting messages once the
+//     window closes.
+//
+// The verified tutor URL is handed to the `tutor` agent via RequestContext,
+// where its dynamic `instructions`/`model` resolvers read it. (Headers — not a
+// query string — because CopilotKit appends sub-paths like `/info` to the
+// runtime URL, which a query string would corrupt.) The runtime is built per
+// request; the heavy work (fetch + assemble the YAML) is memoized inside the
+// tutor agent, so this stays cheap.
+async function handler(req: Request): Promise<Response> {
+  const session = await auth();
+  const resourceId = session?.user?.id;
+  if (!resourceId) {
+    return Response.json({ error: "Authentication required" }, { status: 401 });
+  }
+
+  const verification = verifyShareLink(
+    {
+      tutor: req.headers.get("x-tutor-url") ?? undefined,
+      start: req.headers.get("x-share-start") ?? undefined,
+      end: req.headers.get("x-share-end") ?? undefined,
+      sig: req.headers.get("x-share-sig") ?? undefined,
+    },
+    getShareLinkSecret(),
+    Math.floor(Date.now() / 1000),
+  );
+  if (!verification.ok) {
+    return Response.json({ error: REJECTION_MESSAGES[verification.reason] }, { status: 403 });
+  }
 
   const requestContext = new RequestContext();
-  requestContext.set("tutor-url", tutor);
+  requestContext.set("tutor-url", verification.tutor);
 
   const runtime = new CopilotRuntime({
     // @ts-expect-error - @ag-ui/mastra's AbstractAgent type does not line up with
     // the runtime's expected agent type in this beta. Known upstream issue.
-    agents: MastraAgent.getLocalAgents({ mastra, resourceId: RESOURCE_ID, requestContext }),
+    agents: MastraAgent.getLocalAgents({ mastra, resourceId, requestContext }),
   });
 
   // createCopilotEndpoint returns a Hono app whose `.fetch` is a standard

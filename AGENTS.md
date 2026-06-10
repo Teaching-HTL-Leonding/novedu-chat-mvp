@@ -46,8 +46,10 @@ runs don't have to rediscover the setup:
   The `session.user.preferredUsername` field is likewise carried over from the ID token
   (`name`/`email`/`image` are populated by Auth.js automatically). The flag is computed
   **once at sign-in** — sessions minted before it existed read `false` until re-sign-in.
-  Use **`requireTeacher()`** (exported from `auth.ts`) to gate teacher-only server
-  actions / route handlers (it throws → respond 403).
+  Gate teacher-only server actions / route handlers with
+  **`requireEffectiveTeacher()`** from `lib/student-mode.ts` (throws → respond 403);
+  it honors student mode (see below). `requireTeacher()` in `auth.ts` checks only the
+  real role and is reserved for entering student mode.
 - **Group claims config:** the `groups` claim must be enabled in the Entra app
   registration's **Token configuration** and emitted into the **ID token** (the access
   token's audience is Microsoft Graph and carries no usable groups). Watch for the
@@ -55,9 +57,53 @@ runs don't have to rediscover the setup:
   groups Entra omits the array, and `resolveTeacher` reports `overage` and **fails closed
   (not a teacher)** — resolving it would need a Microsoft Graph call. Prefer "Groups
   assigned to the application" in Entra to avoid overage.
-- **e2e tests** bypass interactive login by minting a valid Auth.js session cookie in
-  `e2e/auth.setup.ts` (signed with the same `AUTH_SECRET`) and injecting it via
+- **e2e tests** bypass interactive login by minting valid Auth.js session cookies in
+  `e2e/auth.setup.ts` (signed with the same `AUTH_SECRET`) and injecting them via
   Playwright `storageState` (`e2e/auth.constants.ts`). Real auth stays ON; this only
-  proves the gate lets a valid session through. The minted token has no `isTeacher`
-  claim, so `session.user.isTeacher` is `false` in e2e; add `isTeacher: true` to the
-  minted token in `auth.setup.ts` to exercise teacher-only paths.
+  proves the gate lets a valid session through. TWO states are minted: a student
+  (default, `STORAGE_STATE`, no `isTeacher` claim → `false`) and a teacher
+  (`TEACHER_STORAGE_STATE`, `isTeacher: true`) — teacher-only specs opt in via
+  `test.use({ storageState: TEACHER_STORAGE_STATE })`.
+
+- **Student mode:** a real teacher can temporarily view the app as a student
+  ("View as student" in the user menu). State = httpOnly session cookie
+  `student-mode` (`lib/student-mode.ts`); it only RESTRICTS, never grants, so it
+  is unsigned. It is cleared on sign-out (`lib/auth-actions.ts`) so it cannot leak
+  into the next user's session. Derive ALL teacher gating/display from
+  **`getTeacherView()`** (or the `isEffectiveTeacher()` /
+  `requireEffectiveTeacher()` shorthands) in `lib/student-mode.ts` — NOT from
+  `session.user.isTeacher` / `requireTeacher()` directly, which ignore the mode.
+  `requireTeacher()` (auth.ts) remains the real-role check and gates ENTERING the
+  mode (`lib/student-mode-actions.ts`); exiting is ungated (the visible "Student
+  mode" pill in the status bar carries the Exit control). Kept out of auth.ts
+  because proxy.ts imports auth.ts into the proxy runtime, where `cookies()` is
+  unavailable.
+
+## Tutor share links (chat deep links)
+
+- The chat (`/`) is reachable **only** via a signed deep link
+  `/?tutor=<yaml-url>&start=<unix-s>&end=<unix-s>&sig=<hmac>`. `lib/share-links.ts`
+  holds the pure sign/verify/build core (HMAC-SHA256 over the raw, un-encoded string
+  `tutor={tutor}&start={start}&end={end}`; secret = `SHARE_LINK_SECRET` in `.env`,
+  server-only). Window bounds are inclusive unix **seconds** (UTC).
+- Teachers create links on `/share-tutor` (teacher-only, like `/validate-tutor` —
+  page checks are UX, the server action / API route are the enforcement points).
+  The form converts `datetime-local` values to unix seconds **in the browser** (the
+  only place the user's timezone is known; helpers in `lib/datetime-local.ts`) and
+  submits via the server action in `lib/share-link-actions.ts`, which signs and also
+  validates the tutor YAML at share time.
+- Verification is server-side in TWO places: `app/page.tsx` (server component —
+  renders the chat or `app/share-link-error.tsx`) and the CopilotKit route
+  (`app/api/copilotkit/[[...slug]]/route.ts`), which re-verifies the headers
+  `x-tutor-url`/`x-share-start`/`x-share-end`/`x-share-sig` on EVERY runtime request
+  (403 on failure) — so an open chat stops accepting messages once the window closes.
+- Per-user Mastra memory: the CopilotKit route resolves the session and uses
+  `session.user.id` (the JWT `sub`, set in the `session` callback in `auth.ts`) as
+  the Mastra memory `resourceId`. Threads written before this change live under the
+  shared resourceId `chat-prototype` and are intentionally abandoned (they were
+  commingled across all users and carry no per-user value).
+- Generated links point at `SHARE_LINK_ORIGIN` when set (recommended in
+  production); otherwise the origin is derived from the request's
+  x-forwarded-host/-proto / host headers (fine for local dev).
+- e2e specs mint deep links directly with `e2e/share-link.utils.ts` (same secret +
+  signing code as the server, loaded from `.env`).

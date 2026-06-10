@@ -9,6 +9,12 @@
   padding-top: 0.75rem;
 }
 
+.validationErrors {
+  flex: none;
+  padding: 0 1.25rem 1.25rem;
+  overflow-y: auto;
+}
+
 .tutorBar {
   flex: none;
   display: flex;

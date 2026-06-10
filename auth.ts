@@ -8,6 +8,10 @@ import { resolveTeacher } from "@/lib/teacher";
 declare module "next-auth" {
   interface Session {
     user: {
+      // Stable per-user identifier (the token's `sub` claim — Entra's pairwise
+      // subject id for this app). Used to scope per-user data such as the
+      // Mastra memory resource. Empty string only if the token had no subject.
+      id: string;
       // Whether the signed-in user is a teacher (member of TEACHER_GROUP_ID).
       // Gates teacher-only operations. `name`, `email` and `image` are already
       // populated by Auth.js from the Entra profile.
@@ -76,6 +80,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     session: ({ session, token }) => {
+      session.user.id = token.sub ?? "";
       session.user.isTeacher = token.isTeacher ?? false;
       session.user.preferredUsername = token.preferredUsername;
       return session;

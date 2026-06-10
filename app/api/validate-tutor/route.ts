@@ -1,13 +1,29 @@
+import { requireEffectiveTeacher } from "@/lib/student-mode";
 import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
 
 // Thin server consumer of the reusable tutor core. Takes a public URL to a tutor
 // definition YAML, returns the assembled system prompt or a structured error list.
+// Teacher-only: validation is an authoring tool, and this is the enforcement
+// point (the page-level check is only UX).
 //
 // SSRF note: this fetches an arbitrary user-supplied URL server-side. For this
 // prototype we only restrict the scheme to http(s); a production deployment
 // should additionally allow-list hosts / block private IP ranges and disable
 // redirects.
 export async function POST(req: Request) {
+  try {
+    await requireEffectiveTeacher();
+  } catch {
+    return Response.json(
+      {
+        ok: false,
+        errors: [{ code: "FORBIDDEN", message: "This operation requires a teacher account" }],
+        warnings: [],
+      },
+      { status: 403 },
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
