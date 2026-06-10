@@ -35,6 +35,54 @@ describe("loadAndBuildTutorPrompt — happy path", () => {
   });
 });
 
+describe("loadAndBuildTutorPrompt — image input flag", () => {
+  // The real fixture declares no `llm.imageInput`; these variants patch the
+  // llm block to exercise the flag without a second fixture file.
+  const withImageInput = (value: string) =>
+    readFixture("linked-list-tutor.yaml").replace(
+      "  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic",
+      `  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic\n  imageInput: ${value}`,
+    );
+
+  it("defaults imageInput to true when the tutor omits llm.imageInput", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.imageInput).toBe(true);
+  });
+
+  it("surfaces an explicit imageInput: false opt-out from the tutor's llm block", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withImageInput("false"))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.imageInput).toBe(false);
+  });
+
+  it("TUTOR_SCHEMA_ERROR for a non-boolean imageInput", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withImageInput('"yes"'))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("TUTOR_SCHEMA_ERROR");
+  });
+
+  // Both YAMLs are documented examples AND e2e fixtures — keep them valid.
+  for (const [fixture, expected] of [
+    ["vision-tutor.yaml", true],
+    ["text-only-tutor.yaml", false],
+  ] as const) {
+    it(`the ${fixture} fixture resolves to imageInput: ${expected}`, async () => {
+      const url = TUTOR_URL.replace("linked-list-tutor.yaml", fixture);
+      const simpleUrl = TUTOR_URL.replace("linked-list-tutor.yaml", "simple-fragments.yaml");
+      const overrides = new Map([
+        [url, fixtureResponse(readFixture(fixture))],
+        [simpleUrl, fixtureResponse(readFixture("simple-fragments.yaml"))],
+      ]);
+      const result = await loadAndBuildTutorPrompt(url, fixtureFetcher(overrides));
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.imageInput).toBe(expected);
+    });
+  }
+});
+
 describe("resolveFragmentUrl", () => {
   it("returns an absolute http(s) ref unchanged", () => {
     expect(resolveFragmentUrl(GENERAL_URL, TUTOR_URL)).toBe(GENERAL_URL);

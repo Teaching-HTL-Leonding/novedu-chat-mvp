@@ -128,7 +128,13 @@ export async function loadAndBuildTutorPrompt(
     const prompt = assembleSystemPrompt(consistency.plan, tutor);
     // Surface the tutor's model alongside the prompt so consumers (the chat
     // route) don't have to re-parse the YAML to learn which model to drive.
-    return { ok: true, prompt, model: tutor.llm.model, warnings };
+    return {
+      ok: true,
+      prompt,
+      model: tutor.llm.model,
+      imageInput: tutor.llm.imageInput ?? true,
+      warnings,
+    };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return {

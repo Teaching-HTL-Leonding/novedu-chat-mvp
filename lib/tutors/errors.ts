@@ -60,7 +60,14 @@ export interface ValidationWarning {
  * both, never a thrown exception.
  */
 export type BuildResult =
-  | { ok: true; prompt: string; model: string; warnings: ValidationWarning[] }
+  | {
+      ok: true;
+      prompt: string;
+      model: string;
+      /** Whether students may attach images in the chat (tutor `llm.imageInput`, default true). */
+      imageInput: boolean;
+      warnings: ValidationWarning[];
+    }
   | { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] };
 
 /** Small helper to build an error object tersely at call sites. */

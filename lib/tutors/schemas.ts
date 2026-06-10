@@ -93,10 +93,13 @@ export const TutorSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
   description: z.string(),
-  llm: z.strictObject({ model: z.string() }),
+  // Students may attach images in the chat by default; a tutor opts OUT with
+  // `imageInput: false` (e.g. for models without vision support — the flag is
+  // what gates the upload UI, nothing checks the model's actual modalities).
+  llm: z.strictObject({ model: z.string(), imageInput: z.boolean().optional() }),
   prompt: z.strictObject({
-    fragment_files: z.array(FragmentFileRefSchema).min(1),
-    fragments: z.array(FragmentRefSchema).min(1),
+    fragment_files: z.array(FragmentFileRefSchema).default([]),
+    fragments: z.array(FragmentRefSchema).default([]),
     tutor_instructions: z.string(),
   }),
 });

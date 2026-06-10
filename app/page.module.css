@@ -67,6 +67,38 @@
   overflow-y: auto;
 }
 
+.uploadError {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0 1.25rem 0.5rem;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.85rem;
+  color: var(--foreground);
+  background: color-mix(in srgb, #d4373e 12%, var(--background));
+  border: 1px solid color-mix(in srgb, #d4373e 45%, transparent);
+  border-radius: 0.5rem;
+}
+
+.uploadError > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.uploadErrorDismiss {
+  flex: none;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
 .chat {
   flex: 1 1 auto;
   min-height: 0;

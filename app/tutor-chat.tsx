@@ -2,6 +2,7 @@
 
 import { CopilotChat, CopilotKitProvider } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
+import { useState } from "react";
 import type { ValidationWarning } from "@/lib/tutors";
 import { CodeBlock } from "./code-block";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -16,17 +17,30 @@ import { WarningList } from "./validate-tutor/result-views";
 //
 // The prompt preview is intentionally visible to everyone with a valid link:
 // the app is in early preview and the preview is a debugging aid.
+// Attachments are capped client-side at 5 MB per image: photos are inlined as
+// base64 into the chat request AND replayed from Mastra memory on every
+// following turn, so big files would bloat both the request body and the
+// model's context.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
 export function TutorChat({
   tutorUrl,
   runtimeHeaders,
   prompt,
   warnings,
+  imageInput,
 }: {
   tutorUrl: string;
   runtimeHeaders: Record<string, string>;
   prompt: string;
   warnings: ValidationWarning[];
+  /** Tutor `llm.imageInput`: students may attach images (vision-capable model). */
+  imageInput: boolean;
 }) {
+  // Rejected uploads (too large, wrong type) call onUploadFailed and silently
+  // drop the file — without this notice the student would never learn why.
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   return (
     <>
       <div className={styles.tutorBar}>
@@ -43,6 +57,19 @@ export function TutorChat({
         </div>
       </details>
 
+      {uploadError ? (
+        <div className={styles.uploadError} role="alert">
+          <span>{uploadError}</span>
+          <button
+            type="button"
+            className={styles.uploadErrorDismiss}
+            onClick={() => setUploadError(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
       <div className={styles.chat}>
         {/*
           The tutor URL must NOT go in runtimeUrl's query string: CopilotKit
@@ -55,6 +82,17 @@ export function TutorChat({
           <CopilotChat
             agentId="tutor"
             messageView={{ assistantMessage: { markdownRenderer: MarkdownRenderer } }}
+            attachments={
+              imageInput
+                ? {
+                    enabled: true,
+                    accept: "image/*",
+                    maxSize: MAX_IMAGE_BYTES,
+                    onUploadFailed: ({ file, message }) =>
+                      setUploadError(`${file.name}: ${message}`),
+                  }
+                : undefined
+            }
           />
         </CopilotKitProvider>
       </div>

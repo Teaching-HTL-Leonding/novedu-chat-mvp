@@ -48,7 +48,7 @@ written **once** in a fragment library and reused by many tutors.
 | **Tutor file**       | Selects fragments, supplies their values, adds final instructions. | You, per subject.                    |
 
 Both are plain YAML. A fragment library is referenced by a tutor file through a
-public URL (see [Hosting](#8-hosting-your-files)).
+public URL (see [Hosting](#9-hosting-your-files)).
 
 ---
 
@@ -154,7 +154,29 @@ These two files are kept in this folder (`simple-fragments.yaml`,
 
 ---
 
-## 4. Tutor file reference
+## 4. Editor support
+
+This folder includes a JSON Schema for tutor and fragment-library YAML files:
+`tutor-yaml.schema.json`.
+
+Editors that use the YAML Language Server, including VS Code with YAML support,
+can pick up the schema from a modeline comment at the top of a YAML file:
+
+```yaml
+# yaml-language-server: $schema=./tutor-yaml.schema.json
+```
+
+In VS Code, install the Red Hat YAML extension to get this schema support:
+<https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml>.
+
+The line is a comment, not a YAML field. The tutor app ignores it, but the editor
+can use it for validation, completion, and hover help. Use a relative path when
+the schema file sits next to the YAML file, or use the published raw GitHub URL
+when editing a file outside this folder.
+
+---
+
+## 5. Tutor file reference
 
 A tutor file has these fields. All of them are required unless marked optional.
 
@@ -164,17 +186,21 @@ name: "My Tutor" # human-readable title
 description: "What this tutor does."
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model serves this tutor
+  imageInput: false # optional: omit for default true; set false to disable image uploads
 prompt:
-  fragment_files: [...] # the libraries you pull fragments from
-  fragments: [...] # the fragments you include, in order
+  fragment_files: [...] # optional: the libraries you pull fragments from
+  fragments: [...] # optional: the fragments you include, in order
   tutor_instructions: | # your own final instructions (free text)
     ...
 ```
 
 ### `prompt.fragment_files`
 
-Declares which fragment libraries this tutor uses and gives each one a short
-local **alias** you refer to later.
+Optional. Declares which fragment libraries this tutor uses and gives each one a
+short local **alias** you refer to later.
+
+Omit this field when the tutor does not use fragments and all instructions live
+directly in `prompt.tutor_instructions`.
 
 ```yaml
 fragment_files:
@@ -195,13 +221,15 @@ fragment_files:
     tutor and its libraries sit in the same folder (as the examples here do).
 
   Either way the file must be reachable by the server (see
-  [Hosting](#8-hosting-your-files)). Only `http(s)` is allowed — an absolute URL
+  [Hosting](#9-hosting-your-files)). Only `http(s)` is allowed — an absolute URL
   with any other scheme (e.g. `ftp:`) is rejected.
 
 ### `prompt.fragments`
 
-The ordered list of fragments to include. Each entry says **which** fragment and
-supplies its **values**.
+Optional. The ordered list of fragments to include. Each entry says **which**
+fragment and supplies its **values**.
+
+Omit this field when the tutor does not use fragments.
 
 ```yaml
 fragments:
@@ -214,12 +242,12 @@ fragments:
 - `file` — the alias of the library (from `fragment_files`).
 - `id` — the fragment's `id` within that library.
 - `variables` — _(optional)_ the values the fragment needs (see
-  [Inputs and variables](#6-inputs-and-variables)).
+  [Inputs and variables](#7-inputs-and-variables)).
 - `required` — _(optional)_ a flag you can set to `true` to mark a fragment as
   important to keep. It is accepted but does not change validation today.
 
 > The order you list fragments in does **not** decide the final order — `priority`
-> does (see [How the prompt is assembled](#7-how-the-prompt-is-assembled)). It is
+> does (see [How the prompt is assembled](#8-how-the-prompt-is-assembled)). It is
 > good practice to list them in priority order anyway, for readability.
 
 ### `prompt.tutor_instructions`
@@ -227,9 +255,12 @@ fragments:
 Free-form text appended **after** all fragments. This is where you put the
 concrete, tutor-specific framing in your own words.
 
+For a one-off tutor whose instructions are unlikely to be reused, it is fine to
+put the whole prompt here and omit `fragment_files` and `fragments`.
+
 ---
 
-## 5. Fragment library reference
+## 6. Fragment library reference
 
 A fragment library has an `id` and a list of `fragments`:
 
@@ -259,7 +290,7 @@ Field by field:
 
 ---
 
-## 6. Inputs and variables
+## 7. Inputs and variables
 
 A fragment declares what it needs with `input_schema`, and a tutor supplies those
 values with `variables`. They must agree.
@@ -381,11 +412,12 @@ Notes:
 
 ---
 
-## 7. How the prompt is assembled
+## 8. How the prompt is assembled
 
 1. Each included fragment's `content` is rendered with its supplied `variables`.
 2. Rendered fragments are ordered by **`priority`, ascending** (lowest first).
-3. `tutor_instructions` is appended **last**.
+3. `tutor_instructions` is appended **last**. If the tutor uses no fragments, this
+   is the whole system prompt.
 4. The pieces are joined with blank lines into the final system prompt.
 
 Because order is driven by `priority`, two fragments a tutor uses must not share
@@ -393,7 +425,7 @@ the same priority — otherwise the order would be ambiguous and validation fail
 
 ---
 
-## 8. Hosting your files
+## 9. Hosting your files
 
 The server fetches your files over the internet, so they must be at a **public
 `http(s)` URL**.
@@ -403,10 +435,11 @@ The easiest option is GitHub:
 1. Put your `.yaml` files in a public repository.
 2. Use the **raw** URL of each file, for example:
    `https://raw.githubusercontent.com/<org>/<repo>/refs/heads/main/tutors/your-fragments.yaml`
-3. Reference each library from your tutor's `fragment_files[].url`. If the library sits
-   **in the same folder** as the tutor file (as the examples in this repo do), you can
-   use just the filename — e.g. `your-fragments.yaml` — and it is resolved next to the
-   tutor's own URL. Use a full raw URL when the library lives somewhere else.
+3. If your tutor uses fragment libraries, reference each library from your tutor's
+   `fragment_files[].url`. If the library sits **in the same folder** as the tutor
+   file (as the examples in this repo do), you can use just the filename — e.g.
+   `your-fragments.yaml` — and it is resolved next to the tutor's own URL. Use a
+   full raw URL when the library lives somewhere else.
 
 Remember to **commit and push** changes before validating — the server reads the
 published version, not your local copy. (A relative reference is resolved against the
@@ -414,7 +447,7 @@ tutor's published URL, so the library must be pushed too.)
 
 ---
 
-## 9. Validating your tutor
+## 10. Validating your tutor
 
 Open the **Validate Tutor** page in the app, paste your tutor file's public URL,
 and click **Validate**. You'll get either:
@@ -448,7 +481,7 @@ The validator checks, in order:
 
 ---
 
-## 10. Checklist before you publish
+## 11. Checklist before you publish
 
 - [ ] Each fragment has a **unique** `id` within its library.
 - [ ] Priorities are **unique** across the fragments a tutor uses.

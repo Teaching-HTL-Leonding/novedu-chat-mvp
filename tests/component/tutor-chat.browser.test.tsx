@@ -8,13 +8,17 @@ import { render } from "vitest-browser-react";
 // reports its props to a spy so we can assert the signed share parameters are
 // forwarded as headers (the backend re-verifies them on every request).
 const providerSpy = vi.hoisted(() => vi.fn());
+const chatSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("@copilotkit/react-core/v2", () => ({
   CopilotKitProvider: ({ children, ...props }: { children: ReactNode }) => {
     providerSpy(props);
     return <div data-testid="ck-provider">{children}</div>;
   },
-  CopilotChat: ({ agentId }: { agentId: string }) => <div data-testid="ck-chat">{agentId}</div>,
+  CopilotChat: ({ agentId, ...props }: { agentId: string }) => {
+    chatSpy({ agentId, ...props });
+    return <div data-testid="ck-chat">{agentId}</div>;
+  },
 }));
 
 import { TutorChat } from "@/app/tutor-chat";
@@ -34,6 +38,7 @@ test("renders the chat with the tutor bar and prompt preview", async () => {
       runtimeHeaders={RUNTIME_HEADERS}
       prompt={"# Hello\n\nMass-energy: $E=mc^2$."}
       warnings={[]}
+      imageInput={false}
     />,
   );
 
@@ -53,7 +58,13 @@ test("renders the chat with the tutor bar and prompt preview", async () => {
 test("forwards the runtime headers to the CopilotKit provider verbatim", async () => {
   providerSpy.mockClear();
   await render(
-    <TutorChat tutorUrl={TUTOR_URL} runtimeHeaders={RUNTIME_HEADERS} prompt="p" warnings={[]} />,
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={false}
+    />,
   );
 
   expect(providerSpy.mock.lastCall?.[0]).toMatchObject({
@@ -69,8 +80,74 @@ test("shows warnings from the tutor build in the preview", async () => {
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="prompt"
       warnings={[{ code: "UNDECLARED_VARIABLE", message: "Variable foo is not declared" }]}
+      imageInput={false}
     />,
   );
 
   await expect.element(screen.getByText("UNDECLARED_VARIABLE")).toBeInTheDocument();
+});
+
+test("enables image attachments (images only, 5 MB cap) when the tutor opts in", async () => {
+  chatSpy.mockClear();
+  await render(
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={true}
+    />,
+  );
+
+  expect(chatSpy.mock.lastCall?.[0].attachments).toMatchObject({
+    enabled: true,
+    accept: "image/*",
+    maxSize: 5 * 1024 * 1024,
+  });
+  expect(chatSpy.mock.lastCall?.[0].attachments.onUploadFailed).toBeTypeOf("function");
+});
+
+test("passes no attachments config when the tutor does not opt in", async () => {
+  chatSpy.mockClear();
+  await render(
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={false}
+    />,
+  );
+
+  expect(chatSpy.mock.lastCall?.[0].attachments).toBeUndefined();
+});
+
+test("a failed upload shows a dismissible notice", async () => {
+  chatSpy.mockClear();
+  const screen = await render(
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={true}
+    />,
+  );
+
+  // Simulate CopilotKit rejecting a file (too large / wrong type): the chat
+  // calls onUploadFailed, and TutorChat must surface the reason to the student.
+  const attachments = chatSpy.mock.lastCall?.[0].attachments;
+  if (!attachments) throw new Error("attachments config was not passed to CopilotChat");
+  attachments.onUploadFailed({
+    reason: "file-too-large",
+    file: new File([], "homework.png"),
+    message: "File exceeds the 5 MB limit",
+  });
+
+  const notice = screen.getByRole("alert");
+  await expect.element(notice).toBeVisible();
+  await expect.element(notice).toHaveTextContent("homework.png: File exceeds the 5 MB limit");
+
+  await screen.getByRole("button", { name: "Dismiss" }).click();
+  expect(screen.getByRole("alert").query()).toBeNull();
 });
