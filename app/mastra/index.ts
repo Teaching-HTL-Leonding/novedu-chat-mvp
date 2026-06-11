@@ -1,12 +1,8 @@
-import {
-  AzureCliCredential,
-  ChainedTokenCredential,
-  ManagedIdentityCredential,
-} from "@azure/identity";
 import { Mastra } from "@mastra/core/mastra";
 import { PinoLogger } from "@mastra/loggers";
 import { MSSQLStore } from "@mastra/mssql";
 import sql from "mssql";
+import { buildDataStoreCredential } from "@/lib/azure-credential";
 import { tutorAgent } from "./tutor-agent";
 
 const logger = new PinoLogger({ name: "Mastra", level: "info" });
@@ -22,28 +18,14 @@ const logger = new PinoLogger({ name: "Mastra", level: "info" });
 //     `token-credential` (which lets tedious call `getToken()` per pooled connection,
 //     so tokens auto-refresh).
 //
-// We build the credential chain EXPLICITLY rather than using `DefaultAzureCredential`:
-// that one would pick up `AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET` via
-// its `EnvironmentCredential` — but this app sets those for *user sign-in* (auth.ts),
-// in a *different* tenant than the SQL database — and would authenticate as the wrong
-// service principal ("server is not configured to accept this token"). This chain
-// ignores those vars:
-//   - locally: the `az login` identity, in the SQL DB's tenant (`MSSQL_TENANT_ID`);
-//   - on Azure: the app's Managed Identity (the `az` CLI is absent there, so the CLI
-//     credential fails fast and the chain falls through to it).
+// The credential is the shared data-store chain from `lib/azure-credential.ts`
+// (explicitly NOT `DefaultAzureCredential` — see the invariant there).
 function buildMssqlStore(connectionString: string): MSSQLStore {
   const config = sql.ConnectionPool.parseConnectionString(connectionString);
-
-  const tenantId = process.env.MSSQL_TENANT_ID;
-  const credential = new ChainedTokenCredential(
-    // Local dev: the `az login` identity (in the SQL DB's tenant). Succeeds first, so
-    // the Managed Identity below is never reached off Azure — no client id needed.
-    new AzureCliCredential(tenantId ? { tenantId } : {}),
-    // On Azure: the app's system-assigned Managed Identity. (For a *user-assigned*
-    // identity instead, pass `{ clientId: "<identity-client-id>" }` here.)
-    new ManagedIdentityCredential(),
-  );
-  config.authentication = { type: "token-credential", options: { credential } };
+  config.authentication = {
+    type: "token-credential",
+    options: { credential: buildDataStoreCredential() },
+  };
 
   return new MSSQLStore({ id: "mastra-storage", pool: new sql.ConnectionPool(config) });
 }

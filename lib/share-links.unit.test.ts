@@ -42,7 +42,11 @@ describe("canonicalPayload / signSharePayload", () => {
 
 describe("buildShareLink", () => {
   test("produces a link whose parameters verify", () => {
-    const link = buildShareLink("https://app.example.org/", PAYLOAD, SECRET);
+    const link = buildShareLink(
+      "https://app.example.org/",
+      PAYLOAD,
+      signSharePayload(PAYLOAD, SECRET),
+    );
     const url = new URL(link);
     expect(url.origin).toBe("https://app.example.org");
     const result = verifyShareLink(
@@ -59,10 +63,14 @@ describe("buildShareLink", () => {
   });
 
   test("URL-encodes the tutor parameter", () => {
-    const tutor = "https://example.com/a tutor.yaml?x=1&y=2";
-    const link = buildShareLink("http://localhost:3000/", { ...PAYLOAD, tutor }, SECRET);
+    const payload = { ...PAYLOAD, tutor: "https://example.com/a tutor.yaml?x=1&y=2" };
+    const link = buildShareLink(
+      "http://localhost:3000/",
+      payload,
+      signSharePayload(payload, SECRET),
+    );
     // The raw (decoded) value round-trips through URL encoding.
-    expect(new URL(link).searchParams.get("tutor")).toBe(tutor);
+    expect(new URL(link).searchParams.get("tutor")).toBe(payload.tutor);
   });
 });
 

@@ -1,5 +1,10 @@
 import { loadEnvConfig } from "@next/env";
-import { buildShareLink, getShareLinkSecret, type SharePayload } from "../lib/share-links";
+import {
+  buildShareLink,
+  getShareLinkSecret,
+  type SharePayload,
+  signSharePayload,
+} from "../lib/share-links";
 
 // Builds share links with the SAME secret and signing code the dev server uses,
 // so e2e specs can mint valid (or deliberately broken) deep links without
@@ -20,7 +25,8 @@ export function shareLinkSecret(): string {
 
 /** A signed deep link to the local dev server's chat. */
 export function makeShareLink(payload: SharePayload): string {
-  return buildShareLink("http://localhost:3000/", payload, shareLinkSecret());
+  const sig = signSharePayload(payload, shareLinkSecret());
+  return buildShareLink("http://localhost:3000/", payload, sig);
 }
 
 /** A share payload whose window comfortably contains "now". */

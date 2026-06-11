@@ -11,7 +11,13 @@ import {
 // so the tests can assert the browser→server contract (especially the
 // local-time → unix-seconds conversion done by the form).
 const submitted: FormData[] = [];
-let nextResult: { status: string; link?: string; message?: string } = {
+let nextResult: {
+  status: string;
+  link?: string;
+  shortLink?: string;
+  warning?: string;
+  message?: string;
+} = {
   status: "success",
   link: "http://localhost:3000/?tutor=x&start=1&end=2&sig=abc",
 };
@@ -76,6 +82,47 @@ test("shows the generated link in a copyable, read-only field", async () => {
   expect(writeText).toHaveBeenCalledWith(link);
   await expect.element(screen.getByRole("button", { name: "Copied!" })).toBeVisible();
   writeText.mockRestore();
+});
+
+test("shows the short link alongside the full link, each with its own Copy button", async () => {
+  const link = "http://localhost:3000/?tutor=x&start=1&end=2&sig=abc";
+  const shortLink = "http://localhost:3000/?link=abc123def4";
+  nextResult = { status: "success", link, shortLink };
+  const screen = await render(<ShareTutorForm />);
+
+  await fillAndSubmit(screen);
+
+  await expect.element(screen.getByLabelText("Share link")).toBeVisible();
+  const short = screen.getByLabelText("Short link");
+  await expect.element(short).toBeVisible();
+  expect((short.element() as HTMLInputElement).value).toBe(shortLink);
+  expect((short.element() as HTMLInputElement).readOnly).toBe(true);
+
+  // Each row copies ITS link, and the "Copied!" feedback stays on that row.
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const copyButtons = screen.getByRole("button", { name: "Copy" });
+  await copyButtons.nth(1).click();
+  expect(writeText).toHaveBeenCalledWith(shortLink);
+  expect(writeText).not.toHaveBeenCalledWith(link);
+  await expect.element(screen.getByRole("button", { name: "Copied!" })).toBeVisible();
+  // The full link's button is untouched and still offers "Copy".
+  await expect.element(screen.getByRole("button", { name: "Copy" }).first()).toBeVisible();
+  writeText.mockRestore();
+});
+
+test("shows the storage warning and no short link when the link was not stored", async () => {
+  nextResult = {
+    status: "success",
+    link: "http://localhost:3000/?tutor=x&start=1&end=2&sig=abc",
+    warning: "The link could not be stored, so no short link is available.",
+  };
+  const screen = await render(<ShareTutorForm />);
+
+  await fillAndSubmit(screen);
+
+  await expect.element(screen.getByLabelText("Share link")).toBeVisible();
+  await expect.element(screen.getByText(/could not be stored/)).toBeVisible();
+  expect(screen.getByLabelText("Short link").query()).toBeNull();
 });
 
 test("renders the server action's error message", async () => {
