@@ -92,6 +92,9 @@ const FragmentRefSchema = z.strictObject({
 export const TutorSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
+  // Shown to students on the empty chat's welcome screen: `title` replaces the
+  // default greeting, `description` renders below it.
+  title: z.string().optional(),
   description: z.string(),
   // Students may attach images in the chat by default; a tutor opts OUT with
   // `imageInput: false` (e.g. for models without vision support — the flag is

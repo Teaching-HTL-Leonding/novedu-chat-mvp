@@ -35,7 +35,7 @@ test("a teacher creates a share link and the link opens the chat", async ({ page
   });
 
   // The signed link appears in the copyable output field.
-  const output = page.getByLabel("Share link");
+  const output = page.getByLabel("Share link", { exact: true });
   await expect(output).toBeVisible({ timeout: 30_000 });
   const link = await output.inputValue();
   const url = new URL(link);
@@ -61,7 +61,7 @@ test("the stored short link opens the same chat", { tag: "@live" }, async ({ pag
     endOffset: 3600,
   });
 
-  const output = page.getByLabel("Short link");
+  const output = page.getByLabel("Short link", { exact: true });
   await expect(output).toBeVisible({ timeout: 30_000 });
   const shortLink = await output.inputValue();
   expect(shortLink).toMatch(/\/\?link=[a-z0-9]{10}$/);
@@ -74,12 +74,12 @@ test("the window must end after it starts", async ({ page }) => {
   await submitShareForm(page, { tutor: VALID_TUTOR_URL, startOffset: 3600, endOffset: -3600 });
 
   await expect(page.getByText(/must be after its start/i)).toBeVisible();
-  await expect(page.getByLabel("Share link")).toHaveCount(0);
+  await expect(page.getByLabel("Share link", { exact: true })).toHaveCount(0);
 });
 
 test("a broken tutor is rejected at share time", async ({ page }) => {
   await submitShareForm(page, { tutor: BROKEN_TUTOR_URL, startOffset: -3600, endOffset: 3600 });
 
   await expect(page.getByText(/failed validation/i)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByLabel("Share link")).toHaveCount(0);
+  await expect(page.getByLabel("Share link", { exact: true })).toHaveCount(0);
 });

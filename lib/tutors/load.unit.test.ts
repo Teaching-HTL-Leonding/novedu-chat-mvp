@@ -83,6 +83,28 @@ describe("loadAndBuildTutorPrompt — image input flag", () => {
   }
 });
 
+describe("loadAndBuildTutorPrompt — title & description", () => {
+  it("surfaces the tutor's title and description for the welcome screen", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.title).toBe("Dein Tutor für verkettete Listen");
+      expect(result.description).toContain("verkettete Listen");
+    }
+  });
+
+  it("leaves title undefined when the tutor omits it (description stays required)", async () => {
+    const withoutTitle = readFixture("linked-list-tutor.yaml").replace(/^title: .*\n/m, "");
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withoutTitle)]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.title).toBeUndefined();
+      expect(result.description.length).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe("resolveFragmentUrl", () => {
   it("returns an absolute http(s) ref unchanged", () => {
     expect(resolveFragmentUrl(GENERAL_URL, TUTOR_URL)).toBe(GENERAL_URL);

@@ -25,9 +25,13 @@
           "type": "string",
           "description": "Human-readable tutor title."
         },
+        "title": {
+          "type": "string",
+          "description": "Optional greeting shown to students on the empty chat instead of the default welcome message."
+        },
         "description": {
           "type": "string",
-          "description": "Short description of what this tutor does."
+          "description": "Short description of what this tutor does. Shown to students below the welcome greeting."
         },
         "llm": {
           "$ref": "#/$defs/llm"

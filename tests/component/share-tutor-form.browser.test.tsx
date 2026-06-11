@@ -71,7 +71,7 @@ test("shows the generated link in a copyable, read-only field", async () => {
 
   await fillAndSubmit(screen);
 
-  const output = screen.getByLabelText("Share link");
+  const output = screen.getByLabelText("Share link", { exact: true });
   await expect.element(output).toBeVisible();
   expect((output.element() as HTMLInputElement).value).toBe(link);
   expect((output.element() as HTMLInputElement).readOnly).toBe(true);
@@ -92,8 +92,8 @@ test("shows the short link alongside the full link, each with its own Copy butto
 
   await fillAndSubmit(screen);
 
-  await expect.element(screen.getByLabelText("Share link")).toBeVisible();
-  const short = screen.getByLabelText("Short link");
+  await expect.element(screen.getByLabelText("Share link", { exact: true })).toBeVisible();
+  const short = screen.getByLabelText("Short link", { exact: true });
   await expect.element(short).toBeVisible();
   expect((short.element() as HTMLInputElement).value).toBe(shortLink);
   expect((short.element() as HTMLInputElement).readOnly).toBe(true);
@@ -110,6 +110,27 @@ test("shows the short link alongside the full link, each with its own Copy butto
   writeText.mockRestore();
 });
 
+test("offers an open-in-new-tab button beside Copy for each link", async () => {
+  const link = "http://localhost:3000/?tutor=x&start=1&end=2&sig=abc";
+  const shortLink = "http://localhost:3000/?link=abc123def4";
+  nextResult = { status: "success", link, shortLink };
+  const screen = await render(<ShareTutorForm />);
+
+  await fillAndSubmit(screen);
+
+  // An anchor (not window.open) so it works without JS and middle-click etc.
+  // behave normally; target=_blank with the opener severed.
+  const openFull = screen.getByRole("link", { name: "Open Share link in new tab" });
+  await expect.element(openFull).toBeVisible();
+  expect(openFull.element().getAttribute("href")).toBe(link);
+  expect(openFull.element().getAttribute("target")).toBe("_blank");
+  expect(openFull.element().getAttribute("rel")).toContain("noopener");
+
+  const openShort = screen.getByRole("link", { name: "Open Short link in new tab" });
+  await expect.element(openShort).toBeVisible();
+  expect(openShort.element().getAttribute("href")).toBe(shortLink);
+});
+
 test("shows the storage warning and no short link when the link was not stored", async () => {
   nextResult = {
     status: "success",
@@ -120,9 +141,9 @@ test("shows the storage warning and no short link when the link was not stored",
 
   await fillAndSubmit(screen);
 
-  await expect.element(screen.getByLabelText("Share link")).toBeVisible();
+  await expect.element(screen.getByLabelText("Share link", { exact: true })).toBeVisible();
   await expect.element(screen.getByText(/could not be stored/)).toBeVisible();
-  expect(screen.getByLabelText("Short link").query()).toBeNull();
+  expect(screen.getByLabelText("Short link", { exact: true }).query()).toBeNull();
 });
 
 test("renders the server action's error message", async () => {
@@ -135,7 +156,7 @@ test("renders the server action's error message", async () => {
   await fillAndSubmit(screen);
 
   await expect.element(screen.getByText(/end of the availability window/i)).toBeVisible();
-  expect(screen.getByLabelText("Share link").query()).toBeNull();
+  expect(screen.getByLabelText("Share link", { exact: true }).query()).toBeNull();
 });
 
 function inputValue(locator: { element: () => Element }): string {

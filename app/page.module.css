@@ -99,6 +99,15 @@
   cursor: pointer;
 }
 
+.welcomeDescription {
+  margin: 0.75rem auto 0;
+  max-width: 36rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  text-align: center;
+  color: color-mix(in srgb, var(--foreground) 65%, transparent);
+}
+
 .chat {
   flex: 1 1 auto;
   min-height: 0;
