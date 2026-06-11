@@ -135,6 +135,7 @@ export async function loadAndBuildTutorPrompt(
       imageInput: tutor.llm.imageInput ?? true,
       title: tutor.title,
       description: tutor.description,
+      exampleQuestions: tutor.exampleQuestions ?? [],
       warnings,
     };
   } catch (e) {

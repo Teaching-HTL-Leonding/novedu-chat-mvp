@@ -108,6 +108,35 @@
   color: color-mix(in srgb, var(--foreground) 65%, transparent);
 }
 
+.exampleQuestions {
+  margin: 1rem auto 0;
+  padding: 0;
+  max-width: 36rem;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.exampleQuestion {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--foreground) 75%, transparent);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.exampleQuestion:hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
 .chat {
   flex: 1 1 auto;
   min-height: 0;

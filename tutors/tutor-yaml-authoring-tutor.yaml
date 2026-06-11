@@ -50,7 +50,11 @@ prompt:
     # yaml-language-server: $schema=./tutor-yaml.schema.json
     id: my-tutor
     name: "My Tutor"
-    description: "Short description."
+    title: "Welcome!" # optional; greeting students see on the empty chat instead of the default
+    description: "Short description." # students see this below the greeting
+    exampleQuestions: # optional; clickable starter questions on the empty chat
+      - title: "Short label"
+        question: "The full question text placed into the chat input on click."
     llm:
       model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
       imageInput: false # optional; omit for default true, set false to disable image uploads
@@ -60,6 +64,8 @@ prompt:
       tutor_instructions: |
         Final system-prompt instructions go here.
     ```
+
+    `title`, `description`, and `exampleQuestions` are student-facing: students see them on the empty chat before the first message. Each example question needs a non-empty `title` (the clickable label) and `question` (shown as a tooltip and placed into the chat input on click — students can edit it before sending). Any number of example questions is allowed, but students see at most 5; with more, a random 5 are picked per page load, kept in the order they are defined — so order them deliberately, for example easy to hard.
 
     Single-file tutor template:
 
@@ -201,6 +207,7 @@ prompt:
 
     - Do not invent fields outside the templates above.
     - `id`, `name`, `description`, `llm.model`, `prompt`, and `prompt.tutor_instructions` are required in tutor files.
+    - `title` and `exampleQuestions` are optional. Each `exampleQuestions` entry requires both `title` and `question`, and neither may be empty.
     - `prompt.fragment_files` and `prompt.fragments` are optional. Use them only when the tutor actually references fragments.
     - Each selected fragment's `file` must match an alias from `prompt.fragment_files`.
     - Each selected fragment's `id` must exist in that fragment library.

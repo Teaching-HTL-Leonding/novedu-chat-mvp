@@ -2,6 +2,19 @@ id: programming-linked-lists-de
 name: "Tutor für verkettete Listen"
 title: "Dein Tutor für verkettete Listen"
 description: "Ich helfe dir, verkettete Listen Schritt für Schritt zu verstehen – mit Fragen und Hinweisen statt fertigen Lösungen."
+exampleQuestions:
+  - title: "Was ist eine verkettete Liste?"
+    question: "Kannst du mir erklären, was eine verkettete Liste ist und wie sie sich von einem Array unterscheidet?"
+  - title: "Knoten am Anfang einfügen"
+    question: "Wie füge ich einen neuen Knoten am Anfang einer einfach verketteten Liste ein?"
+  - title: "Knoten löschen"
+    question: "Wie entferne ich einen bestimmten Knoten aus einer einfach verketteten Liste, ohne die Kette zu zerstören?"
+  - title: "Liste durchlaufen"
+    question: "Wie durchlaufe ich eine verkettete Liste, um alle Elemente auszugeben?"
+  - title: "Einfach vs. doppelt verkettet"
+    question: "Was ist der Unterschied zwischen einer einfach und einer doppelt verketteten Liste, und wann verwende ich welche?"
+  - title: "Typische Fehler"
+    question: "Welche typischen Fehler passieren beim Arbeiten mit verketteten Listen und wie vermeide ich sie?"
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 prompt:

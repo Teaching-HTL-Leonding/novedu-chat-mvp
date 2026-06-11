@@ -185,6 +185,9 @@ id: my-tutor # short machine name, e.g. "fractions-de"
 name: "My Tutor" # human-readable title
 title: "Welcome!" # optional: greeting students see on the empty chat
 description: "What this tutor does." # shown to students below the greeting
+exampleQuestions: # optional: clickable starter questions on the empty chat
+  - title: "Short label"
+    question: "The full question text."
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model serves this tutor
   imageInput: false # optional: omit for default true; set false to disable image uploads
@@ -201,6 +204,26 @@ Students see both on the empty chat, before the first message: `title` replaces
 the default "How can I help you today?" greeting (omit it to keep the default),
 and `description` appears below it in smaller text. Write the `description` for
 your students — tell them what the tutor helps with.
+
+### `exampleQuestions`
+
+Optional. A list of starter questions shown below the `description` on the empty
+chat. Each entry has a short `title` (the clickable label) and the full
+`question` text. Hovering a title shows the question as a tooltip; clicking it
+puts the question into the chat input — students can still edit it before
+sending.
+
+You may define any number of questions, but students see **at most 5**: with
+more than 5, a random selection of 5 is shown on each page load (in the order
+you defined them — so order them deliberately, e.g. easy to hard).
+
+```yaml
+exampleQuestions:
+  - title: "Was ist eine verkettete Liste?"
+    question: "Kannst du mir erklären, was eine verkettete Liste ist und wie sie sich von einem Array unterscheidet?"
+  - title: "Knoten löschen"
+    question: "Wie entferne ich einen bestimmten Knoten aus einer einfach verketteten Liste?"
+```
 
 ### `prompt.fragment_files`
 

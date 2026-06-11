@@ -105,6 +105,43 @@ describe("loadAndBuildTutorPrompt — title & description", () => {
   });
 });
 
+describe("loadAndBuildTutorPrompt — example questions", () => {
+  // The fixture's exampleQuestions block sits between `description:` and `llm:`.
+  const withoutExampleQuestions = () =>
+    readFixture("linked-list-tutor.yaml").replace(/^exampleQuestions:[\s\S]*?(?=^llm:)/m, "");
+
+  it("surfaces the tutor's example questions for the welcome screen", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.exampleQuestions).toHaveLength(6);
+      expect(result.exampleQuestions[0]).toEqual({
+        title: "Was ist eine verkettete Liste?",
+        question:
+          "Kannst du mir erklären, was eine verkettete Liste ist und wie sie sich von einem Array unterscheidet?",
+      });
+    }
+  });
+
+  it("normalizes an omitted exampleQuestions field to an empty array", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withoutExampleQuestions())]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.exampleQuestions).toEqual([]);
+  });
+
+  it("TUTOR_SCHEMA_ERROR for an example question with an empty title", async () => {
+    const broken = `${withoutExampleQuestions().replace(
+      /^llm:/m,
+      'exampleQuestions:\n  - title: ""\n    question: "Wie geht das?"\nllm:',
+    )}`;
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(broken)]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("TUTOR_SCHEMA_ERROR");
+  });
+});
+
 describe("resolveFragmentUrl", () => {
   it("returns an absolute http(s) ref unchanged", () => {
     expect(resolveFragmentUrl(GENERAL_URL, TUTOR_URL)).toBe(GENERAL_URL);

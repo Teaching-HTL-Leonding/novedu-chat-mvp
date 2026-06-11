@@ -70,6 +70,13 @@ export type BuildResult =
       title?: string;
       /** Student-facing description, rendered below the welcome greeting. */
       description: string;
+      /**
+       * Tutor `exampleQuestions`, normalized to [] when absent. Shown on the
+       * welcome screen. The inline shape mirrors `ExampleQuestion` in
+       * `schemas.ts` (kept inline so this module stays import-free) — update
+       * both together.
+       */
+      exampleQuestions: { title: string; question: string }[];
       warnings: ValidationWarning[];
     }
   | { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] };

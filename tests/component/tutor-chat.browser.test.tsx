@@ -9,16 +9,26 @@ import { render } from "vitest-browser-react";
 // forwarded as headers (the backend re-verifies them on every request).
 const providerSpy = vi.hoisted(() => vi.fn());
 const chatSpy = vi.hoisted(() => vi.fn());
+const viewSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("@copilotkit/react-core/v2", () => {
-  // TutorChat composes the built-in welcome heading inside its welcomeScreen
-  // slot override; the `View.WelcomeMessage` stub stands in for it.
+  // TutorChat wraps `CopilotChat.View` in its chatView slot override (to reach
+  // the input's onInputChange setter), so the `View` stub must be callable and
+  // report its props; `View.WelcomeMessage` stands in for the built-in greeting.
   const CopilotChat = Object.assign(
     ({ agentId, ...props }: { agentId: string }) => {
       chatSpy({ agentId, ...props });
       return <div data-testid="ck-chat">{agentId}</div>;
     },
-    { View: { WelcomeMessage: () => <h1 data-testid="ck-welcome-message">greeting</h1> } },
+    {
+      View: Object.assign(
+        (props: Record<string, unknown>) => {
+          viewSpy(props);
+          return <div data-testid="ck-view" />;
+        },
+        { WelcomeMessage: () => <h1 data-testid="ck-welcome-message">greeting</h1> },
+      ),
+    },
   );
   return {
     CopilotKitProvider: ({ children, ...props }: { children: ReactNode }) => {
@@ -170,6 +180,21 @@ test("keeps CopilotKit's default greeting when the tutor has no title", async ()
   expect(chatSpy.mock.lastCall?.[0].labels).toBeUndefined();
 });
 
+// TutorChat customizes the welcome screen through its chatView slot (the only
+// way to reach the chat input's onInputChange). The stubbed CopilotChat never
+// renders its slots itself, so tests drive the chain by hand: render the
+// chatView component (which renders the stubbed CopilotChat.View and reports
+// its props to viewSpy), then render the welcomeMessage sub-slot it composed.
+async function renderWelcomeMessage(viewProps: Record<string, unknown> = {}) {
+  viewSpy.mockClear();
+  const ChatView = chatSpy.mock.lastCall?.[0].chatView;
+  expect(ChatView).toBeTypeOf("function");
+  await render(<ChatView {...viewProps} />);
+  const WelcomeMessage = viewSpy.mock.lastCall?.[0].welcomeScreen?.welcomeMessage;
+  expect(WelcomeMessage).toBeTypeOf("function");
+  return render(<WelcomeMessage />);
+}
+
 test("the welcome screen slot composes the built-in greeting plus the description", async () => {
   chatSpy.mockClear();
   await render(
@@ -183,13 +208,77 @@ test("the welcome screen slot composes the built-in greeting plus the descriptio
     />,
   );
 
-  // TutorChat overrides only the welcomeMessage sub-slot; render it directly
-  // (the stubbed CopilotChat never renders its slots itself).
-  const WelcomeMessage = chatSpy.mock.lastCall?.[0].welcomeScreen?.welcomeMessage;
-  expect(WelcomeMessage).toBeTypeOf("function");
-  const screen = await render(<WelcomeMessage />);
+  const screen = await renderWelcomeMessage();
   await expect.element(screen.getByTestId("ck-welcome-message")).toBeInTheDocument();
   await expect.element(screen.getByText("Ich helfe dir Schritt für Schritt.")).toBeInTheDocument();
+});
+
+const EXAMPLE_QUESTIONS = [
+  { title: "Was ist eine Liste?", question: "Kannst du mir erklären, was eine Liste ist?" },
+  { title: "Knoten einfügen", question: "Wie füge ich einen Knoten am Anfang ein?" },
+];
+
+test("example questions render as buttons with the question text as tooltip", async () => {
+  chatSpy.mockClear();
+  await render(
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={false}
+      description="Beschreibung des Tutors"
+      exampleQuestions={EXAMPLE_QUESTIONS}
+    />,
+  );
+
+  const screen = await renderWelcomeMessage();
+  for (const { title, question } of EXAMPLE_QUESTIONS) {
+    const button = screen.getByRole("button", { name: title });
+    await expect.element(button).toBeVisible();
+    await expect.element(button).toHaveAttribute("title", question);
+  }
+});
+
+test("clicking an example question fills the chat input without sending", async () => {
+  chatSpy.mockClear();
+  await render(
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={false}
+      description="Beschreibung des Tutors"
+      exampleQuestions={EXAMPLE_QUESTIONS}
+    />,
+  );
+
+  const onInputChange = vi.fn();
+  const onSubmitMessage = vi.fn();
+  const screen = await renderWelcomeMessage({ onInputChange, onSubmitMessage });
+  await screen.getByRole("button", { name: "Knoten einfügen" }).click();
+
+  expect(onInputChange).toHaveBeenCalledExactlyOnceWith("Wie füge ich einen Knoten am Anfang ein?");
+  // Filling the input must not submit the message.
+  expect(onSubmitMessage).not.toHaveBeenCalled();
+});
+
+test("renders no question list when the tutor defines no example questions", async () => {
+  chatSpy.mockClear();
+  await render(
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={false}
+      description="Beschreibung des Tutors"
+    />,
+  );
+
+  const screen = await renderWelcomeMessage();
+  expect(screen.container.querySelector("ul")).toBeNull();
 });
 
 test("a failed upload shows a dismissible notice", async () => {

@@ -2,8 +2,8 @@
 
 import { CopilotChat, CopilotKitProvider } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
-import { type HTMLAttributes, useState } from "react";
-import type { ValidationWarning } from "@/lib/tutors";
+import { type ComponentProps, type HTMLAttributes, useMemo, useState } from "react";
+import type { ExampleQuestion, ValidationWarning } from "@/lib/tutors";
 import { CodeBlock } from "./code-block";
 import { MarkdownRenderer } from "./markdown-renderer";
 import styles from "./page.module.css";
@@ -31,6 +31,7 @@ export function TutorChat({
   imageInput,
   title,
   description,
+  exampleQuestions = [],
 }: {
   tutorUrl: string;
   runtimeHeaders: Record<string, string>;
@@ -42,15 +43,65 @@ export function TutorChat({
   title?: string;
   /** Tutor `description`: rendered below the greeting on the welcome screen. */
   description: string;
+  /** ≤5 questions, sampled server-side; clicking one fills the chat input. */
+  exampleQuestions?: ExampleQuestion[];
 }) {
-  // Compose the built-in welcome heading (which renders `labels.welcomeMessageText`,
-  // i.e. the tutor title or the CopilotKit default) and add the description below it.
-  const WelcomeWithDescription = (props: HTMLAttributes<HTMLDivElement>) => (
-    <div {...props}>
-      <CopilotChat.View.WelcomeMessage />
-      <p className={styles.welcomeDescription}>{description}</p>
-    </div>
-  );
+  // The welcome screen needs to write into the chat input (clicking an example
+  // question fills it in), but CopilotChat keeps the input value in internal
+  // state and overrides any `inputValue`/`onInputChange` passed to it directly.
+  // The one public hook into that state is the `chatView` slot: CopilotChat
+  // hands its view all props including `onInputChange` (the internal setter),
+  // so we wrap CopilotChat.View and compose the welcome screen here — the
+  // built-in greeting (renders `labels.welcomeMessageText`), the description,
+  // and the clickable example questions.
+  //
+  // Memoized: the chat view contains the live input, so a fresh component
+  // identity on every TutorChat render (e.g. when uploadError flips) could
+  // remount it and lose the student's draft text.
+  const ChatView = useMemo(() => {
+    type ChatViewProps = ComponentProps<typeof CopilotChat.View>;
+    function TutorChatView({ onInputChange, ...viewProps }: ChatViewProps) {
+      const WelcomeWithDescription = (props: HTMLAttributes<HTMLDivElement>) => (
+        <div {...props}>
+          <CopilotChat.View.WelcomeMessage />
+          {description ? <p className={styles.welcomeDescription}>{description}</p> : null}
+          {exampleQuestions.length > 0 ? (
+            <ul className={styles.exampleQuestions}>
+              {exampleQuestions.map((q) => (
+                // Titles alone are not guaranteed unique; the question text is
+                // part of the key. The list is static, so content keys are safe.
+                <li key={`${q.title}\n${q.question}`}>
+                  <button
+                    type="button"
+                    className={styles.exampleQuestion}
+                    title={q.question}
+                    onClick={() => onInputChange?.(q.question)}
+                  >
+                    {q.title}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      );
+      return (
+        <CopilotChat.View
+          {...viewProps}
+          onInputChange={onInputChange}
+          welcomeScreen={
+            description || exampleQuestions.length > 0
+              ? { welcomeMessage: WelcomeWithDescription }
+              : undefined
+          }
+        />
+      );
+    }
+    // The chatView slot's type is `typeof CopilotChat.View`, which carries the
+    // namespace statics (WelcomeMessage, ScrollView, …) — copy them onto the
+    // wrapper so it satisfies the slot without a type assertion.
+    return Object.assign(TutorChatView, CopilotChat.View);
+  }, [description, exampleQuestions]);
   // Rejected uploads (too large, wrong type) call onUploadFailed and silently
   // drop the file — without this notice the student would never learn why.
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -96,7 +147,7 @@ export function TutorChat({
           <CopilotChat
             agentId="tutor"
             labels={title ? { welcomeMessageText: title } : undefined}
-            welcomeScreen={description ? { welcomeMessage: WelcomeWithDescription } : undefined}
+            chatView={ChatView}
             messageView={{ assistantMessage: { markdownRenderer: MarkdownRenderer } }}
             attachments={
               imageInput
