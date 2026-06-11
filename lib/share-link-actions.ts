@@ -1,14 +1,23 @@
 "use server";
 
 import { headers } from "next/headers";
-import { buildShareLink, getShareLinkSecret, validateShareRequest } from "@/lib/share-links";
+import { after } from "next/server";
+import { gcExpiredShareLinks, storeShareLink } from "@/lib/share-link-store";
+import {
+  buildShareLink,
+  getShareLinkSecret,
+  signSharePayload,
+  validateShareRequest,
+} from "@/lib/share-links";
 import { requireEffectiveTeacher } from "@/lib/student-mode";
 import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
 
 export type ShareLinkFormState =
   | { status: "idle" }
   | { status: "error"; message: string }
-  | { status: "success"; link: string };
+  // `shortLink` is present when the link was stored in the share-link table;
+  // otherwise `warning` explains that only the full link is available.
+  | { status: "success"; link: string; shortLink?: string; warning?: string };
 
 // The origin the generated links point at. Prefer the explicit SHARE_LINK_ORIGIN
 // env var (set it in production — forwarded headers are only as trustworthy as
@@ -35,8 +44,11 @@ export async function createShareLinkAction(
   _prev: ShareLinkFormState,
   formData: FormData,
 ): Promise<ShareLinkFormState> {
+  // The guard returns the session, so the user id below needs no second
+  // auth() round trip (each auth() call re-decrypts the session cookie).
+  let session: Awaited<ReturnType<typeof requireEffectiveTeacher>>;
   try {
-    await requireEffectiveTeacher();
+    session = await requireEffectiveTeacher();
   } catch {
     return { status: "error", message: "Only teachers can create share links." };
   }
@@ -72,8 +84,27 @@ export async function createShareLinkAction(
     };
   }
 
-  return {
+  // Sign ONCE: the issued URL and the stored row must carry the identical
+  // signature (a resolved short code goes through the same verifyShareLink).
+  const sig = signSharePayload(validation.payload, getShareLinkSecret());
+  const link = buildShareLink(`${origin}/`, validation.payload, sig);
+
+  // Persist the link so it can also be opened through a short `/?link=<code>`
+  // URL. Storage failures must not block the teacher: the full signed link is
+  // self-contained and always returned.
+  const fullLinkOnly: ShareLinkFormState = {
     status: "success",
-    link: buildShareLink(`${origin}/`, validation.payload, getShareLinkSecret()),
+    link,
+    warning:
+      "The link could not be stored, so no short link is available. The full link below still works.",
   };
+  const userId = session.user?.id;
+  if (!userId) return fullLinkOnly;
+  const stored = await storeShareLink(userId, { ...validation.payload, sig, origin });
+  if (!stored.stored) return fullLinkOnly;
+
+  // Housekeeping AFTER the response is sent: the teacher never sees the GC
+  // result, so it must not delay the form.
+  after(() => gcExpiredShareLinks(userId));
+  return { status: "success", link, shortLink: `${origin}/?link=${stored.code}` };
 }

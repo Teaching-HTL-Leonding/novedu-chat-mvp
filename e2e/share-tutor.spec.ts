@@ -51,6 +51,25 @@ test("a teacher creates a share link and the link opens the chat", async ({ page
   await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 30_000 });
 });
 
+// @live: LIVE Azure Table Storage round-trip (the dev server stores the link with
+// the local `az login` identity, then resolves the short code server-side) —
+// excluded in CI (test:e2e:ci).
+test("the stored short link opens the same chat", { tag: "@live" }, async ({ page }) => {
+  await submitShareForm(page, {
+    tutor: VALID_TUTOR_URL,
+    startOffset: -3600,
+    endOffset: 3600,
+  });
+
+  const output = page.getByLabel("Short link");
+  await expect(output).toBeVisible({ timeout: 30_000 });
+  const shortLink = await output.inputValue();
+  expect(shortLink).toMatch(/\/\?link=[a-z0-9]{10}$/);
+
+  await page.goto(shortLink);
+  await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 30_000 });
+});
+
 test("the window must end after it starts", async ({ page }) => {
   await submitShareForm(page, { tutor: VALID_TUTOR_URL, startOffset: 3600, endOffset: -3600 });
 

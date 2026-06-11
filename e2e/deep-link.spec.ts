@@ -50,6 +50,25 @@ test("a not-yet-active link is rejected with the start time", async ({ page }) =
   await expect(page.locator("time")).toBeVisible();
 });
 
+// @live: needs the real share-link table — without storage configured the lookup
+// reports "temporarily unavailable", not "unknown". Excluded in CI (test:e2e:ci).
+test("a well-formed but unknown short code is rejected as unknown", { tag: "@live" }, async ({
+  page,
+}) => {
+  // Never issued (or already garbage-collected) — requires a live table lookup.
+  await page.goto("/?link=zzzzzzzzzz");
+
+  await expect(page.getByRole("heading", { name: "Unknown share link" })).toBeVisible();
+  await expect(page.getByPlaceholder("Type a message...")).toHaveCount(0);
+});
+
+test("a malformed short code is rejected without a storage lookup", async ({ page }) => {
+  await page.goto("/?link=not-a-code");
+
+  await expect(page.getByRole("heading", { name: "Unknown share link" })).toBeVisible();
+  await expect(page.getByPlaceholder("Type a message...")).toHaveCount(0);
+});
+
 test("a valid link opens the tutor chat for a student", async ({ page }) => {
   await page.goto(makeShareLink(openWindow(VALID_TUTOR_URL)));
 

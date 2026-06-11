@@ -36,13 +36,18 @@ export function signSharePayload(payload: SharePayload, secret: string): string 
   return createHmac("sha256", secret).update(canonicalPayload(payload)).digest("hex");
 }
 
-/** Builds the full deep link to the chat for a signed payload. */
-export function buildShareLink(chatUrl: string, payload: SharePayload, secret: string): string {
+/**
+ * Assembles the full deep link to the chat from a payload and its signature.
+ * Takes the PRECOMPUTED sig (from `signSharePayload`) so callers that also
+ * persist the signature sign exactly once — the issued URL and the stored row
+ * can never drift.
+ */
+export function buildShareLink(chatUrl: string, payload: SharePayload, sig: string): string {
   const url = new URL(chatUrl);
   url.searchParams.set("tutor", payload.tutor);
   url.searchParams.set("start", String(payload.start));
   url.searchParams.set("end", String(payload.end));
-  url.searchParams.set("sig", signSharePayload(payload, secret));
+  url.searchParams.set("sig", sig);
   return url.toString();
 }
 

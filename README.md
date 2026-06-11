@@ -62,10 +62,12 @@ AUTH_SECRET=your-generated-secret
 # SQL password here. The `Authentication=...` keyword is ignored if present; the app
 # always overrides it with Entra auth. Required to chat — the tutor's memory needs a store.
 MSSQL_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
-# Entra tenant of the SQL database, used for the local `az login` credential. SEPARATE
-# from AZURE_TENANT_ID above (the user sign-in tenant), because the database lives in a
-# different tenant. Optional — if unset, the az credential uses its ambient default tenant.
-MSSQL_TENANT_ID=your-sql-database-tenant-id
+# Entra tenant shared by the SQL database AND the Azure storage account (they live in
+# the same tenant), used for the local `az login` credential of both data stores.
+# SEPARATE from AZURE_TENANT_ID above (the user sign-in tenant), because the data
+# stores live in a different tenant. Optional — if unset, the az credential uses its
+# ambient default tenant.
+STORAGE_TENANT_ID=your-data-store-tenant-id
 
 # --- Tutor share links ---
 # Server-only secret for HMAC-SHA256-signing tutor share links (the deep links
@@ -78,6 +80,19 @@ SHARE_LINK_SECRET=your-generated-share-link-secret
 # x-forwarded-host/-proto headers, which is only as reliable as the proxy chain
 # (and falls back to http://). Optional for local dev (localhost works).
 SHARE_LINK_ORIGIN=https://your-public-origin
+
+# --- Azure Storage — stored share links / short URLs ---
+# Storage account holding the `novedusharedlinks` table (created automatically on
+# the first write). Every created share link is stored there (partition key =
+# creating user's id, row key = a 10-char code), which enables short URLs of the
+# form `/?link=<code>`. Auth is Entra-only — the account has shared-key access
+# DISABLED; the app authenticates with your `az login` identity locally and the
+# app's Managed Identity on Azure (the identity needs the "Storage Table Data
+# Contributor" role on the account, which includes table creation).
+# Optional: when unset, share links still work but are not stored (no short links).
+AZURE_STORAGE_ACCOUNT_NAME=your-storage-account-name
+# The storage account's tenant is STORAGE_TENANT_ID (set in the Azure SQL section
+# above — it's the shared tenant of both data stores).
 ```
 
 Notes:
@@ -91,7 +106,12 @@ Notes:
   created automatically on first use, so the configured Entra identity needs table-creation
   rights (e.g. `db_owner`) the first time.
 - `SHARE_LINK_SECRET` protects the chat deep links from tampering. Rotating it
-  invalidates all previously created share links.
+  invalidates all previously created share links (including stored short links —
+  a resolved short code goes through the same signature verification).
+- Short links degrade gracefully: if the share-link table is unreachable when a
+  teacher creates a link, the full signed link is still issued (with a warning that
+  no short link is available). On every successful store, the user's expired links
+  are garbage-collected from the table.
 - In your Entra app registration, add the redirect URI
   `http://localhost:3000/api/auth/callback/microsoft-entra-id` (and the equivalent for any
   deployed origin).

@@ -13,6 +13,43 @@ import styles from "./share-tutor.module.css";
 
 const INITIAL_STATE: ShareLinkFormState = { status: "idle" };
 
+// One read-only link with its own Copy button and "Copied!" feedback, so the
+// full and the short link can be copied independently.
+function CopyableLinkRow({ link, label }: { link: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API unavailable (non-secure context, e.g. plain http on a
+      // LAN address) or permission denied — select the link so a manual
+      // Ctrl/Cmd+C is one keystroke away.
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }
+
+  return (
+    <div className={styles.linkRow}>
+      <input
+        ref={inputRef}
+        className={styles.linkInput}
+        readOnly
+        value={link}
+        aria-label={label}
+        onFocus={(event) => event.currentTarget.select()}
+      />
+      <button type="button" className={formStyles.button} onClick={copyLink}>
+        {copied ? "Copied!" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
 // Teacher-facing form that creates a signed chat deep link. All signing happens
 // in the server action; this component only converts the datetime-local values
 // (local wall-clock) into unix seconds — a conversion that MUST happen in the
@@ -22,22 +59,6 @@ export function ShareTutorForm() {
   const [state, formAction, pending] = useActionState(createShareLinkAction, INITIAL_STATE);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
-  const [copied, setCopied] = useState(false);
-  const linkInputRef = useRef<HTMLInputElement>(null);
-
-  async function copyLink(link: string) {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard API unavailable (non-secure context, e.g. plain http on a
-      // LAN address) or permission denied — select the link so a manual
-      // Ctrl/Cmd+C is one keystroke away.
-      linkInputRef.current?.focus();
-      linkInputRef.current?.select();
-    }
-  }
 
   // "+1h"/"+1d"/"+1w": extend the until time if it is set; otherwise start the
   // window length from the from time (or from now as a last resort).
@@ -159,26 +180,16 @@ export function ShareTutorForm() {
           <section className={styles.linkBox}>
             <h2 className={styles.linkHeading}>Share link</h2>
             <p className={formStyles.muted}>
-              Send this link to your students (e.g. via a link shortener). It only works within the
-              chosen time window.
+              Send this link to your students. It only works within the chosen time window.
             </p>
-            <div className={styles.linkRow}>
-              <input
-                ref={linkInputRef}
-                className={styles.linkInput}
-                readOnly
-                value={state.link}
-                aria-label="Share link"
-                onFocus={(event) => event.currentTarget.select()}
-              />
-              <button
-                type="button"
-                className={formStyles.button}
-                onClick={() => copyLink(state.link)}
-              >
-                {copied ? "Copied!" : "Copy"}
-              </button>
-            </div>
+            <CopyableLinkRow link={state.link} label="Share link" />
+            {state.shortLink ? (
+              <>
+                <p className={formStyles.muted}>Or use the short link — it opens the same chat.</p>
+                <CopyableLinkRow link={state.shortLink} label="Short link" />
+              </>
+            ) : null}
+            {state.warning ? <p className={formStyles.warning}>{state.warning}</p> : null}
           </section>
         ) : null}
       </div>
