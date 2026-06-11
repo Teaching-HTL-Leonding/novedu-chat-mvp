@@ -183,7 +183,8 @@ A tutor file has these fields. All of them are required unless marked optional.
 ```yaml
 id: my-tutor # short machine name, e.g. "fractions-de"
 name: "My Tutor" # human-readable title
-description: "What this tutor does."
+title: "Welcome!" # optional: greeting students see on the empty chat
+description: "What this tutor does." # shown to students below the greeting
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model serves this tutor
   imageInput: false # optional: omit for default true; set false to disable image uploads
@@ -193,6 +194,13 @@ prompt:
   tutor_instructions: | # your own final instructions (free text)
     ...
 ```
+
+### `title` and `description`
+
+Students see both on the empty chat, before the first message: `title` replaces
+the default "How can I help you today?" greeting (omit it to keep the default),
+and `description` appears below it in smaller text. Write the `description` for
+your students — tell them what the tutor helps with.
 
 ### `prompt.fragment_files`
 

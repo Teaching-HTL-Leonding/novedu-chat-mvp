@@ -1,6 +1,7 @@
 id: programming-linked-lists-de
 name: "Tutor für verkettete Listen"
-description: "Sokratischer Tutor für verkettete Listen im Programmierunterricht."
+title: "Dein Tutor für verkettete Listen"
+description: "Ich helfe dir, verkettete Listen Schritt für Schritt zu verstehen – mit Fragen und Hinweisen statt fertigen Lösungen."
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 prompt:

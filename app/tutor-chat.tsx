@@ -2,7 +2,7 @@
 
 import { CopilotChat, CopilotKitProvider } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
-import { useState } from "react";
+import { type HTMLAttributes, useState } from "react";
 import type { ValidationWarning } from "@/lib/tutors";
 import { CodeBlock } from "./code-block";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -29,6 +29,8 @@ export function TutorChat({
   prompt,
   warnings,
   imageInput,
+  title,
+  description,
 }: {
   tutorUrl: string;
   runtimeHeaders: Record<string, string>;
@@ -36,7 +38,19 @@ export function TutorChat({
   warnings: ValidationWarning[];
   /** Tutor `llm.imageInput`: students may attach images (vision-capable model). */
   imageInput: boolean;
+  /** Tutor `title`: replaces the default "How can I help you today?" greeting. */
+  title?: string;
+  /** Tutor `description`: rendered below the greeting on the welcome screen. */
+  description: string;
 }) {
+  // Compose the built-in welcome heading (which renders `labels.welcomeMessageText`,
+  // i.e. the tutor title or the CopilotKit default) and add the description below it.
+  const WelcomeWithDescription = (props: HTMLAttributes<HTMLDivElement>) => (
+    <div {...props}>
+      <CopilotChat.View.WelcomeMessage />
+      <p className={styles.welcomeDescription}>{description}</p>
+    </div>
+  );
   // Rejected uploads (too large, wrong type) call onUploadFailed and silently
   // drop the file — without this notice the student would never learn why.
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -81,6 +95,8 @@ export function TutorChat({
         <CopilotKitProvider key={tutorUrl} runtimeUrl="/api/copilotkit" headers={runtimeHeaders}>
           <CopilotChat
             agentId="tutor"
+            labels={title ? { welcomeMessageText: title } : undefined}
+            welcomeScreen={description ? { welcomeMessage: WelcomeWithDescription } : undefined}
             messageView={{ assistantMessage: { markdownRenderer: MarkdownRenderer } }}
             attachments={
               imageInput

@@ -89,6 +89,17 @@
   align-items: center;
 }
 
+/* The open-in-new-tab anchor shares `formStyles.button` with the Copy button;
+   this only centers the icon and keeps the anchor from rendering as a link. */
+.openLinkButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  text-decoration: none;
+  font-size: 1rem;
+}
+
 .linkInput {
   flex: 1 1 auto;
   min-width: 0;

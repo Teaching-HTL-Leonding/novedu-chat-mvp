@@ -10,16 +10,24 @@ import { render } from "vitest-browser-react";
 const providerSpy = vi.hoisted(() => vi.fn());
 const chatSpy = vi.hoisted(() => vi.fn());
 
-vi.mock("@copilotkit/react-core/v2", () => ({
-  CopilotKitProvider: ({ children, ...props }: { children: ReactNode }) => {
-    providerSpy(props);
-    return <div data-testid="ck-provider">{children}</div>;
-  },
-  CopilotChat: ({ agentId, ...props }: { agentId: string }) => {
-    chatSpy({ agentId, ...props });
-    return <div data-testid="ck-chat">{agentId}</div>;
-  },
-}));
+vi.mock("@copilotkit/react-core/v2", () => {
+  // TutorChat composes the built-in welcome heading inside its welcomeScreen
+  // slot override; the `View.WelcomeMessage` stub stands in for it.
+  const CopilotChat = Object.assign(
+    ({ agentId, ...props }: { agentId: string }) => {
+      chatSpy({ agentId, ...props });
+      return <div data-testid="ck-chat">{agentId}</div>;
+    },
+    { View: { WelcomeMessage: () => <h1 data-testid="ck-welcome-message">greeting</h1> } },
+  );
+  return {
+    CopilotKitProvider: ({ children, ...props }: { children: ReactNode }) => {
+      providerSpy(props);
+      return <div data-testid="ck-provider">{children}</div>;
+    },
+    CopilotChat,
+  };
+});
 
 import { TutorChat } from "@/app/tutor-chat";
 
@@ -39,6 +47,7 @@ test("renders the chat with the tutor bar and prompt preview", async () => {
       prompt={"# Hello\n\nMass-energy: $E=mc^2$."}
       warnings={[]}
       imageInput={false}
+      description="Beschreibung des Tutors"
     />,
   );
 
@@ -64,6 +73,7 @@ test("forwards the runtime headers to the CopilotKit provider verbatim", async (
       prompt="p"
       warnings={[]}
       imageInput={false}
+      description="Beschreibung des Tutors"
     />,
   );
 
@@ -81,6 +91,7 @@ test("shows warnings from the tutor build in the preview", async () => {
       prompt="prompt"
       warnings={[{ code: "UNDECLARED_VARIABLE", message: "Variable foo is not declared" }]}
       imageInput={false}
+      description="Beschreibung des Tutors"
     />,
   );
 
@@ -96,6 +107,7 @@ test("enables image attachments (images only, 5 MB cap) when the tutor opts in",
       prompt="p"
       warnings={[]}
       imageInput={true}
+      description="Beschreibung des Tutors"
     />,
   );
 
@@ -116,10 +128,68 @@ test("passes no attachments config when the tutor does not opt in", async () => 
       prompt="p"
       warnings={[]}
       imageInput={false}
+      description="Beschreibung des Tutors"
     />,
   );
 
   expect(chatSpy.mock.lastCall?.[0].attachments).toBeUndefined();
+});
+
+test("passes the tutor title as the welcome greeting label", async () => {
+  chatSpy.mockClear();
+  await render(
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={false}
+      title="Dein Tutor für verkettete Listen"
+      description="Beschreibung des Tutors"
+    />,
+  );
+
+  expect(chatSpy.mock.lastCall?.[0].labels).toEqual({
+    welcomeMessageText: "Dein Tutor für verkettete Listen",
+  });
+});
+
+test("keeps CopilotKit's default greeting when the tutor has no title", async () => {
+  chatSpy.mockClear();
+  await render(
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={false}
+      description="Beschreibung des Tutors"
+    />,
+  );
+
+  expect(chatSpy.mock.lastCall?.[0].labels).toBeUndefined();
+});
+
+test("the welcome screen slot composes the built-in greeting plus the description", async () => {
+  chatSpy.mockClear();
+  await render(
+    <TutorChat
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={false}
+      description="Ich helfe dir Schritt für Schritt."
+    />,
+  );
+
+  // TutorChat overrides only the welcomeMessage sub-slot; render it directly
+  // (the stubbed CopilotChat never renders its slots itself).
+  const WelcomeMessage = chatSpy.mock.lastCall?.[0].welcomeScreen?.welcomeMessage;
+  expect(WelcomeMessage).toBeTypeOf("function");
+  const screen = await render(<WelcomeMessage />);
+  await expect.element(screen.getByTestId("ck-welcome-message")).toBeInTheDocument();
+  await expect.element(screen.getByText("Ich helfe dir Schritt für Schritt.")).toBeInTheDocument();
 });
 
 test("a failed upload shows a dismissible notice", async () => {
@@ -131,6 +201,7 @@ test("a failed upload shows a dismissible notice", async () => {
       prompt="p"
       warnings={[]}
       imageInput={true}
+      description="Beschreibung des Tutors"
     />,
   );
 

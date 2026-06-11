@@ -133,6 +133,8 @@ export async function loadAndBuildTutorPrompt(
       prompt,
       model: tutor.llm.model,
       imageInput: tutor.llm.imageInput ?? true,
+      title: tutor.title,
+      description: tutor.description,
       warnings,
     };
   } catch (e) {

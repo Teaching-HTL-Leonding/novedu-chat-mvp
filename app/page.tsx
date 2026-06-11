@@ -96,6 +96,8 @@ export default async function Home({
         prompt={result.prompt}
         warnings={result.warnings}
         imageInput={result.imageInput}
+        title={result.title}
+        description={result.description}
       />
     </main>
   );
