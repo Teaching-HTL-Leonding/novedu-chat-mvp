@@ -33,11 +33,35 @@
           "type": "string",
           "description": "Short description of what this tutor does. Shown to students below the welcome greeting."
         },
+        "exampleQuestions": {
+          "type": "array",
+          "description": "Optional example questions shown to students below the description on the empty chat. Clicking one puts the question text into the chat input. At most 5 are shown; with more, a random 5 are picked per page load.",
+          "items": {
+            "$ref": "#/$defs/exampleQuestion"
+          }
+        },
         "llm": {
           "$ref": "#/$defs/llm"
         },
         "prompt": {
           "$ref": "#/$defs/prompt"
+        }
+      }
+    },
+    "exampleQuestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "question"],
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short clickable label shown on the welcome screen."
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Full question text. Shown as a tooltip and placed into the chat input on click."
         }
       }
     },

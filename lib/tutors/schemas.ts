@@ -89,6 +89,17 @@ const FragmentRefSchema = z.strictObject({
   required: z.boolean().optional(),
 });
 
+/**
+ * An example question offered to students on the welcome screen: the `title` is
+ * the clickable label, the `question` is the full text placed into the chat
+ * input on click. Tutors may define any number; the UI samples at most 5.
+ */
+export const ExampleQuestionSchema = z.strictObject({
+  title: z.string().min(1),
+  question: z.string().min(1),
+});
+export type ExampleQuestion = z.infer<typeof ExampleQuestionSchema>;
+
 export const TutorSchema = z.strictObject({
   id: z.string(),
   name: z.string(),
@@ -96,6 +107,7 @@ export const TutorSchema = z.strictObject({
   // default greeting, `description` renders below it.
   title: z.string().optional(),
   description: z.string(),
+  exampleQuestions: z.array(ExampleQuestionSchema).optional(),
   // Students may attach images in the chat by default; a tutor opts OUT with
   // `imageInput: false` (e.g. for models without vision support — the flag is
   // what gates the upload UI, nothing checks the model's actual modalities).

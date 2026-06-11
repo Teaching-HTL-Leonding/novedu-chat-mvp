@@ -1,7 +1,7 @@
 import { Notice } from "@/components/notice";
 import { resolveShortCode, selectShareSource } from "@/lib/share-link-store";
 import { getShareLinkSecret, type ShareLinkVerification, verifyShareLink } from "@/lib/share-links";
-import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
+import { defaultFetcher, loadAndBuildTutorPrompt, sampleExampleQuestions } from "@/lib/tutors";
 import styles from "./page.module.css";
 import { ShareLinkError, type ShareLinkErrorInfo } from "./share-link-error";
 import { TutorChat } from "./tutor-chat";
@@ -98,6 +98,7 @@ export default async function Home({
         imageInput={result.imageInput}
         title={result.title}
         description={result.description}
+        exampleQuestions={sampleExampleQuestions(result.exampleQuestions)}
       />
     </main>
   );

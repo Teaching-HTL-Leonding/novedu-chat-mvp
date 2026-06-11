@@ -12,7 +12,9 @@ export type {
 export { defaultFetcher, type Fetcher, type FetchResponse } from "./fetcher";
 export { loadAndBuildTutorPrompt } from "./load";
 export { parseYaml, validate } from "./parse";
+export { sampleExampleQuestions } from "./sample";
 export {
+  type ExampleQuestion,
   type Fragment,
   type FragmentFile,
   FragmentFileSchema,
