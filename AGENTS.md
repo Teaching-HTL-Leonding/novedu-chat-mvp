@@ -41,29 +41,39 @@ Invariants:
   from `lib/student-mode.ts` (it honors "view as student" mode) — **NEVER**
   `session.user.isTeacher` or `requireTeacher()` directly, which ignore the mode.
 
-### Tutor share links & short URLs → `docs/share-links.md`
+### Tutor Codes (chat entry, sharing, user↔chat mapping) → `docs/tutor-codes.md`
 
-Read it before touching the chat entry point (`app/page.tsx`), `/share-tutor`, or link
-verification. Invariants:
+Read it before touching the chat entry points (`app/page.tsx`, `app/[code]/page.tsx`),
+`/share-tutor`, `/tutor-codes`, the chat runtime route, or the `novedu_*` stores in
+`lib/`. Invariants:
 
-- The chat (`/`) is reachable **only** via a teacher's signed deep link
-  (`/?tutor=…&start=…&end=…&sig=…`) or its stored short form `/?link=<code>`.
-- The HMAC signature is the security boundary, and it is verified server-side in **BOTH**
-  `app/page.tsx` and the CopilotKit route (`app/api/copilotkit/[[...slug]]/route.ts`) —
-  keep both in sync. A short code is just an index lookup; the resolved values still go
-  through the same `verifyShareLink`.
+- The chat is reachable **only** via `/<tutor-code>` (10-char `[a-z0-9]` code). The
+  stored `novedu_tutor_codes` row gates ACCESS, and `checkTutorCode()` is enforced
+  server-side in **BOTH** `app/[code]/page.tsx` and the CopilotKit route
+  (`app/api/copilotkit/[[...slug]]/route.ts`, header `x-tutor-code`, re-checked on
+  every request) — keep both in sync.
+- Thread ISOLATION is the `x-thread-token` ownership token (`lib/thread-token.ts`):
+  `app/[code]/page.tsx` generates the thread id and signs `(code, userId, threadId)`;
+  the CopilotKit route verifies it on every thread-touching request and 404s all
+  runtime endpoints the app does not use. Mastra does NOT bind threads to a
+  resource — without the token any code-holder could read others' chats.
+- Mastra memory `resourceId` = the tutor code. `novedu_user_chats` is the ONLY
+  user↔chat link and is written **only** for tutors with `anonymous: false` in their
+  YAML (default: anonymous, nothing stored) — that promise is why thread ownership
+  is a stateless HMAC, not a table.
 
-### Azure storage (SQL + Table) & credentials → `docs/azure-storage.md`
+### Azure SQL, Drizzle & credentials → `docs/database.md`
 
-Read it before touching Mastra storage (`app/mastra/index.ts`) or the share-link table
-(`lib/share-link-store.ts`). Invariants:
+Read it before touching Mastra storage (`app/mastra/index.ts`), the Drizzle setup
+(`lib/db/`), migrations, or `instrumentation.ts`. Invariants:
 
 - Authenticate via **`buildDataStoreCredential()`** from `lib/azure-credential.ts`
   (the explicit `ChainedTokenCredential(AzureCliCredential, ManagedIdentityCredential)`
   chain) — **NEVER `DefaultAzureCredential`** (it would grab the user-sign-in service
   principal from the `AZURE_*` env vars, which is a different tenant), and never
-  hand-build the chain at a call site.
-- The storage account has shared-key access **DISABLED** (Entra-only; `az storage`
-  data-plane commands need `--auth-mode login`). **`STORAGE_TENANT_ID`** is the single
-  tenant var shared by the SQL DB and the storage account (separate from the user
-  sign-in `AZURE_TENANT_ID`).
+  hand-build the chain at a call site. **`STORAGE_TENANT_ID`** is the database's
+  tenant var (separate from the user sign-in `AZURE_TENANT_ID`).
+- App tables use the `novedu_` prefix, are defined in `lib/db/schema.ts`, and are
+  migrated by Drizzle at startup (`npm run db:generate` → commit `drizzle/`).
+  **NO foreign keys between `novedu_*` and `mastra_*` tables** — Mastra auto-manages
+  its own schema; relationships are by-value only.

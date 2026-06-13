@@ -3,7 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { makeShareLink, openWindow } from "./share-link.utils";
+import { mintTutorCode } from "./tutor-code.utils";
 
 // Image attachments in the chat. They are ON by default; a tutor opts out via
 // `llm.imageInput: false` (text-only-tutor.yaml), which must remove the upload
@@ -54,11 +54,16 @@ test.afterAll(async () => {
 test.setTimeout(60_000);
 
 async function openChat(page: import("@playwright/test").Page, tutorFile: string) {
-  await page.goto(makeShareLink(openWindow(`${tutorsBaseUrl}/${tutorFile}`)));
+  const code = await mintTutorCode({ tutor: `${tutorsBaseUrl}/${tutorFile}` });
+  await page.goto(`/${code}`);
   await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
 }
 
-test("a vision tutor lets the student attach an image and remove it again", async ({ page }) => {
+// @live: minting codes (and resolving them on the chat page) needs the live
+// database — the whole file is excluded in CI (test:e2e:ci).
+test("a vision tutor lets the student attach an image and remove it again", {
+  tag: "@live",
+}, async ({ page }) => {
   await openChat(page, "vision-tutor.yaml");
 
   // The upload control is present and restricted to images. (The input is
@@ -81,15 +86,15 @@ test("a vision tutor lets the student attach an image and remove it again", asyn
   await expect(page.getByRole("button", { name: "Remove attachment" })).toHaveCount(0);
 });
 
-test("a tutor with imageInput: false shows no upload UI", async ({ page }) => {
+test("a tutor with imageInput: false shows no upload UI", { tag: "@live" }, async ({ page }) => {
   await openChat(page, "text-only-tutor.yaml");
 
   await expect(page.locator('input[type="file"]')).toHaveCount(0);
 });
 
-test("a tutor that says nothing about imageInput gets the upload UI (on by default)", async ({
-  page,
-}) => {
+test("a tutor that says nothing about imageInput gets the upload UI (on by default)", {
+  tag: "@live",
+}, async ({ page }) => {
   await openChat(page, "simple-tutor.yaml");
 
   await expect(page.locator('input[type="file"]')).toHaveCount(1);

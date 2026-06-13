@@ -19,7 +19,18 @@ const NAV_ITEMS = [
     heading: "Validate Tutor",
     teacherOnly: true,
   },
-  { href: "/share-tutor", label: "Share Tutor", heading: "Share Tutor", teacherOnly: true },
+  {
+    href: "/share-tutor",
+    label: "Create Tutor Code",
+    heading: "Create Tutor Code",
+    teacherOnly: true,
+  },
+  {
+    href: "/tutor-codes",
+    label: "Shared Tutor Codes",
+    heading: "Shared Tutor Codes",
+    teacherOnly: true,
+  },
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
 ] as const;
 

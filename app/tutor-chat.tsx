@@ -10,10 +10,10 @@ import styles from "./page.module.css";
 import { WarningList } from "./validate-tutor/result-views";
 
 // The chat surface. There is no tutor input here anymore: the server component
-// (app/page.tsx) verifies the signed share link and the tutor YAML and passes
-// the result down — including the ready-made runtime headers carrying the
-// signed parameters, which travel along on every runtime request so the
-// backend can re-verify them. The client is never trusted.
+// (app/[code]/page.tsx) checks the tutor code and the tutor YAML and passes the
+// result down — including the ready-made runtime headers carrying the tutor
+// code, which travels along on every runtime request so the backend can
+// re-check it. The client is never trusted.
 //
 // The prompt preview is intentionally visible to everyone with a valid link:
 // the app is in early preview and the preview is a debugging aid.
@@ -24,6 +24,8 @@ import { WarningList } from "./validate-tutor/result-views";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export function TutorChat({
+  code,
+  threadId,
   tutorUrl,
   runtimeHeaders,
   prompt,
@@ -33,6 +35,13 @@ export function TutorChat({
   description,
   exampleQuestions = [],
 }: {
+  /** The tutor code the chat was opened with — keys the provider per code. */
+  code: string;
+  /**
+   * Server-generated Mastra thread id, signed into the `x-thread-token`
+   * runtime header — the runtime rejects any other threadId for this session.
+   */
+  threadId: string;
   tutorUrl: string;
   runtimeHeaders: Record<string, string>;
   prompt: string;
@@ -89,6 +98,14 @@ export function TutorChat({
         <CopilotChat.View
           {...viewProps}
           onInputChange={onInputChange}
+          // CopilotChat runs in explicit-threadId mode (see the `threadId`
+          // prop below), which suppresses the view's welcome screen. The
+          // welcome screen is wanted regardless — it carries the tutor's
+          // title, description and example questions — so override the two
+          // flags that gate it: the view then shows the welcome screen
+          // exactly while the chat has no messages, as in the default mode.
+          hasExplicitThreadId={false}
+          isConnecting={false}
           welcomeScreen={
             description || exampleQuestions.length > 0
               ? { welcomeMessage: WelcomeWithDescription }
@@ -137,14 +154,27 @@ export function TutorChat({
 
       <div className={styles.chat}>
         {/*
-          The tutor URL must NOT go in runtimeUrl's query string: CopilotKit
+          The tutor code must NOT go in runtimeUrl's query string: CopilotKit
           builds sub-route URLs (e.g. /info) by appending to runtimeUrl, which
-          would yield `/api/copilotkit?tutor=...yaml/info` (404). Pass it — and
-          the share-link signature material — as headers instead, sent on every
-          runtime request and verified server-side.
+          would yield `/api/copilotkit?code=.../info` (404). Pass it as a header
+          instead, sent on every runtime request and re-checked server-side.
+          Keyed by code so navigating between codes remounts the provider — a
+          fresh thread per code, matching the per-code memory scope.
         */}
-        <CopilotKitProvider key={tutorUrl} runtimeUrl="/api/copilotkit" headers={runtimeHeaders}>
+        <CopilotKitProvider key={code} runtimeUrl="/api/copilotkit" headers={runtimeHeaders}>
+          {/*
+            The server-issued threadId MUST go through CopilotChat's `threadId`
+            prop (explicit mode). Pinning it via CopilotChatConfigurationProvider
+            with `hasExplicitThreadId={false}` looks equivalent but is not: the
+            chat then strands its agent mid-run (messages cleared, stuck
+            "running") on the first send. Explicit mode also fires a connect
+            request on mount — harmless: the runtime replays the (empty)
+            in-process history for the fresh thread, token-checked like a run.
+            The welcome screen that explicit mode would suppress is re-enabled
+            inside ChatView above.
+          */}
           <CopilotChat
+            threadId={threadId}
             agentId="tutor"
             labels={title ? { welcomeMessageText: title } : undefined}
             chatView={ChatView}

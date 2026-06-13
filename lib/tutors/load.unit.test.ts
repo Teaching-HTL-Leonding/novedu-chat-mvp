@@ -83,6 +83,40 @@ describe("loadAndBuildTutorPrompt — image input flag", () => {
   }
 });
 
+describe("loadAndBuildTutorPrompt — anonymous flag", () => {
+  // The real fixture declares no `anonymous`; these variants prepend the
+  // top-level field to exercise the flag without a second fixture file.
+  const withAnonymous = (value: string) =>
+    `anonymous: ${value}\n${readFixture("linked-list-tutor.yaml")}`;
+
+  it("defaults anonymous to true when the tutor omits it", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.anonymous).toBe(true);
+  });
+
+  it("surfaces an explicit anonymous: false opt-in to chat attribution", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withAnonymous("false"))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.anonymous).toBe(false);
+  });
+
+  it("keeps an explicit anonymous: true anonymous", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withAnonymous("true"))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.anonymous).toBe(true);
+  });
+
+  it("TUTOR_SCHEMA_ERROR for a non-boolean anonymous", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withAnonymous('"no"'))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("TUTOR_SCHEMA_ERROR");
+  });
+});
+
 describe("loadAndBuildTutorPrompt — title & description", () => {
   it("surfaces the tutor's title and description for the welcome screen", async () => {
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());

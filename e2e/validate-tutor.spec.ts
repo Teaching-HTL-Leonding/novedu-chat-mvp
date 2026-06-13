@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { BROKEN_TUTOR_URL, VALID_TUTOR_URL } from "./share-link.utils";
+import { BROKEN_TUTOR_URL, VALID_TUTOR_URL } from "./tutor-code.utils";
 
 // These tests exercise the full stack: the page POSTs a public URL to
 // /api/validate-tutor, which fetches the stable sample tutors from GitHub,

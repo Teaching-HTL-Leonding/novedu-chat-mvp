@@ -14,7 +14,7 @@ test("a teacher can enter student mode, is treated as a student, and can exit ag
 }) => {
   // Before: full teacher experience.
   await page.goto("/share-tutor");
-  await expect(page.getByRole("button", { name: "Create Share Link" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create Tutor Code" })).toBeVisible();
 
   // Enter student mode via the user menu.
   await page.getByRole("button", { name: /E2E Teacher/ }).click();
@@ -23,14 +23,14 @@ test("a teacher can enter student mode, is treated as a student, and can exit ag
 
   // The current page re-renders as the student version (access denied)...
   await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create Share Link" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create Tutor Code" })).toHaveCount(0);
 
   // ...the teacher badge is gone and the nav hides teacher-only entries...
   await expect(page.getByRole("img", { name: "Teacher" })).toHaveCount(0);
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Validate Tutor" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Share Tutor" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Create Tutor Code" })).toHaveCount(0);
 
   // ...and the server-side enforcement points deny like for a real student.
   await page.goto("/validate-tutor");

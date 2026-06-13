@@ -188,6 +188,7 @@ description: "What this tutor does." # shown to students below the greeting
 exampleQuestions: # optional: clickable starter questions on the empty chat
   - title: "Short label"
     question: "The full question text."
+anonymous: false # optional: omit for default true; false records which student each chat belongs to
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model serves this tutor
   imageInput: false # optional: omit for default true; set false to disable image uploads
@@ -223,6 +224,18 @@ exampleQuestions:
     question: "Kannst du mir erklären, was eine verkettete Liste ist und wie sie sich von einem Array unterscheidet?"
   - title: "Knoten löschen"
     question: "Wie entferne ich einen bestimmten Knoten aus einer einfach verketteten Liste?"
+```
+
+### `anonymous`
+
+Optional, default `true`. By default chats are **anonymous**: the app stores no
+link between the signed-in student and their chat, so chat transcripts cannot be
+attributed to a person. Set `anonymous: false` to record which student each chat
+belongs to (e.g. for graded assignments). Tell your students when a tutor
+records attribution.
+
+```yaml
+anonymous: false
 ```
 
 ### `prompt.fragment_files`

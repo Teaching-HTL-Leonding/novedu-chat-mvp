@@ -12,7 +12,7 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 
 | Area | Description |
 | --- | --- |
-| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` renders `TutorChat`, the paste-a-URL → validate → chat flow. |
+| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the tutor-code entry page; `app/[code]/page.tsx` checks the code and renders `TutorChat`. Teachers create and list codes under `/share-tutor` and `/tutor-codes`. |
 | **Tutor core** (`lib/tutors/`) | Framework-agnostic pipeline: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. Returns a structured `BuildResult` (never throws). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the tutor YAML, and fragment inputs may declare **defaults**. See [`tutors/README.md`](tutors/README.md) for the authoring guide. |
 | **Mastra agents** (`app/mastra/`) | The `tutor` agent resolves its instructions + model per request from the tutor URL and persists each conversation via Mastra `Memory`. Agents are registered in `app/mastra/index.ts`. Memory/storage is **Azure SQL** via `@mastra/mssql`, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. |
@@ -23,10 +23,15 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 ### Request flow
 
 1. User signs in via Microsoft Entra ID (enforced by `proxy.ts`).
-2. User pastes a tutor YAML URL → `POST /api/validate-tutor` validates & assembles it.
-3. On success the URL drives the chat: it is sent on the `x-tutor-url` header to
-   `/api/copilotkit`, where the `tutor` agent reads it from the request context and resolves
-   its system prompt and model from the YAML (memoized per URL).
+2. A teacher creates a **Tutor Code** on `/share-tutor` (tutor YAML URL + availability
+   window + note, stored in the `novedu_tutor_codes` SQL table) and hands out
+   `https://<host>/<code>`.
+3. A student opens `/<code>` (or types the code on `/`); the server checks the stored
+   row + window, validates & assembles the tutor YAML, and renders the chat.
+4. The chat sends the code on the `x-tutor-code` header to `/api/copilotkit`, which
+   re-checks it on every request, hands the stored tutor URL to the `tutor` agent
+   (system prompt + model resolved from the YAML, memoized per URL), and scopes
+   Mastra memory by the code (`resourceId`). See `docs/tutor-codes.md`.
 
 ## Prerequisites
 
@@ -56,43 +61,27 @@ AZURE_CLIENT_SECRET=your-entra-app-client-secret
 #   openssl rand -base64 32
 AUTH_SECRET=your-generated-secret
 
-# --- Azure SQL (Microsoft SQL Server) — persistent Mastra memory/storage ---
+# --- Azure SQL (Microsoft SQL Server) — Mastra memory + app tables (tutor codes) ---
 # Standard ADO.NET connection string. Auth is handled by the app via Microsoft Entra
 # (your `az login` identity locally, the app's Managed Identity on Azure) — there is NO
 # SQL password here. The `Authentication=...` keyword is ignored if present; the app
-# always overrides it with Entra auth. Required to chat — the tutor's memory needs a store.
+# always overrides it with Entra auth. Required to chat — tutor codes and the tutor's
+# memory live in this database.
 MSSQL_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
-# Entra tenant shared by the SQL database AND the Azure storage account (they live in
-# the same tenant), used for the local `az login` credential of both data stores.
-# SEPARATE from AZURE_TENANT_ID above (the user sign-in tenant), because the data
-# stores live in a different tenant. Optional — if unset, the az credential uses its
+# Entra tenant of the SQL database, used for the local `az login` credential.
+# SEPARATE from AZURE_TENANT_ID above (the user sign-in tenant), because the database
+# lives in a different tenant. Optional — if unset, the az credential uses its
 # ambient default tenant.
 STORAGE_TENANT_ID=your-data-store-tenant-id
 
-# --- Tutor share links ---
-# Server-only secret for HMAC-SHA256-signing tutor share links (the deep links
-# teachers create under "Share Tutor"). The chat is ONLY reachable through such a
-# signed link. Generate one with:
-#   openssl rand -hex 32
-SHARE_LINK_SECRET=your-generated-share-link-secret
-# Public origin the generated share links point at, e.g. https://novedu.example.org
+# --- Tutor codes ---
+# Public origin the generated chat URLs (`https://<origin>/<tutor-code>`) point at,
+# e.g. https://novedu.example.org
 # RECOMMENDED IN PRODUCTION: without it the origin is derived from the request's
 # x-forwarded-host/-proto headers, which is only as reliable as the proxy chain
-# (and falls back to http://). Optional for local dev (localhost works).
-SHARE_LINK_ORIGIN=https://your-public-origin
-
-# --- Azure Storage — stored share links / short URLs ---
-# Storage account holding the `novedusharedlinks` table (created automatically on
-# the first write). Every created share link is stored there (partition key =
-# creating user's id, row key = a 10-char code), which enables short URLs of the
-# form `/?link=<code>`. Auth is Entra-only — the account has shared-key access
-# DISABLED; the app authenticates with your `az login` identity locally and the
-# app's Managed Identity on Azure (the identity needs the "Storage Table Data
-# Contributor" role on the account, which includes table creation).
-# Optional: when unset, share links still work but are not stored (no short links).
-AZURE_STORAGE_ACCOUNT_NAME=your-storage-account-name
-# The storage account's tenant is STORAGE_TENANT_ID (set in the Azure SQL section
-# above — it's the shared tenant of both data stores).
+# (and falls back to http://). Optional for local dev (localhost works). Display-only:
+# a tutor code works on ANY origin that talks to the same database.
+TUTOR_CODE_ORIGIN=https://your-public-origin
 ```
 
 Notes:
@@ -100,18 +89,17 @@ Notes:
 - The app **fails fast at startup** if any `AZURE_*` value is missing.
 - If `SCCH_BASE_URL` / `SCCH_API_KEY` are unset, the app still starts but no SCCH chat
   models are available (a warning is logged).
-- `MSSQL_CONNECTION_STRING` is **required to chat**: the `tutor` agent's memory needs a
-  store, so a tutor chat fails with a server error if it is unset (the rest of the app —
-  e.g. tutor validation — still boots). When set, the Mastra schema (`mastra_*` tables) is
-  created automatically on first use, so the configured Entra identity needs table-creation
-  rights (e.g. `db_owner`) the first time.
-- `SHARE_LINK_SECRET` protects the chat deep links from tampering. Rotating it
-  invalidates all previously created share links (including stored short links —
-  a resolved short code goes through the same signature verification).
-- Short links degrade gracefully: if the share-link table is unreachable when a
-  teacher creates a link, the full signed link is still issued (with a warning that
-  no short link is available). On every successful store, the user's expired links
-  are garbage-collected from the table.
+- `MSSQL_CONNECTION_STRING` is **required to chat**: tutor codes and the `tutor`
+  agent's memory live in the database, so creating/opening a tutor chat fails if it is
+  unset (the rest of the app — e.g. tutor validation — still boots). When set, the
+  Mastra schema (`mastra_*` tables) is created automatically on first use and the
+  app's own `novedu_*` tables are migrated by Drizzle at startup
+  (`instrumentation.ts`), so the configured Entra identity needs table-creation
+  rights (e.g. `db_owner`).
+- Schema changes to the `novedu_*` tables: edit `lib/db/schema.ts`, run
+  `npm run db:generate`, and commit the generated migration in `drizzle/`.
+- Expired tutor codes are garbage-collected by an hourly in-process task started at
+  server startup.
 - In your Entra app registration, add the redirect URI
   `http://localhost:3000/api/auth/callback/microsoft-entra-id` (and the equivalent for any
   deployed origin).

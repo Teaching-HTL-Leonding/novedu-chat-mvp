@@ -1,12 +1,13 @@
 import { expect, type Page, test } from "@playwright/test";
 import { unixSecondsToDatetimeLocal } from "../lib/datetime-local";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { BROKEN_TUTOR_URL, VALID_TUTOR_URL } from "./share-link.utils";
+import { BROKEN_TUTOR_URL, VALID_TUTOR_URL } from "./tutor-code.utils";
 
-// The full teacher flow through the UI: enter a tutor URL, pick a window in
-// local time, create the link — then prove the generated link actually opens
-// the chat. This crosses the whole feature: browser local-time conversion →
-// server action validation + signing → deep-link verification on the chat page.
+// The full teacher flow through the UI: enter a tutor URL and a note, pick a
+// window in local time, create the Tutor Code — then prove the generated URL
+// actually opens the chat. This crosses the whole feature: browser local-time
+// conversion → server action validation → database row → code check on the
+// chat page.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
 
@@ -16,70 +17,80 @@ test.setTimeout(90_000);
 // Fills and submits the share form with a window of [now+startOffset, now+endOffset].
 async function submitShareForm(
   page: Page,
-  { tutor, startOffset, endOffset }: { tutor: string; startOffset: number; endOffset: number },
-): Promise<number> {
+  {
+    tutor,
+    startOffset,
+    endOffset,
+    note,
+  }: { tutor: string; startOffset: number; endOffset: number; note?: string },
+): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   await page.goto("/share-tutor");
   await page.getByLabel("Tutor YAML URL").fill(tutor);
+  if (note !== undefined) await page.getByLabel(/Note/).fill(note);
   await page.getByLabel(/Available from/).fill(unixSecondsToDatetimeLocal(now + startOffset));
   await page.getByLabel(/Available until/).fill(unixSecondsToDatetimeLocal(now + endOffset));
-  await page.getByRole("button", { name: "Create Share Link" }).click();
-  return now;
+  await page.getByRole("button", { name: "Create Tutor Code" }).click();
 }
 
-test("a teacher creates a share link and the link opens the chat", async ({ page }) => {
-  const now = await submitShareForm(page, {
-    tutor: VALID_TUTOR_URL,
-    startOffset: -3600,
-    endOffset: 3600,
-  });
-
-  // The signed link appears in the copyable output field.
-  const output = page.getByLabel("Share link", { exact: true });
-  await expect(output).toBeVisible({ timeout: 30_000 });
-  const link = await output.inputValue();
-  const url = new URL(link);
-  expect(url.searchParams.get("tutor")).toBe(VALID_TUTOR_URL);
-  expect(url.searchParams.get("sig")).toMatch(/^[0-9a-f]{64}$/);
-  // The window round-trips through the browser's local-time conversion
-  // (datetime-local has minute precision, so seconds are truncated).
-  expect(Number(url.searchParams.get("start"))).toBe(Math.floor((now - 3600) / 60) * 60);
-  expect(Number(url.searchParams.get("end"))).toBe(Math.floor((now + 3600) / 60) * 60);
-
-  // The generated link opens the chat (the page re-verifies it server-side).
-  await page.goto(link);
-  await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 30_000 });
-});
-
-// @live: LIVE Azure Table Storage round-trip (the dev server stores the link with
-// the local `az login` identity, then resolves the short code server-side) —
-// excluded in CI (test:e2e:ci).
-test("the stored short link opens the same chat", { tag: "@live" }, async ({ page }) => {
+// @live: the action stores the code in the live database (the dev server
+// authenticates with the local `az login` identity) — excluded in CI.
+test("a teacher creates a tutor code and its URL opens the chat", { tag: "@live" }, async ({
+  page,
+}) => {
   await submitShareForm(page, {
     tutor: VALID_TUTOR_URL,
     startOffset: -3600,
     endOffset: 3600,
+    note: "e2e share flow",
   });
 
-  const output = page.getByLabel("Short link", { exact: true });
+  // The chat URL appears in the copyable output field: origin + /<code>.
+  const output = page.getByLabel("Tutor Code link", { exact: true });
   await expect(output).toBeVisible({ timeout: 30_000 });
-  const shortLink = await output.inputValue();
-  expect(shortLink).toMatch(/\/\?link=[a-z0-9]{10}$/);
+  const link = await output.inputValue();
+  expect(link).toMatch(/^http:\/\/localhost:3000\/[a-z0-9]{10}$/);
 
-  await page.goto(shortLink);
+  // The generated URL opens the chat (the page re-checks it server-side).
+  await page.goto(link);
   await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 30_000 });
+});
+
+// @live: this teacher's code must then show up on the Shared Tutor Codes page.
+test("a created code is listed under Shared Tutor Codes with its note", { tag: "@live" }, async ({
+  page,
+}) => {
+  const note = `e2e listed ${Date.now()}`;
+  await submitShareForm(page, {
+    tutor: VALID_TUTOR_URL,
+    startOffset: -3600,
+    endOffset: 3600,
+    note,
+  });
+  await expect(page.getByLabel("Tutor Code link", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
+
+  await page.goto("/tutor-codes");
+  const row = page.getByRole("row").filter({ hasText: note });
+  await expect(row).toHaveCount(1);
+  // The tutor YAML URL is offered as a tooltip on the note cell.
+  await expect(row.getByTitle(VALID_TUTOR_URL)).toHaveCount(1);
+  // Open link + copy button are present.
+  await expect(row.getByRole("link", { name: "Open" })).toBeVisible();
+  await expect(row.getByRole("button", { name: "Copy link" })).toBeVisible();
 });
 
 test("the window must end after it starts", async ({ page }) => {
   await submitShareForm(page, { tutor: VALID_TUTOR_URL, startOffset: 3600, endOffset: -3600 });
 
   await expect(page.getByText(/must be after its start/i)).toBeVisible();
-  await expect(page.getByLabel("Share link", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Tutor Code link", { exact: true })).toHaveCount(0);
 });
 
 test("a broken tutor is rejected at share time", async ({ page }) => {
   await submitShareForm(page, { tutor: BROKEN_TUTOR_URL, startOffset: -3600, endOffset: 3600 });
 
   await expect(page.getByText(/failed validation/i)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByLabel("Share link", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Tutor Code link", { exact: true })).toHaveCount(0);
 });

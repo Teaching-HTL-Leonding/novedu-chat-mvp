@@ -5,9 +5,10 @@ import {
   type TokenCredential,
 } from "@azure/identity";
 
-// The ONE way this app authenticates against its data stores — the Azure SQL DB
-// (app/mastra/index.ts) and the share-link table (lib/share-link-store.ts), which
-// live in the same tenant (`STORAGE_TENANT_ID`).
+// The ONE way this app authenticates against its data store — the Azure SQL DB,
+// reached through two pools: Mastra's (app/mastra/index.ts) and the app's own
+// Drizzle pool for the novedu_* tables (lib/db/index.ts). The DB lives in the
+// `STORAGE_TENANT_ID` tenant.
 //
 // The chain is built EXPLICITLY rather than using `DefaultAzureCredential`: that
 // one would pick up `AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET` via

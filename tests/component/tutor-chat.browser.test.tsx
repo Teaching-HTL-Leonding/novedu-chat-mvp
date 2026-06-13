@@ -5,8 +5,8 @@ import { render } from "vitest-browser-react";
 // Stub CopilotKit's v2 chat: the real provider can't mount under the test
 // runner's bundled React, and this suite verifies TutorChat's own rendering —
 // the live chat is exercised by the e2e tests instead. The provider stub
-// reports its props to a spy so we can assert the signed share parameters are
-// forwarded as headers (the backend re-verifies them on every request).
+// reports its props to a spy so we can assert the tutor code and thread token
+// are forwarded as headers (the backend re-verifies them on every request).
 const providerSpy = vi.hoisted(() => vi.fn());
 const chatSpy = vi.hoisted(() => vi.fn());
 const viewSpy = vi.hoisted(() => vi.fn());
@@ -42,16 +42,18 @@ vi.mock("@copilotkit/react-core/v2", () => {
 import { TutorChat } from "@/app/tutor-chat";
 
 const TUTOR_URL = "https://example.com/tutor.yaml";
+const TUTOR_CODE = "a1b2c3d4e5";
+const THREAD_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const RUNTIME_HEADERS = {
-  "x-tutor-url": TUTOR_URL,
-  "x-share-start": "1700000000",
-  "x-share-end": "1700003600",
-  "x-share-sig": "abc123",
+  "x-tutor-code": TUTOR_CODE,
+  "x-thread-token": "deadbeef".repeat(8),
 };
 
 test("renders the chat with the tutor bar and prompt preview", async () => {
   const screen = await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt={"# Hello\n\nMass-energy: $E=mc^2$."}
@@ -78,6 +80,8 @@ test("forwards the runtime headers to the CopilotKit provider verbatim", async (
   providerSpy.mockClear();
   await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"
@@ -93,9 +97,42 @@ test("forwards the runtime headers to the CopilotKit provider verbatim", async (
   });
 });
 
+test("pins the server-generated threadId on CopilotChat and re-enables the welcome screen", async () => {
+  chatSpy.mockClear();
+  viewSpy.mockClear();
+  await render(
+    <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
+      tutorUrl={TUTOR_URL}
+      runtimeHeaders={RUNTIME_HEADERS}
+      prompt="p"
+      warnings={[]}
+      imageInput={false}
+      description="Beschreibung des Tutors"
+    />,
+  );
+
+  // The id goes through CopilotChat's `threadId` prop (explicit mode — the
+  // only mode where the pinned thread reliably carries the conversation).
+  expect(chatSpy.mock.lastCall?.[0].threadId).toBe(THREAD_ID);
+
+  // Explicit mode suppresses the view's welcome screen (tutor title,
+  // description, example questions) — the chatView wrapper must override the
+  // two flags that gate it, no matter what CopilotChat passes down.
+  const ChatView = chatSpy.mock.lastCall?.[0].chatView;
+  await render(<ChatView hasExplicitThreadId={true} isConnecting={true} />);
+  expect(viewSpy.mock.lastCall?.[0]).toMatchObject({
+    hasExplicitThreadId: false,
+    isConnecting: false,
+  });
+});
+
 test("shows warnings from the tutor build in the preview", async () => {
   const screen = await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="prompt"
@@ -112,6 +149,8 @@ test("enables image attachments (images only, 5 MB cap) when the tutor opts in",
   chatSpy.mockClear();
   await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"
@@ -133,6 +172,8 @@ test("passes no attachments config when the tutor does not opt in", async () => 
   chatSpy.mockClear();
   await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"
@@ -149,6 +190,8 @@ test("passes the tutor title as the welcome greeting label", async () => {
   chatSpy.mockClear();
   await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"
@@ -168,6 +211,8 @@ test("keeps CopilotKit's default greeting when the tutor has no title", async ()
   chatSpy.mockClear();
   await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"
@@ -199,6 +244,8 @@ test("the welcome screen slot composes the built-in greeting plus the descriptio
   chatSpy.mockClear();
   await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"
@@ -222,6 +269,8 @@ test("example questions render as buttons with the question text as tooltip", as
   chatSpy.mockClear();
   await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"
@@ -244,6 +293,8 @@ test("clicking an example question fills the chat input without sending", async 
   chatSpy.mockClear();
   await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"
@@ -268,6 +319,8 @@ test("renders no question list when the tutor defines no example questions", asy
   chatSpy.mockClear();
   await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"
@@ -285,6 +338,8 @@ test("a failed upload shows a dismissible notice", async () => {
   chatSpy.mockClear();
   const screen = await render(
     <TutorChat
+      code={TUTOR_CODE}
+      threadId={THREAD_ID}
       tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
       prompt="p"

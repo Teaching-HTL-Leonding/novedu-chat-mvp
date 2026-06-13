@@ -40,6 +40,11 @@
             "$ref": "#/$defs/exampleQuestion"
           }
         },
+        "anonymous": {
+          "type": "boolean",
+          "default": true,
+          "description": "Chats are anonymous by default: no link between the signed-in student and their chat is stored. Set to false to record which student each chat belongs to."
+        },
         "llm": {
           "$ref": "#/$defs/llm"
         },

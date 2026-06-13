@@ -1,19 +1,21 @@
 import { expect, test } from "@playwright/test";
-import { BROKEN_TUTOR_URL, makeShareLink, openWindow } from "./share-link.utils";
+import { BROKEN_TUTOR_URL, mintTutorCode } from "./tutor-code.utils";
 
-// Exercises the chat page's server-side tutor validation: the share link's
-// signature and window can be perfectly valid and the tutor YAML still broken —
-// the student must then see the structured error list, never a chat. (The happy
-// path lives in deep-link.spec.ts; the full message round-trip in
+// Exercises the chat page's server-side tutor validation: the tutor code can
+// be perfectly valid and the tutor YAML still broken — the student must then
+// see the structured error list, never a chat. (The happy path lives in
+// tutor-code-link.spec.ts; the full message round-trip in
 // tutor-chat-reply.spec.ts.)
 
 // Network round-trip to GitHub + Next dev compilation — give it room.
 test.setTimeout(60_000);
 
-test("a validly signed link to a broken tutor shows the error list and no chat", async ({
+// @live: minting the code needs the live database — excluded in CI.
+test("a valid code for a broken tutor shows the error list and no chat", { tag: "@live" }, async ({
   page,
 }) => {
-  await page.goto(makeShareLink(openWindow(BROKEN_TUTOR_URL)));
+  const code = await mintTutorCode({ tutor: BROKEN_TUTOR_URL });
+  await page.goto(`/${code}`);
 
   // The broken tutor omits a required variable and references a missing fragment.
   await expect(page.getByText("MISSING_REQUIRED_VARIABLE")).toBeVisible({ timeout: 30_000 });
