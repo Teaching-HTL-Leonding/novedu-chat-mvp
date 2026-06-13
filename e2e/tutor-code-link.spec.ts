@@ -2,12 +2,17 @@ import { expect, test } from "@playwright/test";
 import { mintTutorCode } from "./tutor-code.utils";
 
 // The chat is reachable only through a teacher's Tutor Code (`/<code>`). These
-// specs run as a STUDENT (project-default storage state) and mint codes
-// directly in the database (tutor-code.utils) — every rejection path must end
-// in a clear, human-readable explanation, and a genuine code must open the
-// chat.
+// specs run as a STUDENT (project-default storage state).
+//
+// The client-side checks below need no infrastructure and run in CI. The
+// rejection RENDERING (unknown/expired/not-started → the right heading + the
+// window <time>) is now covered by fast tests that need no database:
+//   - the page's consumption of checkTutorCode → app/[code]/page.unit.test.tsx
+//   - the rejection components themselves → tests/component/tutor-code-error.browser.test.tsx
+// What remains here is one @live happy-path smoke that genuinely needs a minted
+// code + the real chat runtime (local-only; excluded in CI via test:e2e:ci).
 
-// The valid-code specs fetch the sample tutor from GitHub — give them room.
+// The valid-code smoke fetches the sample tutor from GitHub — give it room.
 test.setTimeout(60_000);
 
 test("the root URL shows the tutor-code entry form", async ({ page }) => {
@@ -38,38 +43,6 @@ test("a malformed code in the URL is rejected without a database lookup", async 
   await expect(page.getByPlaceholder("Type a message...")).toHaveCount(0);
 });
 
-// @live: needs the real database — without it the lookup reports "temporarily
-// unavailable", not "unknown". Excluded in CI (test:e2e:ci).
-test("a well-formed but unknown code is rejected as unknown", { tag: "@live" }, async ({
-  page,
-}) => {
-  // Never issued (or already garbage-collected) — requires a live lookup.
-  await page.goto("/zzzzzzzzzz");
-
-  await expect(page.getByRole("heading", { name: "Unknown tutor code" })).toBeVisible();
-  await expect(page.getByPlaceholder("Type a message...")).toHaveCount(0);
-});
-
-test("an expired code is rejected with the end time", { tag: "@live" }, async ({ page }) => {
-  const code = await mintTutorCode({ startOffset: -7200, endOffset: -3600 });
-
-  await page.goto(`/${code}`);
-
-  await expect(page.getByRole("heading", { name: "Tutor code expired" })).toBeVisible();
-  await expect(page.locator("time")).toBeVisible();
-});
-
-test("a not-yet-active code is rejected with the start time", { tag: "@live" }, async ({
-  page,
-}) => {
-  const code = await mintTutorCode({ startOffset: 3600, endOffset: 7200 });
-
-  await page.goto(`/${code}`);
-
-  await expect(page.getByRole("heading", { name: "Tutor not available yet" })).toBeVisible();
-  await expect(page.locator("time")).toBeVisible();
-});
-
 test("a valid code opens the tutor chat for a student", { tag: "@live" }, async ({ page }) => {
   const code = await mintTutorCode();
   await page.goto(`/${code}`);
@@ -83,35 +56,4 @@ test("a valid code opens the tutor chat for a student", { tag: "@live" }, async 
   // The assembled system prompt is available in the collapsible preview.
   await page.getByText("System prompt & warnings").click();
   await expect(page.locator('code[class*="language-"]')).toContainText("basic arithmetic");
-});
-
-test("a successfully opened code appears under Recently used and a dead one disappears", {
-  tag: "@live",
-}, async ({ page }) => {
-  // Two chat opens plus deliberately waiting out a 25 s window.
-  test.setTimeout(120_000);
-  // Open a valid code, labeled with its note...
-  const note = `e2e recents ${Date.now()}`;
-  const code = await mintTutorCode({ note });
-  await page.goto(`/${code}`);
-  await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 30_000 });
-
-  // ...and find it as a shortcut on the entry page (recorded server-side).
-  await page.goto("/");
-  await expect(page.getByRole("link", { name: note })).toBeVisible();
-
-  // An expired code, once clicked, vanishes from the shortcuts.
-  const deadNote = `e2e dead ${Date.now()}`;
-  const dead = await mintTutorCode({ note: deadNote, endOffset: 25 });
-  await page.goto(`/${dead}`);
-  await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 20_000 });
-  await page.goto("/");
-  await expect(page.getByRole("link", { name: deadNote })).toBeVisible();
-
-  // Wait out the window, click the shortcut → error page → shortcut gone.
-  await page.waitForTimeout(26_000);
-  await page.getByRole("link", { name: deadNote }).click();
-  await expect(page.getByRole("heading", { name: "Tutor code expired" })).toBeVisible();
-  await page.goto("/");
-  await expect(page.getByRole("link", { name: deadNote })).toHaveCount(0);
 });

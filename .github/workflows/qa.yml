@@ -17,16 +17,28 @@ concurrency:
   group: qa-${{ github.ref }}
   cancel-in-progress: true
 
-# Test-only dummy values (NOT secrets). auth.ts requires the AZURE_* vars and
-# TEACHER_GROUP_ID at module load (also during `next build`); AUTH_SECRET and
-# SHARE_LINK_SECRET only need to match between the e2e helpers and the dev
-# server. e2e tests mint Auth.js session cookies directly, so no real Entra
-# round-trip happens. The two tests that need live infra (Azure SQL / SCCH) are
-# tagged @live and excluded via `npm run test:e2e:ci`. Next's loadEnvConfig
-# never overrides existing process.env, so no .env file is needed here.
+# Least privilege: this gate only reads the code and runs tests — it never needs
+# to write to the repo. (Fork PRs already get a read-only token and NO secrets;
+# this also constrains the token on same-repo runs.)
+permissions:
+  contents: read
+
+# SECURITY: this workflow must stay secret-free. It runs on fork pull_request,
+# where untrusted PR code executes — anything in the environment here is
+# exfiltratable. The values below are test-only DUMMIES (NOT secrets). Tests
+# needing real infra (Azure SQL / SCCH) are tagged @live and excluded via
+# `npm run test:e2e:ci`; live credentials must NEVER be added here or run on a
+# fork pull_request — only on a trusted trigger (push to main, a schedule, or a
+# reviewer-gated environment). See docker-publish.yml for the secret-bearing
+# main-only path.
+#
+# auth.ts requires the AZURE_* vars and TEACHER_GROUP_ID at module load (also
+# during `next build`); AUTH_SECRET only needs to match between the e2e helpers
+# and the dev server (e2e tests mint Auth.js session cookies directly, so no
+# real Entra round-trip happens). Next's loadEnvConfig never overrides existing
+# process.env, so no .env file is needed here.
 env:
   AUTH_SECRET: ci-e2e-auth-secret
-  SHARE_LINK_SECRET: ci-e2e-share-link-secret
   AZURE_CLIENT_ID: ci-placeholder
   AZURE_CLIENT_SECRET: ci-placeholder
   AZURE_TENANT_ID: ci-placeholder

@@ -77,3 +77,31 @@ Read it before touching Mastra storage (`app/mastra/index.ts`), the Drizzle setu
   migrated by Drizzle at startup (`npm run db:generate` → commit `drizzle/`).
   **NO foreign keys between `novedu_*` and `mastra_*` tables** — Mastra auto-manages
   its own schema; relationships are by-value only.
+
+### CI / GitHub Actions security → `docs/ci-security.md`
+
+Read it before touching `.github/workflows/`, adding a secret to a workflow, or
+wiring real infra into CI. This is a public teaching repo — fork PRs run untrusted
+code on our runners. Invariants:
+
+- **`qa.yml` (runs on fork `pull_request`) stays secret-free** — no `secrets.*`,
+  `permissions: contents: read`, dummy `env:` values only. The secret-bearing
+  workflow is **`docker-publish.yml`**, which runs only on `push` to `main` /
+  `workflow_dispatch` (forks cannot trigger it).
+- **Live tests never run on a fork `pull_request`.** `@live` tests (real Azure SQL
+  / SCCH) are excluded via `npm run test:e2e:ci`; real credentials may only run on
+  a trusted trigger (push to `main`, a schedule, or a reviewer-gated environment).
+  **Never add `pull_request_target`.**
+
+### Testing strategy → `docs/testing.md`
+
+Read it before adding a test or tagging one `@live`. Invariants:
+
+- **Prefer fast, secret-free unit/component tests** (Vitest `unit` =
+  `**/*.unit.test.{ts,tsx}`, `component` = `**/*.browser.test.tsx`). A test is
+  `@live` **only** if it genuinely needs the real DB or LLM — not just because the
+  code path sits behind one. Gate checks (which short-circuit before the runtime)
+  and pure-prop rendering belong in fast tests, mocking the I/O seams while keeping
+  the security-critical pure module (e.g. `lib/thread-token.ts`) REAL.
+- A single **`@live`** tag is the boundary: CI runs everything else; the `@live`
+  set is the local-only pre-push smoke (`npm run test:e2e -- --grep @live`).
