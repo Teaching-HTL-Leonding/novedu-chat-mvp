@@ -139,10 +139,20 @@ re-think the scoping first.
   recents. `novedu_user_chats` is never collected.
 - Drizzle migrations apply at startup — see `docs/database.md`.
 
-## e2e
+## Testing
 
-`e2e/tutor-code.utils.ts` mints codes by inserting rows through the app's own
-store (loads `.env` like Next does) — that needs the live database, so every
-spec that mints or resolves a code is tagged `@live` and excluded in CI
-(`test:e2e:ci`). Non-live coverage: the entry form, malformed-code rejection,
-and the share form's validation errors.
+The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
+**`docs/testing.md`**. Tutor-code specifics:
+
+- `e2e/tutor-code.utils.ts` mints codes by inserting rows through the app's own
+  store (loads `.env` like Next does), so any browser spec that mints or
+  resolves a code needs the live database and is tagged `@live` (local only).
+- The security-critical paths run in CI with **no** DB, because the gate
+  short-circuits before any runtime is built: the runtime gate
+  (`app/api/copilotkit/[[...slug]]/route.unit.test.ts`, real thread-token HMAC)
+  and the chat page's consumption of `checkTutorCode`
+  (`app/[code]/page.unit.test.tsx`) — together covering **both** consumers of the
+  window check, so a regression in either fails CI — plus the rejection/error UI
+  (`tests/component/tutor-code-error.browser.test.tsx`,
+  `tutor-validation-views.browser.test.tsx`) and the window logic itself
+  (`lib/tutor-code-store.unit.test.ts`).

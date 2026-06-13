@@ -149,6 +149,9 @@ npm run start
 
 > Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
 
+> Testing layers, the `@live` boundary, and the patterns for testing the chat gate
+> without a database or LLM are documented in [`docs/testing.md`](docs/testing.md).
+
 ## Tutors
 
 The `tutors/` directory contains sample tutor and fragment YAML files, and

@@ -5,23 +5,18 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { mintTutorCode } from "./tutor-code.utils";
 
-// Image attachments in the chat. They are ON by default; a tutor opts out via
-// `llm.imageInput: false` (text-only-tutor.yaml), which must remove the upload
-// UI entirely.
+// A REAL multi-modal round-trip through the chat: attach an image and confirm
+// the model actually saw it. This is the only @live image test — the upload-UI
+// GATING (imageInput on/off → whether the attachments config is passed to
+// CopilotKit, plus the upload-failure notice) is our code's contribution and is
+// covered without a browser/LLM in tests/component/tutor-chat.browser.test.tsx.
+// What's left here genuinely needs the SCCH vision model + Azure SQL.
 //
 // The tutor fixtures are served from a LOCAL http server (the repo's own
 // `tutors/` directory) instead of GitHub raw `main` like the other specs:
 // vision-tutor.yaml is introduced on this branch, so it isn't on `main` yet —
-// and serving locally keeps these specs independent of GitHub anyway. The Next
+// and serving locally keeps this spec independent of GitHub anyway. The Next
 // dev server fetches tutor URLs server-side, so 127.0.0.1 resolves fine.
-//
-// CopilotKit v2 testids/labels used here (discovered from the rendered chat):
-//   - hidden file input:   input[type="file"] (carries the accept filter; the
-//                          visible "+" toolbar button has NO accessible name —
-//                          "Add attachments" is only its hover tooltip — so the
-//                          input is the reliable presence signal)
-//   - attachment chips:    copilot-attachment-queue (one "Remove attachment"
-//                          button per queued file)
 
 const TUTORS_DIR = path.join(process.cwd(), "tutors");
 const RED_PNG = path.join(process.cwd(), "e2e", "fixtures", "red.png");
@@ -58,47 +53,6 @@ async function openChat(page: import("@playwright/test").Page, tutorFile: string
   await page.goto(`/${code}`);
   await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
 }
-
-// @live: minting codes (and resolving them on the chat page) needs the live
-// database — the whole file is excluded in CI (test:e2e:ci).
-test("a vision tutor lets the student attach an image and remove it again", {
-  tag: "@live",
-}, async ({ page }) => {
-  await openChat(page, "vision-tutor.yaml");
-
-  // The upload control is present and restricted to images. (The input is
-  // intentionally hidden — the toolbar button proxies clicks to it — so assert
-  // presence, not visibility.)
-  const fileInput = page.locator('input[type="file"]');
-  await expect(fileInput).toHaveCount(1);
-  await expect(fileInput).toHaveAttribute("accept", "image/*");
-
-  // Attach the fixture straight through the (hidden) input — the file chooser
-  // itself is native UI Playwright can't drive.
-  await fileInput.setInputFiles(RED_PNG);
-  const queue = page.getByTestId("copilot-attachment-queue");
-  await expect(queue).toBeVisible();
-  const removeButton = page.getByRole("button", { name: "Remove attachment" });
-  await expect(removeButton).toHaveCount(1);
-
-  // Removing the chip empties the queue without sending anything.
-  await removeButton.click();
-  await expect(page.getByRole("button", { name: "Remove attachment" })).toHaveCount(0);
-});
-
-test("a tutor with imageInput: false shows no upload UI", { tag: "@live" }, async ({ page }) => {
-  await openChat(page, "text-only-tutor.yaml");
-
-  await expect(page.locator('input[type="file"]')).toHaveCount(0);
-});
-
-test("a tutor that says nothing about imageInput gets the upload UI (on by default)", {
-  tag: "@live",
-}, async ({ page }) => {
-  await openChat(page, "simple-tutor.yaml");
-
-  await expect(page.locator('input[type="file"]')).toHaveCount(1);
-});
 
 // A REAL multi-modal round-trip: attach a solid-red PNG and ask for its color.
 // @live: needs the SCCH model endpoint + Azure SQL — excluded in CI (test:e2e:ci).
