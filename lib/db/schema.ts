@@ -1,4 +1,5 @@
 import {
+  bit,
   datetime2,
   index,
   mssqlTable,
@@ -25,6 +26,15 @@ import {
 // the code was created (dev/prod host) and is NEVER used in lookups — a code
 // created on localhost must work in production, since all environments share
 // this database.
+//
+// `anonymous` is the tutor YAML's privacy flag FROZEN at create time (the
+// create action loads the YAML to validate it anyway). It governs whether
+// chats record who owns them in `novedu_user_chats` and whether the stats page
+// shows per-student data. Editing the YAML later does NOT update this column —
+// the value captured when the code was minted is the one that holds. Rows are
+// kept until the teacher deletes the code (no garbage collection), so the chat
+// at `/<code>` simply stops opening once the window closes (`checkTutorCode`)
+// while the code and its conversation data remain available for stats.
 export const tutorCodes = mssqlTable(
   "novedu_tutor_codes",
   {
@@ -35,14 +45,16 @@ export const tutorCodes = mssqlTable(
     validUntil: datetime2("valid_until").notNull(),
     note: nvarchar("note", { length: 200 }).notNull().default(""),
     origin: nvarchar("origin", { length: 256 }),
+    // Default true = anonymous: the privacy-safe default, and what any row
+    // predating this column should read as.
+    anonymous: bit("anonymous").notNull().default(true),
     createdAt: datetime2("created_at").notNull(),
   },
-  (t) => [
-    // The teacher's "Shared Tutor Codes" page lists by creator…
-    index("ix_novedu_tutor_codes_created_by").on(t.createdBy),
-    // …and the hourly GC deletes by expiry.
-    index("ix_novedu_tutor_codes_valid_until").on(t.validUntil),
-  ],
+  // The teacher's "Shared Tutor Codes" page (and the stats pages) list by
+  // creator. There is no longer an index on `valid_until`: nothing deletes by
+  // expiry anymore (garbage collection was removed in favor of explicit
+  // teacher-initiated deletion).
+  (t) => [index("ix_novedu_tutor_codes_created_by").on(t.createdBy)],
 );
 
 // Links a signed-in user to a chat (Mastra thread) opened under a tutor code.

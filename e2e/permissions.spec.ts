@@ -42,9 +42,15 @@ test.describe("as a student", () => {
     expect(body.errors[0].code).toBe("FORBIDDEN");
   });
 
-  test("the chat backend rejects requests without a valid tutor code", async ({ page }) => {
-    const res = await page.request.get("/api/copilotkit/info", {
-      headers: { "x-tutor-code": "zzzzzzzzz!" },
+  test("the chat backend rejects DATA requests without a valid tutor code", async ({ page }) => {
+    // The code gate protects the DATA endpoints (run/connect/stop); GET /info is
+    // auth-only metadata and intentionally needs no code (the read-only
+    // conversation viewer relies on that). Probe a `run` with a malformed code —
+    // it must be rejected before any thread/runtime work (pattern-rejected, so
+    // this stays hermetic: no DB round-trip).
+    const res = await page.request.post("/api/copilotkit/agent/tutor/run", {
+      headers: { "x-tutor-code": "zzzzzzzzz!", "content-type": "application/json" },
+      data: { threadId: "t", runId: "r", messages: [], tools: [], context: [], state: {} },
     });
 
     expect(res.status()).toBe(403);

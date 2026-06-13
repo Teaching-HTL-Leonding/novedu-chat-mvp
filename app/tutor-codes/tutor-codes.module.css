@@ -4,12 +4,6 @@
   overflow-y: auto;
 }
 
-.heading {
-  margin: 0 0 0.5rem;
-  font-size: 1.25rem;
-  font-weight: 700;
-}
-
 .hint {
   margin: 0 0 1rem;
   font-size: 0.9rem;
@@ -62,17 +56,44 @@
   white-space: nowrap;
 }
 
-.openLink {
-  padding: 0.45rem 0.9rem;
-  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+/* Square icon button shared by every action (stats, open, copy, delete). The
+   accessible label lives on the element (aria-label); the icon is decorative. */
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--foreground) 22%, transparent);
   border-radius: 0.5rem;
-  font-weight: 600;
-  text-decoration: none;
+  background: transparent;
   color: inherit;
+  cursor: pointer;
 }
 
-.openLink:hover {
+.iconButton:hover:not(:disabled) {
   background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.iconButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.iconButton svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+/* Delete: same shape, danger accent. */
+.iconButtonDanger {
+  border-color: color-mix(in srgb, crimson 45%, transparent);
+  color: color-mix(in srgb, crimson 78%, var(--foreground));
+}
+
+.iconButtonDanger:hover:not(:disabled) {
+  background: color-mix(in srgb, crimson 12%, transparent);
 }
 
 .visuallyHidden {
@@ -82,4 +103,41 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+/* The "Conversations" count column: numeric, right-aligned, snug. */
+.numCell {
+  text-align: right;
+  white-space: nowrap;
+  width: 1%;
+}
+
+/* Window-status badges next to a code's note (expired codes stay listed). */
+.badgeExpired,
+.badgeUpcoming {
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+}
+
+.badgeExpired {
+  background: color-mix(in srgb, crimson 18%, transparent);
+  color: color-mix(in srgb, crimson 75%, var(--foreground));
+}
+
+.badgeUpcoming {
+  background: color-mix(in srgb, royalblue 18%, transparent);
+  color: color-mix(in srgb, royalblue 75%, var(--foreground));
+}
+
+.deleteError {
+  margin-left: 0.5rem;
+  font-size: 0.82rem;
+  color: color-mix(in srgb, crimson 75%, var(--foreground));
+  white-space: normal;
 }

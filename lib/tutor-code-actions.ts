@@ -1,8 +1,14 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { requireEffectiveTeacher } from "@/lib/student-mode";
-import { createTutorCode, validateTutorCodeRequest } from "@/lib/tutor-code-store";
+import {
+  createTutorCode,
+  getOwnedTutorCode,
+  validateTutorCodeRequest,
+} from "@/lib/tutor-code-store";
+import { deleteTutorCodeAndData } from "@/lib/tutor-stats-store";
 import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
 
 export type TutorCodeFormState =
@@ -83,7 +89,14 @@ export async function createTutorCodeAction(
   if (!userId) {
     return { status: "error", message: "Your session carries no user id — sign in again." };
   }
-  const stored = await createTutorCode(userId, { ...validation.payload, origin });
+  // Freeze the tutor's anonymity flag onto the row at create time. `result`
+  // is the just-validated YAML; a later edit to it will not change the stored
+  // value (documented behavior). `loadAndBuildTutorPrompt` defaults it to true.
+  const stored = await createTutorCode(userId, {
+    ...validation.payload,
+    origin,
+    anonymous: result.anonymous,
+  });
   if (!stored.stored) {
     return {
       status: "error",
@@ -96,4 +109,48 @@ export async function createTutorCodeAction(
     link: `${origin}/${stored.code}`,
     note: validation.payload.note,
   };
+}
+
+export type DeleteTutorCodeResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * Permanently deletes a tutor code AND all of its conversation data (threads,
+ * messages, attribution). Teacher-only and owner-only: a teacher may delete only
+ * codes they created — the ownership check (`getOwnedTutorCode`) doubles as the
+ * "does it still exist" check. Replaced the hourly garbage collection: data now
+ * lives until deleted here. Revalidates the Shared Tutor Codes list on success.
+ */
+export async function deleteTutorCodeAction(code: string): Promise<DeleteTutorCodeResult> {
+  let session: Awaited<ReturnType<typeof requireEffectiveTeacher>>;
+  try {
+    session = await requireEffectiveTeacher();
+  } catch {
+    return { ok: false, message: "Only teachers can delete tutor codes." };
+  }
+  const userId = session.user?.id;
+  if (!userId) {
+    return { ok: false, message: "Your session carries no user id — sign in again." };
+  }
+
+  const owned = await getOwnedTutorCode(code, userId);
+  if (owned === undefined) {
+    return { ok: false, message: "The tutor code could not be checked right now — try again." };
+  }
+  if (owned === null) {
+    // Already gone, or never the caller's to delete. Either way there is
+    // nothing for this teacher to act on; treat as done so the row clears.
+    revalidatePath("/tutor-codes");
+    return { ok: true };
+  }
+
+  const deleted = await deleteTutorCodeAndData(code);
+  if (!deleted) {
+    return {
+      ok: false,
+      message: "Some data could not be deleted. Try again — deletion is safe to repeat.",
+    };
+  }
+
+  revalidatePath("/tutor-codes");
+  return { ok: true };
 }

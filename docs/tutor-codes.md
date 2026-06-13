@@ -20,6 +20,7 @@ unguessable) minted by a teacher on `/share-tutor` and stored as a row in the
 | `valid_from` / `valid_until` | availability window, UTC `datetime2`, **both bounds inclusive** |
 | `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
 | `origin` | **documentation-only**: where the code was created (DEV vs PROD rows). Lookups never read it — a code created on localhost works in production, since all environments share the database |
+| `anonymous` | the tutor YAML's `anonymous` flag (default `true`), **frozen at create time** — a later YAML edit does NOT update it. Gates whether chats are attributed (`novedu_user_chats`) and whether the stats page shows per-student data |
 | `created_at` | creation time |
 
 **The stored row is the security boundary.** There is no signature and no
@@ -69,7 +70,7 @@ since `app/[code]` catches all non-static top-level paths.
   `last_used`), recorded server-side after every successful chat open and
   capped at the newest 10 per user. The entry page lists them via an inner
   join with `novedu_tutor_codes` (label = `note`, fallback code) — so codes
-  whose row was garbage-collected disappear by themselves. Clicking a recent
+  whose row was deleted disappear by themselves. Clicking a recent
   code that turns out dead (`unknown-code` / `expired`) removes the row
   server-side (`app/[code]/page.tsx` via `after()`); `not-started` and
   transient `lookup-failed` keep it.
@@ -87,10 +88,16 @@ displayed URL's origin comes from `TUTOR_CODE_ORIGIN` (recommended in
 production) or the request's forwarded/host headers (fine for dev); it is
 display-only.
 
-`/tutor-codes` ("Shared Tutor Codes", teacher-only) lists the teacher's
-still-valid codes (`valid_until >= now`, including not-yet-started), newest
-first: note (fallback code, tutor-YAML URL as tooltip), window in local time,
-Open link, Copy button (absolute URL from `window.location.origin`).
+`/tutor-codes` ("Shared Tutor Codes", teacher-only) lists **all** of the
+teacher's codes (`listTutorCodes`), newest first — active, not-yet-started
+(`upcoming` badge), AND already-expired (`expired` badge), since codes are no
+longer garbage-collected. Each row: note (fallback code, tutor-YAML URL as
+tooltip), window in local time, a **Conversations** count (qualifying
+conversations for that code, from `getInteractionCounts` — one aggregate query
+for the whole list, links to the code's stats), an Open link (active codes
+only), a Copy button, and a **Delete** button (`DeleteCodeButton` → the
+`deleteTutorCodeAction` server action; confirms first, then wipes the code and
+all of its conversation data — see Lifecycle).
 
 ## Chats, memory & the join model
 
@@ -127,16 +134,65 @@ cached). The
 per-user `novedu_recent_codes` shortcuts are deliberately separate — they say
 "this user opened this code", never which chat is theirs.
 
+Note two SEPARATE reads of the same `anonymous` flag. The RUNTIME attribution
+path above always reads it live from the YAML (so toggling a tutor to
+`anonymous: false` starts attributing immediately). The STATS page instead reads
+the copy **frozen onto `novedu_tutor_codes.anonymous` at create time** — it only
+decides whether to surface per-student numbers, and freezing keeps that decision
+stable for a code's lifetime even if the YAML changes later.
+
 Caveat: with `resourceId = code`, any *resource-scoped* Mastra memory (working
 memory, semantic recall) would be shared across all students using the same
 code. Today only per-thread `lastMessages` is configured — keep it that way or
 re-think the scoping first.
 
+## Stats & conversation viewer
+
+Teacher-only, under the `/tutor-codes` prefix (so the root `/[code]` student
+catch-all never collides). Both pages gate on **code ownership**, NOT the
+thread-ownership token: `getOwnedTutorCode(code, sub)` returns the row only when
+`created_by` is the asking teacher — a teacher sees only their own codes.
+
+- **`/tutor-codes/[code]`** — detailed stats (`getTutorCodeStats`): number of
+  conversations, and for non-anonymous codes (the frozen `anonymous` flag) the
+  number of distinct students; then a table of every conversation (first/last
+  message time, user id when recorded, user-message count). Each row links to the
+  viewer. "Conversation" = a Mastra thread with ≥ 1 `role = 'user'` message
+  (opened-but-silent threads do not count).
+- **`/tutor-codes/[code]/c/[threadId]`** — a READ-ONLY transcript. The server
+  loads the messages (`getConversationMessages`, which re-checks the thread's
+  `resourceId = code`) and converts each stored Mastra message to an AG-UI
+  `Message` (text rebuilt from `parts`, since the top-level `content` is
+  sometimes absent; `file` parts become inline images). The client (`ConversationView`)
+  renders them with the **same message components the live chat uses** —
+  `CopilotChatUserMessage` / `CopilotChatAssistantMessage` (the exact ones
+  `CopilotChatMessageView` paints internally) — so bubbles, markdown, math and
+  code match the real chat. There is NO `CopilotChat`/`useAgent`, so nothing runs
+  or connects an agent. Those components DO reach into `CopilotKitCore`, so they
+  need a `CopilotKitProvider`; the provider requires a `runtimeUrl` (it throws in
+  production otherwise) and pings `/api/copilotkit/info` once on mount. That ping
+  succeeds (200) because the runtime route serves **`/info` as auth-only metadata**
+  — see below — even though the viewer sends no `x-tutor-code` header.
+
+The runtime route's gate is therefore split: GET `/info` is the agent registry +
+capabilities (no chat data) and is gated by **authentication alone**, so the
+viewer's provider can mount; the DATA endpoints (`run`/`connect`/`stop`) stay
+gated by the tutor code AND the thread-ownership token. Keep this in mind when
+touching `app/api/copilotkit/[[...slug]]/route.ts`.
+
+Privacy note: this lets a teacher read the *content* of conversations under their
+codes. By design that is allowed — `anonymous` only hides *who* a student is
+(the user id), never the message text; the thread-ownership HMAC remains the
+student-side isolation and is unaffected.
+
 ## Lifecycle
 
-- Expired codes are garbage-collected **hourly** by an in-process timer
-  (`instrumentation.ts` → `lib/tutor-code-gc.ts`), together with orphaned
-  recents. `novedu_user_chats` is never collected.
+- Tutor codes are **not** garbage-collected. A code and all of its conversation
+  data persist until the teacher deletes the code on `/tutor-codes`
+  (`deleteTutorCodeAndData` — Mastra threads/messages via Mastra's own
+  `deleteThread`, then the `novedu_*` rows; see `docs/database.md`). An expired
+  code stays listed: its chat no longer opens (`checkTutorCode`), but its stats
+  remain reachable until it is deleted.
 - Drizzle migrations apply at startup — see `docs/database.md`.
 
 ## Testing

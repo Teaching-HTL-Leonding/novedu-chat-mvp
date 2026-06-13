@@ -49,7 +49,7 @@ auto-refresh):
    no lifecycle coupling with Mastra's.
 
 Unset `MSSQL_CONNECTION_STRING` → the app boots without persistence (warns;
-instrumentation skips migrations/GC); chat then fails because tutor codes and
+instrumentation skips migrations); chat then fails because tutor codes and
 the tutor agent's memory need the database.
 
 ## App-owned schema (`novedu_*`) & Drizzle workflow
@@ -66,26 +66,37 @@ the tutor agent's memory need the database.
 - **HARD RULE: no foreign keys between `novedu_*` and `mastra_*` tables.**
   Mastra owns its data model; relationships are by-value (see
   `docs/tutor-codes.md` for the join model). There is also deliberately no FK
-  `novedu_user_chats → novedu_tutor_codes` (chat attribution outlives GC'd
-  codes) and none for `novedu_recent_codes` (shortcuts join at read time).
+  `novedu_user_chats → novedu_tutor_codes` and none for `novedu_recent_codes`
+  (shortcuts join at read time).
 
 Tables (details in `docs/tutor-codes.md`):
 
 | Table | Keys | Purpose |
 | --- | --- | --- |
-| `novedu_tutor_codes` | PK `code` | Shared tutor codes: tutor URL, window, note, creating teacher |
+| `novedu_tutor_codes` | PK `code` | Shared tutor codes: tutor URL, window, note, creating teacher, frozen `anonymous` flag |
 | `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only for `anonymous: false` tutors) |
 | `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (entry-page shortcuts) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping |
 
-## Garbage collection
+## Deletion (no garbage collection)
 
-Hourly in-process timer (`instrumentation.ts` → `lib/tutor-code-gc.ts`):
-deletes expired tutor codes (`valid_until < now`, cross-teacher) and prunes
-`novedu_recent_codes` rows whose code no longer exists. `novedu_user_chats` is
-**never** collected — attribution history outlives the code. Single-container
-deployment → one timer; if scaled out, every instance runs it and the DELETEs
-are idempotent.
+There is **no** automatic garbage collection. Tutor codes and their conversation
+data live until a teacher deletes a code on `/tutor-codes`. The delete action
+(`deleteTutorCodeAndData` in `lib/tutor-stats-store.ts`) removes, for that code:
+
+1. every Mastra thread under `resourceId = code` and its messages — through
+   Mastra's OWN storage API (`getStore("memory").deleteThread`, which deletes a
+   thread's messages and the thread in one transaction), so we never mutate the
+   `mastra_*` schema by hand;
+2. the app-owned rows via Drizzle — `novedu_user_chats`, `novedu_recent_codes`,
+   then the `novedu_tutor_codes` row LAST (so a mid-way failure leaves the code
+   still listed and the operation safe to retry; it is idempotent).
+
+(Earlier versions ran an hourly in-process timer that deleted expired codes; it
+and `lib/tutor-code-gc.ts` were removed so a code's stats stay reachable after
+its window closes. The READ side of stats — counts, per-conversation timings —
+is plain by-value SQL against `mastra_threads`/`mastra_messages`; see
+`docs/tutor-codes.md`.)
 
 ## History
 

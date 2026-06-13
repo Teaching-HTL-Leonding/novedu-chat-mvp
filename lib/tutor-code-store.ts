@@ -1,5 +1,5 @@
 import { randomInt } from "node:crypto";
-import { and, desc, eq, gte, lt } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { tutorCodes } from "@/lib/db/schema";
 
@@ -105,6 +105,12 @@ export interface TutorCodeEntry {
    * a code created on localhost works in production (same database).
    */
   origin: string | null;
+  /**
+   * The tutor YAML's `anonymous` flag, FROZEN at create time (default `true`).
+   * `false` means chats record who owns them (`novedu_user_chats`) and the
+   * stats page may show per-student data. A later YAML edit does not change it.
+   */
+  anonymous: boolean;
   createdAt: Date;
 }
 
@@ -139,6 +145,8 @@ export async function createTutorCode(
     validUntil: Date;
     note: string;
     origin?: string;
+    /** The tutor YAML's `anonymous` flag, captured now and frozen on the row. */
+    anonymous: boolean;
   },
 ): Promise<CreateTutorCodeResult> {
   for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
@@ -152,6 +160,7 @@ export async function createTutorCode(
         validUntil: data.validUntil,
         note: data.note,
         origin: data.origin,
+        anonymous: data.anonymous,
         createdAt: new Date(),
       });
       return { stored: true, code: candidate };
@@ -221,20 +230,20 @@ export async function checkTutorCode(
 }
 
 /**
- * All of a teacher's still-valid tutor codes (not yet expired — codes whose
- * window has not STARTED yet count as valid too), newest first. Backs the
- * "Shared Tutor Codes" page. Never throws — an unreachable database reads as an
- * empty list, which the page notes.
+ * ALL of a teacher's tutor codes, newest first — including ones whose window
+ * has not started yet AND ones that have already expired. Codes are no longer
+ * garbage-collected (a teacher deletes them explicitly), so an expired code
+ * stays in the list: its chat no longer opens, but its conversation stats are
+ * still reachable and it can be deleted. Backs the "Shared Tutor Codes" page.
+ * Never throws — an unreachable database reads as `undefined`, which the page
+ * notes.
  */
-export async function listValidTutorCodes(
-  createdBy: string,
-  now: Date = new Date(),
-): Promise<TutorCodeEntry[] | undefined> {
+export async function listTutorCodes(createdBy: string): Promise<TutorCodeEntry[] | undefined> {
   try {
     return await getDb()
       .select()
       .from(tutorCodes)
-      .where(and(eq(tutorCodes.createdBy, createdBy), gte(tutorCodes.validUntil, now)))
+      .where(eq(tutorCodes.createdBy, createdBy))
       .orderBy(desc(tutorCodes.createdAt));
   } catch (error) {
     console.error("tutor-code-store: listing tutor codes failed", error);
@@ -243,17 +252,24 @@ export async function listValidTutorCodes(
 }
 
 /**
- * Garbage-collects expired tutor codes across ALL teachers (window over:
- * `valid_until < now` — at `valid_until === now` a code is still valid, see
- * checkTutorCode's inclusive bounds). Runs hourly from instrumentation.ts.
- * Deliberately does NOT touch `novedu_user_chats`: the user↔chat mapping
- * outlives the code so chat-history attribution keeps working. Never throws —
- * failures only log, and the next run picks up whatever was left behind.
+ * Looks up a single tutor code that a given teacher owns — the authorization
+ * gate for the stats and conversation-viewer pages and the delete action. A
+ * teacher may only see/delete codes they created (`created_by`), regardless of
+ * the code's window. Returns the row, `null` if it does not exist or belongs to
+ * someone else, or `undefined` on a database error. Never throws.
  */
-export async function gcExpiredTutorCodes(now: Date = new Date()): Promise<void> {
+export async function getOwnedTutorCode(
+  code: string,
+  createdBy: string,
+): Promise<TutorCodeEntry | null | undefined> {
+  if (!TUTOR_CODE_PATTERN.test(code)) return null;
   try {
-    await getDb().delete(tutorCodes).where(lt(tutorCodes.validUntil, now));
+    const rows = await getDb().select().from(tutorCodes).where(eq(tutorCodes.code, code));
+    const entry = rows[0];
+    if (!entry || entry.createdBy !== createdBy) return null;
+    return entry;
   } catch (error) {
-    console.error("tutor-code-store: garbage collection of expired tutor codes failed", error);
+    console.error("tutor-code-store: owned tutor-code lookup failed", error);
+    return undefined;
   }
 }
