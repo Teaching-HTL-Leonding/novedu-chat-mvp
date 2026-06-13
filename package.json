@@ -2,6 +2,9 @@
   "name": "chat-prototype",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "cli"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -19,6 +22,9 @@
     "test:e2e": "playwright test",
     "test:e2e:ci": "playwright test --grep-invert @live",
     "test:e2e:ui": "playwright test --ui",
+    "cli": "tsx cli/src/main.ts",
+    "cli:build": "npm --workspace novedu-tutor run build",
+    "test:cli": "npm run cli:build && vitest run --config cli/vitest.config.mts",
     "qa": "npm run check && npm run typecheck && npm run test && npm run build",
     "qa:e2e": "npm run qa && npm run test:e2e"
   },
@@ -77,6 +83,7 @@
     "drizzle-kit": "1.0.0-beta.22",
     "jsdom": "^29.1.1",
     "playwright": "^1.60.0",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8",
     "vitest-browser-react": "^2.2.0"

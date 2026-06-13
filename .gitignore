@@ -7,6 +7,7 @@ __screenshots__/
 
 # dependencies
 /node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -31,6 +32,9 @@ __screenshots__/
 
 # production
 /build
+
+# cli build output (published from dist; rebuilt by `npm run cli:build`)
+/cli/dist/
 
 # misc
 .DS_Store

@@ -47,16 +47,38 @@ async function fetchText(
   }
 }
 
+/**
+ * Options for {@link loadAndBuildTutorPrompt}. `allowedSchemes` constrains which URL
+ * schemes the tutor (and its fragment files) may use, defaulting to http(s) only — the
+ * server's SSRF guard. The CLI passes `file:` as well so it can validate a tutor YAML
+ * on disk (handed in as a `file://` URL); see `resolveFragmentUrl` for how relative
+ * fragment refs then resolve against that local path.
+ */
+export interface LoadOptions {
+  allowedSchemes?: string[];
+}
+
+const DEFAULT_ALLOWED_SCHEMES = ["http:", "https:"];
+
 export async function loadAndBuildTutorPrompt(
   url: string,
   fetchImpl: Fetcher,
+  opts: LoadOptions = {},
 ): Promise<BuildResult> {
   const warnings: ValidationWarning[] = [];
+  const allowedSchemes = opts.allowedSchemes ?? DEFAULT_ALLOWED_SCHEMES;
 
-  if (!/^https?:\/\//i.test(url)) {
+  let scheme: string;
+  try {
+    scheme = new URL(url).protocol;
+  } catch {
+    scheme = "";
+  }
+  if (!allowedSchemes.includes(scheme)) {
+    const allowed = allowedSchemes.map((s) => s.replace(/:$/, "")).join("/");
     return {
       ok: false,
-      errors: [error("INVALID_URL", "Provide a valid http(s) URL", { url })],
+      errors: [error("INVALID_URL", `Provide a valid ${allowed} URL`, { url })],
       warnings,
     };
   }
