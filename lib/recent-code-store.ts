@@ -106,20 +106,3 @@ export async function removeRecentCode(userId: string, code: string): Promise<vo
     console.error("recent-code-store: removing a recent code failed", error);
   }
 }
-
-/**
- * Housekeeping for the hourly GC: once expired tutor codes are deleted,
- * recents pointing at codes that no longer exist serve nobody — drop them.
- * (The entry page's inner join already hides them; this keeps the table from
- * accumulating dead rows.)
- */
-export async function gcOrphanedRecentCodes(): Promise<void> {
-  try {
-    const db = getDb();
-    await db
-      .delete(recentCodes)
-      .where(notInArray(recentCodes.code, db.select({ code: tutorCodes.code }).from(tutorCodes)));
-  } catch (error) {
-    console.error("recent-code-store: pruning orphaned recent codes failed", error);
-  }
-}

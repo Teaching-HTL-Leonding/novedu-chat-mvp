@@ -44,23 +44,34 @@ Invariants:
 ### Tutor Codes (chat entry, sharing, user↔chat mapping) → `docs/tutor-codes.md`
 
 Read it before touching the chat entry points (`app/page.tsx`, `app/[code]/page.tsx`),
-`/share-tutor`, `/tutor-codes`, the chat runtime route, or the `novedu_*` stores in
-`lib/`. Invariants:
+`/share-tutor`, `/tutor-codes`, the stats pages (`/tutor-codes/[code]` and
+`/tutor-codes/[code]/c/[threadId]`), the chat runtime route, or the `novedu_*` /
+`tutor-stats` stores in `lib/`. Invariants:
 
 - The chat is reachable **only** via `/<tutor-code>` (10-char `[a-z0-9]` code). The
   stored `novedu_tutor_codes` row gates ACCESS, and `checkTutorCode()` is enforced
   server-side in **BOTH** `app/[code]/page.tsx` and the CopilotKit route
   (`app/api/copilotkit/[[...slug]]/route.ts`, header `x-tutor-code`, re-checked on
-  every request) — keep both in sync.
+  every DATA request — `run`/`connect`/`stop`; GET `/info` is auth-only metadata)
+  — keep both in sync.
 - Thread ISOLATION is the `x-thread-token` ownership token (`lib/thread-token.ts`):
   `app/[code]/page.tsx` generates the thread id and signs `(code, userId, threadId)`;
   the CopilotKit route verifies it on every thread-touching request and 404s all
   runtime endpoints the app does not use. Mastra does NOT bind threads to a
-  resource — without the token any code-holder could read others' chats.
+  resource — without the token any code-holder could read others' chats. The
+  STUDENT chat path uses this token; the TEACHER stats/viewer pages instead gate
+  on **code ownership** (`getOwnedTutorCode`, `created_by === session sub`) — a
+  teacher reads only their own codes' conversations.
 - Mastra memory `resourceId` = the tutor code. `novedu_user_chats` is the ONLY
-  user↔chat link and is written **only** for tutors with `anonymous: false` in their
-  YAML (default: anonymous, nothing stored) — that promise is why thread ownership
-  is a stateless HMAC, not a table.
+  user↔chat link and is written **only** for tutors whose stored `anonymous` flag is
+  `false` (default: anonymous, nothing stored) — that promise is why thread ownership
+  is a stateless HMAC, not a table. `anonymous` is the tutor YAML's flag **frozen
+  onto the `novedu_tutor_codes` row at create time** (a later YAML edit does not
+  change it); the stats page reads it to decide whether to show per-student data.
+- Tutor codes are NOT garbage-collected — they (and their conversation data) live
+  until a teacher deletes a code from `/tutor-codes`, which wipes the code plus all
+  of its Mastra threads/messages (`deleteTutorCodeAndData`). So the list shows
+  expired codes too; an expired code's chat won't open but its stats stay reachable.
 
 ### Azure SQL, Drizzle & credentials → `docs/database.md`
 

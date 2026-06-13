@@ -25,6 +25,11 @@ const THREAD_REJECTION_MESSAGE =
 // token (not this pattern) is what actually proves ownership.
 const THREAD_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 
+// resourceId handed to the runtime when serving `/info` (metadata only, runs no
+// agent), so it is never used to read or write memory — it just satisfies the
+// required parameter. Distinct from any real tutor code (codes are [a-z0-9]{10}).
+const INFO_RESOURCE_ID = "__info__";
+
 // The runtime endpoints the CopilotKit v2 client actually uses, classified
 // from the request path (segments after the /api/copilotkit base). Everything
 // else 404s — see the THREAT MODEL note below.
@@ -58,18 +63,24 @@ function classifyRequest(req: Request): RuntimeRequest {
   return { kind: "unsupported" };
 }
 
-// The chat backend. Three server-side checks gate every runtime request — the
-// frontend already performed them, but headers and bodies are client-
-// controlled, so they are re-verified here where they actually matter:
+// The chat backend. Three server-side checks gate every DATA request (run,
+// connect, stop) — the frontend already performed them, but headers and bodies
+// are client-controlled, so they are re-verified here where they actually
+// matter:
 //
-//  1. AUTHENTICATION — a valid Entra session is required.
+//  1. AUTHENTICATION — a valid Entra session is required (ALL requests).
 //  2. TUTOR CODE — the `x-tutor-code` header must name a stored tutor code
 //     whose availability window contains "now" (one PK SELECT). Checked on
-//     EVERY request, so an open chat stops accepting messages once the window
-//     closes.
+//     every DATA request, so an open chat stops accepting messages once the
+//     window closes.
 //  3. THREAD OWNERSHIP — every thread-touching request must carry the
 //     `x-thread-token` HMAC binding (code, session user, threadId), signed by
 //     app/[code]/page.tsx when it issued the threadId (lib/thread-token.ts).
+//
+// The lone exception is GET `/info`: runtime metadata (the agent registry +
+// capabilities) with no chat data, so it is gated by AUTHENTICATION ALONE — the
+// teacher's read-only conversation viewer needs it without a tutor code. See the
+// `info` branch in the handler.
 //
 // THREAT MODEL for check 3 and the endpoint allowlist: the threadId arrives in
 // the client-controlled run body, and Mastra does NOT bind threads to a
@@ -102,6 +113,29 @@ async function handler(req: Request): Promise<Response> {
     return Response.json({ error: "Authentication required" }, { status: 401 });
   }
 
+  const runtimeRequest = classifyRequest(req);
+  if (runtimeRequest.kind === "unsupported") {
+    // Includes OPTIONS: the chat is same-origin, so no request ever preflights.
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // INFO is runtime METADATA — the agent registry and AG-UI capabilities, with
+  // NO chat data — so it is gated by AUTHENTICATION ALONE (the data endpoints
+  // below still require the tutor code AND the thread token). The teacher's
+  // read-only conversation viewer mounts a CopilotKitProvider purely to render
+  // stored messages; that provider pings `/info` on mount but sends no
+  // `x-tutor-code` header, so requiring a valid code here would 403 it for no
+  // benefit — and would not work at all for an EXPIRED code, whose conversations
+  // are still viewable. The placeholder resourceId is never consulted: `/info`
+  // runs no agent (it is only used to scope memory on an actual run).
+  if (runtimeRequest.kind === "info") {
+    const runtime = new CopilotRuntime({
+      agents: MastraAgent.getLocalAgents({ mastra, resourceId: INFO_RESOURCE_ID }),
+    });
+    const app = createCopilotEndpoint({ runtime, basePath: "/api/copilotkit" });
+    return app.fetch(req);
+  }
+
   const code = req.headers.get("x-tutor-code") ?? "";
   const verification = await checkTutorCode(code);
   if (!verification.ok) {
@@ -109,34 +143,27 @@ async function handler(req: Request): Promise<Response> {
   }
   const { entry } = verification;
 
-  const runtimeRequest = classifyRequest(req);
-  if (runtimeRequest.kind === "unsupported") {
-    // Includes OPTIONS: the chat is same-origin, so no request ever preflights.
-    return Response.json({ error: "Not found" }, { status: 404 });
-  }
-
-  // THREAD OWNERSHIP (check 3). run/connect carry the threadId in their AG-UI
-  // body — peek it out of a clone, the runtime still needs the original.
+  // THREAD OWNERSHIP (check 3). Only run/connect/stop reach here; run/connect
+  // carry the threadId in their AG-UI body — peek it out of a clone, the runtime
+  // still needs the original.
   let threadId: string | undefined;
-  if (runtimeRequest.kind !== "info") {
-    if (runtimeRequest.kind === "stop") {
-      threadId = runtimeRequest.threadId;
-    } else {
-      const body: unknown = await req
-        .clone()
-        .json()
-        .catch(() => undefined);
-      const bodyThreadId = (body as { threadId?: unknown } | undefined)?.threadId;
-      threadId = typeof bodyThreadId === "string" ? bodyThreadId : undefined;
-    }
-    const token = req.headers.get("x-thread-token");
-    if (
-      threadId === undefined ||
-      !THREAD_ID_PATTERN.test(threadId) ||
-      !verifyThreadToken(token, { code, userId, threadId }, getThreadTokenSecret())
-    ) {
-      return Response.json({ error: THREAD_REJECTION_MESSAGE }, { status: 403 });
-    }
+  if (runtimeRequest.kind === "stop") {
+    threadId = runtimeRequest.threadId;
+  } else {
+    const body: unknown = await req
+      .clone()
+      .json()
+      .catch(() => undefined);
+    const bodyThreadId = (body as { threadId?: unknown } | undefined)?.threadId;
+    threadId = typeof bodyThreadId === "string" ? bodyThreadId : undefined;
+  }
+  const token = req.headers.get("x-thread-token");
+  if (
+    threadId === undefined ||
+    !THREAD_ID_PATTERN.test(threadId) ||
+    !verifyThreadToken(token, { code, userId, threadId }, getThreadTokenSecret())
+  ) {
+    return Response.json({ error: THREAD_REJECTION_MESSAGE }, { status: 403 });
   }
 
   const requestContext = new RequestContext();

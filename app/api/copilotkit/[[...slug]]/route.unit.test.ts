@@ -2,11 +2,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The chat runtime route gates EVERY request with three server-side checks
-// (auth → tutor code → thread-ownership token) before it ever builds the Mastra
-// runtime. Those checks are the security boundary, and they all short-circuit
-// with a 401/403/404 — so they can be exercised fast, with no DB and no LLM, by
-// mocking only the I/O seams and driving real `Request`s through the handler.
+// The chat runtime route gates every DATA request (run/connect/stop) with three
+// server-side checks (auth → tutor code → thread-ownership token) before it ever
+// builds the Mastra runtime. GET `/info` is the exception: metadata only, gated
+// by AUTH ALONE (the read-only conversation viewer needs it without a code).
+// Those checks are the security boundary, and they all short-circuit with a
+// 401/403/404 — so they can be exercised fast, with no DB and no LLM, by mocking
+// only the I/O seams and driving real `Request`s through the handler.
 //
 // What is REAL here: `classifyRequest` (the endpoint allowlist) and the
 // thread-token HMAC (`lib/thread-token.ts`). What is mocked: the session, the
@@ -103,10 +105,11 @@ describe("authentication gate", () => {
   });
 });
 
-describe("tutor-code gate (re-checked on every request)", () => {
+describe("tutor-code gate (re-checked on every data request)", () => {
   it("403s an unknown code with a human-readable message", async () => {
     checkTutorCode.mockResolvedValue({ ok: false, reason: "unknown-code" });
-    const res = await GET(new Request(`${BASE}/info`, { headers: { "x-tutor-code": CODE } }));
+    // A data endpoint (run) — that is what the code gate protects now.
+    const res = await POST(runRequest({ threadId: crypto.randomUUID() }));
     expect(res.status).toBe(403);
     expect((await res.json()).error).toMatch(/requires a valid tutor code/i);
   });
@@ -184,14 +187,28 @@ describe("thread-ownership token (real HMAC)", () => {
   });
 });
 
-describe("happy path past the gate", () => {
-  it("forwards a valid GET /info to the runtime under the code's resourceId", async () => {
-    const res = await GET(new Request(`${BASE}/info`, { headers: { "x-tutor-code": CODE } }));
+describe("info endpoint (auth-only metadata)", () => {
+  it("serves GET /info with auth alone — no tutor code, no code check", async () => {
+    // The read-only conversation viewer mounts a CopilotKitProvider that pings
+    // /info but sends no x-tutor-code. It must NOT 403, must not consult the
+    // code store, and must run on the placeholder resourceId (no agent runs).
+    const res = await GET(new Request(`${BASE}/info`));
     expect(res.status).toBe(200);
     expect(endpointFetch).toHaveBeenCalledOnce();
-    expect(getLocalAgents).toHaveBeenCalledWith(expect.objectContaining({ resourceId: CODE }));
+    expect(checkTutorCode).not.toHaveBeenCalled();
+    expect(getLocalAgents).toHaveBeenCalledWith(
+      expect.objectContaining({ resourceId: "__info__" }),
+    );
   });
 
+  it("401s GET /info without a session (auth still required)", async () => {
+    auth.mockResolvedValue(null);
+    const res = await GET(new Request(`${BASE}/info`));
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("happy path past the gate", () => {
   it("forwards a run carrying a correctly-signed token", async () => {
     const threadId = crypto.randomUUID();
     const token = signThreadToken(

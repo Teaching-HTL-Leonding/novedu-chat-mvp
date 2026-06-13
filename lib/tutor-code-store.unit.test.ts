@@ -46,9 +46,9 @@ vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 import {
   checkTutorCode,
   createTutorCode,
-  gcExpiredTutorCodes,
   generateTutorCode,
-  listValidTutorCodes,
+  getOwnedTutorCode,
+  listTutorCodes,
   MAX_NOTE_LENGTH,
   TUTOR_CODE_PATTERN,
   type TutorCodeEntry,
@@ -66,6 +66,7 @@ function entry(overrides: Partial<TutorCodeEntry> = {}): TutorCodeEntry {
     validUntil: new Date("2026-06-10T14:00:00Z"),
     note: "",
     origin: null,
+    anonymous: true,
     createdAt: new Date("2026-06-09T09:00:00Z"),
     ...overrides,
   };
@@ -160,6 +161,7 @@ describe("createTutorCode", () => {
     validUntil: new Date("2026-06-10T14:00:00Z"),
     note: "My class",
     origin: "http://localhost:3000",
+    anonymous: false,
   };
 
   it("stores the row under the creating teacher and returns the code", async () => {
@@ -174,6 +176,8 @@ describe("createTutorCode", () => {
       validUntil: data.validUntil,
       note: "My class",
       origin: "http://localhost:3000",
+      // The tutor's anonymity flag is frozen onto the row at create time.
+      anonymous: false,
     });
     expect(fake.state.inserted[0]?.createdAt).toBeInstanceOf(Date);
   });
@@ -244,27 +248,43 @@ describe("checkTutorCode", () => {
   });
 });
 
-describe("listValidTutorCodes", () => {
+describe("listTutorCodes", () => {
   it("returns the teacher's rows", async () => {
     const rows = [entry(), entry({ code: "f6g7h8i9j0" })];
     fake.state.rows = rows;
-    await expect(listValidTutorCodes("teacher-sub-1", NOW)).resolves.toEqual(rows);
+    await expect(listTutorCodes("teacher-sub-1")).resolves.toEqual(rows);
   });
 
   it("returns undefined instead of throwing when the database is down", async () => {
     fake.state.selectError = new Error("connection lost");
-    await expect(listValidTutorCodes("teacher-sub-1", NOW)).resolves.toBeUndefined();
+    await expect(listTutorCodes("teacher-sub-1")).resolves.toBeUndefined();
   });
 });
 
-describe("gcExpiredTutorCodes", () => {
-  it("issues one delete", async () => {
-    await gcExpiredTutorCodes(NOW);
-    expect(fake.state.deleteCalls).toBe(1);
+describe("getOwnedTutorCode", () => {
+  it("returns the row when it belongs to the asking teacher", async () => {
+    const row = entry();
+    fake.state.rows = [row];
+    await expect(getOwnedTutorCode("a1b2c3d4e5", "teacher-sub-1")).resolves.toEqual(row);
   });
 
-  it("never throws — failures only log", async () => {
-    fake.state.deleteError = new Error("connection lost");
-    await expect(gcExpiredTutorCodes(NOW)).resolves.toBeUndefined();
+  it("returns null for a code created by someone else", async () => {
+    fake.state.rows = [entry({ createdBy: "another-teacher" })];
+    await expect(getOwnedTutorCode("a1b2c3d4e5", "teacher-sub-1")).resolves.toBeNull();
+  });
+
+  it("returns null for an unknown code", async () => {
+    fake.state.rows = [];
+    await expect(getOwnedTutorCode("a1b2c3d4e5", "teacher-sub-1")).resolves.toBeNull();
+  });
+
+  it("rejects a malformed code without a database round-trip", async () => {
+    fake.state.selectError = new Error("must not be reached");
+    await expect(getOwnedTutorCode("NOT_A_CODE", "teacher-sub-1")).resolves.toBeNull();
+  });
+
+  it("returns undefined instead of throwing when the database is down", async () => {
+    fake.state.selectError = new Error("connection lost");
+    await expect(getOwnedTutorCode("a1b2c3d4e5", "teacher-sub-1")).resolves.toBeUndefined();
   });
 });

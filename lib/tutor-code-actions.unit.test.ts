@@ -9,11 +9,15 @@ const mocks = vi.hoisted(() => ({
   requireEffectiveTeacher: vi.fn(),
   loadAndBuildTutorPrompt: vi.fn(),
   createTutorCode: vi.fn(),
+  getOwnedTutorCode: vi.fn(),
+  deleteTutorCodeAndData: vi.fn(),
+  revalidatePath: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
   headers: vi.fn(async () => new Headers({ host: "localhost:3000" })),
 }));
+vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/student-mode", () => ({
   requireEffectiveTeacher: mocks.requireEffectiveTeacher,
 }));
@@ -23,15 +27,23 @@ vi.mock("@/lib/tutors", () => ({
 }));
 vi.mock("@/lib/tutor-code-store", async (importOriginal) => {
   // Keep the REAL validateTutorCodeRequest — the action's validation behavior
-  // is part of the contract under test; only the storage call is mocked.
+  // is part of the contract under test; only the storage calls are mocked.
   const actual = await importOriginal<typeof import("@/lib/tutor-code-store")>();
-  return { ...actual, createTutorCode: mocks.createTutorCode };
+  return {
+    ...actual,
+    createTutorCode: mocks.createTutorCode,
+    getOwnedTutorCode: mocks.getOwnedTutorCode,
+  };
 });
+// The destructive store is fully mocked — it pulls in @/app/mastra otherwise.
+vi.mock("@/lib/tutor-stats-store", () => ({
+  deleteTutorCodeAndData: mocks.deleteTutorCodeAndData,
+}));
 // validateTutorCodeRequest (imported for real above) pulls in @/lib/db, which
 // must not try to talk to a database in unit tests.
 vi.mock("@/lib/db", () => ({ getDb: () => ({}) }));
 
-import { createTutorCodeAction } from "@/lib/tutor-code-actions";
+import { createTutorCodeAction, deleteTutorCodeAction } from "@/lib/tutor-code-actions";
 
 const TUTOR = "https://example.com/tutor.yaml";
 const START = 1_700_000_000;
@@ -52,7 +64,12 @@ beforeEach(() => {
   // The teacher guard RETURNS the session — the action must reuse it instead
   // of resolving the session a second time.
   mocks.requireEffectiveTeacher.mockResolvedValue({ user: { id: "teacher-sub-1" } });
-  mocks.loadAndBuildTutorPrompt.mockResolvedValue({ ok: true, prompt: "p", warnings: [] });
+  mocks.loadAndBuildTutorPrompt.mockResolvedValue({
+    ok: true,
+    prompt: "p",
+    warnings: [],
+    anonymous: true,
+  });
   mocks.createTutorCode.mockResolvedValue({ stored: true, code: "abc123def4" });
 });
 
@@ -78,6 +95,7 @@ describe("createTutorCodeAction", () => {
       validUntil: new Date(END * 1000),
       note: "trimmed note",
       origin: "http://localhost:3000",
+      anonymous: true,
     });
   });
 
@@ -129,5 +147,53 @@ describe("createTutorCodeAction", () => {
     mocks.requireEffectiveTeacher.mockResolvedValue({ user: {} });
     const state = await createTutorCodeAction({ status: "idle" }, formData());
     expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/sign in/i) });
+  });
+});
+
+describe("deleteTutorCodeAction", () => {
+  const ownedEntry = { code: "a1b2c3d4e5", createdBy: "teacher-sub-1" };
+
+  it("deletes the code and revalidates the list when the teacher owns it", async () => {
+    mocks.getOwnedTutorCode.mockResolvedValue(ownedEntry);
+    mocks.deleteTutorCodeAndData.mockResolvedValue(true);
+
+    const result = await deleteTutorCodeAction("a1b2c3d4e5");
+
+    expect(result).toEqual({ ok: true });
+    expect(mocks.getOwnedTutorCode).toHaveBeenCalledWith("a1b2c3d4e5", "teacher-sub-1");
+    expect(mocks.deleteTutorCodeAndData).toHaveBeenCalledWith("a1b2c3d4e5");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/tutor-codes");
+  });
+
+  it("rejects non-teachers and never touches the data", async () => {
+    mocks.requireEffectiveTeacher.mockRejectedValue(new Error("nope"));
+    const result = await deleteTutorCodeAction("a1b2c3d4e5");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
+    expect(mocks.deleteTutorCodeAndData).not.toHaveBeenCalled();
+  });
+
+  it("refuses to delete a code the teacher does not own (treated as already gone)", async () => {
+    mocks.getOwnedTutorCode.mockResolvedValue(null);
+    const result = await deleteTutorCodeAction("a1b2c3d4e5");
+    // Owner-gated: a foreign/unknown code is a no-op success so the row clears,
+    // but the destructive delete must NOT run.
+    expect(result).toEqual({ ok: true });
+    expect(mocks.deleteTutorCodeAndData).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/tutor-codes");
+  });
+
+  it("surfaces a retry hint when the ownership check itself fails", async () => {
+    mocks.getOwnedTutorCode.mockResolvedValue(undefined);
+    const result = await deleteTutorCodeAction("a1b2c3d4e5");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/try again/i) });
+    expect(mocks.deleteTutorCodeAndData).not.toHaveBeenCalled();
+  });
+
+  it("reports failure (no revalidate) when the delete is only partial", async () => {
+    mocks.getOwnedTutorCode.mockResolvedValue(ownedEntry);
+    mocks.deleteTutorCodeAndData.mockResolvedValue(false);
+    const result = await deleteTutorCodeAction("a1b2c3d4e5");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/repeat/i) });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 });

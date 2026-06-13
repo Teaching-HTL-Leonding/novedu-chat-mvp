@@ -34,13 +34,29 @@ const NAV_ITEMS = [
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
 ] as const;
 
+// Dynamic routes have no fixed NAV_ITEMS entry, but they still need a status-bar
+// heading (the pages themselves render no title — the bar is the single source).
+// Matched on the path shape: the tutor code carries no title we know client-side,
+// so a static heading per route is shown.
+function dynamicHeading(pathname: string): string | undefined {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments[0] === "tutor-codes" && segments.length >= 2) {
+    // /tutor-codes/<code>            → stats
+    // /tutor-codes/<code>/c/<thread> → a single conversation
+    return segments[2] === "c" ? "Conversation" : "Tutor Code Stats";
+  }
+  return undefined;
+}
+
 export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
   const pathname = usePathname();
   const { open, setOpen, ref } = usePopover<HTMLDivElement>();
   const items = NAV_ITEMS.filter((item) => isTeacher || !item.teacherOnly);
-  // Heading lookup spans ALL items so a directly-opened URL still gets a title.
-  const current = NAV_ITEMS.find((item) => item.href === pathname);
-  const title = current ? `${BRAND} / ${current.heading}` : BRAND;
+  // Heading lookup spans ALL items so a directly-opened URL still gets a title;
+  // dynamic routes (the stats/conversation pages) fall back to a path-shape match.
+  const heading =
+    NAV_ITEMS.find((item) => item.href === pathname)?.heading ?? dynamicHeading(pathname);
+  const title = heading ? `${BRAND} / ${heading}` : BRAND;
 
   return (
     <div className={styles.nav} ref={ref}>
