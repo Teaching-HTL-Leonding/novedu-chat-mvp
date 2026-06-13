@@ -106,3 +106,33 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # Production Docker build (NO push) — reproduces the multi-stage image build
+  # exactly as docker-publish.yml does it, so a build break surfaces on the PR
+  # instead of only after merge during CD. The plain `npm run build` step in the
+  # `qa` job runs with ALL deps installed and so cannot catch breakage that only
+  # appears in the layered image (e.g. the deps stage copies just the root
+  # package.json, so a workspace's deps aren't installed when `next build`
+  # runs) — only an actual Docker build does.
+  #
+  # Secret-free, same as the rest of this workflow: the Dockerfile bakes
+  # build-only placeholder env, and we never log in or push. PR-only — on a main
+  # push (workflow_call) the real build+push in docker-publish.yml is the gate,
+  # so building here too would just be a redundant ~4-minute rebuild.
+  prod-build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build production image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          # Read the layer cache the main publish populates; don't write it
+          # (cache export is restricted for fork pull_request tokens).
+          cache-from: type=gha
