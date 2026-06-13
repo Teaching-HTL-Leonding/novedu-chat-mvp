@@ -37,7 +37,7 @@ function runCli(args: string[]): Promise<Run> {
   });
 }
 
-describe("novedu-tutor validate — local files", () => {
+describe("novedu-cli validate — local files", () => {
   it("exits 0 for a valid tutor", async () => {
     const { code, stdout } = await runCli(["validate", `${tutorsDir}simple-tutor.yaml`]);
 
@@ -60,7 +60,7 @@ describe("novedu-tutor validate — local files", () => {
   });
 });
 
-describe("novedu-tutor validate — public URLs", () => {
+describe("novedu-cli validate — public URLs", () => {
   it("exits 0 for the published valid tutor", async () => {
     const { code, stdout } = await runCli(["validate", `${RAW_BASE}/simple-tutor.yaml`]);
 

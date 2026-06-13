@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "tsdown";
 
-// Bundles the CLI into plain Node ESM so `npx novedu-tutor` needs no tsconfig /
+// Bundles the CLI into plain Node ESM so `npx @novedu/cli` needs no tsconfig /
 // tsx at runtime. The tutor-validation core (`@/lib/tutors`) is inlined by
 // reference — single source of truth, zero duplicated logic — while its runtime
 // libraries stay external so npm can dedupe them. The shebang is added
