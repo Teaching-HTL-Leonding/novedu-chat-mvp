@@ -10,7 +10,7 @@ export type {
   WarningCode,
 } from "./errors";
 export { defaultFetcher, type Fetcher, type FetchResponse } from "./fetcher";
-export { loadAndBuildTutorPrompt } from "./load";
+export { type LoadOptions, loadAndBuildTutorPrompt } from "./load";
 export { parseYaml, validate } from "./parse";
 export { sampleExampleQuestions } from "./sample";
 export {

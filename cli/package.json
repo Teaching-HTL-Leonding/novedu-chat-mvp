@@ -1,0 +1,30 @@
+{
+  "name": "novedu-tutor",
+  "version": "0.1.0",
+  "description": "Command-line companion for the Novedu chat app. Validates tutor YAML definitions (more commands to follow).",
+  "type": "module",
+  "bin": {
+    "novedu-tutor": "dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "commander": "^15.0.0",
+    "handlebars": "^4.7.9",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "tsdown": "^0.22.2"
+  }
+}
