@@ -1,10 +1,10 @@
 {
-  "name": "novedu-tutor",
+  "name": "@novedu/cli",
   "version": "0.1.0",
   "description": "Command-line companion for the Novedu chat app. Validates tutor YAML definitions (more commands to follow).",
   "type": "module",
   "bin": {
-    "novedu-tutor": "dist/main.js"
+    "novedu-cli": "dist/main.js"
   },
   "files": [
     "dist"

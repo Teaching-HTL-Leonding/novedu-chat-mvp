@@ -1,7 +1,7 @@
 ---
 name: novedu-tutor-cli
 description: >-
-  Validate a Novedu tutor YAML with the `novedu-tutor` CLI, which runs the exact
+  Validate a Novedu tutor YAML with the `novedu-cli` CLI, which runs the exact
   same checks the app enforces (YAML parse, tutor + fragment-file schema,
   cross-reference and variable consistency, system-prompt assembly). Use this
   skill whenever the user wants to validate, check, lint, or verify a tutor YAML
@@ -16,9 +16,9 @@ description: >-
   reports precise error codes you can act on.
 ---
 
-# Validating tutor YAML with `novedu-tutor`
+# Validating tutor YAML with `novedu-cli`
 
-`novedu-tutor` is the command-line companion for the Novedu chat app. Its first
+`novedu-cli` is the command-line companion for the Novedu chat app. Its first
 command, `validate`, takes a tutor YAML (a local file or a public URL) and runs
 the **same** validation pipeline the app uses: parse YAML → schema-check the
 tutor and every referenced fragment file → check that fragment references and
@@ -54,15 +54,15 @@ install. (The `--` passes the rest of the arguments through to the CLI.)
 own directory. Use the published package via `npx`:
 
 ```bash
-npx novedu-tutor validate <pathOrUrl> [--json]
+npx @novedu/cli validate <pathOrUrl> [--json]
 ```
 
-> Note: the `npx` form works once `novedu-tutor` is published to npm. If `npx`
+> Note: the `npx` form works once `@novedu/cli` is published to npm. If `npx`
 > reports the package can't be found, it isn't published yet — fall back to
 > running it from a clone of the repo with `npm run cli -- validate …`.
 
 **How to decide:** if the current directory (or the file you're validating) is
-inside the app repo, use `npm run cli`; otherwise use `npx novedu-tutor`. When
+inside the app repo, use `npm run cli`; otherwise use `npx @novedu/cli`. When
 unsure, a quick check for a root `package.json` named `chat-prototype` settles it.
 
 ## The `validate` command
@@ -125,11 +125,11 @@ npm run cli -- validate tutors/broken-tutor.yaml
 Outside the repo, validating a published tutor by URL:
 
 ```bash
-npx novedu-tutor validate https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/simple-tutor.yaml
+npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/simple-tutor.yaml
 ```
 
 Machine-readable output for scripting/CI:
 
 ```bash
-npx novedu-tutor validate ./my-tutor.yaml --json
+npx @novedu/cli validate ./my-tutor.yaml --json
 ```

@@ -23,7 +23,7 @@
     "test:e2e:ci": "playwright test --grep-invert @live",
     "test:e2e:ui": "playwright test --ui",
     "cli": "tsx cli/src/main.ts",
-    "cli:build": "npm --workspace novedu-tutor run build",
+    "cli:build": "npm --workspace @novedu/cli run build",
     "test:cli": "npm run cli:build && vitest run --config cli/vitest.config.mts",
     "qa": "npm run check && npm run typecheck && npm run test && npm run build",
     "qa:e2e": "npm run qa && npm run test:e2e"
