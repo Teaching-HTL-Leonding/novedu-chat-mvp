@@ -17,7 +17,7 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 | **Mastra agents** (`app/mastra/`) | The `tutor` agent resolves its instructions + model per request from the tutor URL and persists each conversation via Mastra `Memory`. Agents are registered in `app/mastra/index.ts`. Memory/storage is **Azure SQL** via `@mastra/mssql`, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. |
 | **Model endpoint** (`app/mastra/scch.ts`) | A self-hosted, OpenAI-compatible vLLM GPU server ("SCCH"). The tutor's `llm.model` resolves against this endpoint; the API key stays server-side. |
-| **Auth** (`auth.ts`, `proxy.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate. Any signed-in user is allowed; everyone else is redirected to sign-in. JWT sessions, no DB adapter. |
+| **Auth** (`auth.ts`, `proxy.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate. Any signed-in user passes the gate (everyone else is redirected to sign-in); teacher-only operations are separately gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`). JWT sessions, no DB adapter. |
 | **API routes** (`app/api/`) | `validate-tutor` (validate a tutor URL → prompt or structured errors), `copilotkit` (chat runtime), `auth` (sign-in). |
 
 ### Request flow
@@ -61,6 +61,11 @@ AZURE_CLIENT_SECRET=your-entra-app-client-secret
 #   openssl rand -base64 32
 AUTH_SECRET=your-generated-secret
 
+# Object id of the Entra security group whose members are treated as teachers
+# (gates teacher-only operations such as creating tutor codes). Tenant-specific
+# configuration, not a secret. Required — the app fails to start without it.
+TEACHER_GROUP_ID=your-entra-teacher-group-object-id
+
 # --- Azure SQL (Microsoft SQL Server) — Mastra memory + app tables (tutor codes) ---
 # Standard ADO.NET connection string. Auth is handled by the app via Microsoft Entra
 # (your `az login` identity locally, the app's Managed Identity on Azure) — there is NO
@@ -86,7 +91,9 @@ TUTOR_CODE_ORIGIN=https://your-public-origin
 
 Notes:
 
-- The app **fails fast at startup** if any `AZURE_*` value is missing.
+- The app **fails fast at startup** if any required sign-in variable is missing — the
+  `AZURE_*` Entra credentials and `TEACHER_GROUP_ID` (`auth.ts`). (`AUTH_SECRET` is
+  likewise enforced by Auth.js itself.)
 - If `SCCH_BASE_URL` / `SCCH_API_KEY` are unset, the app still starts but no SCCH chat
   models are available (a warning is logged).
 - `MSSQL_CONNECTION_STRING` is **required to chat**: tutor codes and the `tutor`
@@ -133,10 +140,12 @@ npm run start
 | `npm run dev` | Start the Next.js dev server. |
 | `npm run build` / `npm run start` | Production build / serve. |
 | `npm run check` | Biome lint + format check. (`check:fix` to auto-fix.) |
+| `npm run lint` / `npm run format` | Biome lint only / format-write only. |
 | `npm run typecheck` | `tsc --noEmit`. |
-| `npm run test` | Vitest (unit + component). |
-| `npm run test:e2e` | Playwright end-to-end tests. |
-| `npm run qa` | `check` + `typecheck` + `test` + `build`. |
+| `npm run test` | Vitest (unit + component). (`test:unit` / `test:component` for one project.) |
+| `npm run test:e2e` | Playwright end-to-end tests. (`test:e2e:ci` skips `@live` tests needing real infra.) |
+| `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
+| `npm run qa` | `check` + `typecheck` + `test` + `build`. (`qa:e2e` adds the e2e suite.) |
 
 > Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
 
@@ -153,10 +162,16 @@ with defaults.
   Microsoft Entra auth (`token-credential` + an explicit `az login`/Managed Identity
   credential chain; tokens are fetched and auto-refreshed per pooled connection). The
   `tutor` agent's memory requires this store, so `MSSQL_CONNECTION_STRING` must be set to
-  chat — there is no in-memory fallback (a tutor chat errors if it is missing). Per-user
-  memory scoping is not yet wired up: threads are persisted under a single hard-coded
-  resource id (`chat-prototype`).
+  chat — there is no in-memory fallback (a tutor chat errors if it is missing). Memory is
+  scoped by **tutor code**: the code is the Mastra `resourceId`, so every thread is grouped
+  under its code. A user↔chat link is written to `novedu_user_chats` **only** for tutors
+  that opt out of anonymity (`anonymous: false`); the default is anonymous and stores no
+  link. See `docs/tutor-codes.md`.
 - **SSRF** — `/api/validate-tutor` fetches an arbitrary user-supplied URL server-side. The
   prototype only restricts the scheme to `http(s)`; a production deployment should also
   allow-list hosts, block private IP ranges, and disable redirects.
-- **Authorization** — any authenticated Entra user is allowed; there is no group/role check.
+- **Authorization** — the Entra gate admits any signed-in user, but teacher-only operations
+  (creating/listing tutor codes, validating tutors) are gated by membership in
+  `TEACHER_GROUP_ID`, surfaced as `session.user.isTeacher` and enforced server-side via
+  `requireEffectiveTeacher()` (`lib/student-mode.ts`, which also honors "view as student"
+  mode). See `docs/auth.md`.

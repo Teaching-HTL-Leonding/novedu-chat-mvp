@@ -6,6 +6,11 @@ name: QA
 on:
   pull_request:
     branches: [main]
+    # Doc-only changes don't affect the build or tests — skip the gate when a PR
+    # touches nothing but Markdown (a mixed PR still runs the full suite).
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   workflow_call:
 
 concurrency:
