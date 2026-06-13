@@ -15,11 +15,18 @@ test.describe("as a student", () => {
     await expect(page.getByRole("textbox")).toHaveCount(0);
   });
 
-  test("the Share Tutor page is denied", async ({ page }) => {
+  test("the Create Tutor Code page is denied", async ({ page }) => {
     await page.goto("/share-tutor");
 
     await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Create Share Link" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Create Tutor Code" })).toHaveCount(0);
+  });
+
+  test("the Shared Tutor Codes page is denied", async ({ page }) => {
+    await page.goto("/tutor-codes");
+
+    await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
+    await expect(page.getByRole("table")).toHaveCount(0);
   });
 
   test("the validate-tutor API responds 403", async ({ page }) => {
@@ -35,9 +42,9 @@ test.describe("as a student", () => {
     expect(body.errors[0].code).toBe("FORBIDDEN");
   });
 
-  test("the chat backend rejects requests without a valid share link", async ({ page }) => {
+  test("the chat backend rejects requests without a valid tutor code", async ({ page }) => {
     const res = await page.request.get("/api/copilotkit/info", {
-      headers: { "x-tutor-url": "https://example.com/tutor.yaml" },
+      headers: { "x-tutor-code": "zzzzzzzzz!" },
     });
 
     expect(res.status()).toBe(403);
@@ -49,7 +56,8 @@ test.describe("as a student", () => {
 
     await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Validate Tutor" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Share Tutor" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Create Tutor Code" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Shared Tutor Codes" })).toHaveCount(0);
   });
 });
 
@@ -63,11 +71,11 @@ test.describe("as a teacher", () => {
     await expect(page.getByRole("button", { name: "Validate" })).toBeVisible();
   });
 
-  test("the Share Tutor page is accessible", async ({ page }) => {
+  test("the Create Tutor Code page is accessible", async ({ page }) => {
     await page.goto("/share-tutor");
 
     await expect(page.getByLabel("Tutor YAML URL")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Create Share Link" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create Tutor Code" })).toBeVisible();
   });
 
   test("the nav menu shows the teacher-only entries", async ({ page }) => {
@@ -75,6 +83,7 @@ test.describe("as a teacher", () => {
     await page.getByRole("button", { name: "Open navigation menu" }).click();
 
     await expect(page.getByRole("link", { name: "Validate Tutor" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Share Tutor" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Create Tutor Code" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Shared Tutor Codes" })).toBeVisible();
   });
 });

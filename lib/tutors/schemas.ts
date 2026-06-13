@@ -108,6 +108,10 @@ export const TutorSchema = z.strictObject({
   title: z.string().optional(),
   description: z.string(),
   exampleQuestions: z.array(ExampleQuestionSchema).optional(),
+  // Privacy: chats are anonymous by default — no link between the signed-in
+  // user and their chat is persisted. A tutor opts INTO attribution with
+  // `anonymous: false`, which records who owns each chat in `novedu_user_chats`.
+  anonymous: z.boolean().optional(),
   // Students may attach images in the chat by default; a tutor opts OUT with
   // `imageInput: false` (e.g. for models without vision support — the flag is
   // what gates the upload UI, nothing checks the model's actual modalities).

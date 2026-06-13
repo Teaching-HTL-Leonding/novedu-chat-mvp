@@ -6,7 +6,7 @@ import {
   nowAsDatetimeLocal,
 } from "@/lib/datetime-local";
 
-// Mock the server action: it needs auth + the signing secret, neither of which
+// Mock the server action: it needs auth + the database, neither of which
 // exists in the browser test runner. The mock captures the submitted FormData
 // so the tests can assert the browser→server contract (especially the
 // local-time → unix-seconds conversion done by the form).
@@ -14,19 +14,19 @@ const submitted: FormData[] = [];
 let nextResult: {
   status: string;
   link?: string;
-  shortLink?: string;
-  warning?: string;
+  note?: string;
   message?: string;
 } = {
   status: "success",
-  link: "http://localhost:3000/?tutor=x&start=1&end=2&sig=abc",
+  link: "http://localhost:3000/a1b2c3d4e5",
+  note: "",
 };
 // When set, the mocked action stays pending until this promise resolves —
 // lets tests observe the form's in-flight state.
 let hold: Promise<void> | null = null;
 
-vi.mock("@/lib/share-link-actions", () => ({
-  createShareLinkAction: vi.fn(async (_prev: unknown, formData: FormData) => {
+vi.mock("@/lib/tutor-code-actions", () => ({
+  createTutorCodeAction: vi.fn(async (_prev: unknown, formData: FormData) => {
     submitted.push(formData);
     if (hold) await hold;
     return nextResult;
@@ -43,35 +43,37 @@ async function fillAndSubmit(screen: Awaited<ReturnType<typeof render>>) {
   await screen.getByLabelText("Tutor YAML URL").fill(TUTOR_URL);
   await screen.getByLabelText(/Available from/).fill(START);
   await screen.getByLabelText(/Available until/).fill(END);
-  await screen.getByRole("button", { name: "Create Share Link" }).click();
+  await screen.getByRole("button", { name: "Create Tutor Code" }).click();
 }
 
-test("submits the tutor URL and the window as unix seconds (local-time converted)", async () => {
+test("submits the tutor URL, note, and window as unix seconds (local-time converted)", async () => {
   submitted.length = 0;
-  nextResult = { status: "success", link: "http://localhost:3000/?sig=abc" };
+  nextResult = { status: "success", link: "http://localhost:3000/a1b2c3d4e5", note: "My class" };
   const screen = await render(<ShareTutorForm />);
 
+  await screen.getByLabelText(/Note/).fill("My class");
   await fillAndSubmit(screen);
-  await expect.element(screen.getByRole("heading", { name: "Share link" })).toBeVisible();
+  await expect.element(screen.getByRole("heading", { name: "Tutor Code" })).toBeVisible();
 
   expect(submitted).toHaveLength(1);
   const formData = submitted[0];
   if (!formData) throw new Error("no FormData captured");
   expect(formData.get("tutor")).toBe(TUTOR_URL);
+  expect(formData.get("note")).toBe("My class");
   // The hidden fields must carry the datetime-local values converted IN THE
   // BROWSER to unix seconds — the only place the user's timezone is known.
   expect(formData.get("startTs")).toBe(String(datetimeLocalToUnixSeconds(START)));
   expect(formData.get("endTs")).toBe(String(datetimeLocalToUnixSeconds(END)));
 });
 
-test("shows the generated link in a copyable, read-only field", async () => {
-  const link = "http://localhost:3000/?tutor=x&start=1&end=2&sig=abc";
-  nextResult = { status: "success", link };
+test("shows the tutor code URL in a copyable, read-only field", async () => {
+  const link = "http://localhost:3000/a1b2c3d4e5";
+  nextResult = { status: "success", link, note: "" };
   const screen = await render(<ShareTutorForm />);
 
   await fillAndSubmit(screen);
 
-  const output = screen.getByLabelText("Share link", { exact: true });
+  const output = screen.getByLabelText("Tutor Code link", { exact: true });
   await expect.element(output).toBeVisible();
   expect((output.element() as HTMLInputElement).value).toBe(link);
   expect((output.element() as HTMLInputElement).readOnly).toBe(true);
@@ -84,79 +86,33 @@ test("shows the generated link in a copyable, read-only field", async () => {
   writeText.mockRestore();
 });
 
-test("shows the short link alongside the full link, each with its own Copy button", async () => {
-  const link = "http://localhost:3000/?tutor=x&start=1&end=2&sig=abc";
-  const shortLink = "http://localhost:3000/?link=abc123def4";
-  nextResult = { status: "success", link, shortLink };
-  const screen = await render(<ShareTutorForm />);
-
-  await fillAndSubmit(screen);
-
-  await expect.element(screen.getByLabelText("Share link", { exact: true })).toBeVisible();
-  const short = screen.getByLabelText("Short link", { exact: true });
-  await expect.element(short).toBeVisible();
-  expect((short.element() as HTMLInputElement).value).toBe(shortLink);
-  expect((short.element() as HTMLInputElement).readOnly).toBe(true);
-
-  // Each row copies ITS link, and the "Copied!" feedback stays on that row.
-  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
-  const copyButtons = screen.getByRole("button", { name: "Copy" });
-  await copyButtons.nth(1).click();
-  expect(writeText).toHaveBeenCalledWith(shortLink);
-  expect(writeText).not.toHaveBeenCalledWith(link);
-  await expect.element(screen.getByRole("button", { name: "Copied!" })).toBeVisible();
-  // The full link's button is untouched and still offers "Copy".
-  await expect.element(screen.getByRole("button", { name: "Copy" }).first()).toBeVisible();
-  writeText.mockRestore();
-});
-
-test("offers an open-in-new-tab button beside Copy for each link", async () => {
-  const link = "http://localhost:3000/?tutor=x&start=1&end=2&sig=abc";
-  const shortLink = "http://localhost:3000/?link=abc123def4";
-  nextResult = { status: "success", link, shortLink };
+test("offers an open-in-new-tab button beside Copy", async () => {
+  const link = "http://localhost:3000/a1b2c3d4e5";
+  nextResult = { status: "success", link, note: "" };
   const screen = await render(<ShareTutorForm />);
 
   await fillAndSubmit(screen);
 
   // An anchor (not window.open) so it works without JS and middle-click etc.
   // behave normally; target=_blank with the opener severed.
-  const openFull = screen.getByRole("link", { name: "Open Share link in new tab" });
-  await expect.element(openFull).toBeVisible();
-  expect(openFull.element().getAttribute("href")).toBe(link);
-  expect(openFull.element().getAttribute("target")).toBe("_blank");
-  expect(openFull.element().getAttribute("rel")).toContain("noopener");
-
-  const openShort = screen.getByRole("link", { name: "Open Short link in new tab" });
-  await expect.element(openShort).toBeVisible();
-  expect(openShort.element().getAttribute("href")).toBe(shortLink);
+  const open = screen.getByRole("link", { name: "Open Tutor Code link in new tab" });
+  await expect.element(open).toBeVisible();
+  expect(open.element().getAttribute("href")).toBe(link);
+  expect(open.element().getAttribute("target")).toBe("_blank");
+  expect(open.element().getAttribute("rel")).toContain("noopener");
 });
 
-test("shows the storage warning and no short link when the link was not stored", async () => {
-  nextResult = {
-    status: "success",
-    link: "http://localhost:3000/?tutor=x&start=1&end=2&sig=abc",
-    warning: "The link could not be stored, so no short link is available.",
-  };
-  const screen = await render(<ShareTutorForm />);
-
-  await fillAndSubmit(screen);
-
-  await expect.element(screen.getByLabelText("Share link", { exact: true })).toBeVisible();
-  await expect.element(screen.getByText(/could not be stored/)).toBeVisible();
-  expect(screen.getByLabelText("Short link", { exact: true }).query()).toBeNull();
-});
-
-test("renders the server action's error message", async () => {
+test("renders the server action's error message (e.g. when storage failed)", async () => {
   nextResult = {
     status: "error",
-    message: "The end of the availability window must be after its start.",
+    message: "The tutor code could not be stored. Try again, or contact the operator.",
   };
   const screen = await render(<ShareTutorForm />);
 
   await fillAndSubmit(screen);
 
-  await expect.element(screen.getByText(/end of the availability window/i)).toBeVisible();
-  expect(screen.getByLabelText("Share link", { exact: true }).query()).toBeNull();
+  await expect.element(screen.getByText(/could not be stored/i)).toBeVisible();
+  expect(screen.getByLabelText("Tutor Code link", { exact: true }).query()).toBeNull();
 });
 
 function inputValue(locator: { element: () => Element }): string {
@@ -213,15 +169,16 @@ test("disables the form and shows a pending label while the action is in flight"
   await fillAndSubmit(screen);
 
   // While pending: label switches, inputs and submit are disabled (so a
-  // double-click cannot create two links).
+  // double-click cannot create two codes).
   await expect.element(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
   await expect.element(screen.getByLabelText("Tutor YAML URL")).toBeDisabled();
+  await expect.element(screen.getByLabelText(/Note/)).toBeDisabled();
   await expect.element(screen.getByRole("button", { name: "Now" })).toBeDisabled();
 
   release?.();
   hold = null;
   await expect.element(screen.getByText("released")).toBeVisible();
-  await expect.element(screen.getByRole("button", { name: "Create Share Link" })).toBeEnabled();
+  await expect.element(screen.getByRole("button", { name: "Create Tutor Code" })).toBeEnabled();
 });
 
 test("+1h falls back to now when neither field is set", async () => {

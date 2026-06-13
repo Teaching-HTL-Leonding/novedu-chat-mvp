@@ -55,6 +55,7 @@ prompt:
     exampleQuestions: # optional; clickable starter questions on the empty chat
       - title: "Short label"
         question: "The full question text placed into the chat input on click."
+    anonymous: false # optional; omit for default true, set false to record which student each chat belongs to
     llm:
       model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
       imageInput: false # optional; omit for default true, set false to disable image uploads
@@ -66,6 +67,8 @@ prompt:
     ```
 
     `title`, `description`, and `exampleQuestions` are student-facing: students see them on the empty chat before the first message. Each example question needs a non-empty `title` (the clickable label) and `question` (shown as a tooltip and placed into the chat input on click — students can edit it before sending). Any number of example questions is allowed, but students see at most 5; with more, a random 5 are picked per page load, kept in the order they are defined — so order them deliberately, for example easy to hard.
+
+    `anonymous` controls chat attribution: by default (omitted or `true`) the app stores NO link between the signed-in student and their chat. Set `anonymous: false` to record which student each chat belongs to (for example for graded assignments) — and tell students when a tutor does that.
 
     Single-file tutor template:
 

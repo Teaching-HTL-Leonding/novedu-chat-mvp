@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { makeShareLink, openWindow, RAW_TUTORS } from "./share-link.utils";
+import { mintTutorCode, RAW_TUTORS } from "./tutor-code.utils";
 
-// A REAL end-to-end chat: open a signed share link, send "Hi!", and assert the
-// tutor streams back a non-empty answer (content doesn't matter — only that it
-// replies without error). Unlike `deep-link.spec.ts`, this DOES hit the LLM, so
-// it depends on the SCCH model endpoint being reachable; it also exercises the
-// `tutor` agent's Mastra Memory (the turn is persisted to the configured Azure
-// SQL store, scoped to the signed-in e2e user's id).
+// A REAL end-to-end chat: open a tutor code, send "Hi!", and assert the tutor
+// streams back a non-empty answer (content doesn't matter — only that it
+// replies without error). Unlike `tutor-code-link.spec.ts`, this DOES hit the
+// LLM, so it depends on the SCCH model endpoint being reachable; it also
+// exercises the `tutor` agent's Mastra Memory (the turn is persisted to the
+// configured Azure SQL store, scoped to the tutor code as resourceId).
 //
 // CopilotKit v2 testids used here (discovered from the rendered chat):
 //   - composer textarea: copilot-chat-textarea
@@ -23,7 +23,7 @@ test.setTimeout(120_000);
 test("sending a message gets a non-empty reply from the tutor", { tag: "@live" }, async ({
   page,
 }) => {
-  await page.goto(makeShareLink(openWindow(TUTOR_URL)));
+  await page.goto(`/${await mintTutorCode({ tutor: TUTOR_URL })}`);
 
   // Wait for the chat to initialize (the composer appears).
   const composer = page.getByTestId("copilot-chat-textarea");

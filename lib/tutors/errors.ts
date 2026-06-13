@@ -66,6 +66,11 @@ export type BuildResult =
       model: string;
       /** Whether students may attach images in the chat (tutor `llm.imageInput`, default true). */
       imageInput: boolean;
+      /**
+       * When true (the default), the user↔chat link is NOT persisted — chats
+       * stay anonymous. A tutor opts into attribution with `anonymous: false`.
+       */
+      anonymous: boolean;
       /** Optional student-facing greeting shown instead of the chat's default welcome text. */
       title?: string;
       /** Student-facing description, rendered below the welcome greeting. */

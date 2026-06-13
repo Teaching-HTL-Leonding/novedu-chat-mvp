@@ -6,7 +6,7 @@ import { scchProvider } from "./scch";
 
 // A single agent that is configured entirely by a tutor-definition YAML. The
 // tutor's URL arrives per request via `requestContext` (set by the CopilotKit
-// route after it verified the signed share link); this agent resolves its
+// route after it verified the tutor code and thread token); this agent resolves its
 // system prompt and model from that URL at request time using the reusable
 // `lib/tutors` core.
 
@@ -58,9 +58,10 @@ export const tutorAgent = new Agent({
     scchProvider.chat((await loadTutor(tutorUrl(requestContext))).model),
   // Persist the conversation so the tutor remembers earlier turns. No explicit
   // storage here: Memory inherits the Mastra instance's Azure SQL store (see
-  // `index.ts`), so threads/messages land in the `mastra_*` tables. The frontend
-  // supplies the thread id and the CopilotKit route the resource id (the
-  // signed-in user's stable id, so storage is per user). `semanticRecall`
+  // `index.ts`), so threads/messages land in the `mastra_*` tables. The thread
+  // id is server-generated per page load (app/[code]/page.tsx) and ownership-
+  // checked in the CopilotKit route, which also sets the resource id (the
+  // tutor code — threads group per code, see docs/tutor-codes.md). `semanticRecall`
   // is disabled — it would require a vector store + embedder we don't run; plain
   // recent-message history is all the tutor needs.
   //

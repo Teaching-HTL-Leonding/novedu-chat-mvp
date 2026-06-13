@@ -42,6 +42,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 # server.js serves public/ and .next/static/ itself once they are copied in.
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+# Drizzle SQL migrations: read at startup (instrumentation.ts) via
+# process.cwd()/drizzle — output tracing does not pick them up by itself.
+COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
 
 USER nextjs
 EXPOSE 3000
