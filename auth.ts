@@ -8,9 +8,13 @@ import { resolveTeacher } from "@/lib/teacher";
 declare module "next-auth" {
   interface Session {
     user: {
-      // Stable per-user identifier (the token's `sub` claim — Entra's pairwise
-      // subject id for this app). Used to scope per-user data such as the
-      // Mastra memory resource. Empty string only if the token had no subject.
+      // Stable per-user identifier: the Entra `oid` (object id) claim, which is
+      // constant for a user across every app AND every reply-URL host within the
+      // tenant. We deliberately do NOT use `sub`: `sub` is a *pairwise* subject
+      // id scoped to the redirect-URI host, so the SAME user gets a DIFFERENT
+      // `sub` on localhost vs. the Azure hostname — which silently partitioned
+      // per-user data (tutor-code ownership, user↔chat links) by environment.
+      // Falls back to `sub` only if a token ever lacks `oid`; "" if neither.
       id: string;
       // Whether the signed-in user is a teacher (member of TEACHER_GROUP_ID).
       // Gates teacher-only operations. `name`, `email` and `image` are already
@@ -24,6 +28,8 @@ declare module "next-auth/jwt" {
   interface JWT {
     isTeacher?: boolean;
     preferredUsername?: string;
+    // Entra object id — the host-independent stable user key (see Session.user.id).
+    oid?: string;
   }
 }
 
@@ -76,11 +82,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (typeof profile.preferred_username === "string") {
           token.preferredUsername = profile.preferred_username;
         }
+        // `oid` isn't on Auth.js's Profile type but is always present in Entra
+        // work/school ID tokens — capture it as the stable, host-independent id.
+        const oid = (profile as { oid?: unknown }).oid;
+        if (typeof oid === "string") {
+          token.oid = oid;
+        }
       }
       return token;
     },
     session: ({ session, token }) => {
-      session.user.id = token.sub ?? "";
+      session.user.id = token.oid ?? token.sub ?? "";
       session.user.isTeacher = token.isTeacher ?? false;
       session.user.preferredUsername = token.preferredUsername;
       return session;

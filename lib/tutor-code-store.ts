@@ -89,7 +89,7 @@ export function validateTutorCodeRequest(input: {
 /** A tutor code's stored data, as read back from `novedu_tutor_codes`. */
 export interface TutorCodeEntry {
   code: string;
-  /** Entra `sub` of the creating teacher. */
+  /** Session user id (Entra `oid`) of the creating teacher. */
   createdBy: string;
   /** Public URL of the tutor-definition YAML (normalized via `URL.href`). */
   tutorUrl: string;

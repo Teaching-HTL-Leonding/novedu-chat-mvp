@@ -33,9 +33,12 @@ jobs:
 
       # Image version = package.json version + "." + an ever-increasing build
       # number (the workflow run number, which also increments on manual runs).
+      # built_at is baked into the image too so /api/version can report it.
       - name: Derive image version
         id: version
-        run: echo "version=$(jq -r .version package.json).${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(jq -r .version package.json).${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -58,6 +61,12 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
             ${{ env.IMAGE_NAME }}:latest
+          # Baked into the image (Dockerfile ARG -> ENV) so the running container
+          # can report its identity via /api/version and /health (lib/version.ts).
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            APP_GIT_SHA=${{ github.sha }}
+            APP_BUILD_TIME=${{ steps.version.outputs.built_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

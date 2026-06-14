@@ -35,6 +35,16 @@ ENV NODE_ENV=production \
     # reverse proxy in front of the container (Azure App Service, local Docker).
     AUTH_TRUST_HOST=true
 
+# Build identity, surfaced at runtime by /api/version and the /health dashboard
+# (lib/version.ts) for deployment triage. Fed by docker-publish.yml --build-arg;
+# defaults keep local `docker build` and `npm run dev` reading "dev"/"unknown".
+ARG APP_VERSION=dev
+ARG APP_GIT_SHA=unknown
+ARG APP_BUILD_TIME=unknown
+ENV APP_VERSION=$APP_VERSION \
+    APP_GIT_SHA=$APP_GIT_SHA \
+    APP_BUILD_TIME=$APP_BUILD_TIME
+
 RUN addgroup --system --gid 1001 nodejs \
     && adduser --system --uid 1001 --ingroup nodejs nextjs
 

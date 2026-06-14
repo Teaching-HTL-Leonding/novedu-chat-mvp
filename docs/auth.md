@@ -22,6 +22,20 @@ runs don't have to rediscover the setup:
 - **Default sign-in/out pages** are Auth.js built-ins at `/api/auth/signin` and
   `/api/auth/signout` (no custom UI). An existing valid cookie won't re-prompt, so to
   force a fresh token issuance you must sign out first, then sign in.
+- **Stable user id — `session.user.id` is the Entra `oid`, NOT `sub`.** The `jwt`
+  callback captures `profile.oid` (Entra object id) onto the token and the `session`
+  callback exposes it as `session.user.id` (falling back to `sub` only if a token
+  ever lacks `oid`). This is the key everything user-scoped joins on: tutor-code
+  ownership (`novedu_tutor_codes.created_by`), the user↔chat link
+  (`novedu_user_chats.user_id`), and the `x-thread-token` signature. **Why `oid` and
+  not `sub`:** Entra's `sub` is a *pairwise* subject id scoped to the redirect-URI
+  host, so the SAME user receives a DIFFERENT `sub` on `localhost:3000` vs. the Azure
+  hostname (and would get a new one if the prod hostname ever changed) — which
+  silently partitions per-user data by environment. `oid` is constant for the user
+  across every app and host within the tenant (Microsoft's recommended key; combine
+  with `tid` only for multi-tenant apps — this app pins a single tenant). NOTE: the
+  id is baked into the session JWT at sign-in, so a claim change only takes effect
+  after sign-out + sign-in; rows created under an old id are orphaned.
 - **Authorization — teacher role:** finer-grained access is by Entra **group**
   membership. The teacher group id is `TEACHER_GROUP_ID` in `.env`. On sign-in the `jwt`
   callback receives `profile` (the decoded Entra **ID token**); `lib/teacher.ts`
