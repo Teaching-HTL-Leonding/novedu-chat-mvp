@@ -1,6 +1,6 @@
 {
   "name": "@novedu/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Command-line companion for the Novedu chat app. Validates tutor YAML definitions (more commands to follow).",
   "type": "module",
   "bin": {
@@ -16,7 +16,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsdown"
+    "build": "tsdown",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "commander": "^15.0.0",
