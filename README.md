@@ -105,8 +105,10 @@ Notes:
   rights (e.g. `db_owner`).
 - Schema changes to the `novedu_*` tables: edit `lib/db/schema.ts`, run
   `npm run db:generate`, and commit the generated migration in `drizzle/`.
-- Expired tutor codes are garbage-collected by an hourly in-process task started at
-  server startup.
+- Tutor codes are **not** garbage-collected: a code and all of its conversation data
+  persist until a teacher deletes the code on `/tutor-codes`. An expired code stays
+  listed (its chat no longer opens, but its stats remain reachable). See
+  `docs/tutor-codes.md`.
 - In your Entra app registration, add the redirect URI
   `http://localhost:3000/api/auth/callback/microsoft-entra-id` (and the equivalent for any
   deployed origin).

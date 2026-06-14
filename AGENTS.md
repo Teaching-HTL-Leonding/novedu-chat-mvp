@@ -10,7 +10,7 @@ Load the `mastra` skill BEFORE any Mastra work. Never rely on cached knowledge �
 
 ### Rules
 
-- Register all agents, tools, workflows, and scorers in `src/mastra/index.ts`
+- Register all agents, tools, workflows, and scorers in `app/mastra/index.ts`
 - Use the `dev` and `build` scripts from `package.json` instead of running `mastra dev` / `mastra build` directly
 
 ### Resources
@@ -116,3 +116,21 @@ Read it before adding a test or tagging one `@live`. Invariants:
   the security-critical pure module (e.g. `lib/thread-token.ts`) REAL.
 - A single **`@live`** tag is the boundary: CI runs everything else; the `@live`
   set is the local-only pre-push smoke (`npm run test:e2e -- --grep @live`).
+
+### Publishing the `@novedu/cli` npm package → `docs/cli-publish.md`
+
+Read it before touching `cli/package.json`, `.github/workflows/publish-cli.yml`,
+or cutting a CLI release. Invariants:
+
+- The CLI publishes to npm as **`@novedu/cli`** via **OIDC trusted publishing**
+  (`publish-cli.yml`, triggered on a **`cli-v*` tag**) — **NO `NPM_TOKEN`
+  secret**. The workflow has `id-token: write` but no `secrets.*` and runs only
+  on the tag push, so it keeps the secret-free CI invariant (see
+  `docs/ci-security.md`). The npmjs.com trusted-publisher config is pinned to
+  this repo + the filename `publish-cli.yml`; renaming the file breaks publishing.
+- `cli/package.json` **MUST** keep its `repository` field (with `directory: cli`):
+  `npm publish --provenance` rejects a publish with **HTTP 422** if
+  `repository.url` doesn't match the building repo.
+- Releases are **forward-only** (npm rejects republishing a version) and the
+  workflow **fails fast unless the `cli-vX.Y.Z` tag matches `cli/package.json`
+  version**. Bump the version via a PR, merge, then push the matching tag.
