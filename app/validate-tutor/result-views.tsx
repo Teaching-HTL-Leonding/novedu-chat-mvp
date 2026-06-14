@@ -1,9 +1,12 @@
-import type { ValidationError, ValidationWarning } from "@/lib/tutors";
+import type { FragmentCheckResult, ValidationError, ValidationWarning } from "@/lib/tutors";
 import styles from "./validate-tutor.module.css";
 
-// Pure presentational views for a BuildResult's errors and warnings. Kept
-// separate from the form so they can be rendered and tested in isolation with
-// plain props (no fetch, no state).
+// Pure presentational views for a result's errors, warnings, and (for a fragment
+// library) its successful summary. Kept separate from the form so they can be
+// rendered and tested in isolation with plain props (no fetch, no state).
+
+/** The success shape of a standalone fragment-FILE check. */
+type OkFragment = Extract<FragmentCheckResult, { ok: true }>;
 
 export function locationOf(item: {
   fileAlias?: string;
@@ -33,6 +36,28 @@ export function ErrorList({ errors }: { errors: ValidationError[] }) {
             </li>
           );
         })}
+      </ul>
+    </section>
+  );
+}
+
+export function FragmentSummary({ result }: { result: OkFragment }) {
+  const count = result.fragmentIds.length;
+  return (
+    <section>
+      <h2 className={styles.summaryHeading}>
+        Valid fragment library: <code>{result.fragmentFileId}</code>
+      </h2>
+      <p className={styles.muted}>
+        {count} fragment{count === 1 ? "" : "s"} — every template renders against its declared
+        inputs.
+      </p>
+      <ul className={styles.list}>
+        {result.fragmentIds.map((id) => (
+          <li key={id} className={styles.fragmentItem}>
+            <span className={styles.code}>{id}</span>
+          </li>
+        ))}
       </ul>
     </section>
   );

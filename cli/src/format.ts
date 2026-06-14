@@ -1,4 +1,9 @@
-import type { BuildResult, ValidationError, ValidationWarning } from "@/lib/tutors";
+import type {
+  BuildResult,
+  FragmentCheckResult,
+  ValidationError,
+  ValidationWarning,
+} from "@/lib/tutors";
 
 // Pure presentation: turn a `BuildResult` into a human-readable terminal report.
 // No validation logic lives here — it only renders the structured errors/warnings
@@ -51,6 +56,39 @@ export function formatResult(result: BuildResult, source: string): string {
   }
 
   lines.push(red(`✘ Invalid tutor`) + dim(` — ${source}`));
+  lines.push("");
+  lines.push(red(`${result.errors.length} error(s):`));
+  for (const e of result.errors) {
+    lines.push(`  ${red("✗")} ${red(e.code)} ${e.message}${context(e)}`);
+  }
+  if (result.warnings.length) {
+    lines.push("");
+    lines.push(yellow(`${result.warnings.length} warning(s):`));
+    lines.push(...renderWarnings(result.warnings));
+  }
+  return lines.join("\n");
+}
+
+/** Same renderer, for a standalone fragment-FILE check (`--kind fragment`). */
+export function formatFragmentResult(result: FragmentCheckResult, source: string): string {
+  const lines: string[] = [];
+
+  if (result.ok) {
+    lines.push(green(`✔ Valid fragment file`) + dim(` — ${source}`));
+    lines.push(`  id: ${result.fragmentFileId}`);
+    lines.push(
+      `  fragments: ${result.fragmentIds.length}` +
+        (result.fragmentIds.length ? ` (${result.fragmentIds.join(", ")})` : ""),
+    );
+    if (result.warnings.length) {
+      lines.push("");
+      lines.push(yellow(`${result.warnings.length} warning(s):`));
+      lines.push(...renderWarnings(result.warnings));
+    }
+    return lines.join("\n");
+  }
+
+  lines.push(red(`✘ Invalid fragment file`) + dim(` — ${source}`));
   lines.push("");
   lines.push(red(`${result.errors.length} error(s):`));
   for (const e of result.errors) {

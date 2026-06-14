@@ -15,28 +15,37 @@ interface LoadedTutor {
   model: string;
 }
 
-// Memoize by URL so the YAML is fetched + assembled once, not on every chat
-// message. A failed load is evicted so a corrected URL can succeed on retry.
-const cache = new Map<string, Promise<LoadedTutor>>();
+// A built prompt is NEVER cached across requests: the YAML is fetched + assembled
+// fresh on every chat request. This keeps edits to a tutor YAML visible immediately
+// and is forward-compatible with planned per-user parameters (which make the prompt
+// user-specific, so caching it by URL would serve the wrong prompt). The only
+// memoization is REQUEST-SCOPED: `instructions` and `model` both resolve per request
+// and would each rebuild, so a WeakMap keyed on the per-request `requestContext` (a
+// fresh object per chat request — see the CopilotKit route) shares one build between
+// them, then lets it be garbage-collected with the request. The chat hot path uses
+// DEFAULT load options (no `validateLibraries`); the thorough whole-library check is
+// an authoring-time gate (share / validate page / CLI), not chat.
+const perRequestBuild = new WeakMap<RequestContext, Promise<LoadedTutor>>();
 
-function loadTutor(url: string): Promise<LoadedTutor> {
-  const cached = cache.get(url);
-  if (cached) return cached;
+function loadTutor(requestContext: RequestContext): Promise<LoadedTutor> {
+  const inFlight = perRequestBuild.get(requestContext);
+  if (inFlight) return inFlight;
 
-  const promise = loadAndBuildTutorPrompt(url, defaultFetcher).then((result) => {
-    if (!result.ok) {
-      const first = result.errors[0];
-      throw new Error(
-        first
-          ? `Tutor validation failed (${first.code}): ${first.message}`
-          : "Tutor validation failed",
-      );
-    }
-    return { prompt: result.prompt, model: result.model };
-  });
+  const promise = loadAndBuildTutorPrompt(tutorUrl(requestContext), defaultFetcher).then(
+    (result) => {
+      if (!result.ok) {
+        const first = result.errors[0];
+        throw new Error(
+          first
+            ? `Tutor validation failed (${first.code}): ${first.message}`
+            : "Tutor validation failed",
+        );
+      }
+      return { prompt: result.prompt, model: result.model };
+    },
+  );
 
-  promise.catch(() => cache.delete(url));
-  cache.set(url, promise);
+  perRequestBuild.set(requestContext, promise);
   return promise;
 }
 
@@ -51,11 +60,10 @@ function tutorUrl(requestContext: RequestContext): string {
 export const tutorAgent = new Agent({
   id: "tutor",
   name: "Tutor",
-  // Both resolvers run per request and share the same memoized load. The prompt
-  // is used verbatim — no app-level formatting guidance is appended.
-  instructions: async ({ requestContext }) => (await loadTutor(tutorUrl(requestContext))).prompt,
-  model: async ({ requestContext }) =>
-    scchProvider.chat((await loadTutor(tutorUrl(requestContext))).model),
+  // Both resolvers run per request and share the same request-scoped build. The
+  // prompt is used verbatim — no app-level formatting guidance is appended.
+  instructions: async ({ requestContext }) => (await loadTutor(requestContext)).prompt,
+  model: async ({ requestContext }) => scchProvider.chat((await loadTutor(requestContext)).model),
   // Persist the conversation so the tutor remembers earlier turns. No explicit
   // storage here: Memory inherits the Mastra instance's Azure SQL store (see
   // `index.ts`), so threads/messages land in the `mastra_*` tables. The thread

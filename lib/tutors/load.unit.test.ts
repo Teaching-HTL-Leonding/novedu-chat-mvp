@@ -317,3 +317,44 @@ describe("loadAndBuildTutorPrompt — failures", () => {
     }
   });
 });
+
+describe("loadAndBuildTutorPrompt — validateLibraries (thorough whole-library check)", () => {
+  // Append an UNUSED fragment with a broken template (it references a variable its
+  // input_schema never declares) to a real referenced library. The tutor never
+  // references this fragment, so it only matters under the whole-library check.
+  const generalWithBrokenUnused = () =>
+    `${readFixture("general-fragments.yaml")}
+  - id: broken_unused
+    version: 1
+    priority: 9999
+    content: |
+      You forgot to declare {{undeclared_var}}.
+`;
+
+  it("passes when every referenced library is fully valid (real fixtures)", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(), {
+      validateLibraries: true,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("does NOT check unused fragments when the option is off (chat hot path unaffected)", async () => {
+    const overrides = new Map([[GENERAL_URL, fixtureResponse(generalWithBrokenUnused())]]);
+    // The broken fragment is unused; the default (hot-path) build still succeeds.
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+  });
+
+  it("FRAGMENT_TEMPLATE_ERROR (with fileAlias) for a broken unused fragment when on", async () => {
+    const overrides = new Map([[GENERAL_URL, fixtureResponse(generalWithBrokenUnused())]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides), {
+      validateLibraries: true,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const err = result.errors.find((e) => e.code === "FRAGMENT_TEMPLATE_ERROR");
+      expect(err?.fragmentId).toBe("broken_unused");
+      expect(err?.fileAlias).toBe("general_fragments");
+    }
+  });
+});

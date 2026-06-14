@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { ErrorList, locationOf, WarningList } from "./result-views";
+import { ErrorList, FragmentSummary, locationOf, WarningList } from "./result-views";
 
 describe("locationOf", () => {
   it("joins file alias and fragment id", () => {
@@ -48,6 +48,25 @@ describe("ErrorList", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("general / socratic_tutor · domain")).toBeInTheDocument();
     expect(screen.getByText("DUPLICATE_PRIORITY")).toBeInTheDocument();
+  });
+});
+
+describe("FragmentSummary", () => {
+  it("renders the fragment file id and each fragment id", () => {
+    render(
+      <FragmentSummary
+        result={{
+          ok: true,
+          fragmentFileId: "simple-fragments",
+          fragmentIds: ["persona", "ground_rules"],
+          warnings: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("simple-fragments")).toBeInTheDocument();
+    expect(screen.getByText("persona")).toBeInTheDocument();
+    expect(screen.getByText("ground_rules")).toBeInTheDocument();
   });
 });
 
