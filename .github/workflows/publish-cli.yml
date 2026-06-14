@@ -1,0 +1,81 @@
+name: Publish CLI to npm
+
+# Publishes the @novedu/cli npm package. Triggered ONLY by a version tag of the
+# form `cli-v1.2.3` (decoupled from the app's Docker CD, which keys off pushes
+# to main). npm rejects republishing an existing version, so gating on a tag —
+# not every main push — is what keeps this from failing on unrelated commits.
+#
+# Release flow:
+#   1. bump cli/package.json "version", commit, merge to main
+#   2. git tag cli-v<that-version> && git push origin cli-v<that-version>
+#
+# Auth is npm Trusted Publishing (OIDC) — NO NPM_TOKEN secret. The trust is
+# configured on npmjs.com against THIS repo + THIS workflow filename
+# (publish-cli.yml); renaming this file breaks publishing until the npmjs.com
+# config is updated to match. Because the trusted publisher is pinned to
+# Teaching-HTL-Leonding/novedu-chat-mvp, a fork pushing its own tag cannot
+# publish our package even though it can mint an id-token in its own run.
+on:
+  push:
+    tags:
+      - 'cli-v*'
+
+concurrency:
+  group: publish-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+# OIDC needs id-token: write to mint the short-lived token npm exchanges with
+# the registry; contents: read is all the rest needs. No secrets are used.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    # Don't run on forks: the tag trigger would otherwise fire in a fork too,
+    # wasting a run (it could never publish — see the trust pinning above).
+    if: github.repository == 'Teaching-HTL-Leonding/novedu-chat-mvp'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+          # No dependency cache: release builds must resolve fresh, never reuse
+          # a possibly-poisoned cache.
+
+      # Trusted Publishing requires npm >= 11.5.1; node 24's bundled npm can be
+      # older, so pin a known-good line explicitly.
+      - name: Ensure modern npm
+        run: npm install -g npm@latest
+
+      # Fail fast if the tag and the package version disagree, so we never
+      # publish 0.1.0 under a `cli-v0.2.0` tag (or vice versa).
+      - name: Verify tag matches package version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#cli-v}"
+          PKG_VERSION="$(jq -r .version cli/package.json)"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} (${TAG_VERSION}) != cli/package.json version (${PKG_VERSION})"
+            exit 1
+          fi
+          echo "Publishing @novedu/cli@${PKG_VERSION} from tag ${GITHUB_REF_NAME}"
+
+      - run: npm ci
+
+      - name: Build CLI bundle
+        run: npm run cli:build
+
+      # Smoke-test the freshly built binary against a known-good in-repo tutor
+      # (local file, no network) before publishing it.
+      - name: Smoke-test built binary
+        run: node cli/dist/main.js validate tutors/simple-tutor.yaml
+
+      # No NODE_AUTH_TOKEN: OIDC Trusted Publishing supplies credentials.
+      # --provenance attaches a signed build-provenance statement (free with
+      # OIDC); --access public is required for the first publish of a scoped
+      # package and harmless thereafter.
+      - name: Publish to npm
+        run: npm publish -w @novedu/cli --provenance --access public
