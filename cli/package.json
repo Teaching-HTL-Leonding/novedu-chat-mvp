@@ -1,8 +1,13 @@
 {
   "name": "@novedu/cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Command-line companion for the Novedu chat app. Validates tutor YAML definitions (more commands to follow).",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Teaching-HTL-Leonding/novedu-chat-mvp.git",
+    "directory": "cli"
+  },
   "bin": {
     "novedu-cli": "dist/main.js"
   },
