@@ -59,6 +59,19 @@ export function registerValidate(program: Command): void {
     .argument("<pathOrUrl>", "path to a tutor or fragment YAML file, or a public http(s) URL")
     .option("--kind <kind>", "what the file is: 'tutor' (default) or 'fragment'", "tutor")
     .option("--json", "print the raw validation result as JSON")
+    .addHelpText(
+      "after",
+      `
+Examples:
+  # Validate a tutor (also strict-renders every fragment in every referenced library)
+  $ novedu-cli validate ./tutors/my-tutor.yaml
+
+  # Validate a fragment library on its own
+  $ novedu-cli validate ./tutors/my-fragments.yaml --kind fragment
+
+  # Machine-readable output for CI
+  $ novedu-cli validate https://example.com/tutor.yaml --json`,
+    )
     .action(async (pathOrUrl: string, options: { kind?: string; json?: boolean }) => {
       if (options.kind !== undefined && options.kind !== "tutor" && options.kind !== "fragment") {
         console.error(`Invalid --kind "${options.kind}": expected "tutor" or "fragment".`);

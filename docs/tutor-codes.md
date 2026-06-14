@@ -81,8 +81,12 @@ since `app/[code]` catches all non-static top-level paths.
 `requireEffectiveTeacher()` in the server action): tutor URL, optional note,
 window as `datetime-local` (converted to unix seconds IN THE BROWSER — the
 only place the teacher's timezone is known). The action
-(`lib/tutor-code-actions.ts`) validates the input, loads the tutor YAML
-(broken tutors are rejected at create time), and inserts the row. **A storage
+(`lib/tutor-code-actions.ts`) validates the input, then loads the tutor YAML
+with the THOROUGH check (`loadAndBuildTutorPrompt`, `validateLibraries: true`)
+— every fragment in every referenced library is strict-rendered, so a broken
+tutor (or a broken fragment in a library it references, even an unused one) is
+rejected at create time, not when the first student opens the code — and
+inserts the row. **A storage
 failure is a hard error** — without a row there is nothing to hand out. The
 displayed URL's origin comes from `TUTOR_CODE_ORIGIN` (recommended in
 production) or the request's forwarded/host headers (fine for dev); it is
