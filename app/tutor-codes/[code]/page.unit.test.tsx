@@ -116,6 +116,11 @@ describe("anonymous code", () => {
     expect(html).not.toContain(">Student<");
     expect(html).not.toContain("student-sub-1");
   });
+
+  it("forwards the frozen anonymous flag so the store redacts ids", async () => {
+    await render();
+    expect(getTutorCodeStats).toHaveBeenCalledWith(CODE, true);
+  });
 });
 
 describe("non-anonymous code", () => {
@@ -133,6 +138,11 @@ describe("non-anonymous code", () => {
     expect(html).toContain("Students");
     expect(html).toContain(">Student<");
     expect(html).toContain("student-sub-1");
+  });
+
+  it("forwards anonymous=false to the store", async () => {
+    await render();
+    expect(getTutorCodeStats).toHaveBeenCalledWith(CODE, false);
   });
 });
 

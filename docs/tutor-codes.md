@@ -153,12 +153,20 @@ catch-all never collides). Both pages gate on **code ownership**, NOT the
 thread-ownership token: `getOwnedTutorCode(code, sub)` returns the row only when
 `created_by` is the asking teacher — a teacher sees only their own codes.
 
-- **`/tutor-codes/[code]`** — detailed stats (`getTutorCodeStats`): number of
-  conversations, and for non-anonymous codes (the frozen `anonymous` flag) the
-  number of distinct students; then a table of every conversation (first/last
-  message time, user id when recorded, user-message count). Each row links to the
-  viewer. "Conversation" = a Mastra thread with ≥ 1 `role = 'user'` message
-  (opened-but-silent threads do not count).
+- **`/tutor-codes/[code]`** — detailed stats (`getTutorCodeStats(code, anonymous)`):
+  number of conversations, and for non-anonymous codes (the frozen `anonymous`
+  flag) the number of distinct students; then a table of every conversation
+  (first/last message time, user id when recorded, user-message count). Each row
+  links to the viewer. "Conversation" = a Mastra thread with ≥ 1 `role = 'user'`
+  message (opened-but-silent threads do not count).
+  Anonymity is enforced **at the data layer**: the page passes the code's frozen
+  `anonymous` flag into `getTutorCodeStats`, which for an anonymous code forces
+  every `userId` to `null` and `studentCount` to `0` *before returning* — so it
+  cannot surface who a student is even if `novedu_user_chats` holds rows (the
+  documented case where the YAML was toggled to non-anonymous AFTER the code was
+  minted; the live attribution flag and this frozen display flag are read
+  separately — see "Chats, memory & the join model"). The page's own
+  `!anonymous` rendering checks are now belt-and-braces on top of that.
 - **`/tutor-codes/[code]/c/[threadId]`** — a READ-ONLY transcript. The server
   loads the messages (`getConversationMessages`, which re-checks the thread's
   `resourceId = code`) and converts each stored Mastra message to an AG-UI
