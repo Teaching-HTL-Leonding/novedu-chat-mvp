@@ -73,7 +73,7 @@ export interface Interaction {
   /** Number of `role = 'user'` messages — always ≥ 1 (that is what qualifies). */
   userMessageCount: number;
   /**
-   * The student's Entra `sub`, if recorded AND the code is non-anonymous.
+   * The student's session user id (Entra `oid`), if recorded AND the code is non-anonymous.
    * `getTutorCodeStats` forces this to `null` for anonymous codes (see there),
    * so a thread is attributable here only for an `anonymous: false` tutor.
    */

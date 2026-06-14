@@ -19,15 +19,15 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export interface ThreadTokenPayload {
   /** The tutor code the chat was opened under. */
   code: string;
-  /** Entra `sub` of the signed-in student. */
+  /** Session user id (Entra `oid`) of the signed-in student. */
   userId: string;
   /** The server-generated Mastra thread id. */
   threadId: string;
 }
 
 // JSON-encoding the triple as an array is injective for arbitrary strings —
-// no separator can collide with content (Entra subs are opaque; do not assume
-// they avoid any particular character).
+// no separator can collide with content (the session user id is treated as
+// opaque; do not assume it avoids any particular character).
 export function canonicalThreadPayload({ code, userId, threadId }: ThreadTokenPayload): string {
   return JSON.stringify([code, userId, threadId]);
 }

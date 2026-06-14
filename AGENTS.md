@@ -60,8 +60,9 @@ Read it before touching the chat entry points (`app/page.tsx`, `app/[code]/page.
   runtime endpoints the app does not use. Mastra does NOT bind threads to a
   resource — without the token any code-holder could read others' chats. The
   STUDENT chat path uses this token; the TEACHER stats/viewer pages instead gate
-  on **code ownership** (`getOwnedTutorCode`, `created_by === session sub`) — a
-  teacher reads only their own codes' conversations.
+  on **code ownership** (`getOwnedTutorCode`, `created_by === session user id`) — a
+  teacher reads only their own codes' conversations. The session user id is the
+  Entra **`oid`** (object id), NOT `sub` — see `docs/auth.md`.
 - Mastra memory `resourceId` = the tutor code. `novedu_user_chats` is the ONLY
   user↔chat link and is written **only** for tutors whose stored `anonymous` flag is
   `false` (default: anonymous, nothing stored) — that promise is why thread ownership

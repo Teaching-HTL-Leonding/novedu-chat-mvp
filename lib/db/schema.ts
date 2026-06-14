@@ -21,7 +21,7 @@ import {
 // so user → user-chat → chat-history joins work in plain SQL without FKs.
 
 // One row per shared tutor code. The creating teacher is `created_by` (the
-// Entra `sub` claim). The validity window is half-open in neither direction:
+// session user id = Entra `oid`). The validity window is half-open in neither direction:
 // both bounds are inclusive, stored as UTC datetime2. `origin` documents where
 // the code was created (dev/prod host) and is NEVER used in lookups — a code
 // created on localhost must work in production, since all environments share

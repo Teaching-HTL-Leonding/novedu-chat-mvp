@@ -15,7 +15,7 @@ unguessable) minted by a teacher on `/share-tutor` and stored as a row in the
 | Column | Meaning |
 | --- | --- |
 | `code` (PK) | the tutor code |
-| `created_by` | Entra `sub` of the creating teacher |
+| `created_by` | session user id (Entra `oid`) of the creating teacher |
 | `tutor_url` | public URL of the tutor YAML (normalized via `URL.href`) |
 | `valid_from` / `valid_until` | availability window, UTC `datetime2`, **both bounds inclusive** |
 | `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
@@ -114,8 +114,8 @@ the Drizzle- and Mastra-owned tables are **by value — never foreign keys**
 ```
 novedu_tutor_codes.code = novedu_user_chats.code = mastra_threads.resourceId
 novedu_user_chats.thread_id = mastra_threads.id = mastra_messages.thread_id
-novedu_user_chats.user_id  = Entra sub (the student)
-novedu_tutor_codes.created_by = Entra sub (the teacher)
+novedu_user_chats.user_id  = Entra oid (the student)
+novedu_tutor_codes.created_by = Entra oid (the teacher)
 ```
 
 - **All chats for a code**: `SELECT * FROM mastra_threads WHERE resourceId = '<code>'`.
