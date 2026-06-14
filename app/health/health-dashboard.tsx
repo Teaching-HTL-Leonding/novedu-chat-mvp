@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { HealthIndicator, HostInfo } from "@/lib/health";
+import type { BuildInfo } from "@/lib/version";
 import styles from "./health.module.css";
 
 // Client side of the health page. The page shell (including the user/teacher
@@ -80,9 +81,11 @@ function HostValue({ state, testId }: { state: Pending<HostInfo>; testId: string
 export function HealthDashboard({
   userLabel,
   isTeacher,
+  build,
 }: {
   userLabel: string;
   isTeacher: boolean;
+  build: BuildInfo;
 }) {
   const indicatorError = (message: string): HealthIndicator => ({ ok: false, detail: message });
   const hostError = (message: string): HostInfo => ({ fqdn: null, ips: [], error: message });
@@ -96,6 +99,14 @@ export function HealthDashboard({
       <div className={styles.card}>
         <h1 className={styles.heading}>Health</h1>
         <dl className={styles.list}>
+          <div className={styles.row}>
+            <dt className={styles.term}>Build version</dt>
+            <dd className={`${styles.value} ${styles.mono}`} data-testid="health-version">
+              {build.version}
+              {build.gitSha !== "unknown" ? ` (${build.gitSha.slice(0, 7)})` : ""}
+              {build.builtAt !== "unknown" ? ` — built ${build.builtAt}` : ""}
+            </dd>
+          </div>
           <div className={styles.row}>
             <dt className={styles.term}>Database connection</dt>
             <StatusValue state={db} testId="health-db" />

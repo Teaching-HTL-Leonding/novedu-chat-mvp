@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { AccessDenied } from "@/components/notice";
 import { getTeacherView } from "@/lib/student-mode";
+import { getBuildInfo } from "@/lib/version";
 import pageStyles from "../page.module.css";
 import { HealthDashboard } from "./health-dashboard";
 
@@ -30,7 +31,7 @@ export default async function HealthPage() {
 
   return (
     <main className={pageStyles.main}>
-      <HealthDashboard userLabel={userLabel} isTeacher={realTeacher} />
+      <HealthDashboard userLabel={userLabel} isTeacher={realTeacher} build={getBuildInfo()} />
     </main>
   );
 }
