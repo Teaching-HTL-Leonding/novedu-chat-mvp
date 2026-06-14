@@ -57,9 +57,10 @@ own directory. Use the published package via `npx`:
 npx @novedu/cli validate <pathOrUrl> [--json]
 ```
 
-> Note: the `npx` form works once `@novedu/cli` is published to npm. If `npx`
-> reports the package can't be found, it isn't published yet — fall back to
-> running it from a clone of the repo with `npm run cli -- validate …`.
+> `@novedu/cli` is published on npm, so `npx` fetches it on demand — no install
+> or clone needed. Add `@latest` (`npx @novedu/cli@latest …`) to force the newest
+> version if a stale one is cached. If `npx` genuinely can't reach the package,
+> it's a network/registry issue, not a missing publish.
 
 **How to decide:** if the current directory (or the file you're validating) is
 inside the app repo, use `npm run cli`; otherwise use `npx @novedu/cli`. When
