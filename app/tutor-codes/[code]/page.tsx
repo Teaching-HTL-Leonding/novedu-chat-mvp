@@ -57,7 +57,10 @@ export default async function TutorCodeStatsPage({
     );
   }
 
-  const stats = await getTutorCodeStats(code);
+  // Pass the code's frozen `anonymous` flag: the store nulls every userId and
+  // zeroes studentCount for anonymous codes, so the privacy gate holds at the
+  // data layer (the `!entry.anonymous` checks below are belt-and-braces).
+  const stats = await getTutorCodeStats(code, entry.anonymous);
 
   return (
     <main className={pageStyles.main}>

@@ -73,8 +73,9 @@ export interface Interaction {
   /** Number of `role = 'user'` messages — always ≥ 1 (that is what qualifies). */
   userMessageCount: number;
   /**
-   * The student's Entra `sub`, if recorded. Present only for `anonymous: false`
-   * tutors (the only case `novedu_user_chats` holds a row); `null` otherwise.
+   * The student's Entra `sub`, if recorded AND the code is non-anonymous.
+   * `getTutorCodeStats` forces this to `null` for anonymous codes (see there),
+   * so a thread is attributable here only for an `anonymous: false` tutor.
    */
   userId: string | null;
 }
@@ -84,9 +85,9 @@ export interface TutorCodeStats {
   /** Number of qualifying conversations. */
   conversations: number;
   /**
-   * Distinct students with at least one conversation. Only meaningful for
-   * `anonymous: false` tutors — the caller decides whether to surface it based
-   * on the code's frozen `anonymous` flag.
+   * Distinct students with at least one conversation. Always `0` for anonymous
+   * codes — `getTutorCodeStats` zeroes it there, so it is meaningful only for
+   * `anonymous: false` tutors.
    */
   studentCount: number;
   /** The conversations themselves, newest activity first. */
@@ -98,8 +99,20 @@ export interface TutorCodeStats {
  * message time, user-message count, and (when recorded) the student. Returns
  * `undefined` on a database error. Never throws. Authorization (does this code
  * belong to the asking teacher?) is the caller's job — see `getOwnedTutorCode`.
+ *
+ * `anonymous` is the code's FROZEN flag (`novedu_tutor_codes.anonymous`). When it
+ * is `true` this enforces the anonymity promise AT THE DATA LAYER: every
+ * `userId` comes back `null` and `studentCount` is `0`, so a caller cannot
+ * surface who a student is even by mistake — not even for the documented edge
+ * case where `novedu_user_chats` holds rows because the tutor YAML was toggled
+ * to non-anonymous AFTER the code was minted (the live attribution flag and this
+ * frozen display flag are read separately; see docs/tutor-codes.md). The UI's
+ * own `!anonymous` gating is now belt-and-braces on top of this.
  */
-export async function getTutorCodeStats(code: string): Promise<TutorCodeStats | undefined> {
+export async function getTutorCodeStats(
+  code: string,
+  anonymous: boolean,
+): Promise<TutorCodeStats | undefined> {
   try {
     const res = await getDb().execute<{
       threadId: string;
@@ -128,11 +141,13 @@ export async function getTutorCodeStats(code: string): Promise<TutorCodeStats | 
       firstAt: row.firstAt,
       lastAt: row.lastAt,
       userMessageCount: Number(row.userMessageCount),
-      userId: row.userId ?? null,
+      // Anonymous code → never emit the student id, whatever the join returned.
+      userId: anonymous ? null : (row.userId ?? null),
     }));
 
     // Distinct recorded students. A student who opened several conversations
-    // counts once; anonymous conversations (userId null) count toward none.
+    // counts once; anonymous conversations (userId null) count toward none. For
+    // an anonymous code every userId is null above, so this is 0.
     const students = new Set<string>();
     for (const i of interactions) if (i.userId) students.add(i.userId);
 

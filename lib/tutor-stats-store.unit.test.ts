@@ -114,7 +114,7 @@ describe("getInteractionCounts", () => {
 });
 
 describe("getTutorCodeStats", () => {
-  it("counts conversations and distinct students, mapping each interaction", async () => {
+  it("counts conversations and distinct students, mapping each interaction (non-anonymous)", async () => {
     const t1 = new Date("2026-06-12T10:00:00Z");
     const t2 = new Date("2026-06-12T10:05:00Z");
     fake.state.recordset = [
@@ -125,7 +125,7 @@ describe("getTutorCodeStats", () => {
       // Anonymous conversation (no recorded user) — counts toward no student.
       { threadId: "th4", firstAt: t1, lastAt: t2, userMessageCount: 1, userId: null },
     ];
-    const stats = await getTutorCodeStats("aaaaaaaaaa");
+    const stats = await getTutorCodeStats("aaaaaaaaaa", false);
     expect(stats?.conversations).toBe(4);
     expect(stats?.studentCount).toBe(2);
     expect(stats?.interactions[0]).toEqual({
@@ -138,9 +138,27 @@ describe("getTutorCodeStats", () => {
     expect(stats?.interactions[3]?.userId).toBeNull();
   });
 
+  it("redacts every userId and zeroes studentCount for an anonymous code", async () => {
+    // The privacy gate at the DATA LAYER: even if novedu_user_chats holds rows
+    // for this code (e.g. the YAML was toggled non-anonymous after the code was
+    // minted), an anonymous code must never surface who a student is.
+    const t1 = new Date("2026-06-12T10:00:00Z");
+    const t2 = new Date("2026-06-12T10:05:00Z");
+    fake.state.recordset = [
+      { threadId: "th1", firstAt: t1, lastAt: t2, userMessageCount: 3, userId: "stu-1" },
+      { threadId: "th2", firstAt: t1, lastAt: t2, userMessageCount: 2, userId: "stu-2" },
+    ];
+    const stats = await getTutorCodeStats("aaaaaaaaaa", true);
+    // Conversations and message counts are still reported — only the identity goes.
+    expect(stats?.conversations).toBe(2);
+    expect(stats?.studentCount).toBe(0);
+    expect(stats?.interactions.map((i) => i.userId)).toEqual([null, null]);
+    expect(stats?.interactions[0]?.userMessageCount).toBe(3);
+  });
+
   it("returns zeroes for a code with no conversations", async () => {
     fake.state.recordset = [];
-    await expect(getTutorCodeStats("aaaaaaaaaa")).resolves.toEqual({
+    await expect(getTutorCodeStats("aaaaaaaaaa", false)).resolves.toEqual({
       conversations: 0,
       studentCount: 0,
       interactions: [],
@@ -149,7 +167,7 @@ describe("getTutorCodeStats", () => {
 
   it("returns undefined instead of throwing when the query fails", async () => {
     fake.state.executeError = new Error("connection lost");
-    await expect(getTutorCodeStats("aaaaaaaaaa")).resolves.toBeUndefined();
+    await expect(getTutorCodeStats("aaaaaaaaaa", false)).resolves.toBeUndefined();
   });
 });
 
