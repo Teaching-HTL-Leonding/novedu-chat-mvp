@@ -10,7 +10,10 @@ import type { Tutor } from "./schemas";
 // `strict`: referencing an undeclared variable throws instead of silently
 //   rendering empty. Consistency checking already guarantees required inputs, so
 //   a throw here is a backstop that the caller surfaces as `ASSEMBLY_ERROR`.
-const COMPILE_OPTIONS = { strict: true, noEscape: true } as const;
+// Exported so the standalone fragment check (`fragment.ts`) renders with the EXACT
+// same semantics as real assembly — that identity is what makes "valid as a
+// standalone fragment" mean "will render inside a tutor".
+export const COMPILE_OPTIONS = { strict: true, noEscape: true } as const;
 
 /**
  * Render each fragment in priority order and append the tutor-specific

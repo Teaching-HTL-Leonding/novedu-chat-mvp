@@ -8,6 +8,21 @@
   overflow-y: auto;
 }
 
+.kindToggle {
+  flex: none;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.kindOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
 .form {
   flex: none;
   display: flex;
@@ -91,10 +106,25 @@
 }
 
 .errorHeading,
-.warningHeading {
+.warningHeading,
+.summaryHeading {
   margin: 0 0 0.5rem;
   font-size: 0.95rem;
   font-weight: 600;
+}
+
+.summaryHeading code {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+.fragmentItem {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+  font-size: 0.85rem;
 }
 
 .code {

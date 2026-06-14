@@ -58,6 +58,42 @@ describe("novedu-cli validate — local files", () => {
     expect(code).toBe(0);
     expect(JSON.parse(stdout).ok).toBe(true);
   });
+
+  it("exits 0 for a valid fragment library with --kind fragment", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${tutorsDir}simple-fragments.yaml`,
+      "--kind",
+      "fragment",
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("Valid fragment file");
+  });
+
+  it("exits 1 with FRAGMENT_TEMPLATE_ERROR for a broken fragment template", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${tutorsDir}broken-template-fragments.yaml`,
+      "--kind",
+      "fragment",
+    ]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain("FRAGMENT_TEMPLATE_ERROR");
+  });
+
+  it("rejects an invalid --kind", async () => {
+    const { code, stderr } = await runCli([
+      "validate",
+      `${tutorsDir}simple-tutor.yaml`,
+      "--kind",
+      "bogus",
+    ]);
+
+    expect(code).toBe(1);
+    expect(stderr).toContain("Invalid --kind");
+  });
 });
 
 describe("novedu-cli validate — public URLs", () => {

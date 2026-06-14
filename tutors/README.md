@@ -493,8 +493,8 @@ tutor's published URL, so the library must be pushed too.)
 
 ## 10. Validating your tutor
 
-Open the **Validate Tutor** page in the app, paste your tutor file's public URL,
-and click **Validate**. You'll get either:
+Open the **Validate** page in the app, leave the selector on **Tutor**, paste your
+tutor file's public URL, and click **Validate**. You'll get either:
 
 - the **assembled system prompt** (as markdown source), or
 - a **list of problems** to fix.
@@ -506,7 +506,24 @@ The validator checks, in order:
 3. Every referenced fragment library loads and has the correct structure.
 4. Every fragment reference resolves and every required input is supplied with the
    right type.
-5. The prompt assembles cleanly.
+5. **Every fragment in every referenced library renders** — its `content` template
+   is checked against its own declared inputs, even fragments this tutor doesn't
+   use. A template bug anywhere in a library you reference fails validation.
+6. The prompt assembles cleanly.
+
+> The same thorough validation runs when you **share a tutor code** — a broken
+> tutor (or a broken fragment in a library it references) is caught at create time,
+> not when the first student opens the code. Opening a chat does **not** re-run the
+> whole-library check.
+
+### Validating a fragment library on its own
+
+If you maintain a fragment library, validate it directly: switch the selector to
+**Fragment library** and paste the library's URL (or, in the CLI,
+`novedu-cli validate <file> --kind fragment`). This checks the file's structure,
+that fragment ids are unique, and that **every** fragment's template renders
+against its own `input_schema` — so undeclared-variable typos and Handlebars
+syntax errors surface before any tutor references the library.
 
 ### Common problems and how to fix them
 
@@ -519,6 +536,7 @@ The validator checks, in order:
 | `FRAGMENT_NOT_FOUND`                                | The `id:` isn't in that library.                               | Check the fragment's spelling/existence.         |
 | `MISSING_REQUIRED_VARIABLE`                         | A required input wasn't supplied.                              | Add it under `variables`.                        |
 | `VARIABLE_TYPE_MISMATCH`                            | A value's type is wrong (e.g. text where a list is expected).  | Provide the declared type.                       |
+| `FRAGMENT_TEMPLATE_ERROR`                           | A fragment's `content` uses a `{{variable}}` it never declares, or has a Handlebars syntax error. | Declare the variable in `input_schema`, fix the typo, or correct the template. |
 | `DUPLICATE_PRIORITY`                                | Two included fragments share a priority.                       | Give each a distinct `priority`.                 |
 | `UNDECLARED_VARIABLE` _(warning)_                   | You supplied a value the fragment doesn't use.                 | Usually a typo — remove or correct it.           |
 | `REQUIRED_PROPERTY_HAS_DEFAULT` _(warning)_         | A `required` input also declares a `default` it can never use. | Drop the `default`, or remove it from `required`. |

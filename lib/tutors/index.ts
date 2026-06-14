@@ -5,12 +5,18 @@ export { type ConsistencyResult, checkConsistency, type ResolvedFragment } from 
 export type {
   BuildResult,
   ErrorCode,
+  FragmentCheckResult,
   ValidationError,
   ValidationWarning,
   WarningCode,
 } from "./errors";
 export { defaultFetcher, type Fetcher, type FetchResponse } from "./fetcher";
-export { type LoadOptions, loadAndBuildTutorPrompt } from "./load";
+export {
+  checkFragmentFileValue,
+  checkFragmentTemplates,
+  findDuplicateFragmentIds,
+} from "./fragment";
+export { type LoadOptions, loadAndBuildTutorPrompt, loadAndCheckFragmentFile } from "./load";
 export { parseYaml, validate } from "./parse";
 export { sampleExampleQuestions } from "./sample";
 export {

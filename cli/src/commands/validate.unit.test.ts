@@ -7,33 +7,56 @@ import { runValidate } from "./validate";
 // file fetcher) over the committed fixtures in `tutors/`. Runs in CI.
 const tutorsDir = fileURLToPath(new URL("../../../tutors/", import.meta.url));
 
-describe("runValidate (local files)", () => {
+describe("runValidate — tutors (local files)", () => {
   it("accepts a valid tutor and reports its model", async () => {
-    const result = await runValidate(`${tutorsDir}simple-tutor.yaml`);
+    const outcome = await runValidate(`${tutorsDir}simple-tutor.yaml`, "tutor");
 
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.model).toBeTruthy();
-      expect(result.prompt.length).toBeGreaterThan(0);
+    expect(outcome.kind).toBe("tutor");
+    expect(outcome.result.ok).toBe(true);
+    if (outcome.kind === "tutor" && outcome.result.ok) {
+      expect(outcome.result.model).toBeTruthy();
+      expect(outcome.result.prompt.length).toBeGreaterThan(0);
     }
   });
 
   it("rejects a broken tutor with structured errors", async () => {
-    const result = await runValidate(`${tutorsDir}broken-tutor.yaml`);
+    const outcome = await runValidate(`${tutorsDir}broken-tutor.yaml`, "tutor");
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors.length).toBeGreaterThan(0);
-      expect(result.errors[0]?.code).toBeTruthy();
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors.length).toBeGreaterThan(0);
+      expect(outcome.result.errors[0]?.code).toBeTruthy();
     }
   });
 
   it("reports a missing file as a FETCH_FAILED error (no throw)", async () => {
-    const result = await runValidate(`${tutorsDir}does-not-exist.yaml`);
+    const outcome = await runValidate(`${tutorsDir}does-not-exist.yaml`, "tutor");
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors[0]?.code).toBe("FETCH_FAILED");
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors[0]?.code).toBe("FETCH_FAILED");
+    }
+  });
+});
+
+describe("runValidate — fragment libraries (local files)", () => {
+  it("accepts a valid fragment file and lists its fragments", async () => {
+    const outcome = await runValidate(`${tutorsDir}simple-fragments.yaml`, "fragment");
+
+    expect(outcome.kind).toBe("fragment");
+    expect(outcome.result.ok).toBe(true);
+    if (outcome.kind === "fragment" && outcome.result.ok) {
+      expect(outcome.result.fragmentFileId).toBe("simple-fragments");
+      expect(outcome.result.fragmentIds.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("rejects a fragment file whose template uses an undeclared variable", async () => {
+    const outcome = await runValidate(`${tutorsDir}broken-template-fragments.yaml`, "fragment");
+
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors.some((e) => e.code === "FRAGMENT_TEMPLATE_ERROR")).toBe(true);
     }
   });
 });

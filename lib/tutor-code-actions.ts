@@ -62,8 +62,12 @@ export async function createTutorCodeAction(
   if (!validation.ok) return { status: "error", message: validation.message };
 
   // Catch broken tutors at create time, not when the first student opens the
-  // code. Reuses the same pipeline the chat page runs on the receiving end.
-  const result = await loadAndBuildTutorPrompt(validation.payload.tutorUrl, defaultFetcher);
+  // code. `validateLibraries` makes this the THOROUGH gate: every fragment in
+  // every referenced library is rendered, even ones this tutor doesn't use — a
+  // check too heavy for the chat hot path, but exactly right before sharing.
+  const result = await loadAndBuildTutorPrompt(validation.payload.tutorUrl, defaultFetcher, {
+    validateLibraries: true,
+  });
   if (!result.ok) {
     const first = result.errors[0];
     return {

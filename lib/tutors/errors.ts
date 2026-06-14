@@ -18,7 +18,12 @@ export type ErrorCode =
   | "MISSING_REQUIRED_VARIABLE"
   | "VARIABLE_TYPE_MISMATCH"
   | "DUPLICATE_PRIORITY"
-  | "ASSEMBLY_ERROR";
+  | "ASSEMBLY_ERROR"
+  // A fragment's `content` template failed to compile or strict-render against its
+  // own declared `input_schema` — a Handlebars syntax error or a reference to a
+  // variable the fragment never declares. Surfaced by the standalone fragment
+  // check and by thorough tutor validation (whole-library check).
+  | "FRAGMENT_TEMPLATE_ERROR";
 
 /** Non-fatal smells: the prompt still builds, but something is worth flagging. */
 export type WarningCode =
@@ -82,6 +87,23 @@ export type BuildResult =
        * both together.
        */
       exampleQuestions: { title: string; question: string }[];
+      warnings: ValidationWarning[];
+    }
+  | { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] };
+
+/**
+ * Result of validating a fragment FILE on its own (the `--kind fragment` / "Fragment
+ * library" path). Mirrors `BuildResult`'s discriminated shape, but a fragment file
+ * has no assembled prompt — on success it just reports what it contains. Callers know
+ * which kind they asked for, so there is no `kind` discriminator here.
+ */
+export type FragmentCheckResult =
+  | {
+      ok: true;
+      /** The fragment file's own `id`. */
+      fragmentFileId: string;
+      /** Every fragment id declared in the file, in document order. */
+      fragmentIds: string[];
       warnings: ValidationWarning[];
     }
   | { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] };

@@ -1,10 +1,13 @@
 import { requireEffectiveTeacher } from "@/lib/student-mode";
-import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
+import { defaultFetcher, loadAndBuildTutorPrompt, loadAndCheckFragmentFile } from "@/lib/tutors";
 
-// Thin server consumer of the reusable tutor core. Takes a public URL to a tutor
-// definition YAML, returns the assembled system prompt or a structured error list.
+// Thin server consumer of the reusable tutor core. Takes a public URL plus a
+// `kind` ("tutor" | "fragment", default "tutor") and returns either the assembled
+// system prompt (tutor) or the fragment-file summary (fragment), or a structured
+// error list. The caller declares the kind — there is no auto-detection.
 // Teacher-only: validation is an authoring tool, and this is the enforcement
-// point (the page-level check is only UX).
+// point (the page-level check is only UX). The tutor path runs the THOROUGH check
+// (`validateLibraries`) since this is an authoring gate, not the chat hot path.
 //
 // SSRF note: this fetches an arbitrary user-supplied URL server-side. For this
 // prototype we only restrict the scheme to http(s); a production deployment
@@ -50,6 +53,10 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = await loadAndBuildTutorPrompt(url, defaultFetcher);
+  const kind = (body as { kind?: unknown } | null)?.kind === "fragment" ? "fragment" : "tutor";
+  const result =
+    kind === "fragment"
+      ? await loadAndCheckFragmentFile(url, defaultFetcher)
+      : await loadAndBuildTutorPrompt(url, defaultFetcher, { validateLibraries: true });
   return Response.json(result, { status: result.ok ? 200 : 422 });
 }
