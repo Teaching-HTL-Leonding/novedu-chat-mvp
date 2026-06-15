@@ -8,7 +8,12 @@ const nextConfig: NextConfig = {
   // are required at runtime instead. `tedious`/`mssql` rely on dynamic requires and
   // Node networking that don't survive bundling.
   // See https://mastra.ai/guides/getting-started/next-js
-  serverExternalPackages: ["@mastra/*", "mssql", "tedious"],
+  //
+  // `@azure/monitor-opentelemetry` (the OTEL distro, loaded in instrumentation.ts)
+  // must also stay external: its auto-instrumentation patches modules at require
+  // time, which only works when those modules load through Node's loader rather
+  // than a bundle.
+  serverExternalPackages: ["@mastra/*", "mssql", "tedious", "@azure/monitor-opentelemetry"],
 };
 
 export default nextConfig;
