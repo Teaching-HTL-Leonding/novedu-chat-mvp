@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { AccessDenied, Notice } from "@/components/notice";
-import { isEffectiveTeacher } from "@/lib/student-mode";
+import { BackLink } from "@/components/back-link";
+import { Notice } from "@/components/notice";
+import { requireTeacherPage } from "@/components/require-teacher-page";
 import { getOwnedTutorCode } from "@/lib/tutor-code-store";
 import { getTutorCodeStats } from "@/lib/tutor-stats-store";
 import { LocalTime } from "../../local-time";
@@ -21,13 +22,8 @@ export default async function TutorCodeStatsPage({
 }) {
   const { code } = await params;
 
-  if (!(await isEffectiveTeacher())) {
-    return (
-      <main className={pageStyles.main}>
-        <AccessDenied />
-      </main>
-    );
-  }
+  const denied = await requireTeacherPage();
+  if (denied) return denied;
 
   const session = await auth();
   const userId = session?.user?.id;
@@ -65,9 +61,7 @@ export default async function TutorCodeStatsPage({
   return (
     <main className={pageStyles.main}>
       <div className={styles.container}>
-        <Link href="/tutor-codes" className={styles.backLink}>
-          ← Back to tutor codes
-        </Link>
+        <BackLink href="/tutor-codes">Back to tutor codes</BackLink>
 
         {/* The page title lives in the status bar ("Tutor Code Stats"); this is
             just context — which code these stats belong to. */}

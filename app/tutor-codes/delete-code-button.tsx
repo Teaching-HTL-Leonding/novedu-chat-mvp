@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { TrashIcon } from "@/components/icons";
 import { deleteTutorCodeAction } from "@/lib/tutor-code-actions";
-import { TrashIcon } from "./icons";
 import styles from "./tutor-codes.module.css";
 
 // Deletes a tutor code AND all of its conversations — irreversible, so it asks

@@ -1,0 +1,409 @@
+{
+  "version": "2",
+  "dialect": "mssql",
+  "id": "a3d2e097-f6fd-4002-8bc3-3f5a66541f65",
+  "prevIds": ["126328dc-446a-4c4d-a0c9-66f21be962b3"],
+  "ddl": [
+    {
+      "name": "novedu_files",
+      "entityType": "tables",
+      "schema": "dbo"
+    },
+    {
+      "name": "novedu_recent_codes",
+      "entityType": "tables",
+      "schema": "dbo"
+    },
+    {
+      "name": "novedu_tutor_codes",
+      "entityType": "tables",
+      "schema": "dbo"
+    },
+    {
+      "name": "novedu_user_chats",
+      "entityType": "tables",
+      "schema": "dbo"
+    },
+    {
+      "type": "varchar(36)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "nvarchar(450)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "name",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "varchar(16)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "kind",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "nvarchar(512)",
+      "notNull": false,
+      "generated": null,
+      "identity": null,
+      "name": "title",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "nvarchar(2048)",
+      "notNull": false,
+      "generated": null,
+      "identity": null,
+      "name": "description",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "nvarchar(max)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "content",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "nvarchar(64)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "created_by",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "datetime2",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "valid_from",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "datetime2",
+      "notNull": false,
+      "generated": null,
+      "identity": null,
+      "name": "valid_until",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "nvarchar(64)",
+      "notNull": false,
+      "generated": null,
+      "identity": null,
+      "name": "closed_by",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_files"
+    },
+    {
+      "type": "nvarchar(64)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "user_id",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_recent_codes"
+    },
+    {
+      "type": "varchar(10)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "code",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_recent_codes"
+    },
+    {
+      "type": "datetime2",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "last_used",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_recent_codes"
+    },
+    {
+      "type": "varchar(10)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "code",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "type": "nvarchar(64)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "created_by",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "type": "nvarchar(2048)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "tutor_url",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "type": "datetime2",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "valid_from",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "type": "datetime2",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "valid_until",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "type": "nvarchar(200)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "note",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "type": "nvarchar(256)",
+      "notNull": false,
+      "generated": null,
+      "identity": null,
+      "name": "origin",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "type": "bit",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "anonymous",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "type": "datetime2",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "type": "varchar(64)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "thread_id",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_user_chats"
+    },
+    {
+      "type": "varchar(10)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "code",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_user_chats"
+    },
+    {
+      "type": "nvarchar(64)",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "user_id",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_user_chats"
+    },
+    {
+      "type": "datetime2",
+      "notNull": true,
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "schema": "dbo",
+      "entityType": "columns",
+      "table": "novedu_user_chats"
+    },
+    {
+      "columns": [
+        {
+          "value": "name",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": "[valid_until] IS NULL",
+      "name": "ux_novedu_files_active_name",
+      "entityType": "indexes",
+      "table": "novedu_files",
+      "schema": "dbo"
+    },
+    {
+      "columns": [
+        {
+          "value": "valid_until",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "name": "ix_novedu_files_valid_until",
+      "entityType": "indexes",
+      "table": "novedu_files",
+      "schema": "dbo"
+    },
+    {
+      "columns": [
+        {
+          "value": "created_by",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "name": "ix_novedu_tutor_codes_created_by",
+      "entityType": "indexes",
+      "table": "novedu_tutor_codes",
+      "schema": "dbo"
+    },
+    {
+      "columns": [
+        {
+          "value": "code",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "name": "ix_novedu_user_chats_code",
+      "entityType": "indexes",
+      "table": "novedu_user_chats",
+      "schema": "dbo"
+    },
+    {
+      "columns": [
+        {
+          "value": "user_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "name": "ix_novedu_user_chats_user_id",
+      "entityType": "indexes",
+      "table": "novedu_user_chats",
+      "schema": "dbo"
+    },
+    {
+      "nameExplicit": false,
+      "columns": ["user_id", "code"],
+      "name": "novedu_recent_codes_pkey",
+      "entityType": "pks",
+      "table": "novedu_recent_codes",
+      "schema": "dbo"
+    },
+    {
+      "nameExplicit": false,
+      "columns": ["id"],
+      "name": "novedu_files_pkey",
+      "table": "novedu_files",
+      "schema": "dbo",
+      "entityType": "pks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": ["code"],
+      "name": "novedu_tutor_codes_pkey",
+      "table": "novedu_tutor_codes",
+      "schema": "dbo",
+      "entityType": "pks"
+    },
+    {
+      "nameExplicit": false,
+      "columns": ["thread_id"],
+      "name": "novedu_user_chats_pkey",
+      "table": "novedu_user_chats",
+      "schema": "dbo",
+      "entityType": "pks"
+    },
+    {
+      "column": "note",
+      "nameExplicit": false,
+      "default": "('')",
+      "name": "novedu_tutor_codes_note_default",
+      "entityType": "defaults",
+      "schema": "dbo",
+      "table": "novedu_tutor_codes"
+    },
+    {
+      "column": "anonymous",
+      "nameExplicit": false,
+      "default": "((1))",
+      "name": "novedu_tutor_codes_anonymous_default",
+      "entityType": "defaults",
+      "schema": "dbo",
+      "table": "novedu_tutor_codes"
+    }
+  ],
+  "renames": []
+}

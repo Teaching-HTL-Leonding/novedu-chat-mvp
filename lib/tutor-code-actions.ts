@@ -1,39 +1,25 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { headers } from "next/headers";
-import { requireEffectiveTeacher } from "@/lib/student-mode";
+import { resolveAppOrigin } from "@/lib/app-origin";
+import { requireTeacherUserId } from "@/lib/student-mode";
 import {
   createTutorCode,
   getOwnedTutorCode,
   validateTutorCodeRequest,
 } from "@/lib/tutor-code-store";
 import { deleteTutorCodeAndData } from "@/lib/tutor-stats-store";
-import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
+import { defaultFetcher, loadAndBuildTutorPrompt, type ValidationError } from "@/lib/tutors";
 
 export type TutorCodeFormState =
   | { status: "idle" }
   | { status: "error"; message: string }
+  // A tutor that fails validation carries the FULL structured error list (codes,
+  // field paths, missing variables) so the form can show the same actionable
+  // detail as the files / validate-tutor pages — not just the first message.
+  | { status: "error"; errors: ValidationError[] }
   // `link` is the full chat URL (`https://<origin>/<code>`), ready to hand out.
   | { status: "success"; link: string; note: string };
-
-// The origin the generated chat URLs point at. Prefer the explicit
-// TUTOR_CODE_ORIGIN env var (set it in production — forwarded headers are only
-// as trustworthy as the proxy chain in front of the app). Without it, fall back
-// to the request's forwarded/host headers, which is fine for local dev.
-// Multi-hop proxies append comma-separated values, so only the first
-// (client-most) entry counts. Display-only: a code works on ANY origin.
-async function resolveAppOrigin(): Promise<string> {
-  const configured = process.env.TUTOR_CODE_ORIGIN;
-  if (configured) return new URL(configured).origin;
-
-  const h = await headers();
-  const first = (value: string | null) => value?.split(",")[0]?.trim() || undefined;
-  const host = first(h.get("x-forwarded-host")) ?? first(h.get("host"));
-  if (!host) throw new Error("No host header");
-  const proto = first(h.get("x-forwarded-proto")) ?? "http";
-  return new URL(`${proto}://${host}`).origin;
-}
 
 // Creates a Tutor Code for a tutor + availability window. The stored row is the
 // only artifact — there is no stateless fallback, so a storage failure is a
@@ -44,14 +30,19 @@ export async function createTutorCodeAction(
   _prev: TutorCodeFormState,
   formData: FormData,
 ): Promise<TutorCodeFormState> {
-  // The guard returns the session, so the user id below needs no second
-  // auth() round trip (each auth() call re-decrypts the session cookie).
-  let session: Awaited<ReturnType<typeof requireEffectiveTeacher>>;
-  try {
-    session = await requireEffectiveTeacher();
-  } catch {
-    return { status: "error", message: "Only teachers can create tutor codes." };
+  // One gate yields both "is an effective teacher" and the user id, so no
+  // second auth() round trip (each auth() call re-decrypts the session cookie).
+  const gate = await requireTeacherUserId();
+  if (!gate.ok) {
+    return {
+      status: "error",
+      message:
+        gate.reason === "not-teacher"
+          ? "Only teachers can create tutor codes."
+          : "Your session carries no user id — sign in again.",
+    };
   }
+  const userId = gate.userId;
 
   const validation = validateTutorCodeRequest({
     tutor: formData.get("tutor"),
@@ -69,13 +60,7 @@ export async function createTutorCodeAction(
     validateLibraries: true,
   });
   if (!result.ok) {
-    const first = result.errors[0];
-    return {
-      status: "error",
-      message: first
-        ? `The tutor failed validation (${first.code}): ${first.message}`
-        : "The tutor failed validation.",
-    };
+    return { status: "error", errors: result.errors };
   }
 
   let origin: string;
@@ -89,10 +74,6 @@ export async function createTutorCodeAction(
     };
   }
 
-  const userId = session.user?.id;
-  if (!userId) {
-    return { status: "error", message: "Your session carries no user id — sign in again." };
-  }
   // Freeze the tutor's anonymity flag onto the row at create time. `result`
   // is the just-validated YAML; a later edit to it will not change the stored
   // value (documented behavior). `loadAndBuildTutorPrompt` defaults it to true.
@@ -125,16 +106,17 @@ export type DeleteTutorCodeResult = { ok: true } | { ok: false; message: string 
  * lives until deleted here. Revalidates the Shared Tutor Codes list on success.
  */
 export async function deleteTutorCodeAction(code: string): Promise<DeleteTutorCodeResult> {
-  let session: Awaited<ReturnType<typeof requireEffectiveTeacher>>;
-  try {
-    session = await requireEffectiveTeacher();
-  } catch {
-    return { ok: false, message: "Only teachers can delete tutor codes." };
+  const gate = await requireTeacherUserId();
+  if (!gate.ok) {
+    return {
+      ok: false,
+      message:
+        gate.reason === "not-teacher"
+          ? "Only teachers can delete tutor codes."
+          : "Your session carries no user id — sign in again.",
+    };
   }
-  const userId = session.user?.id;
-  if (!userId) {
-    return { ok: false, message: "Your session carries no user id — sign in again." };
-  }
+  const userId = gate.userId;
 
   const owned = await getOwnedTutorCode(code, userId);
   if (owned === undefined) {

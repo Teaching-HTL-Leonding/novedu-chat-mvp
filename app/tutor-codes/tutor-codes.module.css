@@ -56,44 +56,15 @@
   white-space: nowrap;
 }
 
-/* Square icon button shared by every action (stats, open, copy, delete). The
-   accessible label lives on the element (aria-label); the icon is decorative. */
+/* Square icon button shared by every action (stats, open, copy, delete) —
+   defined once in the shared module so it can't drift from the Files screen. */
 .iconButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.1rem;
-  height: 2.1rem;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--foreground) 22%, transparent);
-  border-radius: 0.5rem;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.iconButton:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--foreground) 8%, transparent);
-}
-
-.iconButton:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.iconButton svg {
-  width: 1.05rem;
-  height: 1.05rem;
+  composes: iconButton from "../../components/icon-button.module.css";
 }
 
 /* Delete: same shape, danger accent. */
 .iconButtonDanger {
-  border-color: color-mix(in srgb, crimson 45%, transparent);
-  color: color-mix(in srgb, crimson 78%, var(--foreground));
-}
-
-.iconButtonDanger:hover:not(:disabled) {
-  background: color-mix(in srgb, crimson 12%, transparent);
+  composes: iconButtonDanger from "../../components/icon-button.module.css";
 }
 
 .visuallyHidden {

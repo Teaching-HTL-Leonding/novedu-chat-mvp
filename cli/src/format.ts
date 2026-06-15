@@ -1,8 +1,9 @@
-import type {
-  BuildResult,
-  FragmentCheckResult,
-  ValidationError,
-  ValidationWarning,
+import {
+  type BuildResult,
+  type FragmentCheckResult,
+  formatZodIssues,
+  type ValidationError,
+  type ValidationWarning,
 } from "@/lib/tutors";
 
 // Pure presentation: turn a `BuildResult` into a human-readable terminal report.
@@ -34,6 +35,23 @@ function renderWarnings(warnings: ValidationWarning[]): string[] {
   return warnings.map((w) => `  ${yellow("⚠")} ${yellow(w.code)} ${w.message}${context(w)}`);
 }
 
+/**
+ * Render each error as a line, with any flattened Zod schema-issue detail
+ * indented beneath it — so a generic "Document does not match the expected
+ * structure" is followed by the actual field paths (e.g. `Unrecognized key:
+ * "nae"`), matching what the web UI shows.
+ */
+function renderErrors(errors: ValidationError[]): string[] {
+  const lines: string[] = [];
+  for (const e of errors) {
+    lines.push(`  ${red("✗")} ${red(e.code)} ${e.message}${context(e)}`);
+    if (e.zodIssues) {
+      for (const issue of formatZodIssues(e.zodIssues)) lines.push(`      ${dim(issue)}`);
+    }
+  }
+  return lines;
+}
+
 export function formatResult(result: BuildResult, source: string): string {
   const lines: string[] = [];
 
@@ -58,9 +76,7 @@ export function formatResult(result: BuildResult, source: string): string {
   lines.push(red(`✘ Invalid tutor`) + dim(` — ${source}`));
   lines.push("");
   lines.push(red(`${result.errors.length} error(s):`));
-  for (const e of result.errors) {
-    lines.push(`  ${red("✗")} ${red(e.code)} ${e.message}${context(e)}`);
-  }
+  lines.push(...renderErrors(result.errors));
   if (result.warnings.length) {
     lines.push("");
     lines.push(yellow(`${result.warnings.length} warning(s):`));
@@ -91,9 +107,7 @@ export function formatFragmentResult(result: FragmentCheckResult, source: string
   lines.push(red(`✘ Invalid fragment file`) + dim(` — ${source}`));
   lines.push("");
   lines.push(red(`${result.errors.length} error(s):`));
-  for (const e of result.errors) {
-    lines.push(`  ${red("✗")} ${red(e.code)} ${e.message}${context(e)}`);
-  }
+  lines.push(...renderErrors(result.errors));
   if (result.warnings.length) {
     lines.push("");
     lines.push(yellow(`${result.warnings.length} warning(s):`));

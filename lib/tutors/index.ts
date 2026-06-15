@@ -10,6 +10,7 @@ export type {
   ValidationWarning,
   WarningCode,
 } from "./errors";
+export { formatZodIssues } from "./errors";
 export { defaultFetcher, type Fetcher, type FetchResponse } from "./fetcher";
 export {
   checkFragmentFileValue,

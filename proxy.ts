@@ -8,8 +8,9 @@ export { auth as proxy } from "@/auth";
 export const config = {
   // Protect everything (pages + /api/copilotkit + /api/validate-tutor) EXCEPT the
   // Auth.js endpoints (needed to complete sign-in), the public /api/version
-  // build-identity probe (CD triage — see app/api/version/route.ts), and static
-  // assets. Without a matcher the proxy would also run on _next/static, blocking
-  // CSS/JS.
-  matcher: ["/((?!api/auth|api/version|_next/static|_next/image|favicon.ico).*)"],
+  // build-identity probe (CD triage — see app/api/version/route.ts), the public
+  // /api/files YAML-hosting endpoint (served without a session so the tutor-code
+  // loader can fetch it — see app/api/files/[name]/route.ts), and static assets.
+  // Without a matcher the proxy would also run on _next/static, blocking CSS/JS.
+  matcher: ["/((?!api/auth|api/version|api/files|_next/static|_next/image|favicon.ico).*)"],
 };

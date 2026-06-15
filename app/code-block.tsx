@@ -1,9 +1,9 @@
 "use client";
 
 import type { ComponentProps } from "react";
-import { useState } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { useCopyToClipboard } from "@/components/use-copy-to-clipboard";
 import styles from "./code-block.module.css";
 
 // Renders a fenced code block: a header (language label + copy button) above a
@@ -64,23 +64,14 @@ export function CodeBlock({
 }
 
 function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard may be unavailable (e.g. an insecure context) — ignore.
-    }
-  };
+  // Clipboard may be unavailable (e.g. an insecure context) — copy() ignores it.
+  const { copied, copy } = useCopyToClipboard({ resetMs: 1500 });
 
   return (
     <button
       type="button"
       className={`${styles.copy} ${copied ? styles.copied : ""}`}
-      onClick={copy}
+      onClick={() => copy(text)}
       aria-label="Copy code to clipboard"
     >
       {copied ? "Copied" : "Copy"}

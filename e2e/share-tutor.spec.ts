@@ -91,6 +91,10 @@ test("the window must end after it starts", async ({ page }) => {
 test("a broken tutor is rejected at share time", async ({ page }) => {
   await submitShareForm(page, { tutor: BROKEN_TUTOR_URL, startOffset: -3600, endOffset: 3600 });
 
-  await expect(page.getByText(/failed validation/i)).toBeVisible({ timeout: 30_000 });
+  // The share form now renders the validator's structured ErrorList (heading
+  // "Validation failed (N)") instead of a single generic message.
+  await expect(page.getByRole("heading", { name: /Validation failed/i })).toBeVisible({
+    timeout: 30_000,
+  });
   await expect(page.getByLabel("Tutor Code link", { exact: true })).toHaveCount(0);
 });

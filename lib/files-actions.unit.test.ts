@@ -1,0 +1,241 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The file actions are thin auth + policy shells around the validator and the
+// store. These tests pin the wiring: the teacher gate, the VALIDATE-BEFORE-STORE
+// ordering (an invalid file must never be persisted), the structured-error
+// pass-through, and the store-reason → message mapping. The store and validator
+// are mocked; the pure name/kind checks stay real.
+
+const mocks = vi.hoisted(() => ({
+  requireTeacherUserId: vi.fn(),
+  createFile: vi.fn(),
+  updateFile: vi.fn(),
+  softDeleteFile: vi.fn(),
+  getActiveFile: vi.fn(),
+  loadAndBuildTutorPrompt: vi.fn(),
+  loadAndCheckFragmentFile: vi.fn(),
+  resolveAppOrigin: vi.fn(),
+  revalidatePath: vi.fn(),
+  redirect: vi.fn((url: string) => {
+    throw new Error(`REDIRECT:${url}`);
+  }),
+}));
+
+vi.mock("@/lib/db", () => ({ getDb: () => ({}) }));
+vi.mock("@/lib/student-mode", () => ({ requireTeacherUserId: mocks.requireTeacherUserId }));
+vi.mock("@/lib/app-origin", () => ({ resolveAppOrigin: mocks.resolveAppOrigin }));
+vi.mock("@/lib/tutors", () => ({
+  defaultFetcher: vi.fn(),
+  loadAndBuildTutorPrompt: mocks.loadAndBuildTutorPrompt,
+  loadAndCheckFragmentFile: mocks.loadAndCheckFragmentFile,
+}));
+// Keep the REAL validateFileName / isFileKind — they are part of the contract —
+// and mock only the storage calls.
+vi.mock("@/lib/file-store", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/file-store")>();
+  return {
+    ...actual,
+    createFile: mocks.createFile,
+    updateFile: mocks.updateFile,
+    softDeleteFile: mocks.softDeleteFile,
+    getActiveFile: mocks.getActiveFile,
+  };
+});
+vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
+vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
+
+import { createFileAction, deleteFileAction, updateFileAction } from "@/lib/files-actions";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.requireTeacherUserId.mockResolvedValue({ ok: true, userId: "teacher-1" });
+  mocks.resolveAppOrigin.mockResolvedValue("http://localhost:3000");
+  mocks.loadAndCheckFragmentFile.mockResolvedValue({ ok: true });
+  mocks.loadAndBuildTutorPrompt.mockResolvedValue({
+    ok: true,
+    title: "Title",
+    description: "Desc",
+  });
+  mocks.createFile.mockResolvedValue({ ok: true, name: "my-file" });
+  mocks.updateFile.mockResolvedValue({ ok: true });
+  mocks.softDeleteFile.mockResolvedValue({ ok: true });
+  mocks.getActiveFile.mockResolvedValue({ name: "my-file", kind: "fragment", content: "old" });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+const FRAGMENT = { name: "my-file", kind: "fragment", content: "id: f\n" };
+
+describe("createFileAction", () => {
+  it("rejects a non-teacher before any work", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    const result = await createFileAction(FRAGMENT);
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
+    expect(mocks.createFile).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing session user id", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "no-user-id" });
+    const result = await createFileAction(FRAGMENT);
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/sign in/i) });
+  });
+
+  it("rejects a malformed name without validating or storing", async () => {
+    const result = await createFileAction({ ...FRAGMENT, name: "bad name!" });
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/letters/i) });
+    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
+    expect(mocks.createFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown kind", async () => {
+    const result = await createFileAction({ ...FRAGMENT, kind: "nonsense" });
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/tutor or a fragment/i),
+    });
+    expect(mocks.createFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty content", async () => {
+    const result = await createFileAction({ ...FRAGMENT, content: "   " });
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/empty/i) });
+    expect(mocks.createFile).not.toHaveBeenCalled();
+  });
+
+  it("passes the validator's structured errors through and does NOT store", async () => {
+    mocks.loadAndCheckFragmentFile.mockResolvedValue({
+      ok: false,
+      errors: [
+        { code: "FRAGMENT_FILE_SCHEMA_ERROR", message: "bad", zodIssues: { errors: ["x"] } },
+      ],
+    });
+    const result = await createFileAction(FRAGMENT);
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR" }],
+    });
+    expect(mocks.createFile).not.toHaveBeenCalled();
+  });
+
+  it("stores a tutor's denormalized title/description from the validator", async () => {
+    mocks.loadAndBuildTutorPrompt.mockResolvedValue({ ok: true, title: "T", description: "D" });
+    await expect(
+      createFileAction({ name: "my-tutor", kind: "tutor", content: "id: t" }),
+    ).rejects.toThrow("REDIRECT:/files/edit/my-tutor");
+    expect(mocks.createFile).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "my-tutor", kind: "tutor", title: "T", description: "D" }),
+      "teacher-1",
+    );
+  });
+
+  it("maps a name-taken store result to a clear message", async () => {
+    mocks.createFile.mockResolvedValue({ ok: false, reason: "name-taken" });
+    const result = await createFileAction(FRAGMENT);
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/already exists/i) });
+  });
+
+  it("maps a store error to a retry message", async () => {
+    mocks.createFile.mockResolvedValue({ ok: false, reason: "error" });
+    const result = await createFileAction(FRAGMENT);
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/could not be stored/i),
+    });
+  });
+
+  it("revalidates and redirects to the edit page on success", async () => {
+    await expect(createFileAction(FRAGMENT)).rejects.toThrow("REDIRECT:/files/edit/my-file");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/files");
+  });
+});
+
+describe("updateFileAction", () => {
+  it("rejects a non-teacher before any work", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    const result = await updateFileAction("my-file", "id: f\n");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
+    expect(mocks.updateFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty content", async () => {
+    const result = await updateFileAction("my-file", "  ");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/empty/i) });
+    expect(mocks.updateFile).not.toHaveBeenCalled();
+  });
+
+  it("reports a transient lookup failure (DB down)", async () => {
+    mocks.getActiveFile.mockResolvedValue(undefined);
+    const result = await updateFileAction("my-file", "id: f\n");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/try again/i) });
+    expect(mocks.updateFile).not.toHaveBeenCalled();
+  });
+
+  it("reports a vanished file", async () => {
+    mocks.getActiveFile.mockResolvedValue(null);
+    const result = await updateFileAction("my-file", "id: f\n");
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/no longer exists/i),
+    });
+    expect(mocks.updateFile).not.toHaveBeenCalled();
+  });
+
+  it("passes validator errors through and does NOT store", async () => {
+    mocks.loadAndCheckFragmentFile.mockResolvedValue({
+      ok: false,
+      errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR", message: "bad" }],
+    });
+    const result = await updateFileAction("my-file", "id: f\n");
+    expect(result).toMatchObject({ ok: false, errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR" }] });
+    expect(mocks.updateFile).not.toHaveBeenCalled();
+  });
+
+  it("maps a not-found store result to a conflict message", async () => {
+    mocks.updateFile.mockResolvedValue({ ok: false, reason: "not-found" });
+    const result = await updateFileAction("my-file", "id: f\n");
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/changed or was removed/i),
+    });
+  });
+
+  it("revalidates on success", async () => {
+    const result = await updateFileAction("my-file", "id: f\n");
+    expect(result).toEqual({ ok: true });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/files");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/files/edit/my-file");
+  });
+});
+
+describe("deleteFileAction", () => {
+  it("rejects a non-teacher and never touches the store", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    const result = await deleteFileAction("my-file");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
+    expect(mocks.softDeleteFile).not.toHaveBeenCalled();
+  });
+
+  it("treats an already-gone file as success (idempotent), still revalidating", async () => {
+    mocks.softDeleteFile.mockResolvedValue({ ok: false, reason: "not-found" });
+    const result = await deleteFileAction("ghost");
+    expect(result).toEqual({ ok: true });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/files");
+  });
+
+  it("reports a hard store error", async () => {
+    mocks.softDeleteFile.mockResolvedValue({ ok: false, reason: "error" });
+    const result = await deleteFileAction("my-file");
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/could not be deleted/i),
+    });
+  });
+
+  it("succeeds and revalidates on a real delete", async () => {
+    const result = await deleteFileAction("my-file");
+    expect(result).toEqual({ ok: true });
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/files");
+  });
+});

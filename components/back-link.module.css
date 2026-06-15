@@ -1,0 +1,12 @@
+.backLink {
+  display: inline-block;
+  margin-bottom: 0.75rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: inherit;
+  text-decoration: none;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}

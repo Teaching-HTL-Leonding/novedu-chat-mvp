@@ -124,3 +124,40 @@ export function warning(
 ): ValidationWarning {
   return { code, message, ...extra };
 }
+
+// The shape `z.treeifyError` produces (a `ValidationError`'s `zodIssues`):
+// per-node `errors`, with nested `properties` (objects) and `items` (arrays).
+type ZodErrorTree = {
+  errors?: string[];
+  properties?: Record<string, ZodErrorTree>;
+  items?: (ZodErrorTree | null)[];
+};
+
+/**
+ * Flattens a treeified Zod error into `path: message` lines so a generic
+ * "Document does not match the expected structure" becomes actionable — e.g.
+ * `Unrecognized key: "nae"` and `name: Invalid input: expected string`.
+ * Framework-agnostic: shared by the web UI (`ErrorList`), the share-tutor
+ * action, and the CLI formatter, so a schema error reads the same everywhere.
+ */
+export function formatZodIssues(zodIssues: unknown): string[] {
+  const out: string[] = [];
+  const walk = (node: ZodErrorTree | null | undefined, path: string[]) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node.errors)) {
+      for (const message of node.errors) {
+        out.push(path.length ? `${path.join(".")}: ${message}` : message);
+      }
+    }
+    if (node.properties) {
+      for (const [key, child] of Object.entries(node.properties)) walk(child, [...path, key]);
+    }
+    if (Array.isArray(node.items)) {
+      node.items.forEach((child, index) => {
+        walk(child, [...path, String(index)]);
+      });
+    }
+  };
+  walk(zodIssues as ZodErrorTree, []);
+  return out;
+}

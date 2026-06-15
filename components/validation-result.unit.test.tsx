@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { ErrorList, FragmentSummary, locationOf, WarningList } from "./result-views";
+import { ErrorList, FragmentSummary, locationOf, WarningList } from "./validation-result";
 
 describe("locationOf", () => {
   it("joins file alias and fragment id", () => {
@@ -48,6 +48,30 @@ describe("ErrorList", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("general / socratic_tutor · domain")).toBeInTheDocument();
     expect(screen.getByText("DUPLICATE_PRIORITY")).toBeInTheDocument();
+  });
+
+  it("renders flattened zod issue detail for schema errors", () => {
+    render(
+      <ErrorList
+        errors={[
+          {
+            code: "TUTOR_SCHEMA_ERROR",
+            message: "Document does not match the expected structure",
+            zodIssues: {
+              errors: ['Unrecognized key: "nae"'],
+              properties: {
+                name: { errors: ["Invalid input: expected string, received undefined"] },
+              },
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Unrecognized key: "nae"')).toBeInTheDocument();
+    expect(
+      screen.getByText("name: Invalid input: expected string, received undefined"),
+    ).toBeInTheDocument();
   });
 });
 
