@@ -76,7 +76,15 @@ Tables (details in `docs/tutor-codes.md`):
 | `novedu_tutor_codes` | PK `code` | Shared tutor codes: tutor URL, window, note, creating teacher, frozen `anonymous` flag |
 | `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only for `anonymous: false` tutors) |
 | `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (entry-page shortcuts) |
+| `novedu_files` | PK `id` (per-version); filtered UK `name WHERE valid_until IS NULL` | App-hosted YAML files, **temporal/append-only** (details in `docs/files.md`) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping |
+
+`novedu_files` is the repo's one **temporal (append-only) table**: each row is one
+version of a file, the *active* version is the single row with `valid_until IS NULL`,
+and "at most one active version per name" is enforced by a SQL Server **filtered
+unique index** (`drizzle-orm`'s `uniqueIndex(...).on(name).where(sql\`valid_until IS NULL\`)`).
+Update = close the active row + insert a new one; delete = close only. See
+`docs/files.md` for the full model and the matching optimistic-concurrency guard.
 
 ## Deletion (no garbage collection)
 
