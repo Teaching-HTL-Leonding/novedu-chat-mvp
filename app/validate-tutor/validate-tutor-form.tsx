@@ -1,9 +1,9 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
+import { ErrorList, FragmentSummary, WarningList } from "@/components/validation-result";
 import type { BuildResult, FragmentCheckResult } from "@/lib/tutors";
 import { CodeBlock } from "../code-block";
-import { ErrorList, FragmentSummary, WarningList } from "./result-views";
 import styles from "./validate-tutor.module.css";
 
 type Status = "idle" | "loading" | "done";

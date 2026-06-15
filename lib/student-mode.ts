@@ -58,3 +58,27 @@ export async function requireEffectiveTeacher() {
   }
   return session;
 }
+
+export type TeacherGate =
+  | { ok: true; userId: string }
+  | { ok: false; reason: "not-teacher" | "no-user-id" };
+
+/**
+ * The standard server-action teacher gate: requires an EFFECTIVE teacher AND a
+ * session user id (Entra `oid`). Returns a discriminated result so each action
+ * maps the failure to its OWN message and result shape — the security check
+ * lives in one place (a missed copy of the gate is a real authz hole) while the
+ * wording stays per-action. Callers must `return` on `ok: false` before any
+ * privileged work.
+ */
+export async function requireTeacherUserId(): Promise<TeacherGate> {
+  let session: Awaited<ReturnType<typeof requireEffectiveTeacher>>;
+  try {
+    session = await requireEffectiveTeacher();
+  } catch {
+    return { ok: false, reason: "not-teacher" };
+  }
+  const userId = session.user?.id;
+  if (!userId) return { ok: false, reason: "no-user-id" };
+  return { ok: true, userId };
+}

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { auth } from "@/auth";
-import { AccessDenied, Notice } from "@/components/notice";
-import { isEffectiveTeacher } from "@/lib/student-mode";
+import { BackLink } from "@/components/back-link";
+import { Notice } from "@/components/notice";
+import { requireTeacherPage } from "@/components/require-teacher-page";
 import { getOwnedTutorCode } from "@/lib/tutor-code-store";
 import { getConversationMessages } from "@/lib/tutor-stats-store";
 import pageStyles from "../../../../page.module.css";
@@ -20,13 +21,8 @@ export default async function ConversationPage({
 }) {
   const { code, threadId } = await params;
 
-  if (!(await isEffectiveTeacher())) {
-    return (
-      <main className={pageStyles.main}>
-        <AccessDenied />
-      </main>
-    );
-  }
+  const denied = await requireTeacherPage();
+  if (denied) return denied;
 
   const session = await auth();
   const userId = session?.user?.id;
@@ -60,9 +56,7 @@ export default async function ConversationPage({
   return (
     <main className={pageStyles.main}>
       <div className={styles.container}>
-        <Link href={backHref} className={styles.backLink}>
-          ← Back to stats
-        </Link>
+        <BackLink href={backHref}>Back to stats</BackLink>
         {/* Title is in the status bar ("Conversation"); this is just context. */}
         <p className={styles.subhead}>{entry.note || entry.code} · read-only transcript</p>
 

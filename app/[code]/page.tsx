@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { auth } from "@/auth";
 import { Notice } from "@/components/notice";
+import { ErrorList, WarningList } from "@/components/validation-result";
 import { recordRecentCode, removeRecentCode } from "@/lib/recent-code-store";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
 import { checkTutorCode } from "@/lib/tutor-code-store";
@@ -9,7 +10,6 @@ import { defaultFetcher, loadAndBuildTutorPrompt, sampleExampleQuestions } from 
 import styles from "../page.module.css";
 import { TutorChat } from "../tutor-chat";
 import { TutorCodeError } from "../tutor-code-error";
-import { ErrorList, WarningList } from "../validate-tutor/result-views";
 
 // The chat, reachable ONLY through a Tutor Code created by a teacher
 // (`/<code>`). This is a server component on purpose: the code's existence, its

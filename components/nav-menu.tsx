@@ -31,6 +31,7 @@ const NAV_ITEMS = [
     heading: "Shared Tutor Codes",
     teacherOnly: true,
   },
+  { href: "/files", label: "YAML Files", heading: "YAML Files", teacherOnly: true },
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
 ] as const;
 
@@ -44,6 +45,13 @@ function dynamicHeading(pathname: string): string | undefined {
     // /tutor-codes/<code>            → stats
     // /tutor-codes/<code>/c/<thread> → a single conversation
     return segments[2] === "c" ? "Conversation" : "Tutor Code Stats";
+  }
+  if (segments[0] === "files") {
+    // /files/new            → create
+    // /files/edit/<name…>   → edit (needs the name segment; bare /files/edit
+    //                          is not a real page, so it gets no special heading)
+    if (segments[1] === "new") return "New YAML File";
+    if (segments[1] === "edit" && segments.length >= 3) return "Edit YAML File";
   }
   return undefined;
 }

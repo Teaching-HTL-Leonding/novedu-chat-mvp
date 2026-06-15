@@ -1,9 +1,16 @@
-import type { FragmentCheckResult, ValidationError, ValidationWarning } from "@/lib/tutors";
-import styles from "./validate-tutor.module.css";
+import {
+  type FragmentCheckResult,
+  formatZodIssues,
+  type ValidationError,
+  type ValidationWarning,
+} from "@/lib/tutors";
+import styles from "./validation-result.module.css";
 
-// Pure presentational views for a result's errors, warnings, and (for a fragment
-// library) its successful summary. Kept separate from the form so they can be
-// rendered and tested in isolation with plain props (no fetch, no state).
+// Pure presentational views for a validation result's errors, warnings, and (for
+// a fragment library) its successful summary. Shared by the validate-tutor page,
+// the share-tutor form, and the YAML Files create/edit forms — kept in
+// components/ (not a route folder) since several features depend on it. Rendered
+// and tested in isolation with plain props (no fetch, no state).
 
 /** The success shape of a standalone fragment-FILE check. */
 type OkFragment = Extract<FragmentCheckResult, { ok: true }>;
@@ -25,6 +32,7 @@ export function ErrorList({ errors }: { errors: ValidationError[] }) {
       <ul className={styles.list}>
         {errors.map((err) => {
           const where = locationOf(err);
+          const issues = err.zodIssues ? formatZodIssues(err.zodIssues) : [];
           return (
             <li
               key={`${err.code}-${err.fragmentId ?? ""}-${err.variable ?? ""}-${err.message}`}
@@ -33,6 +41,15 @@ export function ErrorList({ errors }: { errors: ValidationError[] }) {
               <span className={styles.code}>{err.code}</span>
               <span className={styles.message}>{err.message}</span>
               {where ? <span className={styles.where}>{where}</span> : null}
+              {issues.length > 0 ? (
+                <ul className={styles.issues}>
+                  {issues.map((issue) => (
+                    <li key={issue} className={styles.issue}>
+                      {issue}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </li>
           );
         })}

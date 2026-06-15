@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // to degrade to anymore).
 
 const mocks = vi.hoisted(() => ({
-  requireEffectiveTeacher: vi.fn(),
+  requireTeacherUserId: vi.fn(),
   loadAndBuildTutorPrompt: vi.fn(),
   createTutorCode: vi.fn(),
   getOwnedTutorCode: vi.fn(),
@@ -19,7 +19,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("@/lib/student-mode", () => ({
-  requireEffectiveTeacher: mocks.requireEffectiveTeacher,
+  requireTeacherUserId: mocks.requireTeacherUserId,
 }));
 vi.mock("@/lib/tutors", () => ({
   defaultFetcher: vi.fn(),
@@ -61,9 +61,9 @@ function formData(note = "My class"): FormData {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("TUTOR_CODE_ORIGIN", "");
-  // The teacher guard RETURNS the session — the action must reuse it instead
-  // of resolving the session a second time.
-  mocks.requireEffectiveTeacher.mockResolvedValue({ user: { id: "teacher-sub-1" } });
+  // The shared gate yields the teacher's user id directly (no separate session
+  // round trip); the action reuses it.
+  mocks.requireTeacherUserId.mockResolvedValue({ ok: true, userId: "teacher-sub-1" });
   mocks.loadAndBuildTutorPrompt.mockResolvedValue({
     ok: true,
     prompt: "p",
@@ -115,7 +115,7 @@ describe("createTutorCodeAction", () => {
   });
 
   it("rejects non-teachers", async () => {
-    mocks.requireEffectiveTeacher.mockRejectedValue(new Error("nope"));
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
     const state = await createTutorCodeAction({ status: "idle" }, formData());
     expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/teachers/i) });
     expect(mocks.createTutorCode).not.toHaveBeenCalled();
@@ -129,22 +129,30 @@ describe("createTutorCodeAction", () => {
     expect(mocks.createTutorCode).not.toHaveBeenCalled();
   });
 
-  it("rejects a tutor that fails validation at create time", async () => {
+  it("rejects a tutor that fails validation, surfacing the full structured error list", async () => {
+    // The action forwards the validator's errors verbatim (not just the first
+    // one's message) so the form can render code + field-path detail.
     mocks.loadAndBuildTutorPrompt.mockResolvedValue({
       ok: false,
-      errors: [{ code: "FETCH_FAILED", message: "HTTP 404" }],
+      errors: [
+        {
+          code: "TUTOR_SCHEMA_ERROR",
+          message: "Document does not match the expected structure",
+          zodIssues: { errors: ['Unrecognized key: "nae"'] },
+        },
+      ],
       warnings: [],
     });
     const state = await createTutorCodeAction({ status: "idle" }, formData());
     expect(state).toMatchObject({
       status: "error",
-      message: expect.stringContaining("FETCH_FAILED"),
+      errors: [{ code: "TUTOR_SCHEMA_ERROR", zodIssues: { errors: ['Unrecognized key: "nae"'] } }],
     });
     expect(mocks.createTutorCode).not.toHaveBeenCalled();
   });
 
   it("errors when no session user id is available", async () => {
-    mocks.requireEffectiveTeacher.mockResolvedValue({ user: {} });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "no-user-id" });
     const state = await createTutorCodeAction({ status: "idle" }, formData());
     expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/sign in/i) });
   });
@@ -166,7 +174,7 @@ describe("deleteTutorCodeAction", () => {
   });
 
   it("rejects non-teachers and never touches the data", async () => {
-    mocks.requireEffectiveTeacher.mockRejectedValue(new Error("nope"));
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
     const result = await deleteTutorCodeAction("a1b2c3d4e5");
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
     expect(mocks.deleteTutorCodeAndData).not.toHaveBeenCalled();

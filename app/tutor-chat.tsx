@@ -3,11 +3,11 @@
 import { CopilotChat, CopilotKitProvider } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 import { type ComponentProps, type HTMLAttributes, useMemo, useState } from "react";
+import { WarningList } from "@/components/validation-result";
 import type { ExampleQuestion, ValidationWarning } from "@/lib/tutors";
 import { CodeBlock } from "./code-block";
 import { MarkdownRenderer } from "./markdown-renderer";
 import styles from "./page.module.css";
-import { WarningList } from "./validate-tutor/result-views";
 
 // The chat surface. There is no tutor input here anymore: the server component
 // (app/[code]/page.tsx) checks the tutor code and the tutor YAML and passes the

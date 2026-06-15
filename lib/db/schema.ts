@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bit,
   datetime2,
@@ -5,8 +6,14 @@ import {
   mssqlTable,
   nvarchar,
   primaryKey,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mssql-core";
+
+// NOTE: drizzle's mssql `nvarchar` accepts `{ length: "max" }`, which compiles to
+// SQL Server's `NVARCHAR(MAX)` — used for the (potentially large) YAML body below.
+// `NVARCHAR(MAX)` can NOT live in an index key, which is why `name` (the lookup
+// key on the chat hot path) is a bounded, indexable `nvarchar(450)`.
 
 // App-owned tables in the shared Azure SQL database. They live next to Mastra's
 // auto-managed `mastra_*` tables, distinguished by the `novedu_` prefix.
@@ -95,4 +102,66 @@ export const recentCodes = mssqlTable(
   },
   // The PK doubles as the per-user lookup index (user_id prefix).
   (t) => [primaryKey({ columns: [t.userId, t.code] })],
+);
+
+// App-hosted YAML files (tutor definitions and fragment libraries) that teachers
+// author in-app instead of hosting on GitHub/S3/Azure Blob. The public GET
+// endpoint (`/api/files/<name>`) serves the latest version as raw YAML, so such a
+// URL drops straight into the existing tutor-code flow.
+//
+// TEMPORAL / append-only versioning: each row is ONE version of one file. The
+// file's identity is its `name`; the ACTIVE version is the single row with
+// `valid_until IS NULL`. Every other row is history (full content kept per
+// version — never diffs). The transitions, all run in a transaction:
+//
+//   create: INSERT one active row.
+//   update: close the active row (set valid_until + closed_by) and INSERT a new
+//           active row — i.e. a soft-delete of the old version + a fresh version.
+//   delete: close the active row (soft delete) and INSERT nothing.
+//
+// `created_by` is the oid of whoever wrote a version; `closed_by` is the oid of
+// whoever ended it (the updater OR the deleter), so logical deletions are
+// attributed too. The active row's `created_by` is therefore the file's "last
+// writer". "At most one active row per name" is enforced at the DATABASE level
+// by a FILTERED UNIQUE index (`name` WHERE `valid_until IS NULL`), so two
+// concurrent creates of the same name cannot both succeed — the conditional
+// `UPDATE … WHERE id=? AND valid_until IS NULL` in update/delete is the matching
+// optimistic-concurrency guard. There are NO foreign keys (same rule as the
+// other novedu_* tables).
+export const files = mssqlTable(
+  "novedu_files",
+  {
+    // Surrogate id, unique PER VERSION (a fresh uuid for every row).
+    id: varchar("id", { length: 36 }).primaryKey(),
+    // Public identifier / GET-URL key. Bounded so it can be indexed (see note
+    // above). Allows letters/digits/underscore/hyphen today; `/`-separated
+    // folder paths are a future extension (hence the generous length).
+    name: nvarchar("name", { length: 450 }).notNull(),
+    // "tutor" | "fragment" — chosen at create time, picks the validator.
+    kind: varchar("kind", { length: 16 }).notNull(),
+    // Denormalized from the validated YAML (tutor only; null for fragments) so the
+    // file list can be searched by title/description without parsing every body.
+    title: nvarchar("title", { length: 512 }),
+    description: nvarchar("description", { length: 2048 }),
+    // The ENTIRE YAML for this version (NVARCHAR(MAX)).
+    content: nvarchar("content", { length: "max" }).notNull(),
+    // oid of the writer who created this version.
+    createdBy: nvarchar("created_by", { length: 64 }).notNull(),
+    // When this version became active.
+    validFrom: datetime2("valid_from").notNull(),
+    // When this version was closed; NULL = currently active.
+    validUntil: datetime2("valid_until"),
+    // oid of whoever set valid_until (updater or deleter); NULL while active.
+    closedBy: nvarchar("closed_by", { length: 64 }),
+  },
+  (t) => [
+    // At most ONE active version per name — a SQL Server filtered unique index.
+    // This both enforces the invariant (closing the create-time race) and serves
+    // the GET/edit/close hot path, whose lookup is exactly `name WHERE
+    // valid_until IS NULL`.
+    uniqueIndex("ux_novedu_files_active_name").on(t.name).where(sql`${t.validUntil} IS NULL`),
+    // "all active files" for the list page (active rows are the minority as
+    // history accumulates, so an index on the discriminator pays off).
+    index("ix_novedu_files_valid_until").on(t.validUntil),
+  ],
 );

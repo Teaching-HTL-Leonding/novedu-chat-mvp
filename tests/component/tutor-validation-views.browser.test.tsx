@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-react";
-import { ErrorList, WarningList } from "@/app/validate-tutor/result-views";
+import { ErrorList, WarningList } from "@/components/validation-result";
 import type { ValidationError, ValidationWarning } from "@/lib/tutors";
 
 // Pure prop rendering of a broken tutor's structured errors/warnings. This is

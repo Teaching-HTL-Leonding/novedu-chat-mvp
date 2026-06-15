@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { auth } from "@/auth";
+import { ExternalLinkIcon, StatsIcon } from "@/components/icons";
 import { AccessDenied, Notice } from "@/components/notice";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 import { listTutorCodes } from "@/lib/tutor-code-store";
@@ -8,7 +9,6 @@ import { LocalTime } from "../local-time";
 import pageStyles from "../page.module.css";
 import { CopyCodeButton } from "./copy-code-button";
 import { DeleteCodeButton } from "./delete-code-button";
-import { OpenIcon, StatsIcon } from "./icons";
 import styles from "./tutor-codes.module.css";
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
@@ -123,7 +123,7 @@ export default async function TutorCodesPage() {
                           aria-label="Open"
                           title="Open chat"
                         >
-                          <OpenIcon />
+                          <ExternalLinkIcon />
                         </Link>
                       ) : null}
                       <CopyCodeButton code={entry.code} />

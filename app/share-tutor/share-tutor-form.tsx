@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState, useRef, useState } from "react";
+import { useCopyToClipboard } from "@/components/use-copy-to-clipboard";
+import { ErrorList } from "@/components/validation-result";
 import {
   addToDatetimeLocal,
   type DatetimeLocalUnit,
@@ -15,22 +17,15 @@ const INITIAL_STATE: TutorCodeFormState = { status: "idle" };
 
 // A read-only link with its own Copy button and "Copied!" feedback.
 function CopyableLinkRow({ link, label }: { link: string; label: string }) {
-  const [copied, setCopied] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  async function copyLink() {
-    try {
-      await navigator.clipboard.writeText(link);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard API unavailable (non-secure context, e.g. plain http on a
-      // LAN address) or permission denied — select the link so a manual
-      // Ctrl/Cmd+C is one keystroke away.
+  // On a clipboard failure (non-secure context, e.g. plain http on a LAN
+  // address) select the link so a manual Ctrl/Cmd+C is one keystroke away.
+  const { copied, copy } = useCopyToClipboard({
+    onFail: () => {
       inputRef.current?.focus();
       inputRef.current?.select();
-    }
-  }
+    },
+  });
 
   return (
     <div className={styles.linkRow}>
@@ -42,7 +37,7 @@ function CopyableLinkRow({ link, label }: { link: string; label: string }) {
         aria-label={label}
         onFocus={(event) => event.currentTarget.select()}
       />
-      <button type="button" className={formStyles.button} onClick={copyLink}>
+      <button type="button" className={formStyles.button} onClick={() => copy(link)}>
         {copied ? "Copied!" : "Copy"}
       </button>
       <a
@@ -79,7 +74,7 @@ function CopyableLinkRow({ link, label }: { link: string; label: string }) {
 // (local wall-clock) into unix seconds — a conversion that MUST happen in the
 // browser, the only place the teacher's timezone is known — and presents the
 // resulting chat URL for easy copy-paste.
-export function ShareTutorForm() {
+export function ShareTutorForm({ initialTutorUrl = "" }: { initialTutorUrl?: string }) {
   const [state, formAction, pending] = useActionState(createTutorCodeAction, INITIAL_STATE);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -108,6 +103,7 @@ export function ShareTutorForm() {
             name="tutor"
             required
             autoComplete="on"
+            defaultValue={initialTutorUrl}
             className={formStyles.input}
             placeholder="https://example.com/path/to/tutor.yaml"
             disabled={pending}
@@ -213,9 +209,10 @@ export function ShareTutorForm() {
       </form>
 
       <div className={formStyles.output}>
-        {state.status === "error" ? (
+        {state.status === "error" && "message" in state ? (
           <p className={formStyles.requestError}>{state.message}</p>
         ) : null}
+        {state.status === "error" && "errors" in state ? <ErrorList errors={state.errors} /> : null}
         {state.status === "success" ? (
           <section className={styles.linkBox}>
             <h2 className={styles.linkHeading}>Tutor Code</h2>

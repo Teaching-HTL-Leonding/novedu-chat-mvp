@@ -16,6 +16,7 @@ let nextResult: {
   link?: string;
   note?: string;
   message?: string;
+  errors?: { code: string; message: string; zodIssues?: unknown }[];
 } = {
   status: "success",
   link: "http://localhost:3000/a1b2c3d4e5",
@@ -112,6 +113,34 @@ test("renders the server action's error message (e.g. when storage failed)", asy
   await fillAndSubmit(screen);
 
   await expect.element(screen.getByText(/could not be stored/i)).toBeVisible();
+  expect(screen.getByLabelText("Tutor Code link", { exact: true }).query()).toBeNull();
+});
+
+test("renders the validator's structured error list (with zod field detail) on a broken tutor", async () => {
+  nextResult = {
+    status: "error",
+    errors: [
+      {
+        code: "TUTOR_SCHEMA_ERROR",
+        message: "Document does not match the expected structure",
+        zodIssues: {
+          errors: ['Unrecognized key: "nae"'],
+          properties: { name: { errors: ["Invalid input: expected string, received undefined"] } },
+        },
+      },
+    ],
+  };
+  const screen = await render(<ShareTutorForm />);
+
+  await fillAndSubmit(screen);
+
+  // The full, actionable detail is shown — not just a generic message.
+  await expect.element(screen.getByRole("heading", { name: /Validation failed/ })).toBeVisible();
+  await expect.element(screen.getByText("TUTOR_SCHEMA_ERROR")).toBeVisible();
+  await expect.element(screen.getByText('Unrecognized key: "nae"')).toBeVisible();
+  await expect
+    .element(screen.getByText("name: Invalid input: expected string, received undefined"))
+    .toBeVisible();
   expect(screen.getByLabelText("Tutor Code link", { exact: true }).query()).toBeNull();
 });
 

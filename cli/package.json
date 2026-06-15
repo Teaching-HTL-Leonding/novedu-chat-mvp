@@ -1,6 +1,6 @@
 {
   "name": "@novedu/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Command-line companion for the Novedu chat app. Validates tutor YAML definitions and fragment libraries (more commands to follow).",
   "type": "module",
   "repository": {
