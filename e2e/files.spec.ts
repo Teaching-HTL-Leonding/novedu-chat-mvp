@@ -89,7 +89,7 @@ test.describe("as a teacher", () => {
     await page.getByLabel(/Name/).fill("keep-this-name");
     await page.getByLabel("Kind").selectOption("fragment");
     await setEditorContent(page, "id: incomplete\nfragments: []\n");
-    await page.getByRole("button", { name: "Create file" }).click();
+    await page.getByRole("button", { name: "Validate & create" }).click();
 
     // The detailed validator errors are shown (not just a generic message)…
     await expect(page.getByRole("heading", { name: /Validation failed/ })).toBeVisible({
@@ -99,6 +99,21 @@ test.describe("as a teacher", () => {
     // …and the entered name and kind are preserved across the rejected submit.
     await expect(page.getByLabel(/Name/)).toHaveValue("keep-this-name");
     await expect(page.getByLabel("Kind")).toHaveValue("fragment");
+  });
+
+  // Hermetic: the standalone Validate button reports the same structured errors
+  // WITHOUT storing — an invalid fragment needs no DB or network, and a failed
+  // validate must not redirect (a successful CREATE would).
+  test("the Validate button reports errors without creating", async ({ page }) => {
+    await page.goto("/files/new");
+    await page.getByLabel(/Name/).fill("validate-only");
+    await page.getByLabel("Kind").selectOption("fragment");
+    await setEditorContent(page, "id: incomplete\nfragments: []\n");
+    await page.getByRole("button", { name: "Validate", exact: true }).click();
+
+    await expect(page.getByText("FRAGMENT_FILE_SCHEMA_ERROR")).toBeVisible({ timeout: 30_000 });
+    // Validate never stores, so we stay on the create page (no redirect to edit).
+    await expect(page).toHaveURL(/\/files\/new$/);
   });
 
   // @live: the whole lifecycle against the real database.
@@ -115,7 +130,7 @@ test.describe("as a teacher", () => {
     await setEditorContent(page, FRAGMENT_V1);
     // From here a row may exist — register it for best-effort afterEach cleanup.
     liveFileName = name;
-    await page.getByRole("button", { name: "Create file" }).click();
+    await page.getByRole("button", { name: "Validate & create" }).click();
 
     // A valid create redirects to the file's edit page, preloaded with v1.
     await expect(page).toHaveURL(new RegExp(`/files/edit/${name}$`), { timeout: 30_000 });
@@ -144,7 +159,7 @@ test.describe("as a teacher", () => {
     await row.getByRole("link", { name: `Edit ${name}` }).click();
     await expect(page.locator(".cm-content")).toContainText("Hello from version one");
     await setEditorContent(page, FRAGMENT_V2);
-    await page.getByRole("button", { name: "Save" }).click();
+    await page.getByRole("button", { name: "Validate & save" }).click();
     await expect(page.getByText("Saved")).toBeVisible({ timeout: 30_000 });
 
     // The GET endpoint now serves version two (latest, no caching).

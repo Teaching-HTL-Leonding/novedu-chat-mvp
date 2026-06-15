@@ -74,6 +74,28 @@ Read it before touching the chat entry points (`app/page.tsx`, `app/[code]/page.
   of its Mastra threads/messages (`deleteTutorCodeAndData`). So the list shows
   expired codes too; an expired code's chat won't open but its stats stay reachable.
 
+### App-hosted YAML Files (authoring, versioning, public serving) → `docs/files.md`
+
+Read it before touching `app/files/*`, `app/api/files/*`, `lib/file-store.ts`,
+`lib/files-actions.ts`, the `novedu_files` schema, or the `api/files` matcher entry
+in `proxy.ts`. Invariants:
+
+- **All file CRUD is teacher-only**, gated in the server actions with
+  **`requireTeacherUserId()`** (an *effective* teacher + the session `oid`) — never
+  `session.user.isTeacher`. **Saving validates first**: `validateFileContent`
+  re-runs the tutor/fragment validator before any write, so an invalid file is never
+  persisted. The standalone **Validate** button (`validateNewFileAction` /
+  `validateExistingFileAction`) runs the same validator but **never stores**.
+- The public **`GET /api/files/<name>`** endpoint is **unauthenticated** — it must
+  stay in the `proxy.ts` negative-lookahead matcher (with `api/auth`, `api/version`);
+  **keep the route and the matcher in sync**. All CRUD lives in server actions on
+  authed pages, not under `/api/files`.
+- `novedu_files` is **temporal / append-only**: each row is one version, the active
+  version is the single row with `valid_until IS NULL`, soft-delete only (history
+  kept). **`lib/file-store.ts` is the ONLY access** to the table. "One active version
+  per name" is enforced by the DB **filtered unique index `ux_novedu_files_active_name`**;
+  names are reusable after deletion. Files are NOT garbage-collected.
+
 ### Azure SQL, Drizzle & credentials → `docs/database.md`
 
 Read it before touching Mastra storage (`app/mastra/index.ts`), the Drizzle setup

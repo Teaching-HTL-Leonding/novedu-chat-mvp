@@ -56,7 +56,9 @@ npm run test:e2e -- --grep @live
 
 The kept `@live` set is deliberately small: a valid code opens the chat, a
 mid-session window-close keeps the chat on screen, the text round-trip, the
-vision round-trip, the health probe, and a teacher creating a code.
+vision round-trip, the health probe, a teacher creating a code, and the YAML
+Files create → list → update → soft-delete lifecycle (`e2e/files.spec.ts`, which
+writes the real `novedu_files` table).
 
 ## Testing the chat gate and server components WITHOUT infra
 

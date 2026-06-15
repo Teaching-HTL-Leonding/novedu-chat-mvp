@@ -20,6 +20,7 @@ import {
   loadAndBuildTutorPrompt,
   loadAndCheckFragmentFile,
   type ValidationError,
+  type ValidationWarning,
 } from "@/lib/tutors";
 
 // Teacher-only server actions for app-hosted YAML files. Each gates with the
@@ -39,8 +40,13 @@ export type FileActionFailure =
 
 export type SaveFileResult = { ok: true } | FileActionFailure;
 
+// Result of a validate-only action (the standalone "Validate" button): a pass
+// carries the non-blocking warnings to surface; a failure reuses the same shape
+// as a rejected save (a short message or the full structured error list).
+export type ValidateFileResult = { ok: true; warnings: ValidationWarning[] } | FileActionFailure;
+
 type ContentValidation =
-  | { ok: true; title: string | null; description: string | null }
+  | { ok: true; title: string | null; description: string | null; warnings: ValidationWarning[] }
   | { ok: false; errors: ValidationError[] };
 
 // Maps the shared teacher-gate failure to a message for these file actions —
@@ -111,14 +117,19 @@ async function validateFileContent(
   if (kind === "fragment") {
     const result = await loadAndCheckFragmentFile(selfUrl, selfFetcher);
     if (!result.ok) return { ok: false, errors: result.errors };
-    return { ok: true, title: null, description: null };
+    return { ok: true, title: null, description: null, warnings: result.warnings };
   }
 
   // tutor: the THOROUGH authoring gate (every fragment in every referenced
   // library is strict-rendered), matching share time and the validate page.
   const result = await loadAndBuildTutorPrompt(selfUrl, selfFetcher, { validateLibraries: true });
   if (!result.ok) return { ok: false, errors: result.errors };
-  return { ok: true, title: result.title ?? null, description: result.description };
+  return {
+    ok: true,
+    title: result.title ?? null,
+    description: result.description,
+    warnings: result.warnings,
+  };
 }
 
 /**
@@ -215,6 +226,66 @@ export async function updateFileAction(name: string, content: string): Promise<S
   revalidatePath("/files");
   revalidatePath(`/files/edit/${name}`);
   return { ok: true };
+}
+
+/**
+ * Validates a would-be NEW file WITHOUT storing it — backs the create form's
+ * standalone "Validate" button so a teacher can check the YAML without writing a
+ * throwaway version. Runs the same preamble as `createFileAction` up to (and
+ * including) the YAML validation, but never touches the store. Name uniqueness is
+ * NOT checked here — that is enforced only at create time (as before).
+ */
+export async function validateNewFileAction(input: {
+  name: string;
+  kind: string;
+  content: string;
+}): Promise<ValidateFileResult> {
+  const gate = await requireTeacherUserId();
+  if (!gate.ok) return gateFailure(gate.reason, "validate");
+
+  const nameValidation = validateFileName(input.name);
+  if (!nameValidation.ok) return { ok: false, message: nameValidation.message };
+  const name = nameValidation.name;
+
+  if (!isFileKind(input.kind)) {
+    return { ok: false, message: "Choose whether this is a tutor or a fragment file." };
+  }
+  if (typeof input.content !== "string" || input.content.trim() === "") {
+    return { ok: false, message: "The file is empty — add some YAML before validating." };
+  }
+
+  const validation = await validateFileContent(name, input.kind, input.content);
+  if (!validation.ok) return { ok: false, errors: validation.errors };
+  return { ok: true, warnings: validation.warnings };
+}
+
+/**
+ * Validates a new version of an EXISTING file WITHOUT storing it — backs the edit
+ * form's standalone "Validate" button. Mirrors `updateFileAction`'s preamble (the
+ * kind is read from the active row, never trusted from the client) but never writes.
+ */
+export async function validateExistingFileAction(
+  name: string,
+  content: string,
+): Promise<ValidateFileResult> {
+  const gate = await requireTeacherUserId();
+  if (!gate.ok) return gateFailure(gate.reason, "validate");
+
+  if (typeof content !== "string" || content.trim() === "") {
+    return { ok: false, message: "The file is empty — add some YAML before validating." };
+  }
+
+  const active = await getActiveFile(name);
+  if (active === undefined) {
+    return { ok: false, message: "The file could not be checked right now — try again." };
+  }
+  if (active === null || !isFileKind(active.kind)) {
+    return { ok: false, message: "This file no longer exists. Reload the list." };
+  }
+
+  const validation = await validateFileContent(name, active.kind, content);
+  if (!validation.ok) return { ok: false, errors: validation.errors };
+  return { ok: true, warnings: validation.warnings };
 }
 
 /**

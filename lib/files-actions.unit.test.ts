@@ -44,7 +44,13 @@ vi.mock("@/lib/file-store", async (importOriginal) => {
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
-import { createFileAction, deleteFileAction, updateFileAction } from "@/lib/files-actions";
+import {
+  createFileAction,
+  deleteFileAction,
+  updateFileAction,
+  validateExistingFileAction,
+  validateNewFileAction,
+} from "@/lib/files-actions";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -206,6 +212,102 @@ describe("updateFileAction", () => {
     expect(result).toEqual({ ok: true });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/files");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/files/edit/my-file");
+  });
+});
+
+// The validate-only actions back the standalone "Validate" button: they run the
+// SAME preamble + validator as create/update but must NEVER touch the store, and a
+// pass carries the non-blocking warnings through to the form.
+describe("validateNewFileAction", () => {
+  it("returns the validator's warnings on a valid buffer and never stores", async () => {
+    mocks.loadAndCheckFragmentFile.mockResolvedValue({
+      ok: true,
+      warnings: [{ code: "UNDECLARED_VARIABLE", message: "heads up" }],
+    });
+    const result = await validateNewFileAction(FRAGMENT);
+    expect(result).toEqual({
+      ok: true,
+      warnings: [{ code: "UNDECLARED_VARIABLE", message: "heads up" }],
+    });
+    expect(mocks.createFile).not.toHaveBeenCalled();
+  });
+
+  it("passes the validator's structured errors through and never stores", async () => {
+    mocks.loadAndCheckFragmentFile.mockResolvedValue({
+      ok: false,
+      errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR", message: "bad" }],
+    });
+    const result = await validateNewFileAction(FRAGMENT);
+    expect(result).toMatchObject({ ok: false, errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR" }] });
+    expect(mocks.createFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-teacher before validating", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    const result = await validateNewFileAction(FRAGMENT);
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
+    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed name without validating", async () => {
+    const result = await validateNewFileAction({ ...FRAGMENT, name: "bad name!" });
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/letters/i) });
+    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty content", async () => {
+    const result = await validateNewFileAction({ ...FRAGMENT, content: "   " });
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/empty/i) });
+    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
+  });
+});
+
+describe("validateExistingFileAction", () => {
+  it("returns warnings on a valid buffer (kind from the active row) and never stores", async () => {
+    mocks.loadAndCheckFragmentFile.mockResolvedValue({ ok: true, warnings: [] });
+    const result = await validateExistingFileAction("my-file", "id: f\n");
+    expect(result).toEqual({ ok: true, warnings: [] });
+    expect(mocks.updateFile).not.toHaveBeenCalled();
+  });
+
+  it("passes validator errors through and never stores", async () => {
+    mocks.loadAndCheckFragmentFile.mockResolvedValue({
+      ok: false,
+      errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR", message: "bad" }],
+    });
+    const result = await validateExistingFileAction("my-file", "id: f\n");
+    expect(result).toMatchObject({ ok: false, errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR" }] });
+    expect(mocks.updateFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-teacher before any work", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    const result = await validateExistingFileAction("my-file", "id: f\n");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
+    expect(mocks.getActiveFile).not.toHaveBeenCalled();
+  });
+
+  it("rejects empty content", async () => {
+    const result = await validateExistingFileAction("my-file", "  ");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/empty/i) });
+    expect(mocks.getActiveFile).not.toHaveBeenCalled();
+  });
+
+  it("reports a vanished file", async () => {
+    mocks.getActiveFile.mockResolvedValue(null);
+    const result = await validateExistingFileAction("my-file", "id: f\n");
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/no longer exists/i),
+    });
+    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
+  });
+
+  it("reports a transient lookup failure (DB down)", async () => {
+    mocks.getActiveFile.mockResolvedValue(undefined);
+    const result = await validateExistingFileAction("my-file", "id: f\n");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/try again/i) });
+    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
   });
 });
 

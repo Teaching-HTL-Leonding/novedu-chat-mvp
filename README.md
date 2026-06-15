@@ -12,13 +12,13 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 
 | Area | Description |
 | --- | --- |
-| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the tutor-code entry page; `app/[code]/page.tsx` checks the code and renders `TutorChat`. Teachers create and list codes under `/share-tutor` and `/tutor-codes`. |
+| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the tutor-code entry page; `app/[code]/page.tsx` checks the code and renders `TutorChat`. Teachers create and list codes under `/share-tutor` and `/tutor-codes`, and author **app-hosted YAML files** under `/files` (create at `/files/new`, edit at `/files/edit/<name>`), each served publicly at `/api/files/<name>` for use in a tutor code — see [`docs/files.md`](docs/files.md). |
 | **Tutor core** (`lib/tutors/`) | Framework-agnostic pipeline: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. Returns a structured `BuildResult` (never throws). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the tutor YAML, and fragment inputs may declare **defaults**. See [`tutors/README.md`](tutors/README.md) for the authoring guide. |
 | **Mastra agents** (`app/mastra/`) | The `tutor` agent resolves its instructions + model per request from the tutor URL and persists each conversation via Mastra `Memory`. Agents are registered in `app/mastra/index.ts`. Memory/storage is **Azure SQL** via `@mastra/mssql`, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. |
 | **Model endpoint** (`app/mastra/scch.ts`) | A self-hosted, OpenAI-compatible vLLM GPU server ("SCCH"). The tutor's `llm.model` resolves against this endpoint; the API key stays server-side. |
 | **Auth** (`auth.ts`, `proxy.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate. Any signed-in user passes the gate (everyone else is redirected to sign-in); teacher-only operations are separately gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`). JWT sessions, no DB adapter. |
-| **API routes** (`app/api/`) | `validate-tutor` (validate a tutor URL → prompt or structured errors), `copilotkit` (chat runtime), `auth` (sign-in). |
+| **API routes** (`app/api/`) | `validate-tutor` (validate a tutor URL → prompt or structured errors), `copilotkit` (chat runtime), `auth` (sign-in), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text), `version` (public build-identity probe). |
 
 ### Request flow
 
