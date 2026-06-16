@@ -1,6 +1,7 @@
 import type { Message } from "@ag-ui/core";
 import { eq, sql } from "drizzle-orm";
 import { mastra } from "@/app/mastra";
+import { collapseReplayedRuns, toAguiMessage } from "@/lib/conversation-collapse";
 import { getDb } from "@/lib/db";
 import { recentCodes, tutorCodes, userChats } from "@/lib/db/schema";
 
@@ -158,69 +159,13 @@ export async function getTutorCodeStats(
   }
 }
 
-// A stored Mastra message: the v2 UIMessage envelope. The top-level `content`
-// string is sometimes absent, so the text is rebuilt from `parts` instead.
-interface StoredMessageContent {
-  parts?: Array<
-    | { type: "text"; text?: string }
-    // Image attachments are stored as a `file` part whose `data` is a data: URL.
-    | { type: "file"; data?: string; url?: string }
-    | { type: string; [key: string]: unknown }
-  >;
-}
-
-// Turns one stored row into the AG-UI message the chat renderer consumes. Text
-// is concatenated from all text parts; image (`file`) parts become AG-UI image
-// parts so the teacher sees the same attachments the student sent. Assistant
-// messages are plain text (the tutor agent emits no images or tool calls).
-function toAguiMessage(row: { id: string; role: string; content: string }): Message | null {
-  let parsed: StoredMessageContent;
-  try {
-    parsed = JSON.parse(row.content) as StoredMessageContent;
-  } catch {
-    return null;
-  }
-  const parts = parsed.parts ?? [];
-  const text = parts
-    .filter((p): p is { type: "text"; text?: string } => p.type === "text")
-    .map((p) => p.text ?? "")
-    .join("");
-
-  if (row.role === "assistant") {
-    return { id: row.id, role: "assistant", content: text };
-  }
-  if (row.role === "user") {
-    const images = parts
-      .filter((p): p is { type: "file"; data?: string; url?: string } => p.type === "file")
-      .map((p) => p.data ?? p.url)
-      .filter((src): src is string => typeof src === "string");
-    if (images.length === 0) {
-      return { id: row.id, role: "user", content: text };
-    }
-    // Mixed content: the text plus each attached image, rendered inline. The
-    // data: URL goes in straight as a URL source (an <img src> renders it).
-    return {
-      id: row.id,
-      role: "user",
-      content: [
-        ...(text ? [{ type: "text" as const, text }] : []),
-        ...images.map((value) => ({
-          type: "image" as const,
-          source: { type: "url" as const, value },
-        })),
-      ],
-    };
-  }
-  // Any other role (system/developer/tool) is not part of a tutor chat — skip.
-  return null;
-}
-
 /**
  * The messages of one conversation, oldest first, as AG-UI messages ready for
  * `CopilotChatMessageView`. The `code` is required and re-checked against the
  * thread's `resourceId` (defense in depth on top of the caller's ownership
- * check). Returns `undefined` on a database error, `[]` for an unknown/empty
- * thread. Never throws.
+ * check). Replayed history is collapsed (`collapseReplayedRuns`) so each turn
+ * shows once. Returns `undefined` on a database error, `[]` for an
+ * unknown/empty thread. Never throws.
  */
 export async function getConversationMessages(
   code: string,
@@ -235,7 +180,8 @@ export async function getConversationMessages(
       WHERE m.thread_id = ${threadId} AND t.resourceId = ${code}
       ORDER BY m.createdAt ASC, m.seq_id ASC
     `);
-    return res.recordset.map(toAguiMessage).filter((m): m is Message => m !== null);
+    const messages = res.recordset.map(toAguiMessage).filter((m): m is Message => m !== null);
+    return collapseReplayedRuns(messages);
   } catch (error) {
     console.error("tutor-stats-store: loading conversation messages failed", error);
     return undefined;

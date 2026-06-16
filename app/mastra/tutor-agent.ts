@@ -73,12 +73,19 @@ export const tutorAgent = new Agent({
   // is disabled — it would require a vector store + embedder we don't run; plain
   // recent-message history is all the tutor needs.
   //
+  // `lastMessages` is the ENTIRE context the tutor gets: the CopilotKit route
+  // trims each run to just the new turn (see `trimToNewTurn` — so Mastra stops
+  // re-persisting the whole client history every run), which means prior turns
+  // reach the model ONLY through this recalled window. 40 ≈ 20 exchanges, enough
+  // for a sentence-by-sentence tutor; raise it if longer sessions need to see
+  // further back.
+  //
   // NOTE: `Memory` REQUIRES a storage provider — if `MSSQL_CONNECTION_STRING` is
   // unset, the instance has no store and a tutor chat fails ("Memory requires a
   // storage provider"). That's acceptable: storage is effectively required to chat.
   memory: new Memory({
     options: {
-      lastMessages: 20,
+      lastMessages: 40,
       semanticRecall: false,
     },
   }),

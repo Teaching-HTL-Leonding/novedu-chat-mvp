@@ -150,6 +150,20 @@ memory, semantic recall) would be shared across all students using the same
 code. Today only per-thread `lastMessages` is configured — keep it that way or
 re-think the scoping first.
 
+**Only the new turn is persisted per run.** CopilotKit/AG-UI re-sends the ENTIRE
+client-side history on every run, and Mastra persists whatever messages it is
+handed (each with a fresh id) — so forwarding the whole history re-stores every
+prior turn again, ballooning a conversation quadratically (`@mastra/memory`'s
+own docs warn against this). The runtime route therefore trims each `run` body
+to the turn AFTER the last assistant reply (`trimToNewTurn` in
+`app/api/copilotkit/[[...slug]]/route.ts`) before forwarding it; prior turns are
+already stored, so Mastra appends only the new user message + its reply. The
+flip side: the model's whole view of the conversation is then the recalled
+`lastMessages` window (`app/mastra/tutor-agent.ts`, currently **40** ≈ 20
+exchanges) — raise it if longer sessions must see further back. Conversations
+recorded BEFORE this fix still hold the telescoped duplicates; the viewer
+collapses them on read (see below).
+
 ## Stats & conversation viewer
 
 Teacher-only, under the `/tutor-codes` prefix (so the root `/[code]` student
@@ -175,7 +189,13 @@ thread-ownership token: `getOwnedTutorCode(code, sub)` returns the row only when
   loads the messages (`getConversationMessages`, which re-checks the thread's
   `resourceId = code`) and converts each stored Mastra message to an AG-UI
   `Message` (text rebuilt from `parts`, since the top-level `content` is
-  sometimes absent; `file` parts become inline images). The client (`ConversationView`)
+  sometimes absent; `file` parts become inline images). It then **collapses any
+  replayed history** (`collapseReplayedRuns`): conversations recorded before the
+  route-level `trimToNewTurn` fix stored the history as telescoping runs
+  `R1 ⊂ R2 ⊂ … ⊂ Rk` (each run re-sent the whole prefix and appended one turn),
+  so the viewer would otherwise show each turn many times. A run is dropped only
+  when it is an exact element-wise prefix of the next, so a clean (already
+  de-duplicated) conversation passes through untouched. The client (`ConversationView`)
   renders them with the **same message components the live chat uses** —
   `CopilotChatUserMessage` / `CopilotChatAssistantMessage` (the exact ones
   `CopilotChatMessageView` paints internally) — so bubbles, markdown, math and

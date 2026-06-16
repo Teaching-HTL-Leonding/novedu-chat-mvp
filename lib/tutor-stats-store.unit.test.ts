@@ -269,6 +269,23 @@ describe("getConversationMessages — Mastra v2 → AG-UI conversion", () => {
   });
 });
 
+describe("getConversationMessages collapses replays end to end", () => {
+  it("returns each turn once for a telescoping recordset", async () => {
+    const text = (role: string, content: string) =>
+      row(crypto.randomUUID(), role, { parts: [{ type: "text", text: content }], content });
+    fake.state.recordset = [
+      text("user", "hi"),
+      text("assistant", "hello"),
+      text("user", "hi"),
+      text("assistant", "hello"),
+      text("user", "q2"),
+      text("assistant", "ans2"),
+    ];
+    const messages = await getConversationMessages("aaaaaaaaaa", "thread-1");
+    expect(messages?.map((m) => m.content)).toEqual(["hi", "hello", "q2", "ans2"]);
+  });
+});
+
 describe("deleteTutorCodeAndData", () => {
   it("deletes every thread, then the app rows in order, and reports success", async () => {
     mastra.state.threads = [{ id: "th1" }, { id: "th2" }];
