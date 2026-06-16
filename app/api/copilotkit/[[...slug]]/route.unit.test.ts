@@ -21,7 +21,9 @@ const auth = vi.hoisted(() => vi.fn());
 const checkTutorCode = vi.hoisted(() => vi.fn());
 const recordUserChat = vi.hoisted(() => vi.fn());
 const getLocalAgents = vi.hoisted(() => vi.fn(() => []));
-const endpointFetch = vi.hoisted(() => vi.fn(async () => new Response("{}", { status: 200 })));
+const endpointFetch = vi.hoisted(() =>
+  vi.fn(async (_req: Request) => new Response("{}", { status: 200 })),
+);
 
 vi.mock("@/auth", () => ({ auth }));
 vi.mock("@/lib/tutor-code-store", () => ({ checkTutorCode }));
@@ -54,17 +56,17 @@ import {
   resetThreadTokenSecretForTests,
   signThreadToken,
 } from "@/lib/thread-token";
-import { GET, POST } from "./route";
+import { GET, POST, trimToNewTurn } from "./route";
 
 const CODE = "a1b2c3d4e5";
 const USER_ID = "user-1";
 const BASE = "http://localhost/api/copilotkit";
 
-function runBody(threadId: string | undefined) {
+function runBody(threadId: string | undefined, messages: unknown[] = []) {
   return JSON.stringify({
     ...(threadId === undefined ? {} : { threadId }),
     runId: "r1",
-    messages: [],
+    messages,
     tools: [],
     context: [],
     state: {},
@@ -72,7 +74,9 @@ function runBody(threadId: string | undefined) {
   });
 }
 
-function runRequest(opts: { threadId?: string; token?: string; code?: string } = {}) {
+function runRequest(
+  opts: { threadId?: string; token?: string; code?: string; messages?: unknown[] } = {},
+) {
   const headers: Record<string, string> = {
     "x-tutor-code": opts.code ?? CODE,
     "content-type": "application/json",
@@ -81,7 +85,7 @@ function runRequest(opts: { threadId?: string; token?: string; code?: string } =
   return new Request(`${BASE}/agent/tutor/run`, {
     method: "POST",
     headers,
-    body: runBody(opts.threadId),
+    body: runBody(opts.threadId, opts.messages),
   });
 }
 
@@ -218,5 +222,53 @@ describe("happy path past the gate", () => {
     const res = await POST(runRequest({ threadId, token }));
     expect(res.status).toBe(200);
     expect(getLocalAgents).toHaveBeenCalledWith(expect.objectContaining({ resourceId: CODE }));
+  });
+});
+
+describe("trimToNewTurn (replayed-history trimming)", () => {
+  it("keeps the turn after the last assistant reply, dropping the replayed prefix", () => {
+    const messages = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+      { role: "user", content: "u2" },
+      { role: "assistant", content: "a2" },
+      { role: "user", content: "u3 — the new turn" },
+    ];
+    expect(trimToNewTurn(messages)).toEqual([{ role: "user", content: "u3 — the new turn" }]);
+  });
+
+  it("passes the first turn through unchanged (no assistant message yet)", () => {
+    const messages = [{ role: "user", content: "first message" }];
+    // Same array reference back == 'no trim needed'.
+    expect(trimToNewTurn(messages)).toBe(messages);
+  });
+
+  it("does not trim to empty when the history ends with an assistant message", () => {
+    const messages = [
+      { role: "user", content: "u1" },
+      { role: "assistant", content: "a1" },
+    ];
+    expect(trimToNewTurn(messages)).toBe(messages);
+  });
+
+  it("forwards a run with only the new turn in its body", async () => {
+    const threadId = crypto.randomUUID();
+    const token = signThreadToken(
+      { code: CODE, userId: USER_ID, threadId },
+      getThreadTokenSecret(),
+    );
+    const messages = [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: "hello" },
+      { role: "user", content: "the new turn" },
+    ];
+    const res = await POST(runRequest({ threadId, token, messages }));
+    expect(res.status).toBe(200);
+    // The runtime sees the trimmed body, not the full replayed history.
+    const forwarded = endpointFetch.mock.calls[0]?.[0] as Request;
+    const body = (await forwarded.json()) as { messages: unknown[]; threadId: string };
+    expect(body.messages).toEqual([{ role: "user", content: "the new turn" }]);
+    // Other fields are preserved.
+    expect(body.threadId).toBe(threadId);
   });
 });

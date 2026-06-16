@@ -78,3 +78,30 @@ export async function mintTutorCode(
 
   return code;
 }
+
+/** One stored Mastra message row (role + the raw JSON content envelope). */
+export interface StoredMessageRow {
+  role: string;
+  content: string;
+}
+
+/**
+ * Reads the Mastra messages persisted under a tutor code (every thread whose
+ * `resourceId` is the code), oldest first. Used by the @live persistence spec to
+ * assert what actually landed in storage after a chat. A freshly minted code has
+ * exactly one thread (one page load), so this is that conversation's rows.
+ */
+export async function getStoredMessages(code: string): Promise<StoredMessageRow[]> {
+  const pool = await getPool();
+  const res = await pool
+    .request()
+    .input("code", sql.VarChar(10), code)
+    .query<StoredMessageRow>(
+      `SELECT m.role, CAST(m.content AS NVARCHAR(MAX)) AS content
+       FROM mastra_messages m
+       JOIN mastra_threads t ON t.id = m.thread_id
+       WHERE t.resourceId = @code
+       ORDER BY m.createdAt ASC, m.seq_id ASC`,
+    );
+  return res.recordset;
+}
