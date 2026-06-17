@@ -1,7 +1,10 @@
 # @novedu/cli
 
 Command-line companion for the Novedu chat app (installed command: `novedu-cli`).
-Today it validates **tutor YAML** definitions; more commands will follow.
+Today it validates **tutor YAML** definitions and **fragment libraries**; more
+commands will follow. Validating a tutor also fully validates every fragment
+library it references; pass `--kind fragment` to validate a fragment library on
+its own.
 
 It reuses the app's exact validation pipeline (`lib/tutors`), so a tutor that
 passes here is the same tutor the app would accept — no separate, drifting rules.
@@ -15,9 +18,14 @@ npx @novedu/cli validate ./tutors/simple-tutor.yaml
 # Validate a published tutor by URL
 npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/simple-tutor.yaml
 
+# Validate a fragment library on its own
+npx @novedu/cli validate ./tutors/simple-fragments.yaml --kind fragment
+
 # Machine-readable output (the raw validation result)
 npx @novedu/cli validate ./tutors/simple-tutor.yaml --json
 ```
+
+`--kind` defaults to `tutor`; it is caller-declared, not auto-detected.
 
 Exit code is `0` when the tutor is valid and `1` when it has errors, so it works
 as a pre-commit / CI gate.

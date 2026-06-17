@@ -83,9 +83,10 @@ behaviors — formerly only reachable via `@live` e2e — now run in CI.
 ## CI
 
 `.github/workflows/qa.yml` runs `check` → `typecheck` → `test:unit` →
-`test:component` → `build`, plus a separate hermetic e2e job (`test:e2e:ci`).
-Every job is **secret-free**; that is a hard security invariant, not a
-convenience — see **`docs/ci-security.md`**.
+`test:component` → `build`, plus a separate hermetic e2e job (`test:e2e:ci`) and a
+PR-only `prod-build` job that builds the production Docker image (no push). Every
+job is **secret-free**; that is a hard security invariant, not a convenience — see
+**`docs/ci-security.md`**.
 
 ## Subsystem specifics
 

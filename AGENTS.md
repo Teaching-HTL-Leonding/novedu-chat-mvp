@@ -112,6 +112,22 @@ Read it before touching Mastra storage (`app/mastra/index.ts`), the Drizzle setu
   **NO foreign keys between `novedu_*` and `mastra_*` tables** — Mastra auto-manages
   its own schema; relationships are by-value only.
 
+### Telemetry (Azure Monitor / App Insights via OpenTelemetry) → `docs/telemetry.md`
+
+Read it before touching `instrumentation.ts`, `lib/telemetry.ts`, the
+`@opentelemetry/*` / `@azure/monitor-opentelemetry` deps, or any `recordError` /
+`emitEvent` call site. Invariants:
+
+- Telemetry is **OFF unless `APPLICATIONINSIGHTS_CONNECTION_STRING` is set** — that
+  string is a **secret**, so it lives in local `.env` + a prod app-setting, **never
+  in the repo or CI** (keeps `qa.yml` secret-free). All telemetry goes through the
+  **`lib/telemetry.ts`** seam (`initTelemetry` / `recordError` / `emitEvent`);
+  `instrumentation.ts` brings telemetry up **before** migrations and routes every
+  uncaught server error to `recordError` via the **`onRequestError`** hook.
+- **PRIVACY: telemetry carries NO message/prompt/PII content.** HTTP bodies are not
+  captured; `emitEvent()` is the one seam where content could leak, so pass it
+  **metadata only** (identifiers, counts) — never user text.
+
 ### CI / GitHub Actions security → `docs/ci-security.md`
 
 Read it before touching `.github/workflows/`, adding a secret to a workflow, or
