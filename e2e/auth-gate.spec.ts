@@ -19,8 +19,8 @@ test("unauthenticated users cannot reach the tutor-validation page", async ({ pa
   await expect(page).toHaveURL(/\/api\/auth\/signin/);
 });
 
-test("unauthenticated users cannot reach the share-tutor page", async ({ page }) => {
-  await page.goto("/share-tutor");
+test("unauthenticated users cannot reach the new-tutor-code page", async ({ page }) => {
+  await page.goto("/tutor-codes/new");
 
   await expect(page).toHaveURL(/\/api\/auth\/signin/);
 });

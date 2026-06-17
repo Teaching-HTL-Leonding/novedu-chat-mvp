@@ -2,28 +2,9 @@ import { expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 
 // End-to-end coverage for the YAML File hosting feature. The authorization gate
-// is hermetic (runs in CI); the full create → list → update → delete cycle is
-// `@live` because it writes to the real database (the dev server authenticates
-// with the local `az login` identity) — excluded from CI like the other live
-// specs.
-
-// A minimal, self-contained FRAGMENT library. Validation of a fragment file
-// needs no network (it has no fragment_files to fetch), so the save path stays
-// fast and deterministic — no GitHub round-trip.
-const FRAGMENT_V1 = `id: e2e_files_fragments
-fragments:
-  - id: greeting
-    version: 1
-    priority: 1
-    content: "Hello from version one"
-`;
-const FRAGMENT_V2 = `id: e2e_files_fragments
-fragments:
-  - id: greeting
-    version: 2
-    priority: 1
-    content: "Hello from version two"
-`;
+// and the create-form validation behavior are hermetic (run in CI). The full
+// create → list → update → delete cycle is `@live` and lives in
+// `file-and-tutor-code-crud.spec.ts` (which also covers the tutor-link CRUD).
 
 // Replace the CodeMirror document with `text`. `insertText` inserts verbatim
 // (like a paste) so YAML indentation/newlines survive — unlike per-key typing,
@@ -55,30 +36,8 @@ test.describe("as a student", () => {
 
 test.describe("as a teacher", () => {
   test.use({ storageState: TEACHER_STORAGE_STATE });
-  // Dev compilation of the new routes + DB round-trips.
+  // Dev compilation of the routes + validation.
   test.setTimeout(90_000);
-
-  // Best-effort cleanup: the @live test soft-deletes its file on the happy path,
-  // but if it fails earlier the active row would linger — and the filtered
-  // unique index would then reject a same-name re-run while the shared dev list
-  // accumulates strays. A test sets `liveFileName` once it has created a file.
-  let liveFileName: string | null = null;
-  test.afterEach(async ({ page }) => {
-    if (!liveFileName) return;
-    const name = liveFileName;
-    liveFileName = null;
-    try {
-      await page.goto("/files");
-      const row = page.getByRole("row").filter({ hasText: name });
-      if ((await row.count()) > 0) {
-        page.once("dialog", (dialog) => dialog.accept());
-        await row.getByRole("button", { name: `Delete file ${name}` }).click();
-        await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0);
-      }
-    } catch {
-      // Cleanup is best-effort — never fail the suite on it.
-    }
-  });
 
   // Hermetic: a fragment with invalid YAML fails validation locally (no DB, no
   // network), so this verifies the create form keeps the entered name and kind
@@ -114,68 +73,5 @@ test.describe("as a teacher", () => {
     await expect(page.getByText("FRAGMENT_FILE_SCHEMA_ERROR")).toBeVisible({ timeout: 30_000 });
     // Validate never stores, so we stay on the create page (no redirect to edit).
     await expect(page).toHaveURL(/\/files\/new$/);
-  });
-
-  // @live: the whole lifecycle against the real database.
-  test("create (via CodeMirror) → list → update → soft-delete a hosted file", {
-    tag: "@live",
-  }, async ({ page }) => {
-    const name = `e2e-file-${Date.now()}`;
-    const fileUrl = `/api/files/${name}`;
-
-    // --- CREATE ---
-    await page.goto("/files/new");
-    await page.getByLabel(/Name/).fill(name);
-    await page.getByLabel("Kind").selectOption("fragment");
-    await setEditorContent(page, FRAGMENT_V1);
-    // From here a row may exist — register it for best-effort afterEach cleanup.
-    liveFileName = name;
-    await page.getByRole("button", { name: "Validate & create" }).click();
-
-    // A valid create redirects to the file's edit page, preloaded with v1.
-    await expect(page).toHaveURL(new RegExp(`/files/edit/${name}$`), { timeout: 30_000 });
-    await expect(page.locator(".cm-content")).toContainText("Hello from version one");
-
-    // It appears in the list…
-    await page.goto("/files");
-    const row = page.getByRole("row").filter({ hasText: name });
-    await expect(row).toHaveCount(1);
-    await expect(row.getByText("fragment")).toBeVisible();
-
-    // …and is filterable (contains-search over the name).
-    await page.getByLabel("Filter files").fill(name);
-    await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(1);
-    await page.getByLabel("Filter files").fill("no-such-file-xyz");
-    await expect(page.getByText("No files match your filter.")).toBeVisible();
-    await page.getByLabel("Filter files").fill("");
-
-    // The public GET endpoint serves version one.
-    const res1 = await page.request.get(fileUrl);
-    expect(res1.ok()).toBeTruthy();
-    expect(res1.headers()["content-type"]).toContain("text/yaml");
-    expect(await res1.text()).toContain("Hello from version one");
-
-    // --- UPDATE ---
-    await row.getByRole("link", { name: `Edit ${name}` }).click();
-    await expect(page.locator(".cm-content")).toContainText("Hello from version one");
-    await setEditorContent(page, FRAGMENT_V2);
-    await page.getByRole("button", { name: "Validate & save" }).click();
-    await expect(page.getByText("Saved")).toBeVisible({ timeout: 30_000 });
-
-    // The GET endpoint now serves version two (latest, no caching).
-    const res2 = await page.request.get(fileUrl);
-    expect(await res2.text()).toContain("Hello from version two");
-
-    // --- SOFT-DELETE (from the edit page) ---
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: `Delete file ${name}` }).click();
-
-    // Returns to the list, where the file is gone…
-    await expect(page).toHaveURL(/\/files$/, { timeout: 30_000 });
-    await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0);
-
-    // …and the GET endpoint 404s (deleted files cannot be fetched).
-    const res3 = await page.request.get(fileUrl);
-    expect(res3.status()).toBe(404);
   });
 });

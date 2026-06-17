@@ -61,7 +61,10 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
 - `FILE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,100}$/` and the pure `validateFileName()`
   — **shared** by the GET route and the create action, so there is one definition
   of a legal name (trims, then enforces the pattern).
-- `listFiles()` — active rows, newest first, **without** `content` (kept cheap).
+- `listFiles({ search?, createdBy? })` — active rows, newest first, **without**
+  `content` (kept cheap). Optional filters are applied **in SQL** (a `WHERE`/`LIKE`
+  over name/title/description for `search`, `createdBy` for "Only my files") —
+  never in memory; see `docs/filtered-lists.md`.
 - `getActiveFile(name)` — the active row **with** `content`; `null` = malformed
   name or no active version (unknown/deleted), `undefined` = DB error. Backs both
   the edit page and the GET endpoint.
@@ -135,8 +138,10 @@ stays gated.
 `@/components/back-link`, `@/components/require-teacher-page` (the page-level teacher
 gate), `@/components/icons`, and `app/files/yaml-editor.tsx` (a thin
 `@uiw/react-codemirror` + `@codemirror/lang-yaml` wrapper with an upload button). The
-list's filtering ("Only my files" + contains-search over name/title/description) runs
-client-side in `files-browser.tsx` (small dataset, no round-trips).
+list itself is the shared filtered-list concept — `@/components/data-list` +
+`@/components/list-filter-bar` — so its filtering ("Only my files" + contains-search
+over name/title/description) runs **in the database** via URL search params, not in
+memory (see `docs/filtered-lists.md`).
 
 ## Tests
 
@@ -144,7 +149,9 @@ client-side in `files-browser.tsx` (small dataset, no round-trips).
 - `lib/files-actions.unit.test.ts` — the teacher gate, validate-before-store
   ordering, structured-error pass-through, and that the validate-only actions never
   touch the store.
-- `tests/component/files-browser.browser.test.tsx` — list filtering + the toggle.
+- `tests/component/list-filter-bar.browser.test.tsx` — the shared filter bar's
+  Apply → URL-search-param behavior (the DB filter is then exercised end-to-end by
+  the `@live` `e2e/file-and-tutor-code-crud.spec.ts`, which covers file CRUD).
 - `tests/component/file-forms.browser.test.tsx` — the Validate button wiring
   (errors / passed note / warnings, and no save).
 - `e2e/files.spec.ts` — the auth gate (hermetic, runs in CI) and a single `@live`

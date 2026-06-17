@@ -15,8 +15,8 @@ test.describe("as a student", () => {
     await expect(page.getByRole("textbox")).toHaveCount(0);
   });
 
-  test("the Create Tutor Code page is denied", async ({ page }) => {
-    await page.goto("/share-tutor");
+  test("the New Tutor Code page is denied", async ({ page }) => {
+    await page.goto("/tutor-codes/new");
 
     await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Create Tutor Code" })).toHaveCount(0);
@@ -62,7 +62,6 @@ test.describe("as a student", () => {
 
     await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Validate Tutor" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Create Tutor Code" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Shared Tutor Codes" })).toHaveCount(0);
   });
 });
@@ -77,8 +76,8 @@ test.describe("as a teacher", () => {
     await expect(page.getByRole("button", { name: "Validate" })).toBeVisible();
   });
 
-  test("the Create Tutor Code page is accessible", async ({ page }) => {
-    await page.goto("/share-tutor");
+  test("the New Tutor Code page is accessible", async ({ page }) => {
+    await page.goto("/tutor-codes/new");
 
     await expect(page.getByLabel("Tutor YAML URL")).toBeVisible();
     await expect(page.getByRole("button", { name: "Create Tutor Code" })).toBeVisible();
@@ -89,7 +88,6 @@ test.describe("as a teacher", () => {
     await page.getByRole("button", { name: "Open navigation menu" }).click();
 
     await expect(page.getByRole("link", { name: "Validate Tutor" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Create Tutor Code" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Shared Tutor Codes" })).toBeVisible();
   });
 });

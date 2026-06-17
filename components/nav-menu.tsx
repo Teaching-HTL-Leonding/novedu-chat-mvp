@@ -20,12 +20,6 @@ const NAV_ITEMS = [
     teacherOnly: true,
   },
   {
-    href: "/share-tutor",
-    label: "Create Tutor Code",
-    heading: "Create Tutor Code",
-    teacherOnly: true,
-  },
-  {
     href: "/tutor-codes",
     label: "Shared Tutor Codes",
     heading: "Shared Tutor Codes",
@@ -42,8 +36,12 @@ const NAV_ITEMS = [
 function dynamicHeading(pathname: string): string | undefined {
   const segments = pathname.split("/").filter(Boolean);
   if (segments[0] === "tutor-codes" && segments.length >= 2) {
-    // /tutor-codes/<code>            → stats
+    // /tutor-codes/new              → create
+    // /tutor-codes/edit/<code>      → edit
+    // /tutor-codes/<code>           → stats
     // /tutor-codes/<code>/c/<thread> → a single conversation
+    if (segments[1] === "new") return "New Tutor Code";
+    if (segments[1] === "edit") return "Edit Tutor Code";
     return segments[2] === "c" ? "Conversation" : "Tutor Code Stats";
   }
   if (segments[0] === "files") {

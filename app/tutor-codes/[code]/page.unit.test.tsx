@@ -5,20 +5,19 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // `app/tutor-codes/[code]/page.tsx` is the detailed-stats page. Its branching is
-// the part worth pinning without infra: teacher gating, the owned/unknown/error
-// outcomes of `getOwnedTutorCode`, and — the privacy-relevant bit — that
-// per-student data (the "Students" tile and the "Student" column) appears ONLY
-// for a non-anonymous code. I/O is mocked; the component is invoked directly and
-// its HTML rendered. No DB, runs in CI.
+// the part worth pinning without infra: teacher gating, the found/unknown/error
+// outcomes of `getTutorCode` (any effective teacher may view any code now — no
+// ownership check), and — the privacy-relevant bit — that per-student data (the
+// "Students" tile and the "Student" column) appears ONLY for a non-anonymous
+// code. I/O is mocked; the component is invoked directly and its HTML rendered.
+// No DB, runs in CI.
 
-const auth = vi.hoisted(() => vi.fn());
 const isEffectiveTeacher = vi.hoisted(() => vi.fn());
-const getOwnedTutorCode = vi.hoisted(() => vi.fn());
+const getTutorCode = vi.hoisted(() => vi.fn());
 const getTutorCodeStats = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth }));
 vi.mock("@/lib/student-mode", () => ({ isEffectiveTeacher }));
-vi.mock("@/lib/tutor-code-store", () => ({ getOwnedTutorCode }));
+vi.mock("@/lib/tutor-code-store", () => ({ getTutorCode }));
 vi.mock("@/lib/tutor-stats-store", () => ({ getTutorCodeStats }));
 // next/link needs no router in these static renders — a plain anchor is enough.
 vi.mock("next/link", () => ({
@@ -61,7 +60,6 @@ async function render(code = CODE) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  auth.mockResolvedValue({ user: { id: "teacher-sub-1" } });
   isEffectiveTeacher.mockResolvedValue(true);
 });
 
@@ -70,23 +68,23 @@ describe("gating", () => {
     isEffectiveTeacher.mockResolvedValue(false);
     const html = await render();
     expect(html).toContain("Access denied");
-    expect(getOwnedTutorCode).not.toHaveBeenCalled();
+    expect(getTutorCode).not.toHaveBeenCalled();
   });
 
-  it("shows a transient notice when the ownership lookup fails", async () => {
-    getOwnedTutorCode.mockResolvedValue(undefined);
+  it("shows a transient notice when the lookup fails", async () => {
+    getTutorCode.mockResolvedValue(undefined);
     const html = await render();
     expect(html).toContain("Stats temporarily unavailable");
   });
 
-  it("shows 'not found' for an unknown or non-owned code", async () => {
-    getOwnedTutorCode.mockResolvedValue(null);
+  it("shows 'not found' for an unknown code", async () => {
+    getTutorCode.mockResolvedValue(null);
     const html = await render();
     expect(html).toContain("Tutor code not found");
   });
 
   it("shows a transient notice when stats fail to load", async () => {
-    getOwnedTutorCode.mockResolvedValue(entry());
+    getTutorCode.mockResolvedValue(entry());
     getTutorCodeStats.mockResolvedValue(undefined);
     const html = await render();
     expect(html).toContain("Stats temporarily unavailable");
@@ -95,7 +93,7 @@ describe("gating", () => {
 
 describe("anonymous code", () => {
   beforeEach(() => {
-    getOwnedTutorCode.mockResolvedValue(entry({ anonymous: true }));
+    getTutorCode.mockResolvedValue(entry({ anonymous: true }));
     getTutorCodeStats.mockResolvedValue({
       conversations: 1,
       studentCount: 0,
@@ -125,7 +123,7 @@ describe("anonymous code", () => {
 
 describe("non-anonymous code", () => {
   beforeEach(() => {
-    getOwnedTutorCode.mockResolvedValue(entry({ anonymous: false }));
+    getTutorCode.mockResolvedValue(entry({ anonymous: false }));
     getTutorCodeStats.mockResolvedValue({
       conversations: 1,
       studentCount: 1,
@@ -148,7 +146,7 @@ describe("non-anonymous code", () => {
 
 describe("empty state", () => {
   it("notes when a code has no conversations yet", async () => {
-    getOwnedTutorCode.mockResolvedValue(entry());
+    getTutorCode.mockResolvedValue(entry());
     getTutorCodeStats.mockResolvedValue({ conversations: 0, studentCount: 0, interactions: [] });
     const html = await render();
     expect(html).toContain("No conversations yet");

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { files } from "@/lib/db/schema";
+import { containsAny } from "@/lib/db/text-filter";
 
 // Persistence for app-hosted YAML files in the `novedu_files` SQL table. The
 // table is TEMPORAL/append-only: each row is one version of one file, the active
@@ -99,11 +100,25 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 /**
- * Every active (non-deleted) file, newest first — the "YAML Files" list. Content
- * is intentionally NOT selected (it can be large and the list never shows it).
- * `undefined` on a database error, which the page notes.
+ * The active (non-deleted) files for the "YAML Files" list, newest first.
+ * Filtering happens IN THE DATABASE (see `docs/filtered-lists.md`), never in
+ * memory: an optional `search` term is a case-insensitive contains-match over
+ * name/title/description, and `createdBy` narrows to one writer's files (the
+ * "Only my files" toggle). Content is intentionally NOT selected (it can be large
+ * and the list never shows it). `undefined` on a database error, which the page
+ * notes.
  */
-export async function listFiles(): Promise<FileListEntry[] | undefined> {
+export async function listFiles(opts?: {
+  search?: string;
+  createdBy?: string;
+}): Promise<FileListEntry[] | undefined> {
+  const conditions: SQL[] = [isNull(files.validUntil)];
+  const term = opts?.search?.trim();
+  if (term) {
+    const match = containsAny(term, [files.name, files.title, files.description]);
+    if (match) conditions.push(match);
+  }
+  if (opts?.createdBy) conditions.push(eq(files.createdBy, opts.createdBy));
   try {
     return await getDb()
       .select({
@@ -116,7 +131,7 @@ export async function listFiles(): Promise<FileListEntry[] | undefined> {
         createdBy: files.createdBy,
       })
       .from(files)
-      .where(isNull(files.validUntil))
+      .where(and(...conditions))
       .orderBy(desc(files.validFrom));
   } catch (error) {
     console.error("file-store: listing files failed", error);

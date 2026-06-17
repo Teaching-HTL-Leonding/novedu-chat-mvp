@@ -7,9 +7,19 @@ import { deleteTutorCodeAction } from "@/lib/tutor-code-actions";
 import styles from "./tutor-codes.module.css";
 
 // Deletes a tutor code AND all of its conversations — irreversible, so it asks
-// first. On success the server action revalidates the list; router.refresh()
-// pulls the updated server render so the row disappears without a full reload.
-export function DeleteCodeButton({ code, label }: { code: string; label: string }) {
+// first. On success the server action revalidates the list. By default
+// router.refresh() pulls the updated server render so the row disappears without
+// a full reload (the list page); pass `redirectTo` to navigate away instead
+// (the edit page, whose code no longer exists after deletion).
+export function DeleteCodeButton({
+  code,
+  label,
+  redirectTo,
+}: {
+  code: string;
+  label: string;
+  redirectTo?: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +35,8 @@ export function DeleteCodeButton({ code, label }: { code: string; label: string 
     startTransition(async () => {
       const result = await deleteTutorCodeAction(code);
       if (result.ok) {
-        router.refresh();
+        if (redirectTo) router.push(redirectTo);
+        else router.refresh();
       } else {
         setError(result.message);
       }

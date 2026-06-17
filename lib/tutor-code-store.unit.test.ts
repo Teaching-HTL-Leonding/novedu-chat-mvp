@@ -11,6 +11,9 @@ const fake = vi.hoisted(() => {
     selectError: undefined as unknown,
     deleteCalls: 0,
     deleteError: undefined as unknown,
+    updated: [] as Record<string, unknown>[],
+    updateError: undefined as unknown,
+    updateRowsAffected: [1] as number[],
   };
   // The query tail is a lazy thenable (NOT an eager promise): the rejected
   // promise only comes into existence when the store actually awaits it, so
@@ -38,7 +41,16 @@ const fake = vi.hoisted(() => {
       if (state.deleteError) throw state.deleteError;
     },
   });
-  return { state, db: { select, insert, delete: del } };
+  const update = () => ({
+    set: (values: Record<string, unknown>) => ({
+      where: async () => {
+        if (state.updateError) throw state.updateError;
+        state.updated.push(values);
+        return { rowsAffected: state.updateRowsAffected };
+      },
+    }),
+  });
+  return { state, db: { select, insert, delete: del, update } };
 });
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
@@ -47,11 +59,12 @@ import {
   checkTutorCode,
   createTutorCode,
   generateTutorCode,
-  getOwnedTutorCode,
-  listTutorCodes,
+  getTutorCode,
+  listAllTutorCodes,
   MAX_NOTE_LENGTH,
   TUTOR_CODE_PATTERN,
   type TutorCodeEntry,
+  updateTutorCode,
   validateTutorCodeRequest,
 } from "@/lib/tutor-code-store";
 
@@ -85,6 +98,9 @@ beforeEach(() => {
   fake.state.selectError = undefined;
   fake.state.deleteCalls = 0;
   fake.state.deleteError = undefined;
+  fake.state.updated = [];
+  fake.state.updateError = undefined;
+  fake.state.updateRowsAffected = [1];
 });
 
 describe("generateTutorCode", () => {
@@ -248,43 +264,90 @@ describe("checkTutorCode", () => {
   });
 });
 
-describe("listTutorCodes", () => {
-  it("returns the teacher's rows", async () => {
-    const rows = [entry(), entry({ code: "f6g7h8i9j0" })];
+describe("listAllTutorCodes", () => {
+  it("returns all rows (no createdBy filter when none is given)", async () => {
+    const rows = [entry(), entry({ code: "f6g7h8i9j0", createdBy: "another-teacher" })];
     fake.state.rows = rows;
-    await expect(listTutorCodes("teacher-sub-1")).resolves.toEqual(rows);
+    await expect(listAllTutorCodes()).resolves.toEqual(rows);
+  });
+
+  it("returns the rows the fake db yields when filters are supplied", async () => {
+    // The fake doesn't execute SQL — it just confirms the call shape resolves to
+    // the configured rows (the WHERE/LIKE itself is covered by the @live e2e).
+    const rows = [entry({ note: "linked lists" })];
+    fake.state.rows = rows;
+    await expect(
+      listAllTutorCodes({ search: "linked", createdBy: "teacher-sub-1" }),
+    ).resolves.toEqual(rows);
   });
 
   it("returns undefined instead of throwing when the database is down", async () => {
     fake.state.selectError = new Error("connection lost");
-    await expect(listTutorCodes("teacher-sub-1")).resolves.toBeUndefined();
+    await expect(listAllTutorCodes()).resolves.toBeUndefined();
   });
 });
 
-describe("getOwnedTutorCode", () => {
-  it("returns the row when it belongs to the asking teacher", async () => {
-    const row = entry();
+describe("getTutorCode", () => {
+  it("returns the row regardless of who created it (no ownership check)", async () => {
+    const row = entry({ createdBy: "another-teacher" });
     fake.state.rows = [row];
-    await expect(getOwnedTutorCode("a1b2c3d4e5", "teacher-sub-1")).resolves.toEqual(row);
-  });
-
-  it("returns null for a code created by someone else", async () => {
-    fake.state.rows = [entry({ createdBy: "another-teacher" })];
-    await expect(getOwnedTutorCode("a1b2c3d4e5", "teacher-sub-1")).resolves.toBeNull();
+    await expect(getTutorCode("a1b2c3d4e5")).resolves.toEqual(row);
   });
 
   it("returns null for an unknown code", async () => {
     fake.state.rows = [];
-    await expect(getOwnedTutorCode("a1b2c3d4e5", "teacher-sub-1")).resolves.toBeNull();
+    await expect(getTutorCode("a1b2c3d4e5")).resolves.toBeNull();
   });
 
   it("rejects a malformed code without a database round-trip", async () => {
     fake.state.selectError = new Error("must not be reached");
-    await expect(getOwnedTutorCode("NOT_A_CODE", "teacher-sub-1")).resolves.toBeNull();
+    await expect(getTutorCode("NOT_A_CODE")).resolves.toBeNull();
   });
 
   it("returns undefined instead of throwing when the database is down", async () => {
     fake.state.selectError = new Error("connection lost");
-    await expect(getOwnedTutorCode("a1b2c3d4e5", "teacher-sub-1")).resolves.toBeUndefined();
+    await expect(getTutorCode("a1b2c3d4e5")).resolves.toBeUndefined();
+  });
+});
+
+describe("updateTutorCode", () => {
+  const data = {
+    validFrom: new Date("2026-07-01T08:00:00Z"),
+    validUntil: new Date("2026-07-01T10:00:00Z"),
+    note: "edited",
+  };
+
+  it("updates only the window + note (never the url/anonymous/createdBy)", async () => {
+    await expect(updateTutorCode("a1b2c3d4e5", data)).resolves.toEqual({ ok: true });
+    expect(fake.state.updated).toHaveLength(1);
+    expect(fake.state.updated[0]).toEqual({
+      validFrom: data.validFrom,
+      validUntil: data.validUntil,
+      note: "edited",
+    });
+  });
+
+  it("reports not-found for a malformed code without a database round-trip", async () => {
+    fake.state.updateError = new Error("must not be reached");
+    await expect(updateTutorCode("NOT_A_CODE", data)).resolves.toEqual({
+      ok: false,
+      reason: "not-found",
+    });
+  });
+
+  it("reports not-found when no row was affected", async () => {
+    fake.state.updateRowsAffected = [0];
+    await expect(updateTutorCode("a1b2c3d4e5", data)).resolves.toEqual({
+      ok: false,
+      reason: "not-found",
+    });
+  });
+
+  it("reports an error instead of throwing when the database is down", async () => {
+    fake.state.updateError = new Error("connection lost");
+    await expect(updateTutorCode("a1b2c3d4e5", data)).resolves.toEqual({
+      ok: false,
+      reason: "error",
+    });
   });
 });

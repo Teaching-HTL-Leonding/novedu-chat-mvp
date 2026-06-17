@@ -7,17 +7,16 @@ import { beforeEach, expect, it, vi } from "vitest";
 // `app/tutor-codes/[code]/c/[threadId]/page.tsx` is the read-only conversation
 // viewer. The transcript itself (CopilotChatMessageView) is exercised by the
 // live chat e2e; here we pin the SERVER-side gating and the loading/empty
-// branches without infra. The CopilotKit client view is stubbed so the test
-// needs no provider/runtime.
+// branches without infra. Any effective teacher may open any code's conversation
+// now (`getTutorCode`, no ownership check). The CopilotKit client view is stubbed
+// so the test needs no provider/runtime.
 
-const auth = vi.hoisted(() => vi.fn());
 const isEffectiveTeacher = vi.hoisted(() => vi.fn());
-const getOwnedTutorCode = vi.hoisted(() => vi.fn());
+const getTutorCode = vi.hoisted(() => vi.fn());
 const getConversationMessages = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth }));
 vi.mock("@/lib/student-mode", () => ({ isEffectiveTeacher }));
-vi.mock("@/lib/tutor-code-store", () => ({ getOwnedTutorCode }));
+vi.mock("@/lib/tutor-code-store", () => ({ getTutorCode }));
 vi.mock("@/lib/tutor-stats-store", () => ({ getConversationMessages }));
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => (
@@ -47,7 +46,6 @@ async function render(code = CODE, threadId = THREAD) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  auth.mockResolvedValue({ user: { id: "teacher-sub-1" } });
   isEffectiveTeacher.mockResolvedValue(true);
 });
 
@@ -58,34 +56,34 @@ it("denies a non-teacher", async () => {
   expect(getConversationMessages).not.toHaveBeenCalled();
 });
 
-it("shows a transient notice when the ownership lookup fails", async () => {
-  getOwnedTutorCode.mockResolvedValue(undefined);
+it("shows a transient notice when the lookup fails", async () => {
+  getTutorCode.mockResolvedValue(undefined);
   const html = await render();
   expect(html).toContain("Conversation temporarily unavailable");
 });
 
-it("shows 'not found' for an unknown or non-owned code", async () => {
-  getOwnedTutorCode.mockResolvedValue(null);
+it("shows 'not found' for an unknown code", async () => {
+  getTutorCode.mockResolvedValue(null);
   const html = await render();
   expect(html).toContain("Conversation not found");
 });
 
 it("shows a transient notice when the messages fail to load", async () => {
-  getOwnedTutorCode.mockResolvedValue(entry());
+  getTutorCode.mockResolvedValue(entry());
   getConversationMessages.mockResolvedValue(undefined);
   const html = await render();
   expect(html).toContain("Conversation temporarily unavailable");
 });
 
 it("notes an empty conversation", async () => {
-  getOwnedTutorCode.mockResolvedValue(entry());
+  getTutorCode.mockResolvedValue(entry());
   getConversationMessages.mockResolvedValue([]);
   const html = await render();
   expect(html).toContain("no messages");
 });
 
 it("renders the transcript and a back link to the code's stats", async () => {
-  getOwnedTutorCode.mockResolvedValue(entry());
+  getTutorCode.mockResolvedValue(entry());
   getConversationMessages.mockResolvedValue([
     { id: "m1", role: "user", content: "Hi" },
     { id: "m2", role: "assistant", content: "Hello" },

@@ -8,7 +8,7 @@ import styles from "./validation-result.module.css";
 
 // Pure presentational views for a validation result's errors, warnings, and (for
 // a fragment library) its successful summary. Shared by the validate-tutor page,
-// the share-tutor form, and the YAML Files create/edit forms — kept in
+// the tutor-code form, and the YAML Files create/edit forms — kept in
 // components/ (not a route folder) since several features depend on it. Rendered
 // and tested in isolation with plain props (no fetch, no state).
 
