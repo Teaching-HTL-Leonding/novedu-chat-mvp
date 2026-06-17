@@ -87,6 +87,15 @@ STORAGE_TENANT_ID=your-data-store-tenant-id
 # (and falls back to http://). Optional for local dev (localhost works). Display-only:
 # a tutor code works on ANY origin that talks to the same database.
 TUTOR_CODE_ORIGIN=https://your-public-origin
+
+# --- Telemetry (optional) — Azure Monitor / Application Insights via OpenTelemetry ---
+# Unset => telemetry is fully OFF (no exporter, no network sink). When set, server
+# traces/metrics/logs/exceptions export to App Insights. This is a SECRET — keep it
+# out of the repo and CI (see docs/telemetry.md). NO message/prompt/PII content is
+# ever sent.
+APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=...
+# Sets the App Insights cloud_RoleName so the app's spans are attributable.
+OTEL_SERVICE_NAME=novedu-chat
 ```
 
 Notes:
@@ -96,6 +105,9 @@ Notes:
   likewise enforced by Auth.js itself.)
 - If `SCCH_BASE_URL` / `SCCH_API_KEY` are unset, the app still starts but no SCCH chat
   models are available (a warning is logged).
+- `APPLICATIONINSIGHTS_CONNECTION_STRING` is **optional**: unset means telemetry is
+  fully off. When set, server telemetry exports to Azure Monitor / App Insights — no
+  conversation content is ever sent. See `docs/telemetry.md`.
 - `MSSQL_CONNECTION_STRING` is **required to chat**: tutor codes and the `tutor`
   agent's memory live in the database, so creating/opening a tutor chat fails if it is
   unset (the rest of the app — e.g. tutor validation — still boots). When set, the

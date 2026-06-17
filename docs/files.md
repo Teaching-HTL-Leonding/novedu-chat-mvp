@@ -18,7 +18,7 @@ before touching `app/files/*`, `app/api/files/*`, `lib/file-store.ts`,
 | List | `/files` (`app/files/page.tsx`) | teacher | active versions only, contains-filter + "Only my files" (default on) |
 | Create | `/files/new` (`create-file-form.tsx`) | teacher | name + kind + CodeMirror editor + upload |
 | Edit / delete | `/files/edit/[...name]` (`edit-file-form.tsx`) | teacher | preloaded with the active version; copyable public URL; soft-delete |
-| Public GET | `/api/files/<name>` (`app/api/files/[name]/route.ts`) | **anyone** | latest version as `text/yaml`, `no-store` |
+| Public GET | `/api/files/<name>` (`app/api/files/[name]/route.ts`) | **anyone** | active version as `text/yaml`, `no-store` (404 once deleted) |
 
 The edit route is a **catch-all** (`[...name]`) and the `name` column is a
 generous `nvarchar(450)`, both deliberately folder-ready (`/`-separated names) —

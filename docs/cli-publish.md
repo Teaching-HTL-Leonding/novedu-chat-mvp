@@ -67,15 +67,16 @@ publishing breaks.
 To cut a release:
 
 ```bash
-# 1. Bump the version (PRs only — main is protected). In cli/package.json:
-#      "version": "0.1.3"
+# 1. Bump the version (PRs only — main is protected). In cli/package.json,
+#    e.g. the next patch after the current 0.3.0:
+#      "version": "0.3.1"
 #    Keep the lockfile in sync, then commit:
 npm install --package-lock-only
-git add cli/package.json package-lock.json && git commit -m "release @novedu/cli 0.1.3"
+git add cli/package.json package-lock.json && git commit -m "release @novedu/cli 0.3.1"
 # 2. Open a PR, let QA go green, merge to main.
 # 3. Tag the merged commit and push the tag:
-git tag cli-v0.1.3
-git push origin cli-v0.1.3        # -> publish-cli.yml runs and publishes 0.1.3
+git tag cli-v0.3.1
+git push origin cli-v0.3.1        # -> publish-cli.yml runs and publishes 0.3.1
 ```
 
 Versions are **forward-only**: npm rejects republishing an existing version, and
@@ -138,11 +139,3 @@ context outside CI). Prefer the CI path so releases carry provenance.
 | Workflow fails at "Verify tag matches package version" | The `cli-vX.Y.Z` tag and `cli/package.json` version disagree. Fix one. |
 | `npm publish` rejects an existing version | Versions are forward-only; bump and re-tag. |
 | OIDC/permission errors in the publish step | Check the npmjs.com trusted-publisher config still matches owner/repo/`publish-cli.yml`, and that the job has `id-token: write`. |
-
-## Version history
-
-| Version | How | Notes |
-| --- | --- | --- |
-| `0.1.0` | manual | Bootstrap publish that created the package. |
-| `0.1.1` | CI (failed) | Rejected with 422 — `repository` field was missing; never reached the registry. Tag retired. |
-| `0.1.2` | CI (trusted publishing) | First successful provenance-signed release via `publish-cli.yml`. |

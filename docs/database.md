@@ -60,7 +60,10 @@ the tutor agent's memory need the database.
 - Migrations are applied **automatically at server startup**
   (`instrumentation.ts` → `lib/db/migrate.ts`), bookkept in
   `novedu_drizzle_migrations`. A failed migration aborts startup on purpose.
-  The Dockerfile copies `drizzle/` into the standalone image.
+  The Dockerfile copies `drizzle/` into the standalone image. (`instrumentation.ts`
+  has a second, independent duty — bringing up telemetry *before* migrations and
+  exporting the `onRequestError` hook; that is gated on its own connection string
+  and documented in **`docs/telemetry.md`**.)
 - The SQL identity needs DDL rights once (the prod Managed-Identity user is
   `db_owner`).
 - **HARD RULE: no foreign keys between `novedu_*` and `mastra_*` tables.**

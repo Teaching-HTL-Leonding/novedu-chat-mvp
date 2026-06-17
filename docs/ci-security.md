@@ -25,14 +25,23 @@ run untrusted PR code.**
 | **`docker-publish.yml`** | `push` to `main`, `workflow_dispatch` | No | Yes |
 
 - **`qa.yml`** is the per-PR quality gate (biome, typecheck, unit + component
-  tests, `next build`, hermetic Playwright e2e). It runs untrusted fork code, so it
-  is **secret-free by construction**: it references no `secrets.*`, sets
-  `permissions: contents: read`, and feeds only **test-only dummy values** in its
-  `env:` block. Those dummies exist because `auth.ts` calls `required()` for the
-  `AZURE_*` vars and `TEACHER_GROUP_ID` at module load (also during `next build`),
-  and `AUTH_SECRET` only has to *match* between the e2e helpers and the dev server
-  — e2e tests mint Auth.js session cookies directly, so no real Entra round-trip
-  happens. There is nothing real in this environment to steal.
+  tests, `next build`, hermetic Playwright e2e, and a production **Docker image
+  build**). It runs untrusted fork code, so it is **secret-free by construction**:
+  it references no `secrets.*`, sets `permissions: contents: read`, and feeds only
+  **test-only dummy values** in its `env:` block. Those dummies exist because
+  `auth.ts` calls `required()` for the `AZURE_*` vars and `TEACHER_GROUP_ID` at
+  module load (also during `next build`), and `AUTH_SECRET` only has to *match*
+  between the e2e helpers and the dev server — e2e tests mint Auth.js session
+  cookies directly, so no real Entra round-trip happens. There is nothing real in
+  this environment to steal.
+  - The `prod-build` job (PR-only — `if: github.event_name == 'pull_request'`)
+    reproduces `docker-publish.yml`'s multi-stage image build so a build break
+    surfaces on the PR instead of after merge. It is **also secret-free**: it never
+    logs in to a registry and **`push: false`**, so no `DOCKER_*` credentials are
+    needed; it only **reads** the layer cache (`cache-from: type=gha`, no cache
+    export — write is restricted for fork PR tokens). On a `main` push
+    (`workflow_call`) this job is skipped because `docker-publish.yml` does the real
+    build+push.
 - **`docker-publish.yml`** holds the real secrets (`DOCKER_USERNAME` /
   `DOCKER_PASSWORD`, `AZURE_WEBAPP_CI_CD_URL`). It triggers **only** on `push` to
   `main` (a maintainer merge) and manual `workflow_dispatch`. A fork PR cannot

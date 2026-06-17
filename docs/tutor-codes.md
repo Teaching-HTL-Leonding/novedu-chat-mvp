@@ -168,7 +168,7 @@ collapses them on read (see below).
 
 Teacher-only, under the `/tutor-codes` prefix (so the root `/[code]` student
 catch-all never collides). Both pages gate on **code ownership**, NOT the
-thread-ownership token: `getOwnedTutorCode(code, sub)` returns the row only when
+thread-ownership token: `getOwnedTutorCode(code, oid)` returns the row only when
 `created_by` is the asking teacher — a teacher sees only their own codes.
 
 - **`/tutor-codes/[code]`** — detailed stats (`getTutorCodeStats(code, anonymous)`):
