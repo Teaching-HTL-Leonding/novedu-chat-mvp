@@ -98,8 +98,9 @@ export interface TutorCodeStats {
 /**
  * Detailed stats for one code: every qualifying conversation with its first/last
  * message time, user-message count, and (when recorded) the student. Returns
- * `undefined` on a database error. Never throws. Authorization (does this code
- * belong to the asking teacher?) is the caller's job — see `getOwnedTutorCode`.
+ * `undefined` on a database error. Never throws. Authorization (is the caller an
+ * effective teacher?) is the caller's job — the page gates with
+ * `requireTeacherPage()` and looks the code up via `getTutorCode`.
  *
  * `anonymous` is the code's FROZEN flag (`novedu_tutor_codes.anonymous`). When it
  * is `true` this enforces the anonymity promise AT THE DATA LAYER: every

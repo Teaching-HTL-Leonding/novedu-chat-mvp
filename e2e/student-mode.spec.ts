@@ -13,7 +13,7 @@ test("a teacher can enter student mode, is treated as a student, and can exit ag
   page,
 }) => {
   // Before: full teacher experience.
-  await page.goto("/share-tutor");
+  await page.goto("/tutor-codes/new");
   await expect(page.getByRole("button", { name: "Create Tutor Code" })).toBeVisible();
 
   // Enter student mode via the user menu.
@@ -30,7 +30,7 @@ test("a teacher can enter student mode, is treated as a student, and can exit ag
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Validate Tutor" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Create Tutor Code" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Shared Tutor Codes" })).toHaveCount(0);
 
   // ...and the server-side enforcement points deny like for a real student.
   await page.goto("/validate-tutor");
@@ -62,7 +62,7 @@ test("a student gains nothing by setting the student-mode cookie", async ({ brow
 
   await page.goto("/");
   await expect(page.getByText("Student mode")).toHaveCount(0);
-  await page.goto("/share-tutor");
+  await page.goto("/tutor-codes/new");
   await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
 
   await context.close();

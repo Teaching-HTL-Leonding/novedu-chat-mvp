@@ -1,24 +1,58 @@
+import Link from "next/link";
 import { auth } from "@/auth";
+import { CopyIconButton } from "@/components/copy-icon-button";
+import { DataList, type ListColumn } from "@/components/data-list";
+import { EditIcon, ExternalLinkIcon, ShareIcon } from "@/components/icons";
+import { ListFilterBar } from "@/components/list-filter-bar";
+import listStyles from "@/components/list-page.module.css";
 import { Notice } from "@/components/notice";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { listFiles } from "@/lib/file-store";
+import { filePublicUrl } from "@/lib/file-url";
+import { LocalTime } from "../local-time";
 import pageStyles from "../page.module.css";
-import { type FileRow, FilesBrowser } from "./files-browser";
+import { DeleteFileButton } from "./delete-file-button";
+import styles from "./files.module.css";
 
-// Teacher-only: lists every app-hosted YAML file (active versions only), with a
-// contains-filter and an "Only my files" toggle. Server component — the list
-// comes straight from the database; the filtering and the copy/delete controls
-// run on the client. "Effective" teacher: a teacher in student mode is denied
-// like a student. No row-level security: every teacher sees and maintains every
-// file.
-export default async function FilesPage() {
+// One active file as shown in the list (no content). `updatedSeconds` is the
+// active version's write time as unix seconds; `createdBy` is the last writer's
+// oid (drives the "Only my files" filter, applied in the DB).
+interface FileRow {
+  id: string;
+  name: string;
+  kind: string;
+  title: string | null;
+  description: string | null;
+  updatedSeconds: number;
+  createdBy: string;
+}
+
+// Teacher-only: every app-hosted YAML file (active versions only), with a
+// contains-filter over name/title/description and an "Only my files" toggle —
+// both applied IN THE DATABASE via URL search params (see
+// `docs/filtered-lists.md`), never in memory. No row-level security: every
+// teacher sees and maintains every file. "Effective" teacher: a teacher in
+// student mode is denied like a student.
+export default async function FilesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string | string[]; mine?: string | string[] }>;
+}) {
   const denied = await requireTeacherPage();
   if (denied) return denied;
 
   const session = await auth();
   const currentUserId = session?.user?.id ?? "";
-  const entries = await listFiles();
+
+  const sp = await searchParams;
+  const q = (typeof sp.q === "string" ? sp.q : "").trim();
+  const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
+
+  const entries = await listFiles({
+    search: q || undefined,
+    createdBy: onlyMine ? currentUserId : undefined,
+  });
 
   if (entries === undefined) {
     return (
@@ -33,6 +67,7 @@ export default async function FilesPage() {
   // The public URL origin is resolved once on the server and threaded down, so
   // every Copy URL / open / share link is built identically (no client origin).
   const origin = await resolveAppOriginOr("");
+  const fileUrl = (name: string) => filePublicUrl(origin, name);
 
   const rows: FileRow[] = entries.map((entry) => ({
     id: entry.id,
@@ -44,9 +79,122 @@ export default async function FilesPage() {
     createdBy: entry.createdBy,
   }));
 
+  const columns: ListColumn<FileRow>[] = [
+    { header: "Name", className: styles.nameCell, render: (row) => row.name },
+    {
+      header: "Kind",
+      render: (row) => (
+        <span
+          className={`${styles.kindBadge} ${row.kind === "tutor" ? styles.kindTutor : styles.kindFragment}`}
+        >
+          {row.kind}
+        </span>
+      ),
+    },
+    {
+      header: "Title",
+      className: styles.titleCell,
+      render: (row) => <span title={row.description ?? undefined}>{row.title ?? "—"}</span>,
+    },
+    {
+      header: "Last updated",
+      className: listStyles.timeCell,
+      render: (row) => <LocalTime seconds={row.updatedSeconds} />,
+    },
+    {
+      header: "Actions",
+      srOnlyHeader: true,
+      className: listStyles.actionsCell,
+      render: (row) => {
+        const url = fileUrl(row.name);
+        return (
+          <>
+            <CopyIconButton
+              text={url}
+              label="Copy URL"
+              className={styles.iconButton}
+              promptLabel="Copy the file URL:"
+            />
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.iconButton}
+              aria-label="Open raw YAML"
+              title="Open raw YAML"
+            >
+              <ExternalLinkIcon />
+            </a>
+            {row.kind === "tutor" ? (
+              <Link
+                href={`/tutor-codes/new?tutor=${encodeURIComponent(url)}`}
+                className={styles.iconButton}
+                aria-label="Create tutor code"
+                title="Create tutor code"
+              >
+                <ShareIcon />
+              </Link>
+            ) : null}
+            <Link
+              href={`/files/edit/${row.name}`}
+              className={styles.iconButton}
+              aria-label={`Edit ${row.name}`}
+              title="Edit"
+            >
+              <EditIcon />
+            </Link>
+            <DeleteFileButton name={row.name} />
+          </>
+        );
+      },
+    },
+  ];
+
   return (
     <main className={pageStyles.main}>
-      <FilesBrowser origin={origin} rows={rows} currentUserId={currentUserId} />
+      <DataList
+        rows={rows}
+        getRowKey={(row) => row.id}
+        columns={columns}
+        hint={
+          <>
+            App-hosted YAML files. Copy a file's public URL and paste it into a tutor code (tutor
+            files offer a one-click shortcut). Every save is validated; an invalid file is rejected.
+          </>
+        }
+        actions={
+          <Link href="/files/new" className={listStyles.button}>
+            New file
+          </Link>
+        }
+        filterBar={
+          <ListFilterBar
+            hasActiveFilter={q !== "" || !onlyMine}
+            resetKey={`${q}|${onlyMine ? "1" : "0"}`}
+          >
+            <input
+              type="search"
+              name="q"
+              className={listStyles.searchInput}
+              placeholder="Filter by name, title, description…"
+              defaultValue={q}
+              aria-label="Filter files"
+            />
+            <label className={listStyles.onlyMine}>
+              <input type="checkbox" name="mine" defaultChecked={onlyMine} />
+              Only my files
+            </label>
+          </ListFilterBar>
+        }
+        isFiltered={q !== ""}
+        emptyState={
+          <>
+            No files yet. <Link href="/files/new">Create one</Link> to host a tutor or fragment
+            YAML.
+          </>
+        }
+        noMatchState="No files match your filter."
+      />
     </main>
   );
 }

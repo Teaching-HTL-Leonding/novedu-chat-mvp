@@ -18,6 +18,10 @@ Load the `mastra` skill BEFORE any Mastra work. Never rely on cached knowledge �
 - [Mastra Documentation](https://mastra.ai/llms.txt)
 - [Skills Discovery](https://mastra.ai/.well-known/skills/index.json)
 
+## Research Drizzle ORM
+
+Before you create complex DB interactions (e.g. complex queries, transactions, complex migrations), research the [Drizzle ORM documentation](https://orm.drizzle.team/llms.txt) to ensure you are using the best patterns and practices for your use case. Drizzle has powerful features that can simplify your code and improve performance, but you might not have the latest information on them built-in.
+
 ## Pushing Changes to GitHub
 
 Do **NOT** push changes to GitHub if not explitly told by the user.
@@ -44,7 +48,8 @@ Invariants:
 ### Tutor Codes (chat entry, sharing, user↔chat mapping) → `docs/tutor-codes.md`
 
 Read it before touching the chat entry points (`app/page.tsx`, `app/[code]/page.tsx`),
-`/share-tutor`, `/tutor-codes`, the stats pages (`/tutor-codes/[code]` and
+the tutor-code create/edit pages (`/tutor-codes/new`, `/tutor-codes/edit/[code]`),
+the list page (`/tutor-codes`), the stats pages (`/tutor-codes/[code]` and
 `/tutor-codes/[code]/c/[threadId]`), the chat runtime route, or the `novedu_*` /
 `tutor-stats` stores in `lib/`. Invariants:
 
@@ -59,10 +64,19 @@ Read it before touching the chat entry points (`app/page.tsx`, `app/[code]/page.
   the CopilotKit route verifies it on every thread-touching request and 404s all
   runtime endpoints the app does not use. Mastra does NOT bind threads to a
   resource — without the token any code-holder could read others' chats. The
-  STUDENT chat path uses this token; the TEACHER stats/viewer pages instead gate
-  on **code ownership** (`getOwnedTutorCode`, `created_by === session user id`) — a
-  teacher reads only their own codes' conversations. The session user id is the
-  Entra **`oid`** (object id), NOT `sub` — see `docs/auth.md`.
+  STUDENT chat path uses this token; the TEACHER side is **role-gated, not
+  owner-gated**: any *effective teacher* may view/edit/delete ANY code and read
+  ANY code's stats/conversations (`getTutorCode`, no `created_by` check) — a
+  larger RBAC feature is planned. `created_by` is still recorded (and drives the
+  "Only my codes" filter default). The session user id is the Entra **`oid`**
+  (object id), NOT `sub` — see `docs/auth.md`.
+- The **`/tutor-codes` list shows ALL codes** with a text + "Only my codes"
+  filter applied **in the database** (URL search params → SQL `WHERE`, never in
+  memory) — the shared filtered-list concept (`docs/filtered-lists.md`). Create
+  is `/tutor-codes/new` (a "New Tutor Code" button on the list; the old
+  `/share-tutor` route redirects there). **Editing** a code (`/tutor-codes/edit/[code]`,
+  `updateTutorCode`) changes only the **note + availability window** — never the
+  tutor URL or the frozen `anonymous` flag.
 - Mastra memory `resourceId` = the tutor code. `novedu_user_chats` is the ONLY
   user↔chat link and is written **only** for tutors whose stored `anonymous` flag is
   `false` (default: anonymous, nothing stored) — that promise is why thread ownership
@@ -95,6 +109,29 @@ in `proxy.ts`. Invariants:
   kept). **`lib/file-store.ts` is the ONLY access** to the table. "One active version
   per name" is enforced by the DB **filtered unique index `ux_novedu_files_active_name`**;
   names are reusable after deletion. Files are NOT garbage-collected.
+- The `/files` list filters (text + "Only my files") **in the database**
+  (`listFiles({ search, createdBy })`, URL search params → SQL `WHERE`/`LIKE`,
+  never in memory) — the shared filtered-list concept (`docs/filtered-lists.md`).
+
+### Filtered lists (shared list UI: filter spot, action spot, table) → `docs/filtered-lists.md`
+
+Read it before touching `components/data-list.tsx`, `components/list-filter-bar.tsx`,
+`components/list-page.module.css`, `lib/db/text-filter.ts`, or a list page's
+`searchParams` handling (`/files`, `/tutor-codes`). Invariants:
+
+- **List filtering happens in the database, never in memory.** Filter state lives
+  in **URL search params**; the server page reads them and passes them to a store
+  query that builds a parameterized `WHERE` (text via `containsAny` =
+  wildcard-escaped `LIKE`; mssql collation is case-insensitive, so `like`, not
+  `ilike`). Use the Drizzle conditional pattern: an `SQL[]` applied with
+  `.where(and(...conditions))`.
+- Reusable pieces: **`DataList`** (server, column-driven table + empty/no-match +
+  pagination seam), **`ListFilterBar`** (client, "Apply" → `router.push` a new
+  query), shared chrome in `list-page.module.css`. The action button (top-left)
+  and filter controls (top-right) sit in the **same spot** on every list; add a
+  new list by writing its store filter + a server page that renders `DataList`.
+- Aggregated columns (e.g. tutor-code "Conversations") are a **single** raw-SQL
+  aggregate over the filtered set — **never a query per row**.
 
 ### Azure SQL, Drizzle & credentials → `docs/database.md`
 

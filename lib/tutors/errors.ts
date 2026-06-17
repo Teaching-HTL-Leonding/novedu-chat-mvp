@@ -137,7 +137,7 @@ type ZodErrorTree = {
  * Flattens a treeified Zod error into `path: message` lines so a generic
  * "Document does not match the expected structure" becomes actionable — e.g.
  * `Unrecognized key: "nae"` and `name: Invalid input: expected string`.
- * Framework-agnostic: shared by the web UI (`ErrorList`), the share-tutor
+ * Framework-agnostic: shared by the web UI (`ErrorList`), the tutor-code
  * action, and the CLI formatter, so a schema error reads the same everywhere.
  */
 export function formatZodIssues(zodIssues: unknown): string[] {

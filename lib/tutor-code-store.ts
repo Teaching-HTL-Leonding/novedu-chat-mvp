@@ -1,7 +1,8 @@
 import { randomInt } from "node:crypto";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { tutorCodes } from "@/lib/db/schema";
+import { containsAny } from "@/lib/db/text-filter";
 
 // Persistence for Tutor Codes in the `novedu_tutor_codes` SQL table: every code
 // a teacher creates stores the tutor YAML URL, the availability window, an
@@ -230,46 +231,81 @@ export async function checkTutorCode(
 }
 
 /**
- * ALL of a teacher's tutor codes, newest first — including ones whose window
- * has not started yet AND ones that have already expired. Codes are no longer
- * garbage-collected (a teacher deletes them explicitly), so an expired code
- * stays in the list: its chat no longer opens, but its conversation stats are
- * still reachable and it can be deleted. Backs the "Shared Tutor Codes" page.
- * Never throws — an unreachable database reads as `undefined`, which the page
- * notes.
+ * Tutor codes for the "Shared Tutor Codes" page — ALL teachers' codes (a teacher
+ * may now see/manage every code; finer-grained RBAC is planned), newest first,
+ * including not-yet-started and expired ones. Filtering happens IN THE DATABASE
+ * (see `docs/filtered-lists.md`), never in memory: an optional `search` term is a
+ * case-insensitive contains-match over note/code, and `createdBy` narrows to one
+ * teacher's codes (the "Only my codes" toggle). Never throws — an unreachable
+ * database reads as `undefined`, which the page notes.
  */
-export async function listTutorCodes(createdBy: string): Promise<TutorCodeEntry[] | undefined> {
+export async function listAllTutorCodes(opts?: {
+  search?: string;
+  createdBy?: string;
+}): Promise<TutorCodeEntry[] | undefined> {
+  const conditions: SQL[] = [];
+  const term = opts?.search?.trim();
+  if (term) {
+    const match = containsAny(term, [tutorCodes.note, tutorCodes.code]);
+    if (match) conditions.push(match);
+  }
+  if (opts?.createdBy) conditions.push(eq(tutorCodes.createdBy, opts.createdBy));
   try {
     return await getDb()
       .select()
       .from(tutorCodes)
-      .where(eq(tutorCodes.createdBy, createdBy))
+      .where(and(...conditions))
       .orderBy(desc(tutorCodes.createdAt));
   } catch (error) {
-    console.error("tutor-code-store: listing tutor codes failed", error);
+    console.error("tutor-code-store: listing all tutor codes failed", error);
     return undefined;
   }
 }
 
 /**
- * Looks up a single tutor code that a given teacher owns — the authorization
- * gate for the stats and conversation-viewer pages and the delete action. A
- * teacher may only see/delete codes they created (`created_by`), regardless of
- * the code's window. Returns the row, `null` if it does not exist or belongs to
- * someone else, or `undefined` on a database error. Never throws.
+ * Looks up a single tutor code by code, WITHOUT an ownership check — the gate for
+ * the stats / conversation-viewer / edit / delete paths now that any effective
+ * teacher may manage any code (finer-grained RBAC is planned; the page-level
+ * `requireTeacherPage()` / action-level `requireTeacherUserId()` gate still
+ * applies). Returns the row, `null` if the code is malformed or does not exist,
+ * or `undefined` on a database error. Never throws.
  */
-export async function getOwnedTutorCode(
-  code: string,
-  createdBy: string,
-): Promise<TutorCodeEntry | null | undefined> {
+export async function getTutorCode(code: string): Promise<TutorCodeEntry | null | undefined> {
   if (!TUTOR_CODE_PATTERN.test(code)) return null;
   try {
     const rows = await getDb().select().from(tutorCodes).where(eq(tutorCodes.code, code));
-    const entry = rows[0];
-    if (!entry || entry.createdBy !== createdBy) return null;
-    return entry;
+    return rows[0] ?? null;
   } catch (error) {
-    console.error("tutor-code-store: owned tutor-code lookup failed", error);
+    console.error("tutor-code-store: tutor-code lookup failed", error);
     return undefined;
+  }
+}
+
+export type UpdateTutorCodeResult = { ok: true } | { ok: false; reason: "not-found" | "error" };
+
+/**
+ * Updates the editable fields of a tutor code: the availability window and the
+ * note. The tutor URL is INTENTIONALLY not updatable here — and neither is the
+ * frozen `anonymous` flag (which is tied to that URL): editing them would break
+ * the documented "anonymous frozen at create time" invariant. `not-found` if no
+ * row matches (deleted meanwhile). Never throws.
+ */
+export async function updateTutorCode(
+  code: string,
+  data: { validFrom: Date; validUntil: Date; note: string },
+): Promise<UpdateTutorCodeResult> {
+  if (!TUTOR_CODE_PATTERN.test(code)) return { ok: false, reason: "not-found" };
+  try {
+    const updated = await getDb()
+      .update(tutorCodes)
+      .set({ validFrom: data.validFrom, validUntil: data.validUntil, note: data.note })
+      .where(eq(tutorCodes.code, code));
+    const ra = (updated as { rowsAffected?: unknown }).rowsAffected;
+    const affected = Array.isArray(ra) ? Number(ra[0] ?? 0) : typeof ra === "number" ? ra : 1;
+    if (affected < 1) return { ok: false, reason: "not-found" };
+    return { ok: true };
+  } catch (error) {
+    console.error("tutor-code-store: updating tutor code failed", error);
+    return { ok: false, reason: "error" };
   }
 }

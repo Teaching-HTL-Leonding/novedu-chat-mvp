@@ -20,7 +20,7 @@ import { TutorCodeError } from "../tutor-code-error";
 // Being a single dynamic segment, this route also catches every unknown
 // top-level path (`/whatever`) — checkTutorCode pattern-rejects those without a
 // database round-trip and the student sees "unknown tutor code". Static routes
-// (`/share-tutor`, `/tutor-codes`, …) take precedence over this segment.
+// (`/files`, `/tutor-codes`, …) take precedence over this segment.
 export default async function TutorCodePage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
   const session = await auth();

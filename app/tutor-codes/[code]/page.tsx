@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { auth } from "@/auth";
 import { BackLink } from "@/components/back-link";
 import { Notice } from "@/components/notice";
 import { requireTeacherPage } from "@/components/require-teacher-page";
-import { getOwnedTutorCode } from "@/lib/tutor-code-store";
+import { getTutorCode } from "@/lib/tutor-code-store";
 import { getTutorCodeStats } from "@/lib/tutor-stats-store";
 import { LocalTime } from "../../local-time";
 import pageStyles from "../../page.module.css";
@@ -14,7 +13,8 @@ const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 // Teacher-only detailed stats for ONE tutor code: how many conversations it has
 // seen, (for non-anonymous tutors) how many distinct students, and the list of
 // conversations — each linking to a read-only view of the chat. Server
-// component; the teacher may only see codes they created (`getOwnedTutorCode`).
+// component; any effective teacher may view any code's stats (`getTutorCode`;
+// finer-grained RBAC is planned).
 export default async function TutorCodeStatsPage({
   params,
 }: {
@@ -25,9 +25,7 @@ export default async function TutorCodeStatsPage({
   const denied = await requireTeacherPage();
   if (denied) return denied;
 
-  const session = await auth();
-  const userId = session?.user?.id;
-  const entry = userId ? await getOwnedTutorCode(code, userId) : null;
+  const entry = await getTutorCode(code);
 
   if (entry === undefined) {
     return (
@@ -39,14 +37,11 @@ export default async function TutorCodeStatsPage({
     );
   }
   if (entry === null) {
-    // Unknown code or not the caller's — same answer either way, so we don't
-    // leak whether a code exists.
     return (
       <main className={pageStyles.main}>
         <Notice heading="Tutor code not found">
           <p>
-            This tutor code does not exist or was not created by you.{" "}
-            <Link href="/tutor-codes">Back to your tutor codes</Link>.
+            This tutor code does not exist. <Link href="/tutor-codes">Back to tutor codes</Link>.
           </p>
         </Notice>
       </main>

@@ -1,0 +1,192 @@
+/* Styling for the unified create/edit Tutor Code form
+   (`tutor-code-form.tsx`). Self-contained: harvested from the former
+   share-tutor form (window quick-buttons, link row) plus the generic input /
+   button / output styles it used to borrow from the validate-tutor module. */
+
+.container {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.25rem 1.25rem;
+  overflow-y: auto;
+}
+
+.form {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  align-self: stretch;
+}
+
+/* No flex-grow on .field at the top level: inside the column-flex .form the main
+   axis is vertical, so growing would stretch the input to the page height.
+   Fields only grow horizontally inside .row. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-self: stretch;
+}
+
+.row .field {
+  flex: 1 1 18rem;
+}
+
+.inputRow {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.inputRow input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+}
+
+.input {
+  flex: 1 1 auto;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.9rem;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  border-radius: 0.5rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* The tutor URL shown read-only in edit mode (it cannot be changed). */
+.readonlyUrl {
+  composes: input;
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+.quickButton {
+  flex: none;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.quickButton:hover {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+.quickButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.actionsBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.button {
+  flex: none;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--background);
+  background: var(--foreground);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.output {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.muted {
+  margin: 0;
+  font-size: 0.88rem;
+  color: color-mix(in srgb, var(--foreground) 60%, transparent);
+}
+
+.requestError {
+  margin: 0;
+  color: #b42318;
+}
+
+.saved {
+  font-size: 0.88rem;
+  color: color-mix(in srgb, seagreen 70%, var(--foreground));
+}
+
+/* The shareable chat-URL block shown in edit mode. */
+.linkBox {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-self: stretch;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 18%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+.linkHeading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.linkRow {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.linkInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.82rem;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  border-radius: 0.5rem;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* The open-in-new-tab anchor shares `.button` with Copy; this only centers the
+   icon and keeps the anchor from rendering as an underlined link. */
+.openLinkButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-size: 1rem;
+}

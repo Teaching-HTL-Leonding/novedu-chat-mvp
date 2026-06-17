@@ -9,7 +9,7 @@ stores in `lib/`.
 ## The model
 
 A **Tutor Code** is a 10-character `[a-z0-9]` code (36^10 ≈ 3.6 × 10^15 —
-unguessable) minted by a teacher on `/share-tutor` and stored as a row in the
+unguessable) minted by a teacher on `/tutor-codes/new` and stored as a row in the
 `novedu_tutor_codes` SQL table:
 
 | Column | Meaning |
@@ -75,33 +75,45 @@ since `app/[code]` catches all non-static top-level paths.
   server-side (`app/[code]/page.tsx` via `after()`); `not-started` and
   transient `lookup-failed` keep it.
 
-## Creating codes
+## Creating & editing codes
 
-`/share-tutor` ("Create Tutor Code", teacher-only via
-`requireEffectiveTeacher()` in the server action): tutor URL, optional note,
-window as `datetime-local` (converted to unix seconds IN THE BROWSER — the
-only place the teacher's timezone is known). The action
-(`lib/tutor-code-actions.ts`) validates the input, then loads the tutor YAML
-with the THOROUGH check (`loadAndBuildTutorPrompt`, `validateLibraries: true`)
+`/tutor-codes/new` ("New Tutor Code", teacher-only via `requireTeacherPage()` on
+the page + `requireTeacherUserId()` in the action; reached from the "New Tutor
+Code" button on `/tutor-codes`, or with `?tutor=<url>` pre-filled from the YAML
+Files "create tutor code" shortcut — the old `/share-tutor` route 308-redirects
+here): tutor URL, optional note, window as `datetime-local` (converted to unix
+seconds IN THE BROWSER — the only place the teacher's timezone is known). The
+action (`lib/tutor-code-actions.ts`) validates the input, then loads the tutor
+YAML with the THOROUGH check (`loadAndBuildTutorPrompt`, `validateLibraries: true`)
 — every fragment in every referenced library is strict-rendered, so a broken
 tutor (or a broken fragment in a library it references, even an unused one) is
-rejected at create time, not when the first student opens the code — and
-inserts the row. **A storage
-failure is a hard error** — without a row there is nothing to hand out. The
-displayed URL's origin comes from `TUTOR_CODE_ORIGIN` (recommended in
-production) or the request's forwarded/host headers (fine for dev); it is
-display-only.
+rejected at create time, not when the first student opens the code — and inserts
+the row. **A storage failure is a hard error** — without a row there is nothing
+to hand out. On success the action **redirects to `/tutor-codes/edit/<code>`**,
+which shows the shareable chat URL (copy button) — its origin comes from
+`TUTOR_CODE_ORIGIN` (recommended in production) or the request's forwarded/host
+headers (fine for dev); it is display-only.
 
-`/tutor-codes` ("Shared Tutor Codes", teacher-only) lists **all** of the
-teacher's codes (`listTutorCodes`), newest first — active, not-yet-started
-(`upcoming` badge), AND already-expired (`expired` badge), since codes are no
-longer garbage-collected. Each row: note (fallback code, tutor-YAML URL as
-tooltip), window in local time, a **Conversations** count (qualifying
-conversations for that code, from `getInteractionCounts` — one aggregate query
-for the whole list, links to the code's stats), an Open link (active codes
-only), a Copy button, and a **Delete** button (`DeleteCodeButton` → the
-`deleteTutorCodeAction` server action; confirms first, then wipes the code and
-all of its conversation data — see Lifecycle).
+**Editing** (`/tutor-codes/edit/[code]`, the SAME `TutorCodeForm` in `mode="edit"`
+→ `updateTutorCodeAction` → `updateTutorCode`) changes only the **note** and the
+**availability window**. The tutor URL is shown **read-only** and is never
+submitted, so the frozen `anonymous` flag (which the URL implies) stays valid and
+no YAML re-validation is needed.
+
+`/tutor-codes` ("Shared Tutor Codes", teacher-only) lists **ALL** codes — any
+effective teacher may see and manage every code (RBAC planned) — via
+`listAllTutorCodes({ search, createdBy })`, newest first, active + not-yet-started
+(`upcoming` badge) + already-expired (`expired` badge), since codes are no longer
+garbage-collected. Filtering (a text contains-match over note/code + an "Only my
+codes" toggle) happens **in the database** through URL search params, never in
+memory — the shared filtered-list concept (`docs/filtered-lists.md`). Each row:
+note (fallback code, tutor-YAML URL as tooltip), window in local time, a
+**Conversations** count (qualifying conversations for the code, from
+`getInteractionCounts` — ONE aggregate query for the whole filtered set, no
+per-row query; links to the code's stats), a stats link, an Open link (active
+codes only), a Copy button, an **Edit** link, and a **Delete** button
+(`DeleteCodeButton` → the `deleteTutorCodeAction` server action; confirms first,
+then wipes the code and all of its conversation data — see Lifecycle).
 
 ## Chats, memory & the join model
 
@@ -167,9 +179,11 @@ collapses them on read (see below).
 ## Stats & conversation viewer
 
 Teacher-only, under the `/tutor-codes` prefix (so the root `/[code]` student
-catch-all never collides). Both pages gate on **code ownership**, NOT the
-thread-ownership token: `getOwnedTutorCode(code, oid)` returns the row only when
-`created_by` is the asking teacher — a teacher sees only their own codes.
+catch-all never collides). Both pages are **role-gated, not owner-gated**:
+`requireTeacherPage()` + `getTutorCode(code)` (no `created_by` check) — any
+effective teacher may read ANY code's stats/conversations (a larger RBAC feature
+is planned). This is NOT the thread-ownership token, which remains the
+student-side isolation and is unaffected.
 
 - **`/tutor-codes/[code]`** — detailed stats (`getTutorCodeStats(code, anonymous)`):
   number of conversations, and for non-anonymous codes (the frozen `anonymous`

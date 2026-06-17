@@ -1,0 +1,171 @@
+/* Shared chrome for teacher-facing "filtered list" pages (YAML Files, Shared
+   Tutor Codes, and future lists). One source of truth so every list places its
+   action button (top-left) and its filter controls (top-right) in the same spot
+   and renders the same table. See `docs/filtered-lists.md`. Page-specific bits
+   (kind/status badges, name/note cells) stay in each page's own module and
+   `composes:` the shared icon button. CSS Modules + color-mix over
+   --foreground/--background, matching the rest of the app (no component lib). */
+
+.container {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem 1.25rem 1.5rem;
+  overflow-y: auto;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+}
+
+.empty {
+  font-size: 0.95rem;
+}
+
+/* --- top bar: actions on the left, filter controls on the right --- */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+/* The filter form (also the right-hand toolbar slot). */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.searchInput {
+  width: 18rem;
+  max-width: 100%;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.9rem;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  border-radius: 0.5rem;
+}
+
+.onlyMine {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.applyButton {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--background);
+  background: var(--foreground);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.applyButton:disabled {
+  opacity: 0.7;
+  cursor: progress;
+}
+
+.clearLink {
+  font-size: 0.85rem;
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+  text-decoration: underline;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.clearLink:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+/* --- table --- */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.table th {
+  text-align: left;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+}
+
+.table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  vertical-align: middle;
+}
+
+.timeCell {
+  white-space: nowrap;
+}
+
+.actionsHeader {
+  width: 1%;
+}
+
+.actionsCell {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* The primary "New …" action button/link in the actions slot. */
+.button {
+  flex: none;
+  align-self: flex-start;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--background);
+  background: var(--foreground);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

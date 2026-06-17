@@ -18,65 +18,10 @@
   color: color-mix(in srgb, var(--foreground) 70%, transparent);
 }
 
-.empty {
-  font-size: 0.95rem;
-}
-
-/* --- top bar: New button on the left, filters on the right --- */
-.toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.searchInput {
-  width: 18rem;
-  max-width: 100%;
-  padding: 0.45rem 0.7rem;
-  font-size: 0.9rem;
-  color: var(--foreground);
-  background: var(--background);
-  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
-  border-radius: 0.5rem;
-}
-
-.onlyMine {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.88rem;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-/* --- table --- */
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.92rem;
-}
-
-.table th {
-  text-align: left;
-  font-weight: 600;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 2px solid color-mix(in srgb, var(--foreground) 25%, transparent);
-}
-
-.table td {
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
-  vertical-align: middle;
-}
+/* List chrome (container/toolbar/filters/table/actions/etc.) now lives in the
+   shared `components/list-page.module.css` consumed by `DataList` /
+   `ListFilterBar` — see `docs/filtered-lists.md`. Only file-specific cell styles
+   and the create/edit form styles remain here. */
 
 .nameCell {
   font-family: var(--font-geist-mono), ui-monospace, monospace;
@@ -88,22 +33,6 @@
   max-width: 26rem;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.timeCell {
-  white-space: nowrap;
-}
-
-.actionsHeader {
-  width: 1%;
-}
-
-.actionsCell {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  justify-content: flex-end;
   white-space: nowrap;
 }
 
@@ -143,15 +72,6 @@
   font-size: 0.82rem;
   color: color-mix(in srgb, crimson 75%, var(--foreground));
   white-space: normal;
-}
-
-.visuallyHidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 
 /* --- create / edit forms --- */

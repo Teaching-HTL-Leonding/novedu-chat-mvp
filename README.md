@@ -12,7 +12,7 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 
 | Area | Description |
 | --- | --- |
-| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the tutor-code entry page; `app/[code]/page.tsx` checks the code and renders `TutorChat`. Teachers create and list codes under `/share-tutor` and `/tutor-codes`, and author **app-hosted YAML files** under `/files` (create at `/files/new`, edit at `/files/edit/<name>`), each served publicly at `/api/files/<name>` for use in a tutor code — see [`docs/files.md`](docs/files.md). |
+| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the tutor-code entry page; `app/[code]/page.tsx` checks the code and renders `TutorChat`. Teachers create, list, and edit codes under `/tutor-codes` (new at `/tutor-codes/new`, edit at `/tutor-codes/edit/<code>`), and author **app-hosted YAML files** under `/files` (create at `/files/new`, edit at `/files/edit/<name>`), each served publicly at `/api/files/<name>` for use in a tutor code — see [`docs/files.md`](docs/files.md). Both lists filter in the DB — see [`docs/filtered-lists.md`](docs/filtered-lists.md). |
 | **Tutor core** (`lib/tutors/`) | Framework-agnostic pipeline: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. Returns a structured `BuildResult` (never throws). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the tutor YAML, and fragment inputs may declare **defaults**. See [`tutors/README.md`](tutors/README.md) for the authoring guide. |
 | **Mastra agents** (`app/mastra/`) | The `tutor` agent resolves its instructions + model per request from the tutor URL and persists each conversation via Mastra `Memory`. Agents are registered in `app/mastra/index.ts`. Memory/storage is **Azure SQL** via `@mastra/mssql`, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. |
@@ -23,7 +23,7 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 ### Request flow
 
 1. User signs in via Microsoft Entra ID (enforced by `proxy.ts`).
-2. A teacher creates a **Tutor Code** on `/share-tutor` (tutor YAML URL + availability
+2. A teacher creates a **Tutor Code** on `/tutor-codes/new` (tutor YAML URL + availability
    window + note, stored in the `novedu_tutor_codes` SQL table) and hands out
    `https://<host>/<code>`.
 3. A student opens `/<code>` (or types the code on `/`); the server checks the stored
