@@ -19,10 +19,18 @@ before touching `app/files/*`, `app/api/files/*`, `lib/file-store.ts`,
 | Create | `/files/new` (`create-file-form.tsx`) | teacher | name + kind + CodeMirror editor + upload |
 | Edit / delete | `/files/edit/[...name]` (`edit-file-form.tsx`) | teacher | preloaded with the active version; copyable public URL; soft-delete |
 | Public GET | `/api/files/<name>` (`app/api/files/[name]/route.ts`) | **anyone** | active version as `text/yaml`, `no-store` (404 once deleted) |
+| GUI editor | `/files/gui/edit/<name>` (`app/files/gui/edit/[...name]/page.tsx`) | teacher | student-built form GUI; "Edit in GUI" on the list |
+| GUI viewer | `/files/gui/view?url=…&kind=…` (`app/files/gui/view/page.tsx`) | teacher | read-only student GUI; "View in GUI" on `/validate-tutor` |
 
 The edit route is a **catch-all** (`[...name]`) and the `name` column is a
 generous `nvarchar(450)`, both deliberately folder-ready (`/`-separated names) —
 a deferred extension; today names are flat (`FILE_NAME_PATTERN`).
+
+The **GUI editor/viewer** are a separate, student-built form interface over the
+**same** actions/validators, exposed through the documented facade
+**`lib/yaml-files.ts`** (the only import the student module uses) — see
+`docs/yaml-gui-student-contribution.md`. The pure name/kind helpers live in
+**`lib/file-name.ts`** (no DB import) so that client-safe facade can re-export them.
 
 ## Data model — `novedu_files` (temporal / append-only)
 
@@ -58,9 +66,11 @@ The **only** module that touches `novedu_files`, so the "filter on the active
 version" invariant lives in one place. Never throws — a DB problem surfaces as
 `undefined` / `{ ok: false, reason }`, which callers turn into a graceful message.
 
-- `FILE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,100}$/` and the pure `validateFileName()`
-  — **shared** by the GET route and the create action, so there is one definition
-  of a legal name (trims, then enforces the pattern).
+- `FILE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,100}$/`, the pure `validateFileName()` and
+  `isFileKind()` now live in **`lib/file-name.ts`** (no DB import) and are **re-exported
+  here** for back-compat — one definition of a legal name (trims, then enforces the
+  pattern), shared by the GET route, the create action, AND the client-safe
+  `@/lib/yaml-files` facade (which must not import the DB-bound store).
 - `listFiles({ search?, createdBy? })` — active rows, newest first, **without**
   `content` (kept cheap). Optional filters are applied **in SQL** (a `WHERE`/`LIKE`
   over name/title/description for `search`, `createdBy` for "Only my files") —
@@ -145,10 +155,12 @@ memory (see `docs/filtered-lists.md`).
 
 ## Tests
 
-- `lib/file-store.unit.test.ts` — the temporal transitions and name validation.
+- `lib/file-store.unit.test.ts` — the temporal transitions; `lib/file-name.unit.test.ts`
+  — the pure name/kind helpers.
 - `lib/files-actions.unit.test.ts` — the teacher gate, validate-before-store
-  ordering, structured-error pass-through, and that the validate-only actions never
-  touch the store.
+  ordering, structured-error pass-through, that the validate-only actions never
+  touch the store, and the GUI loaders (`loadYamlFromUrlAction` URL resolution,
+  `loadFileFromDbAction`).
 - `tests/component/list-filter-bar.browser.test.tsx` — the shared filter bar's
   Apply → URL-search-param behavior (the DB filter is then exercised end-to-end by
   the `@live` `e2e/file-and-tutor-code-crud.spec.ts`, which covers file CRUD).

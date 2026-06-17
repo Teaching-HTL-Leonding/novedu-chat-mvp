@@ -65,6 +65,27 @@ function gateFailure(
 }
 
 /**
+ * A {@link Fetcher} that resolves references to APP-HOSTED files
+ * (`<origin>/api/files/<name>`) from the database via {@link getActiveFile}
+ * instead of doing a network round-trip back to our own public origin (which a
+ * container may not be able to reach). Everything else is fetched for real with
+ * {@link defaultFetcher}. Shared by the save-time buffer validator and the
+ * student GUI's referenced-fragment loader so the resolution lives in ONE place.
+ */
+function appHostedFetcher(origin: string): Fetcher {
+  const prefix = filesUrlPrefix(origin);
+  return async (url) => {
+    if (url.startsWith(prefix)) {
+      const refName = decodeURIComponent(url.slice(prefix.length).split(/[?#]/)[0] ?? "");
+      const file = await getActiveFile(refName);
+      if (file) return { ok: true, status: 200, text: async () => file.content };
+      return { ok: false, status: 404, text: async () => "" };
+    }
+    return defaultFetcher(url);
+  };
+}
+
+/**
  * Validates the in-editor YAML buffer with the SAME core the chat and the
  * /validate-tutor page use, BEFORE anything is stored. The validator is URL-based
  * with an injectable fetcher; we intercept references to app-hosted files
@@ -101,17 +122,16 @@ async function validateFileContent(
 
   const selfUrl = filePublicUrl(origin, name);
   const prefix = filesUrlPrefix(origin);
+  const hostedFetcher = appHostedFetcher(origin);
   const selfFetcher: Fetcher = async (url) => {
+    // The file being saved resolves to its UNSAVED buffer; siblings and external
+    // fragments go through the shared hosted fetcher (DB for app-hosted, real
+    // fetch otherwise).
     if (url.startsWith(prefix)) {
-      // A reference to an app-hosted file — serve the buffer (this file) or the
-      // active version from the DB (a sibling) instead of fetching our own origin.
       const refName = decodeURIComponent(url.slice(prefix.length).split(/[?#]/)[0] ?? "");
       if (refName === name) return { ok: true, status: 200, text: async () => content };
-      const sibling = await getActiveFile(refName);
-      if (sibling) return { ok: true, status: 200, text: async () => sibling.content };
-      return { ok: false, status: 404, text: async () => "" };
     }
-    return defaultFetcher(url);
+    return hostedFetcher(url);
   };
 
   if (kind === "fragment") {
@@ -306,4 +326,79 @@ export async function deleteFileAction(
 
   revalidatePath("/files");
   return { ok: true };
+}
+
+/**
+ * Loads raw YAML by URL for the student GUI, so it can pull in a tutor's
+ * referenced fragment files and read their parameters (`input_schema`). Resolves
+ * all three URL shapes a `fragment_files[].url` can take:
+ *   - absolute http(s) — fetched for real;
+ *   - relative (e.g. `simple-fragments.yaml`) — resolved against `baseUrl`, the
+ *     tutor's own URL, via `new URL(url, baseUrl)`;
+ *   - app-hosted (`<origin>/api/files/<name>`) — served from the DB to avoid a
+ *     self-loopback fetch (reusing {@link appHostedFetcher}).
+ * Returns the raw text plus the resolved absolute URL.
+ *
+ * SSRF note: like /api/validate-tutor this fetches an arbitrary user-supplied URL
+ * server-side; for this prototype we only restrict the scheme to http(s). A
+ * production deployment should additionally allow-list hosts / block private IP
+ * ranges and disable redirects.
+ */
+export async function loadYamlFromUrlAction(input: {
+  url: string;
+  baseUrl?: string;
+}): Promise<{ ok: true; content: string; resolvedUrl: string } | { ok: false; message: string }> {
+  const gate = await requireTeacherUserId();
+  if (!gate.ok) return gateFailure(gate.reason, "load");
+
+  let resolvedUrl: string;
+  try {
+    resolvedUrl = input.baseUrl ? new URL(input.url, input.baseUrl).toString() : input.url;
+  } catch {
+    return { ok: false, message: "That URL could not be resolved." };
+  }
+  if (!/^https?:\/\//i.test(resolvedUrl)) {
+    return {
+      ok: false,
+      message: "Provide a public http(s) URL (or a path relative to the file).",
+    };
+  }
+
+  // Resolve app-hosted references from the DB; a plain fetch still works for
+  // absolute external URLs if the app origin can't be determined.
+  let fetcher: Fetcher = defaultFetcher;
+  try {
+    fetcher = appHostedFetcher(await resolveAppOrigin());
+  } catch {
+    // origin unknown — keep the plain fetcher
+  }
+
+  try {
+    const res = await fetcher(resolvedUrl);
+    if (!res.ok)
+      return { ok: false, message: `The file could not be loaded (HTTP ${res.status}).` };
+    return { ok: true, content: await res.text(), resolvedUrl };
+  } catch {
+    return { ok: false, message: "The file could not be loaded. Check the URL and try again." };
+  }
+}
+
+/**
+ * Loads an app-hosted file's active content by name for the student GUI's edit
+ * flow (the file being edited, or a known sibling). Thin wrapper over
+ * {@link getActiveFile}.
+ */
+export async function loadFileFromDbAction(
+  name: string,
+): Promise<
+  | { ok: true; name: string; kind: FileKind; content: string }
+  | { ok: false; reason: "not-found" | "error" }
+> {
+  const gate = await requireTeacherUserId();
+  if (!gate.ok) return { ok: false, reason: "error" };
+
+  const file = await getActiveFile(name);
+  if (file === undefined) return { ok: false, reason: "error" };
+  if (file === null || !isFileKind(file.kind)) return { ok: false, reason: "not-found" };
+  return { ok: true, name: file.name, kind: file.kind, content: file.content };
 }

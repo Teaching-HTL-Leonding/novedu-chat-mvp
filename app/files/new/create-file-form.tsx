@@ -3,8 +3,12 @@
 import { type FormEvent, useState, useTransition } from "react";
 import { BackLink } from "@/components/back-link";
 import { ErrorList, WarningList } from "@/components/validation-result";
-import { createFileAction, validateNewFileAction } from "@/lib/files-actions";
-import type { ValidationError, ValidationWarning } from "@/lib/tutors";
+import {
+  createFileAction,
+  type ValidationError,
+  type ValidationWarning,
+  validateNewFileAction,
+} from "@/lib/yaml-files";
 import styles from "../files.module.css";
 import { YamlEditor } from "../yaml-editor";
 
