@@ -1,0 +1,11 @@
+# Code owners for novedu-chat-mvp.
+#
+# The "Protect main" ruleset has `require_code_owner_review: true`, so every PR
+# to `main` requires an approving review from an owner listed here. Making the
+# maintainer the owner of everything guarantees that all contributor changes
+# (e.g. junior contributors) are reviewed before they can be merged.
+#
+# A junior approving another junior's PR does NOT satisfy this — the required
+# approval must come from a code owner below.
+
+* @rstropek
