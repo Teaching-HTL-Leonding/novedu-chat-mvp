@@ -2,6 +2,10 @@ import { afterEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import { ValidateTutorForm } from "@/app/validate-tutor/validate-tutor-form";
 
+// The form navigates via useRouter for the "View in GUI" button, so a router must
+// be present when it renders in isolation.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => {} }) }));
+
 const SAMPLE_URL = "https://example.com/tutor.yaml";
 
 function mockFetchOnce(data: unknown) {
