@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   getActiveFile: vi.fn(),
   loadAndBuildTutorPrompt: vi.fn(),
   loadAndCheckFragmentFile: vi.fn(),
+  defaultFetcher: vi.fn(),
   resolveAppOrigin: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn((url: string) => {
@@ -25,7 +26,7 @@ vi.mock("@/lib/db", () => ({ getDb: () => ({}) }));
 vi.mock("@/lib/student-mode", () => ({ requireTeacherUserId: mocks.requireTeacherUserId }));
 vi.mock("@/lib/app-origin", () => ({ resolveAppOrigin: mocks.resolveAppOrigin }));
 vi.mock("@/lib/tutors", () => ({
-  defaultFetcher: vi.fn(),
+  defaultFetcher: mocks.defaultFetcher,
   loadAndBuildTutorPrompt: mocks.loadAndBuildTutorPrompt,
   loadAndCheckFragmentFile: mocks.loadAndCheckFragmentFile,
 }));
@@ -47,6 +48,8 @@ vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 import {
   createFileAction,
   deleteFileAction,
+  loadFileFromDbAction,
+  loadYamlFromUrlAction,
   updateFileAction,
   validateExistingFileAction,
   validateNewFileAction,
@@ -66,6 +69,11 @@ beforeEach(() => {
   mocks.updateFile.mockResolvedValue({ ok: true });
   mocks.softDeleteFile.mockResolvedValue({ ok: true });
   mocks.getActiveFile.mockResolvedValue({ name: "my-file", kind: "fragment", content: "old" });
+  mocks.defaultFetcher.mockResolvedValue({
+    ok: true,
+    status: 200,
+    text: async () => "external-yaml",
+  });
 });
 
 afterEach(() => {
@@ -339,5 +347,86 @@ describe("deleteFileAction", () => {
     const result = await deleteFileAction("my-file");
     expect(result).toEqual({ ok: true });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/files");
+  });
+});
+
+// The student GUI's loaders. `loadYamlFromUrlAction` must resolve all three URL
+// shapes a tutor's fragment_files can take; `loadFileFromDbAction` is the by-name
+// read for the edit flow. Both are teacher-gated.
+describe("loadYamlFromUrlAction", () => {
+  it("rejects a non-teacher before fetching", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    const result = await loadYamlFromUrlAction({ url: "https://example.com/f.yaml" });
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
+    expect(mocks.defaultFetcher).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-http(s) scheme without fetching", async () => {
+    const result = await loadYamlFromUrlAction({ url: "ftp://example.com/f.yaml" });
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/http/i) });
+    expect(mocks.defaultFetcher).not.toHaveBeenCalled();
+  });
+
+  it("fetches an absolute external URL via the default fetcher", async () => {
+    const result = await loadYamlFromUrlAction({ url: "https://example.com/frag.yaml" });
+    expect(result).toEqual({
+      ok: true,
+      content: "external-yaml",
+      resolvedUrl: "https://example.com/frag.yaml",
+    });
+    expect(mocks.defaultFetcher).toHaveBeenCalledWith("https://example.com/frag.yaml");
+  });
+
+  it("resolves a relative URL against baseUrl", async () => {
+    const result = await loadYamlFromUrlAction({
+      url: "frag.yaml",
+      baseUrl: "https://example.com/dir/tutor.yaml",
+    });
+    expect(result).toMatchObject({ ok: true, resolvedUrl: "https://example.com/dir/frag.yaml" });
+    expect(mocks.defaultFetcher).toHaveBeenCalledWith("https://example.com/dir/frag.yaml");
+  });
+
+  it("serves an app-hosted URL from the DB instead of a loopback fetch", async () => {
+    mocks.getActiveFile.mockResolvedValue({
+      name: "sibling",
+      kind: "fragment",
+      content: "db-yaml",
+    });
+    const result = await loadYamlFromUrlAction({
+      url: "http://localhost:3000/api/files/sibling",
+    });
+    expect(result).toMatchObject({ ok: true, content: "db-yaml" });
+    expect(mocks.getActiveFile).toHaveBeenCalledWith("sibling");
+    expect(mocks.defaultFetcher).not.toHaveBeenCalled();
+  });
+
+  it("reports a non-OK fetch with its status", async () => {
+    mocks.defaultFetcher.mockResolvedValue({ ok: false, status: 404, text: async () => "" });
+    const result = await loadYamlFromUrlAction({ url: "https://example.com/missing.yaml" });
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/404/) });
+  });
+});
+
+describe("loadFileFromDbAction", () => {
+  it("returns name, kind and content for an active file", async () => {
+    mocks.getActiveFile.mockResolvedValue({ name: "my-file", kind: "tutor", content: "yaml" });
+    const result = await loadFileFromDbAction("my-file");
+    expect(result).toEqual({ ok: true, name: "my-file", kind: "tutor", content: "yaml" });
+  });
+
+  it("reports not-found for a vanished file", async () => {
+    mocks.getActiveFile.mockResolvedValue(null);
+    expect(await loadFileFromDbAction("ghost")).toEqual({ ok: false, reason: "not-found" });
+  });
+
+  it("reports error on a transient DB failure", async () => {
+    mocks.getActiveFile.mockResolvedValue(undefined);
+    expect(await loadFileFromDbAction("my-file")).toEqual({ ok: false, reason: "error" });
+  });
+
+  it("rejects a non-teacher", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    expect(await loadFileFromDbAction("my-file")).toEqual({ ok: false, reason: "error" });
+    expect(mocks.getActiveFile).not.toHaveBeenCalled();
   });
 });

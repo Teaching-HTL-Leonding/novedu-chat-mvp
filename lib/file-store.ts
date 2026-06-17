@@ -3,6 +3,18 @@ import { and, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { files } from "@/lib/db/schema";
 import { containsAny } from "@/lib/db/text-filter";
+// The pure name/kind helpers live in `lib/file-name.ts` (no DB import) so the
+// public GET route and the client-safe `@/lib/yaml-files` API can use them too.
+// Re-exported here so existing `@/lib/file-store` importers are unaffected.
+import {
+  FILE_NAME_PATTERN,
+  type FileKind,
+  type FileNameValidation,
+  isFileKind,
+  validateFileName,
+} from "@/lib/file-name";
+
+export { FILE_NAME_PATTERN, type FileKind, type FileNameValidation, isFileKind, validateFileName };
 
 // Persistence for app-hosted YAML files in the `novedu_files` SQL table. The
 // table is TEMPORAL/append-only: each row is one version of one file, the active
@@ -18,34 +30,6 @@ import { containsAny } from "@/lib/db/text-filter";
 //
 // SERVER-ONLY: uses node:crypto and the database. Never import from client
 // components.
-
-/** Allowed file-name shape: letters, digits, underscore, hyphen — no spaces, max 100. */
-export const FILE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
-
-export type FileKind = "tutor" | "fragment";
-
-export function isFileKind(value: unknown): value is FileKind {
-  return value === "tutor" || value === "fragment";
-}
-
-export type FileNameValidation = { ok: true; name: string } | { ok: false; message: string };
-
-/**
- * Validates and normalizes a raw file-name input (trims surrounding whitespace,
- * then enforces {@link FILE_NAME_PATTERN}). Pure, so the GET route and the create
- * action share exactly one definition of a legal name.
- */
-export function validateFileName(name: unknown): FileNameValidation {
-  const trimmed = typeof name === "string" ? name.trim() : "";
-  if (!FILE_NAME_PATTERN.test(trimmed)) {
-    return {
-      ok: false,
-      message:
-        "The name may contain only letters, digits, underscores and hyphens (max 100 characters) — no spaces.",
-    };
-  }
-  return { ok: true, name: trimmed };
-}
 
 /** A file as shown in the teacher's list — the active version, WITHOUT its (large) content. */
 export interface FileListEntry {

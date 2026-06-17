@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { ErrorList, FragmentSummary, WarningList } from "@/components/validation-result";
 import type { BuildResult, FragmentCheckResult } from "@/lib/tutors";
@@ -37,6 +38,7 @@ function renderBody(outcome: Outcome) {
 // /api/validate-tutor and renders whatever result comes back — the assembled
 // system prompt, the fragment-library summary, or the structured error list.
 export function ValidateTutorForm() {
+  const router = useRouter();
   const [url, setUrl] = useState("");
   const [kind, setKind] = useState<Kind>("tutor");
   const [status, setStatus] = useState<Status>("idle");
@@ -111,6 +113,15 @@ export function ValidateTutorForm() {
           disabled={status === "loading" || url.trim() === ""}
         >
           {status === "loading" ? "Validating…" : "Validate"}
+        </button>
+        {/* Opens the read-only student-built GUI for the entered URL. */}
+        <button
+          type="button"
+          className={styles.button}
+          disabled={status === "loading" || url.trim() === ""}
+          onClick={() => router.push(`/files/gui/view?url=${encodeURIComponent(url)}&kind=${kind}`)}
+        >
+          View in GUI
         </button>
       </form>
 

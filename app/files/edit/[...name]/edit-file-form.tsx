@@ -5,8 +5,12 @@ import { useState, useTransition } from "react";
 import { BackLink } from "@/components/back-link";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { ErrorList, WarningList } from "@/components/validation-result";
-import { updateFileAction, validateExistingFileAction } from "@/lib/files-actions";
-import type { ValidationError, ValidationWarning } from "@/lib/tutors";
+import {
+  updateFileAction,
+  type ValidationError,
+  type ValidationWarning,
+  validateExistingFileAction,
+} from "@/lib/yaml-files";
 import { DeleteFileButton } from "../../delete-file-button";
 import styles from "../../files.module.css";
 import { YamlEditor } from "../../yaml-editor";

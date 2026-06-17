@@ -112,6 +112,33 @@ in `proxy.ts`. Invariants:
 - The `/files` list filters (text + "Only my files") **in the database**
   (`listFiles({ search, createdBy })`, URL search params → SQL `WHERE`/`LIKE`,
   never in memory) — the shared filtered-list concept (`docs/filtered-lists.md`).
+- **`lib/yaml-files.ts` is the documented FACADE** over these file actions +
+  validators + types — the single, client-safe import the student GUI module uses,
+  and dogfooded by the create/edit forms. It must NOT import `lib/file-store.ts`
+  (server-only). The pure name/kind helpers were extracted to **`lib/file-name.ts`**
+  so the facade can re-export them without pulling the DB in.
+
+### Student YAML GUI module (`app/files/gui/*`) → `docs/yaml-gui-student-contribution.md`
+
+A form-based GUI alternative to the CodeMirror editor, built by students in an
+isolated workspace. Read it before touching `app/files/gui/*`, `lib/yaml-files.ts`,
+or the two placeholder buttons. Invariants:
+
+- **`app/files/gui/_studio/**` is student-owned**; the two `page.tsx` files
+  (`edit/[...name]`, `view`) are **APP-OWNED route shells** that gate (teacher-only),
+  do the server-only load (DB / URL), and render the student components with plain
+  props — keep these as the boundary. The `_studio` underscore keeps the folder out
+  of routing.
+- The students' **only** app import is **`@/lib/yaml-files`** (functions + types) —
+  never app components or other `@/lib/*`. This is a **convention** (review /
+  CODEOWNERS), not lint-enforced. They write **client-side React only**; new server
+  behaviour means extending the facade, not adding student server code.
+- The **"Edit in GUI"** link lives in the `/files` list Actions column
+  (`/files/gui/edit/<name>`) and **"View in GUI"** on `/validate-tutor`
+  (`/files/gui/view?url=…&kind=…`).
+- `loadYamlFromUrlAction` reuses the **same** self/relative/app-hosted resolution as
+  the save-time validator (`appHostedFetcher` in `lib/files-actions.ts`) — one
+  definition of how an app-hosted URL resolves from the DB instead of a loopback fetch.
 
 ### Filtered lists (shared list UI: filter spot, action spot, table) → `docs/filtered-lists.md`
 

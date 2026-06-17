@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
-import { EditIcon, ExternalLinkIcon, ShareIcon } from "@/components/icons";
+import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon } from "@/components/icons";
 import { ListFilterBar } from "@/components/list-filter-bar";
 import listStyles from "@/components/list-page.module.css";
 import { Notice } from "@/components/notice";
@@ -142,6 +142,14 @@ export default async function FilesPage({
               title="Edit"
             >
               <EditIcon />
+            </Link>
+            <Link
+              href={`/files/gui/edit/${row.name}`}
+              className={styles.iconButton}
+              aria-label={`Open ${row.name} in GUI editor`}
+              title="Edit in GUI (experimental)"
+            >
+              <LayoutIcon />
             </Link>
             <DeleteFileButton name={row.name} />
           </>

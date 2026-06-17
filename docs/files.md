@@ -19,10 +19,18 @@ before touching `app/files/*`, `app/api/files/*`, `lib/file-store.ts`,
 | Create | `/files/new` (`create-file-form.tsx`) | teacher | name + kind + CodeMirror editor + upload |
 | Edit / delete | `/files/edit/[...name]` (`edit-file-form.tsx`) | teacher | preloaded with the active version; copyable public URL; soft-delete |
 | Public GET | `/api/files/<name>` (`app/api/files/[name]/route.ts`) | **anyone** | active version as `text/yaml`, `no-store` (404 once deleted) |
+| GUI editor | `/files/gui/edit/<name>` (`app/files/gui/edit/[...name]/page.tsx`) | teacher | student-built form GUI; "Edit in GUI" on the list |
+| GUI viewer | `/files/gui/view?url=…&kind=…` (`app/files/gui/view/page.tsx`) | teacher | read-only student GUI; "View in GUI" on `/validate-tutor` |
 
 The edit route is a **catch-all** (`[...name]`) and the `name` column is a
 generous `nvarchar(450)`, both deliberately folder-ready (`/`-separated names) —
 a deferred extension; today names are flat (`FILE_NAME_PATTERN`).
+
+The **GUI editor/viewer** are a separate, student-built form interface over the
+**same** actions/validators, exposed through the documented facade
+**`lib/yaml-files.ts`** (the only import the student module uses) — see
+`docs/yaml-gui-student-contribution.md`. The pure name/kind helpers live in
+**`lib/file-name.ts`** (no DB import) so that client-safe facade can re-export them.
 
 ## Data model — `novedu_files` (temporal / append-only)
 
