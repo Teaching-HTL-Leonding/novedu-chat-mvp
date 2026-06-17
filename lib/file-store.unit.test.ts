@@ -53,15 +53,11 @@ const fake = vi.hoisted(() => {
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
-import {
-  createFile,
-  getActiveFile,
-  isFileKind,
-  listFiles,
-  softDeleteFile,
-  updateFile,
-  validateFileName,
-} from "@/lib/file-store";
+import { createFile, getActiveFile, listFiles, softDeleteFile, updateFile } from "@/lib/file-store";
+
+// The pure name/kind helpers (`validateFileName` / `isFileKind`) moved to
+// `lib/file-name.ts` and are covered by `lib/file-name.unit.test.ts`; this file
+// owns the temporal store transitions only.
 
 // A duplicate-key (unique index) violation as drizzle wraps it: cause chain with
 // the mssql error number.
@@ -92,33 +88,6 @@ beforeEach(() => {
   fake.state.insertError = undefined;
   fake.state.closeResult = { rowsAffected: [1] };
   fake.state.updateError = undefined;
-});
-
-describe("validateFileName", () => {
-  it("accepts and trims a legal name", () => {
-    expect(validateFileName("  my-file_1  ")).toEqual({ ok: true, name: "my-file_1" });
-  });
-
-  it.each([
-    "has space",
-    "slash/name",
-    "",
-    "with.dot",
-    "a".repeat(101),
-    42,
-    null,
-  ])("rejects %j", (name) => {
-    expect(validateFileName(name as unknown).ok).toBe(false);
-  });
-});
-
-describe("isFileKind", () => {
-  it("accepts tutor/fragment and nothing else", () => {
-    expect(isFileKind("tutor")).toBe(true);
-    expect(isFileKind("fragment")).toBe(true);
-    expect(isFileKind("other")).toBe(false);
-    expect(isFileKind(undefined)).toBe(false);
-  });
 });
 
 describe("listFiles", () => {

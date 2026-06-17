@@ -66,9 +66,11 @@ The **only** module that touches `novedu_files`, so the "filter on the active
 version" invariant lives in one place. Never throws — a DB problem surfaces as
 `undefined` / `{ ok: false, reason }`, which callers turn into a graceful message.
 
-- `FILE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,100}$/` and the pure `validateFileName()`
-  — **shared** by the GET route and the create action, so there is one definition
-  of a legal name (trims, then enforces the pattern).
+- `FILE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,100}$/`, the pure `validateFileName()` and
+  `isFileKind()` now live in **`lib/file-name.ts`** (no DB import) and are **re-exported
+  here** for back-compat — one definition of a legal name (trims, then enforces the
+  pattern), shared by the GET route, the create action, AND the client-safe
+  `@/lib/yaml-files` facade (which must not import the DB-bound store).
 - `listFiles({ search?, createdBy? })` — active rows, newest first, **without**
   `content` (kept cheap). Optional filters are applied **in SQL** (a `WHERE`/`LIKE`
   over name/title/description for `search`, `createdBy` for "Only my files") —
@@ -153,10 +155,12 @@ memory (see `docs/filtered-lists.md`).
 
 ## Tests
 
-- `lib/file-store.unit.test.ts` — the temporal transitions and name validation.
+- `lib/file-store.unit.test.ts` — the temporal transitions; `lib/file-name.unit.test.ts`
+  — the pure name/kind helpers.
 - `lib/files-actions.unit.test.ts` — the teacher gate, validate-before-store
-  ordering, structured-error pass-through, and that the validate-only actions never
-  touch the store.
+  ordering, structured-error pass-through, that the validate-only actions never
+  touch the store, and the GUI loaders (`loadYamlFromUrlAction` URL resolution,
+  `loadFileFromDbAction`).
 - `tests/component/list-filter-bar.browser.test.tsx` — the shared filter bar's
   Apply → URL-search-param behavior (the DB filter is then exercised end-to-end by
   the `@live` `e2e/file-and-tutor-code-crud.spec.ts`, which covers file CRUD).
