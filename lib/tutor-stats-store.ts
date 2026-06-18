@@ -2,7 +2,7 @@ import type { Message } from "@ag-ui/core";
 import { eq, sql } from "drizzle-orm";
 import { mastra } from "@/app/mastra";
 import { collapseReplayedRuns, toAguiMessage } from "@/lib/conversation-collapse";
-import { getDb } from "@/lib/db";
+import { type DbExecutor, getDb } from "@/lib/db";
 import { recentCodes, tutorCodes, userChats } from "@/lib/db/schema";
 
 // Read-side queries (and the destructive delete) behind "Tutor Code Stats".
@@ -190,22 +190,12 @@ export async function getConversationMessages(
 }
 
 /**
- * Deletes a tutor code AND all of its conversation data — the teacher-initiated
- * cleanup that replaced garbage collection. The conversations (Mastra threads
- * and their messages) are removed through Mastra's OWN storage API so we never
- * mutate its schema by hand; the app-owned rows go through Drizzle. Ordered so a
- * mid-way failure is safe to retry: conversation data first, the code row LAST
- * (while the row exists the code still appears in the teacher's list).
- *
- * Best-effort and idempotent: returns `true` if everything we attempted
- * succeeded, `false` if any step failed (the caller surfaces a retry hint).
- * Never throws.
+ * Deletes ONE code's conversations (Mastra threads + their messages) through
+ * Mastra's OWN storage API so we never mutate its schema by hand. Lives in the
+ * Mastra pool, so it can NEVER share the Drizzle transaction the app-owned rows
+ * use. Best-effort: returns `false` (never throws) if any thread delete fails.
  */
-export async function deleteTutorCodeAndData(code: string): Promise<boolean> {
-  let ok = true;
-
-  // 1. Conversations: list the code's threads and delete each (deleteThread
-  //    removes the thread's messages in the same transaction).
+async function deleteCodeConversations(code: string): Promise<boolean> {
   try {
     const storage = mastra.getStorage();
     const memory = storage ? await storage.getStore("memory") : undefined;
@@ -213,32 +203,86 @@ export async function deleteTutorCodeAndData(code: string): Promise<boolean> {
       console.error(
         "tutor-stats-store: no Mastra storage configured — cannot delete conversations",
       );
-      ok = false;
-    } else {
-      const { threads } = await memory.listThreads({
-        filter: { resourceId: code },
-        perPage: false,
-      });
-      for (const thread of threads) {
-        await memory.deleteThread({ threadId: thread.id });
-      }
+      return false;
     }
+    const { threads } = await memory.listThreads({
+      filter: { resourceId: code },
+      perPage: false,
+    });
+    for (const thread of threads) {
+      await memory.deleteThread({ threadId: thread.id });
+    }
+    return true;
   } catch (error) {
     console.error("tutor-stats-store: deleting conversations failed", error);
-    ok = false;
+    return false;
   }
+}
 
-  // 2. App-owned rows. user_chats (attribution) and recent_codes (shortcuts)
-  //    first, then the tutor-code row itself last.
+/**
+ * Deletes ONE code's app-owned Drizzle rows on the given executor — user_chats
+ * (attribution) and recent_codes (shortcuts) first, then the tutor-code row LAST
+ * (while it exists the code still appears in the list, so a mid-way failure is
+ * safe to retry). Runs on the root handle for a single delete or a transaction
+ * when a bulk caller batches several. Throws on a DB error (rolling a batch back).
+ */
+async function deleteCodeRows(executor: DbExecutor, code: string): Promise<void> {
+  await executor.delete(userChats).where(eq(userChats.code, code));
+  await executor.delete(recentCodes).where(eq(recentCodes.code, code));
+  await executor.delete(tutorCodes).where(eq(tutorCodes.code, code));
+}
+
+/**
+ * Deletes a tutor code AND all of its conversation data — the teacher-initiated
+ * cleanup that replaced garbage collection. Conversation data (Mastra) first, the
+ * app-owned rows last. Best-effort and idempotent: returns `true` if everything we
+ * attempted succeeded, `false` if any step failed (the caller surfaces a retry
+ * hint). Never throws.
+ */
+export async function deleteTutorCodeAndData(code: string): Promise<boolean> {
+  // 1. Conversations (Mastra — separate pool, no shared transaction).
+  let ok = await deleteCodeConversations(code);
+
+  // 2. App-owned rows (Drizzle), via the same per-code helper the bulk path uses.
   try {
-    const db = getDb();
-    await db.delete(userChats).where(eq(userChats.code, code));
-    await db.delete(recentCodes).where(eq(recentCodes.code, code));
-    await db.delete(tutorCodes).where(eq(tutorCodes.code, code));
+    await deleteCodeRows(getDb(), code);
   } catch (error) {
     console.error("tutor-stats-store: deleting app-owned rows failed", error);
     ok = false;
   }
 
   return ok;
+}
+
+export type DeleteTutorCodesResult = { ok: boolean; deleted: number };
+
+/**
+ * Bulk delete (the list's "Delete Selected"): runs the SAME per-code helpers as
+ * the single delete so the business logic can't drift. The Mastra conversation
+ * deletes happen per code (separate pool — they can't join a Drizzle
+ * transaction); all the app-owned ROW deletes then run in ONE Drizzle transaction
+ * (all-or-nothing). `ok` is false if any Mastra step failed or the row
+ * transaction rolled back; `deleted` is the number of codes whose rows were
+ * processed (0 if the transaction rolled back). Never throws.
+ */
+export async function deleteTutorCodesAndData(codes: string[]): Promise<DeleteTutorCodesResult> {
+  if (codes.length === 0) return { ok: true, deleted: 0 };
+
+  // 1. Conversations (Mastra), per code — outside the Drizzle transaction.
+  let ok = true;
+  for (const code of codes) {
+    if (!(await deleteCodeConversations(code))) ok = false;
+  }
+
+  // 2. All app-owned rows in ONE transaction so the set commits or rolls back together.
+  try {
+    await getDb().transaction(async (tx) => {
+      for (const code of codes) await deleteCodeRows(tx, code);
+    });
+  } catch (error) {
+    console.error("tutor-stats-store: bulk deleting app-owned rows failed", error);
+    return { ok: false, deleted: 0 };
+  }
+
+  return { ok, deleted: codes.length };
 }

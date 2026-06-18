@@ -5,11 +5,14 @@ import { DataList, type ListColumn } from "@/components/data-list";
 import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon } from "@/components/icons";
 import { ListFilterBar } from "@/components/list-filter-bar";
 import listStyles from "@/components/list-page.module.css";
+import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { Notice } from "@/components/notice";
 import { requireTeacherPage } from "@/components/require-teacher-page";
+import { selectionColumn } from "@/components/selection-column";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { listFiles } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
+import { deleteSelectedFilesAction } from "@/lib/files-actions";
 import { LocalTime } from "../local-time";
 import pageStyles from "../page.module.css";
 import { DeleteFileButton } from "./delete-file-button";
@@ -80,6 +83,12 @@ export default async function FilesPage({
   }));
 
   const columns: ListColumn<FileRow>[] = [
+    // Leading multi-select column; the selection key is the file NAME, which is
+    // what `deleteSelectedFilesAction` deletes by (and is unique among active files).
+    selectionColumn<FileRow>(
+      (row) => row.name,
+      (row) => row.name,
+    ),
     { header: "Name", className: styles.nameCell, render: (row) => row.name },
     {
       header: "Kind",
@@ -160,49 +169,55 @@ export default async function FilesPage({
 
   return (
     <main className={pageStyles.main}>
-      <DataList
-        rows={rows}
-        getRowKey={(row) => row.id}
-        columns={columns}
-        hint={
-          <>
-            App-hosted YAML files. Copy a file's public URL and paste it into a tutor code (tutor
-            files offer a one-click shortcut). Every save is validated; an invalid file is rejected.
-          </>
-        }
-        actions={
-          <Link href="/files/new" className={listStyles.button}>
-            New file
-          </Link>
-        }
-        filterBar={
-          <ListFilterBar
-            hasActiveFilter={q !== "" || !onlyMine}
-            resetKey={`${q}|${onlyMine ? "1" : "0"}`}
-          >
-            <input
-              type="search"
-              name="q"
-              className={listStyles.searchInput}
-              placeholder="Filter by name, title, description…"
-              defaultValue={q}
-              aria-label="Filter files"
-            />
-            <label className={listStyles.onlyMine}>
-              <input type="checkbox" name="mine" defaultChecked={onlyMine} />
-              Only my files
-            </label>
-          </ListFilterBar>
-        }
-        isFiltered={q !== ""}
-        emptyState={
-          <>
-            No files yet. <Link href="/files/new">Create one</Link> to host a tutor or fragment
-            YAML.
-          </>
-        }
-        noMatchState="No files match your filter."
-      />
+      <SelectionProvider allIds={rows.map((row) => row.name)}>
+        <DataList
+          rows={rows}
+          getRowKey={(row) => row.id}
+          columns={columns}
+          hint={
+            <>
+              App-hosted YAML files. Copy a file's public URL and paste it into a tutor code (tutor
+              files offer a one-click shortcut). Every save is validated; an invalid file is
+              rejected.
+            </>
+          }
+          actions={
+            <>
+              <Link href="/files/new" className={listStyles.button}>
+                New file
+              </Link>
+              <DeleteSelectedButton action={deleteSelectedFilesAction} itemNoun="file" />
+            </>
+          }
+          filterBar={
+            <ListFilterBar
+              hasActiveFilter={q !== "" || !onlyMine}
+              resetKey={`${q}|${onlyMine ? "1" : "0"}`}
+            >
+              <input
+                type="search"
+                name="q"
+                className={listStyles.searchInput}
+                placeholder="Filter by name, title, description…"
+                defaultValue={q}
+                aria-label="Filter files"
+              />
+              <label className={listStyles.onlyMine}>
+                <input type="checkbox" name="mine" defaultChecked={onlyMine} />
+                Only my files
+              </label>
+            </ListFilterBar>
+          }
+          isFiltered={q !== ""}
+          emptyState={
+            <>
+              No files yet. <Link href="/files/new">Create one</Link> to host a tutor or fragment
+              YAML.
+            </>
+          }
+          noMatchState="No files match your filter."
+        />
+      </SelectionProvider>
     </main>
   );
 }

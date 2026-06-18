@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   getTutorCode: vi.fn(),
   updateTutorCode: vi.fn(),
   deleteTutorCodeAndData: vi.fn(),
+  deleteTutorCodesAndData: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
 }));
@@ -43,6 +44,7 @@ vi.mock("@/lib/tutor-code-store", async (importOriginal) => {
 // The destructive store is fully mocked — it pulls in @/app/mastra otherwise.
 vi.mock("@/lib/tutor-stats-store", () => ({
   deleteTutorCodeAndData: mocks.deleteTutorCodeAndData,
+  deleteTutorCodesAndData: mocks.deleteTutorCodesAndData,
 }));
 // validateTutorCodeRequest (imported for real above) pulls in @/lib/db, which
 // must not try to talk to a database in unit tests.
@@ -50,6 +52,7 @@ vi.mock("@/lib/db", () => ({ getDb: () => ({}) }));
 
 import {
   createTutorCodeAction,
+  deleteSelectedTutorCodesAction,
   deleteTutorCodeAction,
   updateTutorCodeAction,
 } from "@/lib/tutor-code-actions";
@@ -239,6 +242,33 @@ describe("deleteTutorCodeAction", () => {
   it("reports failure (no revalidate) when the delete is only partial", async () => {
     mocks.deleteTutorCodeAndData.mockResolvedValue(false);
     const result = await deleteTutorCodeAction("a1b2c3d4e5");
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/repeat/i) });
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+// The bulk delete behind the list's "Delete Selected": the SAME teacher gate as
+// the single delete (still NOT owner-gated) and the SAME per-code logic via
+// `deleteTutorCodesAndData`.
+describe("deleteSelectedTutorCodesAction", () => {
+  it("deletes the selected codes and revalidates — no ownership check", async () => {
+    mocks.deleteTutorCodesAndData.mockResolvedValue({ ok: true, deleted: 2 });
+    const result = await deleteSelectedTutorCodesAction(["a1b2c3d4e5", "f6g7h8i9j0"]);
+    expect(result).toEqual({ ok: true, deleted: 2 });
+    expect(mocks.deleteTutorCodesAndData).toHaveBeenCalledWith(["a1b2c3d4e5", "f6g7h8i9j0"]);
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/tutor-codes");
+  });
+
+  it("rejects non-teachers and never touches the data", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    const result = await deleteSelectedTutorCodesAction(["a1b2c3d4e5"]);
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
+    expect(mocks.deleteTutorCodesAndData).not.toHaveBeenCalled();
+  });
+
+  it("reports failure (no revalidate) when the bulk delete is only partial", async () => {
+    mocks.deleteTutorCodesAndData.mockResolvedValue({ ok: false, deleted: 0 });
+    const result = await deleteSelectedTutorCodesAction(["a1b2c3d4e5"]);
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/repeat/i) });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });

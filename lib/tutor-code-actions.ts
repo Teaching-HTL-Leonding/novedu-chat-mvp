@@ -10,7 +10,7 @@ import {
   updateTutorCode,
   validateTutorCodeRequest,
 } from "@/lib/tutor-code-store";
-import { deleteTutorCodeAndData } from "@/lib/tutor-stats-store";
+import { deleteTutorCodeAndData, deleteTutorCodesAndData } from "@/lib/tutor-stats-store";
 import { defaultFetcher, loadAndBuildTutorPrompt, type ValidationError } from "@/lib/tutors";
 
 export type TutorCodeFormState =
@@ -130,6 +130,42 @@ export async function deleteTutorCodeAction(code: string): Promise<DeleteTutorCo
 
   revalidatePath("/tutor-codes");
   return { ok: true };
+}
+
+/** The uniform shape every list's "Delete Selected" action returns. */
+export type DeleteSelectedResult = { ok: true; deleted: number } | { ok: false; message: string };
+
+/**
+ * Bulk version behind the tutor-code list's "Delete Selected" button. Teacher-only
+ * (same gate, NOT owner-only — RBAC planned) and runs the SAME per-code logic as
+ * the single delete via `deleteTutorCodesAndData`, so a multi-delete is identical,
+ * code for code, to pressing each row's trash button. Idempotent; revalidates the
+ * list on success.
+ */
+export async function deleteSelectedTutorCodesAction(
+  codes: string[],
+): Promise<DeleteSelectedResult> {
+  const gate = await requireTeacherUserId();
+  if (!gate.ok) {
+    return {
+      ok: false,
+      message:
+        gate.reason === "not-teacher"
+          ? "Only teachers can delete tutor codes."
+          : "Your session carries no user id — sign in again.",
+    };
+  }
+
+  const result = await deleteTutorCodesAndData(codes);
+  if (!result.ok) {
+    return {
+      ok: false,
+      message: "Some data could not be deleted. Try again — deletion is safe to repeat.",
+    };
+  }
+
+  revalidatePath("/tutor-codes");
+  return { ok: true, deleted: result.deleted };
 }
 
 /**

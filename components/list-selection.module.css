@@ -1,0 +1,99 @@
+/* Row-selection + bulk-delete chrome for "filtered list" pages (YAML Files,
+   Shared Tutor Codes, …). The checkbox column and the "Delete Selected" toolbar
+   button share this one module so multi-delete looks the same on every list. The
+   danger styling reuses the SAME crimson color-mix tokens as the per-row trash
+   button (components/icon-button.module.css). See docs/filtered-lists.md. */
+
+/* The leading checkbox column: narrow, centered. */
+.selectHeaderCell {
+  width: 1%;
+}
+
+.selectCell {
+  width: 1%;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* The two select-all / unselect-all icon buttons in the header cell. */
+.selectHeader {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.selectIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: color-mix(in srgb, var(--foreground) 65%, transparent);
+  cursor: pointer;
+}
+
+.selectIconButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  color: var(--foreground);
+}
+
+.selectIconButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.selectIconButton svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.rowCheckbox {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+  accent-color: var(--foreground);
+}
+
+.rowCheckbox:disabled {
+  cursor: default;
+}
+
+/* "Delete Selected": red, border ONLY, no fill — matching the per-row trash. */
+.deleteSelected {
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, crimson 45%, transparent);
+  border-radius: 0.5rem;
+  color: color-mix(in srgb, crimson 78%, var(--foreground));
+  cursor: pointer;
+}
+
+.deleteSelected:hover:not(:disabled) {
+  background: color-mix(in srgb, crimson 12%, transparent);
+}
+
+.deleteSelected:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.deleteSelected svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.error {
+  font-size: 0.85rem;
+  color: color-mix(in srgb, crimson 80%, var(--foreground));
+}

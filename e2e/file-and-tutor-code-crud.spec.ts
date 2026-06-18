@@ -48,12 +48,30 @@ async function applyFilter(page: Page, label: string, term: string): Promise<voi
 // dev database (the file's filtered-unique index would otherwise reject a re-run).
 let createdFileName: string | null = null;
 let createdCodeLabel: string | null = null;
+// Extra files the multi-delete test creates; cleaned per-row (independent of the
+// multi-delete UI under test) so a mid-test failure still tidies up.
+const createdFileNames: string[] = [];
 
 test.afterEach(async ({ page }) => {
   if (createdFileName) {
     const name = createdFileName;
     createdFileName = null;
     try {
+      await applyFilter(page, "Filter files", name);
+      const row = page.getByRole("row").filter({ hasText: name });
+      if ((await row.count()) > 0) {
+        page.once("dialog", (dialog) => dialog.accept());
+        await row.getByRole("button", { name: `Delete file ${name}` }).click();
+        await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0);
+      }
+    } catch {
+      // best-effort
+    }
+  }
+  while (createdFileNames.length > 0) {
+    const name = createdFileNames.pop() as string;
+    try {
+      await page.goto("/files");
       await applyFilter(page, "Filter files", name);
       const row = page.getByRole("row").filter({ hasText: name });
       if ((await row.count()) > 0) {
@@ -178,4 +196,63 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await codeRow.getByRole("button", { name: `Delete tutor code ${editedNote}` }).click();
   await expect(page.getByRole("row").filter({ hasText: editedNote })).toHaveCount(0);
   createdCodeLabel = null;
+});
+
+// The shared multi-delete layer end-to-end: tick several rows and remove them all
+// in ONE "Delete Selected" action (the same store delete each row's trash button
+// runs). Files only — no LLM — so it runs in CI against the SQL container.
+test("multi-select Delete Selected removes every chosen file in one action", {
+  tag: ["@live", "@live-db"],
+}, async ({ page }) => {
+  const stamp = Date.now();
+  const prefix = `e2e-multi-${stamp}`;
+  const names = [`${prefix}-a`, `${prefix}-b`];
+  const fragmentYaml = (id: string) =>
+    `id: ${id}\nfragments:\n  - id: greeting\n    version: 1\n    priority: 1\n    content: "Hi"\n`;
+
+  // Create two hosted fragment files (distinct YAML ids).
+  for (const [i, name] of names.entries()) {
+    await page.goto("/files/new");
+    await page.getByLabel(/Name/).fill(name);
+    await page.getByLabel("Kind").selectOption("fragment");
+    await setEditorContent(page, fragmentYaml(`e2e_multi_${stamp}_${i}`));
+    createdFileNames.push(name);
+    await page.getByRole("button", { name: "Validate & create" }).click();
+    await expect(page).toHaveURL(new RegExp(`/files/edit/${name}$`), { timeout: 30_000 });
+  }
+
+  // Both are listed under the shared prefix.
+  await page.goto("/files");
+  await applyFilter(page, "Filter files", prefix);
+  for (const name of names) {
+    await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(1);
+  }
+
+  // "Delete Selected" is disabled until something is selected.
+  const deleteSelected = page.getByRole("button", { name: /Delete .*selected/i });
+  await expect(deleteSelected).toBeDisabled();
+
+  // Tick the two specific rows, then delete them both in ONE action.
+  for (const name of names) {
+    await page.getByRole("checkbox", { name: `Select ${name}` }).check();
+  }
+  await expect(deleteSelected).toBeEnabled();
+  // Capture + accept the confirm unconditionally (asserting inside the handler can
+  // leave the dialog unhandled and hang the click); check the count afterwards.
+  let dialogMessage = "";
+  page.once("dialog", (dialog) => {
+    dialogMessage = dialog.message();
+    dialog.accept();
+  });
+  await deleteSelected.click();
+
+  // Both rows are gone and neither file is served any more.
+  for (const name of names) {
+    await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0, {
+      timeout: 30_000,
+    });
+    expect((await page.request.get(`/api/files/${name}`)).status()).toBe(404);
+  }
+  expect(dialogMessage).toContain("2 files");
+  createdFileNames.length = 0; // all deleted; nothing for afterEach to tidy
 });
