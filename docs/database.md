@@ -6,12 +6,42 @@ the full mechanics. Read it before touching Mastra storage
 (`app/mastra/index.ts`), the Drizzle setup (`lib/db/`), or any of the
 `novedu_*` stores.
 
-## Credential rule
+## Auth rule (SQL user/password OR Entra ID)
 
-Authenticate with an **explicit** credential chain, never `DefaultAzureCredential`.
-The chain is built in ONE place — **`buildDataStoreCredential()` in
-`lib/azure-credential.ts`** — and imported by both database pools; never
-hand-build it at a call site:
+The connection config is built in ONE place — **`buildMssqlConnectionConfig()` in
+`lib/azure-credential.ts`** — imported by every pool (Mastra, Drizzle, the e2e
+helper); never re-implement the parse/override at a call site. It parses
+`MSSQL_CONNECTION_STRING` and chooses the auth mode **from the string itself**:
+
+1. **SQL auth** — the string carries `User ID=...;Password=...` (node-mssql parses
+   these into `config.user` / `config.password`). The config is left untouched, so
+   tedious does a classic SQL Server login with that username/password. No Azure
+   credential is constructed.
+2. **Microsoft Entra ID (passwordless)** — no SQL credentials in the string. The
+   builder attaches tedious's `token-credential` auth backed by
+   **`buildDataStoreCredential()`** (see below). This is the default and what prod
+   uses (Managed Identity).
+
+The choice is purely "are `User ID` + `Password` present in the string?" — there is
+no separate env flag.
+
+### When to use which (policy)
+
+- **Production is ALWAYS passwordless Entra / Managed Identity.** A prod
+  `MSSQL_CONNECTION_STRING` must **never** carry `User ID`/`Password` — Entra keeps
+  the DB secret out of the connection string, which is the whole point.
+- **SQL auth is a DEV/TEST-ONLY escape hatch** for environments that cannot do
+  Entra — e.g. a remote coding agent or CI box with no `az login` and no Managed
+  Identity. Both code paths exist so those environments can still reach the DB;
+  neither path may be removed (dev/test needs SQL, prod needs Entra).
+- A SQL `User ID`/`Password` connection string **is itself a secret** (unlike the
+  passwordless Entra string), so treat it like one wherever it lives.
+
+### The Entra credential chain
+
+When the Entra path is taken, authenticate with an **explicit** credential chain,
+never `DefaultAzureCredential`. The chain is `buildDataStoreCredential()`, never
+hand-built at a call site:
 
 ```ts
 new ChainedTokenCredential(
@@ -30,16 +60,16 @@ CLI credential fails fast and the chain falls through to the app's Managed Ident
 
 - **`STORAGE_TENANT_ID`** is the tenant of the SQL database. It is **separate**
   from the user-sign-in `AZURE_TENANT_ID`. Optional locally — if unset, the az
-  credential uses its ambient default tenant.
+  credential uses its ambient default tenant. Irrelevant under SQL auth.
 
 ## Two pools, one database
 
-Both pools are built from `MSSQL_CONNECTION_STRING` with the same
-parse-then-override pattern (node-mssql does not understand the ADO.NET
-`Authentication=...` keyword; auth is replaced in code with tedious's
-`token-credential` type — a `TokenCredential` *object*, NOT a pre-fetched token
-string, so tedious calls `getToken()` per pooled connection and tokens
-auto-refresh):
+Both pools are built from `MSSQL_CONNECTION_STRING` through
+`buildMssqlConnectionConfig()` (the SQL-or-Entra decision above). On the Entra path,
+node-mssql does not understand the ADO.NET `Authentication=...` keyword, so auth is
+attached in code with tedious's `token-credential` type — a `TokenCredential`
+*object*, NOT a pre-fetched token string, so tedious calls `getToken()` per pooled
+connection and tokens auto-refresh:
 
 1. **Mastra** (`app/mastra/index.ts`): `MSSQLStore` (`@mastra/mssql`) owns the
    `mastra_*` tables and **auto-creates/migrates its own schema** on first use.

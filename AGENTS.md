@@ -165,12 +165,26 @@ Read it before touching `components/data-list.tsx`, `components/list-filter-bar.
 Read it before touching Mastra storage (`app/mastra/index.ts`), the Drizzle setup
 (`lib/db/`), migrations, or `instrumentation.ts`. Invariants:
 
-- Authenticate via **`buildDataStoreCredential()`** from `lib/azure-credential.ts`
-  (the explicit `ChainedTokenCredential(AzureCliCredential, ManagedIdentityCredential)`
-  chain) — **NEVER `DefaultAzureCredential`** (it would grab the user-sign-in service
+- Build the SQL connection config via **`buildMssqlConnectionConfig()`** from
+  `lib/azure-credential.ts` — the ONE seam every pool (Mastra, Drizzle, e2e)
+  shares. It parses `MSSQL_CONNECTION_STRING` and picks the auth mode **from the
+  string itself**: a `User ID=...;Password=...` string uses **SQL auth**;
+  otherwise it falls back to **passwordless Entra ID** via tedious's
+  `token-credential` + **`buildDataStoreCredential()`** (the explicit
+  `ChainedTokenCredential(AzureCliCredential, ManagedIdentityCredential)` chain).
+  **NEVER `DefaultAzureCredential`** (it would grab the user-sign-in service
   principal from the `AZURE_*` env vars, which is a different tenant), and never
-  hand-build the chain at a call site. **`STORAGE_TENANT_ID`** is the database's
-  tenant var (separate from the user sign-in `AZURE_TENANT_ID`).
+  hand-build the chain or re-implement the parse/override at a call site.
+  **`STORAGE_TENANT_ID`** is the database's tenant var for the Entra path
+  (separate from the user sign-in `AZURE_TENANT_ID`); it is irrelevant under SQL auth.
+- **Policy: prod is ALWAYS passwordless Entra / Managed Identity.** SQL
+  `User ID`/`Password` auth is a **dev/test-only** escape hatch for environments
+  that can't do Entra (e.g. a remote coding agent / CI box without `az login` or an
+  MI) — never put credentials in a **production** `MSSQL_CONNECTION_STRING`. Keep
+  BOTH paths in `buildMssqlConnectionConfig()` (don't drop either). A SQL
+  user/password string is itself a secret; the test-only
+  `MSSQL_SQLAUTH_CONNECTION_STRING` (read solely by `e2e/db-auth.live.spec.ts`)
+  must never be set in prod.
 - App tables use the `novedu_` prefix, are defined in `lib/db/schema.ts`, and are
   migrated by Drizzle at startup (`npm run db:generate` → commit `drizzle/`).
   **NO foreign keys between `novedu_*` and `mastra_*` tables** — Mastra auto-manages
