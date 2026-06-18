@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createFile: vi.fn(),
   updateFile: vi.fn(),
   softDeleteFile: vi.fn(),
+  softDeleteFiles: vi.fn(),
   getActiveFile: vi.fn(),
   loadAndBuildTutorPrompt: vi.fn(),
   loadAndCheckFragmentFile: vi.fn(),
@@ -39,6 +40,7 @@ vi.mock("@/lib/file-store", async (importOriginal) => {
     createFile: mocks.createFile,
     updateFile: mocks.updateFile,
     softDeleteFile: mocks.softDeleteFile,
+    softDeleteFiles: mocks.softDeleteFiles,
     getActiveFile: mocks.getActiveFile,
   };
 });
@@ -48,6 +50,7 @@ vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 import {
   createFileAction,
   deleteFileAction,
+  deleteSelectedFilesAction,
   loadFileFromDbAction,
   loadYamlFromUrlAction,
   updateFileAction,
@@ -68,6 +71,7 @@ beforeEach(() => {
   mocks.createFile.mockResolvedValue({ ok: true, name: "my-file" });
   mocks.updateFile.mockResolvedValue({ ok: true });
   mocks.softDeleteFile.mockResolvedValue({ ok: true });
+  mocks.softDeleteFiles.mockResolvedValue({ ok: true, deleted: 2 });
   mocks.getActiveFile.mockResolvedValue({ name: "my-file", kind: "fragment", content: "old" });
   mocks.defaultFetcher.mockResolvedValue({
     ok: true,
@@ -347,6 +351,42 @@ describe("deleteFileAction", () => {
     const result = await deleteFileAction("my-file");
     expect(result).toEqual({ ok: true });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/files");
+  });
+});
+
+// The bulk delete behind the list's "Delete Selected": the SAME teacher gate as
+// the single delete, the SAME store primitive (now `softDeleteFiles`), and the
+// list revalidation. Identical row-for-row logic is the whole point.
+describe("deleteSelectedFilesAction", () => {
+  it("rejects a non-teacher and never touches the store", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    const result = await deleteSelectedFilesAction(["a", "b"]);
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
+    expect(mocks.softDeleteFiles).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing session user id", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "no-user-id" });
+    const result = await deleteSelectedFilesAction(["a"]);
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/sign in/i) });
+    expect(mocks.softDeleteFiles).not.toHaveBeenCalled();
+  });
+
+  it("deletes the selection with the session user id and revalidates", async () => {
+    mocks.softDeleteFiles.mockResolvedValue({ ok: true, deleted: 2 });
+    const result = await deleteSelectedFilesAction(["a", "b"]);
+    expect(result).toEqual({ ok: true, deleted: 2 });
+    expect(mocks.softDeleteFiles).toHaveBeenCalledWith(["a", "b"], "teacher-1");
+    expect(mocks.revalidatePath).toHaveBeenCalledWith("/files");
+  });
+
+  it("maps a store failure to a retry message", async () => {
+    mocks.softDeleteFiles.mockResolvedValue({ ok: false, deleted: 0 });
+    const result = await deleteSelectedFilesAction(["a", "b"]);
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/could not be deleted/i),
+    });
   });
 });
 

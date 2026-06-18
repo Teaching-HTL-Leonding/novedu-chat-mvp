@@ -30,6 +30,10 @@ const fake = vi.hoisted(() => {
         if (state.deleteError) throw state.deleteError;
       },
     }),
+    // The bulk delete batches its row deletes in one transaction; the executor it
+    // hands the callback is the same delete-tracking handle, so a thrown delete
+    // rejects the transaction (the all-or-nothing rollback the real DB gives).
+    transaction: async (cb: (t: unknown) => unknown) => cb(db),
   };
   return { state, db };
 });
@@ -63,6 +67,7 @@ vi.mock("@/app/mastra", () => ({ mastra: mastra.mastra }));
 import { recentCodes, tutorCodes, userChats } from "@/lib/db/schema";
 import {
   deleteTutorCodeAndData,
+  deleteTutorCodesAndData,
   getConversationMessages,
   getInteractionCounts,
   getTutorCodeStats,
@@ -316,5 +321,57 @@ describe("deleteTutorCodeAndData", () => {
     mastra.state.threads = [{ id: "th1" }];
     fake.state.deleteError = new Error("connection lost");
     await expect(deleteTutorCodeAndData("aaaaaaaaaa")).resolves.toBe(false);
+  });
+});
+
+// Bulk delete reuses the SAME per-code helpers as the single delete: conversations
+// per code (Mastra), then ALL the app rows in ONE transaction. These pin the
+// batch contract — per-code row ordering, the all-or-nothing rollback, the
+// Mastra-failure-but-rows-still-attempted path, and the empty short-circuit.
+describe("deleteTutorCodesAndData", () => {
+  it("deletes each code's conversations then all app rows (per code) and reports success", async () => {
+    mastra.state.threads = [{ id: "th1" }];
+    const result = await deleteTutorCodesAndData(["aaaaaaaaaa", "bbbbbbbbbb"]);
+    expect(result).toEqual({ ok: true, deleted: 2 });
+    // One thread listed+deleted per code (the fake lists the same set each time).
+    expect(mastra.state.deletedThreadIds).toEqual(["th1", "th1"]);
+    // The same delete-safe order, repeated once per code, all in one transaction.
+    expect(fake.state.deletedTables).toEqual([
+      userChats,
+      recentCodes,
+      tutorCodes,
+      userChats,
+      recentCodes,
+      tutorCodes,
+    ]);
+  });
+
+  it("rolls the whole batch back and reports failure when an app-row delete throws", async () => {
+    fake.state.deleteError = new Error("connection lost");
+    await expect(deleteTutorCodesAndData(["aaaaaaaaaa", "bbbbbbbbbb"])).resolves.toEqual({
+      ok: false,
+      deleted: 0,
+    });
+  });
+
+  it("reports failure when conversations can't be removed, but still deletes the rows", async () => {
+    mastra.state.storageNull = true;
+    const result = await deleteTutorCodesAndData(["aaaaaaaaaa", "bbbbbbbbbb"]);
+    expect(result).toEqual({ ok: false, deleted: 2 });
+    expect(fake.state.deletedTables).toEqual([
+      userChats,
+      recentCodes,
+      tutorCodes,
+      userChats,
+      recentCodes,
+      tutorCodes,
+    ]);
+  });
+
+  it("short-circuits an empty selection without touching Mastra or the database", async () => {
+    fake.state.deleteError = new Error("must not be reached");
+    await expect(deleteTutorCodesAndData([])).resolves.toEqual({ ok: true, deleted: 0 });
+    expect(mastra.state.deletedThreadIds).toEqual([]);
+    expect(fake.state.deletedTables).toEqual([]);
   });
 });

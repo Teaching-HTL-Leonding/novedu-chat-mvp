@@ -92,3 +92,18 @@ export const LayoutIcon = (props: SVGProps<SVGSVGElement>) => (
     <line x1="9" y1="21" x2="9" y2="9" />
   </Icon>
 );
+
+/** Ticked box — "Select all" (the list multi-select header). */
+export const CheckSquareIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <polyline points="9 11 12 14 22 4" />
+    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+  </Icon>
+);
+
+/** Empty box — "Unselect all" (the list multi-select header). */
+export const SquareIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+  </Icon>
+);

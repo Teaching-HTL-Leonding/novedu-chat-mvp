@@ -238,7 +238,11 @@ student-side isolation and is unaffected.
   (`deleteTutorCodeAndData` — Mastra threads/messages via Mastra's own
   `deleteThread`, then the `novedu_*` rows; see `docs/database.md`). An expired
   code stays listed: its chat no longer opens (`checkTutorCode`), but its stats
-  remain reachable until it is deleted.
+  remain reachable until it is deleted. The list's **"Delete Selected"** removes
+  several at once (`deleteSelectedTutorCodesAction` → `deleteTutorCodesAndData`):
+  same teacher gate, same per-code logic, with the `novedu_*` row deletes batched
+  in one Drizzle transaction and the Mastra deletes per code outside it (the
+  shared multi-delete layer — `docs/filtered-lists.md`).
 - Drizzle migrations apply at startup — see `docs/database.md`.
 
 ## Testing

@@ -87,6 +87,10 @@ the list page (`/tutor-codes`), the stats pages (`/tutor-codes/[code]` and
   until a teacher deletes a code from `/tutor-codes`, which wipes the code plus all
   of its Mastra threads/messages (`deleteTutorCodeAndData`). So the list shows
   expired codes too; an expired code's chat won't open but its stats stay reachable.
+  The list's **"Delete Selected"** bulk-deletes via `deleteSelectedTutorCodesAction`
+  → `deleteTutorCodesAndData`, which reuses the SAME per-code helpers as the single
+  delete (same `requireTeacherUserId` gate, role- not owner-gated) — see the
+  filtered-lists multi-delete invariant.
 
 ### App-hosted YAML Files (authoring, versioning, public serving) → `docs/files.md`
 
@@ -108,7 +112,11 @@ in `proxy.ts`. Invariants:
   version is the single row with `valid_until IS NULL`, soft-delete only (history
   kept). **`lib/file-store.ts` is the ONLY access** to the table. "One active version
   per name" is enforced by the DB **filtered unique index `ux_novedu_files_active_name`**;
-  names are reusable after deletion. Files are NOT garbage-collected.
+  names are reusable after deletion. Files are NOT garbage-collected. The list's
+  **"Delete Selected"** bulk-deletes via `deleteSelectedFilesAction` → `softDeleteFiles`,
+  which soft-closes every selected file in **one transaction** reusing the SAME
+  `closeActiveFile` primitive as the single delete — see the filtered-lists
+  multi-delete invariant.
 - The `/files` list filters (text + "Only my files") **in the database**
   (`listFiles({ search, createdBy })`, URL search params → SQL `WHERE`/`LIKE`,
   never in memory) — the shared filtered-list concept (`docs/filtered-lists.md`).
@@ -143,6 +151,7 @@ or the two placeholder buttons. Invariants:
 ### Filtered lists (shared list UI: filter spot, action spot, table) → `docs/filtered-lists.md`
 
 Read it before touching `components/data-list.tsx`, `components/list-filter-bar.tsx`,
+`components/list-selection.tsx`, `components/selection-column.tsx`,
 `components/list-page.module.css`, `lib/db/text-filter.ts`, or a list page's
 `searchParams` handling (`/files`, `/tutor-codes`). Invariants:
 
@@ -157,6 +166,20 @@ Read it before touching `components/data-list.tsx`, `components/list-filter-bar.
   query), shared chrome in `list-page.module.css`. The action button (top-left)
   and filter controls (top-right) sit in the **same spot** on every list; add a
   new list by writing its store filter + a server page that renders `DataList`.
+- **Multi-delete is the shared selection layer** (`components/list-selection.tsx` +
+  the server-safe `selectionColumn` in `components/selection-column.tsx`): wrap the
+  `DataList` in **`SelectionProvider`** (given the visible rows' selection keys),
+  prepend **`selectionColumn`** (checkbox + select-all/unselect-all header), and put
+  **`DeleteSelectedButton`** in the `actions` slot next to "New …". The button runs
+  a per-list bulk server action **in ONE call** that **reuses the exact same store
+  delete as the per-row trash button** (each single delete was refactored into a
+  `DbExecutor`-taking per-item helper; the bulk path loops it in **one Drizzle
+  transaction**), so behaviour can't drift. The selection key is whatever the action
+  deletes by (file **name**, tutor **code**) — `SelectionProvider`'s `allIds` and
+  `selectionColumn`'s `getRowKey` must use that SAME key (not necessarily the
+  DataList React key). **Tx caveat:** for tutor codes the `novedu_*` row deletes
+  share one transaction but the **Mastra** thread deletes run per-thread outside it
+  (separate pool) — same as the single delete.
 - Aggregated columns (e.g. tutor-code "Conversations") are a **single** raw-SQL
   aggregate over the filtered set — **never a query per row**.
 

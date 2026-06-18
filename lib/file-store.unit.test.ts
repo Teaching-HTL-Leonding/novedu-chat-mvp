@@ -53,7 +53,14 @@ const fake = vi.hoisted(() => {
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
-import { createFile, getActiveFile, listFiles, softDeleteFile, updateFile } from "@/lib/file-store";
+import {
+  createFile,
+  getActiveFile,
+  listFiles,
+  softDeleteFile,
+  softDeleteFiles,
+  updateFile,
+} from "@/lib/file-store";
 
 // The pure name/kind helpers (`validateFileName` / `isFileKind`) moved to
 // `lib/file-name.ts` and are covered by `lib/file-name.unit.test.ts`; this file
@@ -260,5 +267,40 @@ describe("softDeleteFile", () => {
       ok: false,
       reason: "error",
     });
+  });
+});
+
+// Bulk soft-delete reuses the SAME `closeActiveFile` primitive as softDeleteFile,
+// looped inside ONE transaction. These pin the batch contract: the count of rows
+// actually closed, the already-gone no-op, all-or-nothing rollback on a DB error,
+// and the empty-input short-circuit.
+describe("softDeleteFiles", () => {
+  it("closes every named file and counts the rows actually closed", async () => {
+    fake.state.closeResult = { rowsAffected: [1] };
+    await expect(softDeleteFiles(["a", "b", "c"], "teacher-3")).resolves.toEqual({
+      ok: true,
+      deleted: 3,
+    });
+  });
+
+  it("treats already-gone names as no-op successes (not counted), still ok", async () => {
+    fake.state.closeResult = { rowsAffected: [0] };
+    await expect(softDeleteFiles(["ghost1", "ghost2"], "teacher-3")).resolves.toEqual({
+      ok: true,
+      deleted: 0,
+    });
+  });
+
+  it("rolls the whole batch back on a database error (all-or-nothing)", async () => {
+    fake.state.updateError = new Error("down");
+    await expect(softDeleteFiles(["a", "b"], "teacher-3")).resolves.toEqual({
+      ok: false,
+      deleted: 0,
+    });
+  });
+
+  it("short-circuits an empty selection without touching the database", async () => {
+    fake.state.updateError = new Error("must not be reached");
+    await expect(softDeleteFiles([], "teacher-3")).resolves.toEqual({ ok: true, deleted: 0 });
   });
 });

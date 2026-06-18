@@ -95,6 +95,55 @@ server-rendered into `defaultValue`/`defaultChecked`, so no `useSearchParams`
 (avoids its Suspense caveat). Any control with a `name` participates, so a future
 filter (a `<select>`, a date range) drops in without touching the bar.
 
+## Multi-delete (row selection + "Delete Selected")
+
+Every list gets the same bulk-delete affordance from one shared layer, so it looks
+and behaves identically and improves once. The pieces:
+
+| Piece | Where | Role |
+| --- | --- | --- |
+| `SelectionProvider` | `components/list-selection.tsx` (**client**) | owns the selected-key `Set` + the in-flight `pending` flag; clears + `router.refresh()`es on a successful delete |
+| `selectionColumn(getRowKey, rowLabel?)` | `components/selection-column.tsx` (**server-safe**) | the leading checkbox column: `SelectAllControls` header (select-all / unselect-all icons) + a per-row `RowSelectCheckbox` |
+| `DeleteSelectedButton` | `components/list-selection.tsx` (**client**) | red, border-only toolbar button; disabled until ≥1 row; confirms with the count, runs the action, shows the shared `Spinner` while pending |
+| per-list bulk action | `lib/*-actions.ts` (`"use server"`) | gated like the single delete; calls the store's bulk function; passed to `DeleteSelectedButton` as a prop |
+
+**The reuse rule — identical business logic, never a second copy.** A bulk delete
+must do *exactly* what pressing each row's trash button does. So each single-delete
+was refactored into a **per-item helper that takes a `DbExecutor`** (the shared
+`Db | Transaction` type from `lib/db`): `closeActiveFile` (files), `deleteCodeRows`
++ `deleteCodeConversations` (tutor codes). The single delete calls the helper on the
+root handle; the bulk function loops it inside **one `getDb().transaction(...)`**.
+Both paths share the helper, so behaviour can't drift.
+
+**Two-pool transaction caveat.** Drizzle (`novedu_*`) and Mastra (`mastra_*`) are
+separate pools that can't share a transaction. So files (pure Drizzle soft-delete)
+are fully one transaction; tutor codes run the `novedu_*` row deletes for all
+selected codes in one transaction but the **Mastra** thread/message deletes per code
+*outside* it — exactly as the single delete already does.
+
+**Selection key ≠ React key.** The selection id is whatever the bulk action deletes
+by — a file **name**, a tutor **code** — which may differ from the DataList
+`getRowKey` (files key rows by the version `id`). `SelectionProvider`'s `allIds` and
+`selectionColumn`'s `getRowKey` must use that SAME selection key.
+
+```tsx
+// In the page (server): selection key = file NAME (what the action deletes by).
+const columns = [selectionColumn<FileRow>((r) => r.name, (r) => r.name), ...rest];
+return (
+  <SelectionProvider allIds={rows.map((r) => r.name)}>
+    <DataList rows={rows} getRowKey={(r) => r.id} columns={columns}
+      actions={<>
+        <Link href="/files/new" className={listStyles.button}>New file</Link>
+        <DeleteSelectedButton action={deleteSelectedFilesAction} itemNoun="file" />
+      </>}
+      /* …filterBar / states… */ />
+  </SelectionProvider>
+);
+```
+
+Fast tests cover the pure interaction (`tests/component/list-selection.browser.test.tsx`);
+the wired DB delete is the `@live-db` case in `e2e/file-and-tutor-code-crud.spec.ts`.
+
 ## Adding a new list
 
 1. Add (or extend) a store function that takes `{ search?, createdBy?, … }` and
@@ -104,6 +153,10 @@ filter (a `<select>`, a date range) drops in without touching the bar.
    holding your controls.
 4. Put list-specific cell/badge classes in the page's own `*.module.css`; reuse the
    shared chrome and `composes:` the shared `iconButton`.
+5. (Optional) Opt into multi-delete: add a bulk store function + a teacher-gated
+   server action that reuses the per-item delete helper, wrap the `DataList` in
+   `SelectionProvider`, prepend `selectionColumn`, and add `DeleteSelectedButton` to
+   `actions` (see "Multi-delete" above).
 
 ## Pagination (not built yet)
 

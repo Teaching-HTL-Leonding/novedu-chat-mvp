@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, isNull, type SQL } from "drizzle-orm";
-import { getDb } from "@/lib/db";
+import { type DbExecutor, getDb } from "@/lib/db";
 import { files } from "@/lib/db/schema";
 import { containsAny } from "@/lib/db/text-filter";
 // The pure name/kind helpers live in `lib/file-name.ts` (no DB import) so the
@@ -260,22 +260,63 @@ export async function updateFile(
 export type DeleteFileResult = { ok: true } | { ok: false; reason: "not-found" | "error" };
 
 /**
- * Soft-deletes a file: closes its active row (set `valid_until` + `closed_by`)
- * and inserts nothing, so no active version remains — the GET endpoint 404s and
- * the list drops it, while the full history (including who deleted it) stays.
- * A single conditional statement; `not-found` if it was already gone.
+ * The ONE soft-delete primitive: closes a file's active row (`valid_until` +
+ * `closed_by`) on the given executor — the root handle for a single delete, or a
+ * transaction when a bulk caller batches several. A single conditional statement;
+ * `not-found` (no active row) is NOT an error, so it never rolls a batch back. A
+ * real DB error THROWS (so the surrounding transaction rolls back); the public
+ * wrappers map that to `{ ok: false, reason: "error" }`.
+ */
+async function closeActiveFile(
+  executor: DbExecutor,
+  name: string,
+  userId: string,
+  now: Date,
+): Promise<DeleteFileResult> {
+  const closed = await executor
+    .update(files)
+    .set({ validUntil: now, closedBy: userId })
+    .where(and(eq(files.name, name), isNull(files.validUntil)));
+  return affectedRows(closed) < 1 ? { ok: false, reason: "not-found" } : { ok: true };
+}
+
+/**
+ * Soft-deletes a file: closes its active row so no active version remains — the
+ * GET endpoint 404s and the list drops it, while the full history (including who
+ * deleted it) stays. `not-found` if it was already gone.
  */
 export async function softDeleteFile(name: string, userId: string): Promise<DeleteFileResult> {
-  const now = new Date();
   try {
-    const closed = await getDb()
-      .update(files)
-      .set({ validUntil: now, closedBy: userId })
-      .where(and(eq(files.name, name), isNull(files.validUntil)));
-    if (affectedRows(closed) < 1) return { ok: false, reason: "not-found" };
-    return { ok: true };
+    return await closeActiveFile(getDb(), name, userId, new Date());
   } catch (error) {
     console.error("file-store: delete failed", error);
     return { ok: false, reason: "error" };
+  }
+}
+
+export type DeleteFilesResult = { ok: boolean; deleted: number };
+
+/**
+ * Bulk soft-delete (the list's "Delete Selected"): closes every named file in ONE
+ * transaction, reusing the SAME `closeActiveFile` primitive as the single delete
+ * so the per-file business logic can't drift. All-or-nothing — any DB error rolls
+ * the whole batch back. `deleted` counts the rows actually closed (an
+ * already-gone name is a no-op success, exactly like the single path).
+ */
+export async function softDeleteFiles(names: string[], userId: string): Promise<DeleteFilesResult> {
+  if (names.length === 0) return { ok: true, deleted: 0 };
+  const now = new Date();
+  try {
+    return await getDb().transaction(async (tx) => {
+      let deleted = 0;
+      for (const name of names) {
+        const result = await closeActiveFile(tx, name, userId, now);
+        if (result.ok) deleted++;
+      }
+      return { ok: true, deleted };
+    });
+  } catch (error) {
+    console.error("file-store: bulk delete failed", error);
+    return { ok: false, deleted: 0 };
   }
 }

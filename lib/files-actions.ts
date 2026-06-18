@@ -9,6 +9,7 @@ import {
   getActiveFile,
   isFileKind,
   softDeleteFile,
+  softDeleteFiles,
   updateFile,
   validateFileName,
 } from "@/lib/file-store";
@@ -326,6 +327,29 @@ export async function deleteFileAction(
 
   revalidatePath("/files");
   return { ok: true };
+}
+
+/** The uniform shape every list's "Delete Selected" action returns. */
+export type DeleteSelectedResult = { ok: true; deleted: number } | { ok: false; message: string };
+
+/**
+ * Bulk soft-delete behind the files list's "Delete Selected" button. Teacher-only
+ * (same gate as the single delete) and runs the SAME store primitive in one
+ * transaction (`softDeleteFiles`), so a multi-delete is identical, row for row, to
+ * pressing each row's trash button. Revalidates the list on success.
+ */
+export async function deleteSelectedFilesAction(names: string[]): Promise<DeleteSelectedResult> {
+  const gate = await requireTeacherUserId();
+  if (!gate.ok) return gateFailure(gate.reason, "delete");
+  const userId = gate.userId;
+
+  const result = await softDeleteFiles(names, userId);
+  if (!result.ok) {
+    return { ok: false, message: "The files could not be deleted. Try again." };
+  }
+
+  revalidatePath("/files");
+  return { ok: true, deleted: result.deleted };
 }
 
 /**

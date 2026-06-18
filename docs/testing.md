@@ -66,11 +66,17 @@ npm run test:e2e -- --grep @live
 
 The kept `@live` set is deliberately small. The **`@live-db`** ones — a valid code
 opens the chat, a mid-session window-close keeps the chat on screen, a teacher
-creating a code, the file CRUD lifecycle (`e2e/file-and-tutor-code-crud.spec.ts`,
-which writes the real `novedu_files` table), and the **database auth-matrix**
+creating a code, the file CRUD lifecycle plus the list **multi-delete** ("Delete
+Selected" over several files) (`e2e/file-and-tutor-code-crud.spec.ts`, which writes
+the real `novedu_files` table), and the **database auth-matrix**
 (`e2e/db-auth.live.spec.ts`, below) — also run **in CI** against a container (next
 section). The **`@live-llm`** ones — the text round-trip, the vision round-trip,
 the health probe — stay **local** (the SCCH endpoint is geo-blocked to Austria).
+
+The shared list **multi-delete** layer's pure interaction (checkboxes, select-all,
+the confirm/spinner/clear flow over a mocked action) is a fast **component** test —
+`tests/component/list-selection.browser.test.tsx` — not an `@live` one; only the
+wired DB delete needs the container.
 
 ## DB-backed `@live-db` in CI (SQL Server container)
 

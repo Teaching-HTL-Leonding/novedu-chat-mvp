@@ -4,6 +4,13 @@ import * as schema from "./schema";
 
 export type Db = NodeMsSqlDatabase<typeof schema>;
 
+// The handle a `db.transaction(cb)` callback receives. `DbExecutor` is "either the
+// root handle or a transaction", so a store helper (e.g. closing one file, deleting
+// one tutor code's rows) can run standalone OR be batched into a single transaction
+// by a bulk caller — the SAME code path either way.
+export type Transaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+export type DbExecutor = Db | Transaction;
+
 // Drizzle handle for the app-owned `novedu_*` tables, connecting to the SAME
 // Azure SQL database as Mastra but through its OWN pool — Mastra manages its
 // pool's lifecycle internally (app/mastra/index.ts) and we don't reach into it.

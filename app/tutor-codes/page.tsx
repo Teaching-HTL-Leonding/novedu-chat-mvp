@@ -4,8 +4,11 @@ import { DataList, type ListColumn } from "@/components/data-list";
 import { EditIcon, ExternalLinkIcon, StatsIcon } from "@/components/icons";
 import { ListFilterBar } from "@/components/list-filter-bar";
 import listStyles from "@/components/list-page.module.css";
+import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { AccessDenied, Notice } from "@/components/notice";
+import { selectionColumn } from "@/components/selection-column";
 import { isEffectiveTeacher } from "@/lib/student-mode";
+import { deleteSelectedTutorCodesAction } from "@/lib/tutor-code-actions";
 import { listAllTutorCodes } from "@/lib/tutor-code-store";
 import { getInteractionCounts } from "@/lib/tutor-stats-store";
 import { LocalTime } from "../local-time";
@@ -104,6 +107,12 @@ export default async function TutorCodesPage({
   }));
 
   const columns: ListColumn<TutorCodeRow>[] = [
+    // Leading multi-select column; the selection key is the tutor CODE, which is
+    // what `deleteSelectedTutorCodesAction` deletes by.
+    selectionColumn<TutorCodeRow>(
+      (row) => row.code,
+      (row) => row.note || row.code,
+    ),
     {
       header: "Note",
       className: styles.noteCell,
@@ -173,50 +182,55 @@ export default async function TutorCodesPage({
 
   return (
     <main className={pageStyles.main}>
-      <DataList
-        rows={rows}
-        getRowKey={(row) => row.code}
-        columns={columns}
-        hint={
-          <>
-            All tutor codes. Filter by note or code, or tick “Only my codes”. Expired ones stay here
-            so you can review their stats; delete a code to remove it and all of its conversation
-            data.
-          </>
-        }
-        actions={
-          <Link href="/tutor-codes/new" className={listStyles.button}>
-            New Tutor Code
-          </Link>
-        }
-        filterBar={
-          <ListFilterBar
-            hasActiveFilter={q !== "" || !onlyMine}
-            resetKey={`${q}|${onlyMine ? "1" : "0"}`}
-          >
-            <input
-              type="search"
-              name="q"
-              className={listStyles.searchInput}
-              placeholder="Filter by note or code…"
-              defaultValue={q}
-              aria-label="Filter tutor codes"
-            />
-            <label className={listStyles.onlyMine}>
-              <input type="checkbox" name="mine" defaultChecked={onlyMine} />
-              Only my codes
-            </label>
-          </ListFilterBar>
-        }
-        isFiltered={q !== ""}
-        emptyState={
-          <>
-            No tutor codes yet. <Link href="/tutor-codes/new">Create one</Link> to share a tutor
-            with students — or untick “Only my codes” to see codes from other teachers.
-          </>
-        }
-        noMatchState="No tutor codes match your filter."
-      />
+      <SelectionProvider allIds={rows.map((row) => row.code)}>
+        <DataList
+          rows={rows}
+          getRowKey={(row) => row.code}
+          columns={columns}
+          hint={
+            <>
+              All tutor codes. Filter by note or code, or tick “Only my codes”. Expired ones stay
+              here so you can review their stats; delete a code to remove it and all of its
+              conversation data.
+            </>
+          }
+          actions={
+            <>
+              <Link href="/tutor-codes/new" className={listStyles.button}>
+                New Tutor Code
+              </Link>
+              <DeleteSelectedButton action={deleteSelectedTutorCodesAction} itemNoun="tutor code" />
+            </>
+          }
+          filterBar={
+            <ListFilterBar
+              hasActiveFilter={q !== "" || !onlyMine}
+              resetKey={`${q}|${onlyMine ? "1" : "0"}`}
+            >
+              <input
+                type="search"
+                name="q"
+                className={listStyles.searchInput}
+                placeholder="Filter by note or code…"
+                defaultValue={q}
+                aria-label="Filter tutor codes"
+              />
+              <label className={listStyles.onlyMine}>
+                <input type="checkbox" name="mine" defaultChecked={onlyMine} />
+                Only my codes
+              </label>
+            </ListFilterBar>
+          }
+          isFiltered={q !== ""}
+          emptyState={
+            <>
+              No tutor codes yet. <Link href="/tutor-codes/new">Create one</Link> to share a tutor
+              with students — or untick “Only my codes” to see codes from other teachers.
+            </>
+          }
+          noMatchState="No tutor codes match your filter."
+        />
+      </SelectionProvider>
     </main>
   );
 }

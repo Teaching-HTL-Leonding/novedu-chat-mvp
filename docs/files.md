@@ -96,6 +96,10 @@ file is never persisted.
 - `createFileAction` → validate name + kind + YAML, store, then `redirect("/files/edit/<name>")`.
 - `updateFileAction(name, content)` → re-validate against the **stored** kind, store a new version.
 - `deleteFileAction(name)` → soft-delete (idempotent).
+- `deleteSelectedFilesAction(names)` → the list's **"Delete Selected"**: soft-deletes
+  every selected file in **one transaction** (`softDeleteFiles`), reusing the same
+  `closeActiveFile` primitive as the single delete — the shared multi-delete layer
+  (`docs/filtered-lists.md`).
 - `validateNewFileAction` / `validateExistingFileAction` → **validate-only**: run the
   same preamble + validator as create/update but **never store**; on success they
   return the non-blocking `warnings`. They back the standalone **Validate** button
