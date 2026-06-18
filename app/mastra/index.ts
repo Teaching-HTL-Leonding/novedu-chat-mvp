@@ -2,31 +2,19 @@ import { Mastra } from "@mastra/core/mastra";
 import { PinoLogger } from "@mastra/loggers";
 import { MSSQLStore } from "@mastra/mssql";
 import sql from "mssql";
-import { buildDataStoreCredential } from "@/lib/azure-credential";
+import { buildMssqlConnectionConfig } from "@/lib/azure-credential";
 import { tutorAgent } from "./tutor-agent";
 
 const logger = new PinoLogger({ name: "Mastra", level: "info" });
 
 // Build the Azure SQL store from the connection string in `MSSQL_CONNECTION_STRING`.
 //
-// We parse the string for the host/database/encrypt settings but supply the auth
-// ourselves, for two reasons:
-//  1. node-mssql does NOT understand the ADO.NET keyword
-//     `Authentication="Active Directory Default"` (its parser only knows "Active
-//     Directory Integrated"/"...Password"), so left alone it falls back to SQL auth.
-//  2. We want Entra ID auth with no SQL password, passed via tedious's
-//     `token-credential` (which lets tedious call `getToken()` per pooled connection,
-//     so tokens auto-refresh).
-//
-// The credential is the shared data-store chain from `lib/azure-credential.ts`
-// (explicitly NOT `DefaultAzureCredential` — see the invariant there).
+// `buildMssqlConnectionConfig` parses the string for host/database/encrypt and
+// chooses the auth mode from the string itself: classic SQL user/password when
+// present, otherwise passwordless Microsoft Entra ID. The auth seam lives in one
+// place (`lib/azure-credential.ts`); see the invariant there.
 function buildMssqlStore(connectionString: string): MSSQLStore {
-  const config = sql.ConnectionPool.parseConnectionString(connectionString);
-  config.authentication = {
-    type: "token-credential",
-    options: { credential: buildDataStoreCredential() },
-  };
-
+  const config = buildMssqlConnectionConfig(connectionString);
   return new MSSQLStore({ id: "mastra-storage", pool: new sql.ConnectionPool(config) });
 }
 
@@ -52,8 +40,8 @@ export const mastra = new Mastra({
   // frontend references — so this must be `tutor` to match `agentId="tutor"`.
   agents: { tutor: tutorAgent },
   // Persistent storage is Azure SQL (Microsoft SQL Server) via `@mastra/mssql`,
-  // authenticated with Microsoft Entra ID. Undefined when no connection string is
-  // configured (see above).
+  // authenticated with SQL user/password or Microsoft Entra ID depending on the
+  // connection string. Undefined when no connection string is configured (see above).
   storage: globalForStore.mastraStore,
   logger,
 });

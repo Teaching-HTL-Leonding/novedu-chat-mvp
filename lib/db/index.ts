@@ -1,6 +1,5 @@
 import { drizzle, type NodeMsSqlDatabase } from "drizzle-orm/node-mssql";
-import sql from "mssql";
-import { buildDataStoreCredential } from "@/lib/azure-credential";
+import { buildMssqlConnectionConfig } from "@/lib/azure-credential";
 import * as schema from "./schema";
 
 export type Db = NodeMsSqlDatabase<typeof schema>;
@@ -9,21 +8,14 @@ export type Db = NodeMsSqlDatabase<typeof schema>;
 // Azure SQL database as Mastra but through its OWN pool — Mastra manages its
 // pool's lifecycle internally (app/mastra/index.ts) and we don't reach into it.
 //
-// Connection config mirrors the Mastra store: parse `MSSQL_CONNECTION_STRING`
-// for host/database/encrypt, then replace the auth with Entra ID via tedious's
-// `token-credential` (node-mssql's parser doesn't understand the ADO.NET
-// `Authentication=` keyword, and the token credential refreshes tokens per
-// pooled connection). The credential is the shared data-store chain — see the
-// invariant in lib/azure-credential.ts.
+// Connection config mirrors the Mastra store: `buildMssqlConnectionConfig`
+// parses `MSSQL_CONNECTION_STRING` and picks SQL user/password auth or Entra ID
+// from the string itself (the single seam in lib/azure-credential.ts).
 //
 // Drizzle's AutoPool connects lazily on first query and reuses the pool after,
 // so building the handle is cheap and never throws on a bad/missing DB.
 function buildDb(connectionString: string): Db {
-  const config = sql.ConnectionPool.parseConnectionString(connectionString);
-  config.authentication = {
-    type: "token-credential",
-    options: { credential: buildDataStoreCredential() },
-  };
+  const config = buildMssqlConnectionConfig(connectionString);
   // The driver accepts an mssql `config` object for `connection` (it wraps it
   // in its lazily-connecting AutoPool), but the beta's typings only admit a
   // string — hence the cast. Revisit when drizzle-orm v1 leaves beta.

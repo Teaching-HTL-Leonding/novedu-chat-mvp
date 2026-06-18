@@ -41,6 +41,9 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 - An **Azure SQL database** for persistent agent memory/storage, with your Entra
   identity granted a database user (the app authenticates via Entra — no SQL password).
   Locally that identity is your `az login`; on Azure it is the app's Managed Identity.
+  (A SQL `User ID`/`Password` login also works as a **dev/test-only** fallback for
+  environments without Entra — see [Storage](#notes--caveats-prototype) below — but
+  **production always uses passwordless Entra**.)
 
 ## Configuration (`.env`)
 
@@ -67,17 +70,26 @@ AUTH_SECRET=your-generated-secret
 TEACHER_GROUP_ID=your-entra-teacher-group-object-id
 
 # --- Azure SQL (Microsoft SQL Server) — Mastra memory + app tables (tutor codes) ---
-# Standard ADO.NET connection string. Auth is handled by the app via Microsoft Entra
-# (your `az login` identity locally, the app's Managed Identity on Azure) — there is NO
-# SQL password here. The `Authentication=...` keyword is ignored if present; the app
-# always overrides it with Entra auth. Required to chat — tutor codes and the tutor's
-# memory live in this database.
+# Standard ADO.NET connection string. Required to chat — tutor codes and the tutor's
+# memory live in this database. The app picks the auth mode from the string itself:
+#   * Omit user/password to use passwordless Microsoft Entra auth (your `az login`
+#     identity locally, the app's Managed Identity on Azure). The `Authentication=...`
+#     keyword is ignored; Entra is wired up in code. ← USE THIS IN PRODUCTION.
+#   * Include `User ID=...;Password=...` for classic SQL Server auth — a DEV/TEST-ONLY
+#     fallback for environments that can't do Entra (e.g. a remote coding agent / CI
+#     box). NEVER use a SQL password in a production connection string.
 MSSQL_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
-# Entra tenant of the SQL database, used for the local `az login` credential.
-# SEPARATE from AZURE_TENANT_ID above (the user sign-in tenant), because the database
-# lives in a different tenant. Optional — if unset, the az credential uses its
-# ambient default tenant.
+# Entra tenant of the SQL database, used for the local `az login` credential. Only
+# relevant on the Entra path (ignored when the connection string carries a SQL
+# user/password). SEPARATE from AZURE_TENANT_ID above (the user sign-in tenant),
+# because the database lives in a different tenant. Optional — if unset, the az
+# credential uses its ambient default tenant.
 STORAGE_TENANT_ID=your-data-store-tenant-id
+# OPTIONAL, local-only — a SECOND connection string to the SAME database that uses a
+# SQL `User ID=...;Password=...` login instead of Entra. Used ONLY by the `@live`
+# DB-auth test (e2e/db-auth.live.spec.ts), which SKIPS when this is unset. Keep it out
+# of CI/the repo. See docs/testing.md for how to provision the SQL login.
+MSSQL_SQLAUTH_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Encrypt=True;User ID=<sql-login>;Password=<password>;
 
 # --- Tutor codes ---
 # Public origin the generated chat URLs (`https://<origin>/<tutor-code>`) point at,
@@ -113,8 +125,8 @@ Notes:
   unset (the rest of the app — e.g. tutor validation — still boots). When set, the
   Mastra schema (`mastra_*` tables) is created automatically on first use and the
   app's own `novedu_*` tables are migrated by Drizzle at startup
-  (`instrumentation.ts`), so the configured Entra identity needs table-creation
-  rights (e.g. `db_owner`).
+  (`instrumentation.ts`), so the configured SQL login or Entra identity needs
+  table-creation rights (e.g. `db_owner`).
 - Schema changes to the `novedu_*` tables: edit `lib/db/schema.ts`, run
   `npm run db:generate`, and commit the generated migration in `drizzle/`.
 - Tutor codes are **not** garbage-collected: a code and all of its conversation data
@@ -175,11 +187,17 @@ with defaults.
 
 ## Notes & caveats (prototype)
 
-- **Storage** — Mastra memory/storage is persisted to Azure SQL (`@mastra/mssql`) using
-  Microsoft Entra auth (`token-credential` + an explicit `az login`/Managed Identity
-  credential chain; tokens are fetched and auto-refreshed per pooled connection). The
-  `tutor` agent's memory requires this store, so `MSSQL_CONNECTION_STRING` must be set to
-  chat — there is no in-memory fallback (a tutor chat errors if it is missing). Memory is
+- **Storage** — Mastra memory/storage is persisted to Azure SQL (`@mastra/mssql`). The
+  connection string drives the auth mode: classic SQL user/password when the string
+  carries `User ID`/`Password`, otherwise passwordless Microsoft Entra auth
+  (`token-credential` + an explicit `az login`/Managed Identity credential chain;
+  tokens are fetched and auto-refreshed per pooled connection). **When to use which:**
+  production is **always** passwordless Entra (no secret in the connection string);
+  SQL user/password is a **dev/test-only** fallback for environments that can't do
+  Entra (e.g. a remote coding agent or CI box without `az login` / a Managed Identity).
+  Never put a SQL password in a production `MSSQL_CONNECTION_STRING`. The `tutor`
+  agent's memory requires this store, so `MSSQL_CONNECTION_STRING` must be set to chat —
+  there is no in-memory fallback (a tutor chat errors if it is missing). Memory is
   scoped by **tutor code**: the code is the Mastra `resourceId`, so every thread is grouped
   under its code. A user↔chat link is written to `novedu_user_chats` **only** for tutors
   that opt out of anonymity (`anonymous: false`); the default is anonymous and stores no

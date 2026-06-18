@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import { loadEnvConfig } from "@next/env";
 import sql from "mssql";
-import { buildDataStoreCredential } from "../lib/azure-credential";
+import { buildMssqlConnectionConfig } from "../lib/azure-credential";
 
 // Mints tutor codes by writing rows DIRECTLY into the same database the dev
 // server reads (`novedu_tutor_codes`), so e2e specs can produce valid (or
@@ -29,7 +29,7 @@ const CODE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 let poolPromise: Promise<sql.ConnectionPool> | undefined;
 
 // One pool per Playwright worker, configured exactly like the app's
-// (parse the connection string, replace auth with the Entra token credential).
+// (parse the connection string, pick SQL user/password or Entra auth from it).
 function getPool(): Promise<sql.ConnectionPool> {
   if (!poolPromise) {
     loadEnvConfig(process.cwd());
@@ -37,12 +37,7 @@ function getPool(): Promise<sql.ConnectionPool> {
     if (!connectionString) {
       throw new Error("e2e: MSSQL_CONNECTION_STRING is not set — cannot mint tutor codes");
     }
-    const config = sql.ConnectionPool.parseConnectionString(connectionString);
-    config.authentication = {
-      type: "token-credential",
-      options: { credential: buildDataStoreCredential() },
-    };
-    poolPromise = new sql.ConnectionPool(config).connect();
+    poolPromise = new sql.ConnectionPool(buildMssqlConnectionConfig(connectionString)).connect();
   }
   return poolPromise;
 }

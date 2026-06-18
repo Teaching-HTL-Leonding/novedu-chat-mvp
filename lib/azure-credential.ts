@@ -4,6 +4,7 @@ import {
   ManagedIdentityCredential,
   type TokenCredential,
 } from "@azure/identity";
+import sql from "mssql";
 
 // The ONE way this app authenticates against its data store — the Azure SQL DB,
 // reached through two pools: Mastra's (app/mastra/index.ts) and the app's own
@@ -31,4 +32,36 @@ export function buildDataStoreCredential(): TokenCredential {
     // `{ clientId: "<identity-client-id>" }` here.
     new ManagedIdentityCredential(),
   );
+}
+
+// Parses `MSSQL_CONNECTION_STRING` into a node-mssql config and picks the auth
+// mode — the ONE place that decides how the app authenticates against its SQL
+// Azure database, so the Mastra store, the Drizzle pool, and the e2e helper can
+// never drift. Both pools share this "parse, then choose auth" pattern.
+//
+// Two modes are supported, chosen from the connection string itself:
+//  1. SQL auth — the string carries `User ID=...;Password=...` (node-mssql parses
+//     these into `config.user`/`config.password`). We leave the config untouched
+//     so tedious uses classic SQL Server login.
+//  2. Microsoft Entra ID (passwordless) — no SQL credentials in the string. We
+//     attach the explicit data-store credential chain via tedious's
+//     `token-credential` type: a `TokenCredential` *object* (NOT a pre-fetched
+//     token), so tedious calls `getToken()` per pooled connection and tokens
+//     auto-refresh. node-mssql's parser does not understand the ADO.NET
+//     `Authentication=...` keyword, which is why Entra is wired up here in code.
+//
+// SERVER-ONLY: may build Azure credentials. Never import from client components.
+export function buildMssqlConnectionConfig(
+  connectionString: string,
+): ReturnType<typeof sql.ConnectionPool.parseConnectionString> {
+  const config = sql.ConnectionPool.parseConnectionString(connectionString);
+  // SQL auth wins only when the string supplies BOTH a username and a password;
+  // otherwise fall back to passwordless Entra ID.
+  if (!config.user || !config.password) {
+    config.authentication = {
+      type: "token-credential",
+      options: { credential: buildDataStoreCredential() },
+    };
+  }
+  return config;
 }

@@ -56,9 +56,48 @@ npm run test:e2e -- --grep @live
 
 The kept `@live` set is deliberately small: a valid code opens the chat, a
 mid-session window-close keeps the chat on screen, the text round-trip, the
-vision round-trip, the health probe, a teacher creating a code, and the YAML
+vision round-trip, the health probe, a teacher creating a code, the YAML
 Files create → list → update → soft-delete lifecycle (`e2e/files.spec.ts`, which
-writes the real `novedu_files` table).
+writes the real `novedu_files` table), and the **database auth-matrix**
+(`e2e/db-auth.live.spec.ts`, below).
+
+## Database auth-matrix `@live` test
+
+`buildMssqlConnectionConfig()` (the one auth seam, see `docs/database.md`)
+supports two ways to reach Azure SQL: passwordless **Entra ID** (production) and
+classic **SQL user/password** (a **dev/test-only** fallback — never prod; full
+policy in `docs/database.md`). `e2e/db-auth.live.spec.ts` proves BOTH connect
+end-to-end: it builds a pool through the real seam, asserts the chosen auth
+*mode*, and queries `SUSER_SNAME()` to confirm *which* principal authenticated
+(so the two paths can't silently collapse into one). The fast, secret-free
+companion that locks down the branch *selection* is
+`lib/azure-credential.unit.test.ts`.
+
+The two halves use two env vars and degrade independently:
+
+- **Entra** uses `MSSQL_CONNECTION_STRING` (already required for any `@live` run).
+- **SQL auth** uses `MSSQL_SQLAUTH_CONNECTION_STRING` — a second string to the
+  **same** database carrying a `User ID=...;Password=...` login. It is a
+  **secret**: local `.env` only, never CI/the repo (`docs/ci-security.md`). When
+  it is unset the SQL-auth test **skips** (the suite still passes), so no one
+  needs a SQL login to keep the suite green.
+
+Provision the SQL login once (any `db_owner`/AAD-admin can, via `sqlcmd`
+authenticated with `az login`), then drop the connection string into `.env`:
+
+```sql
+-- contained SQL user in the app database (Azure SQL Database)
+CREATE USER [novedu_sqlauth] WITH PASSWORD = '<strong-password>';
+ALTER ROLE db_datareader ADD MEMBER [novedu_sqlauth];
+ALTER ROLE db_datawriter ADD MEMBER [novedu_sqlauth];
+```
+
+```
+# .env (gitignored, local only) — same server/db as MSSQL_CONNECTION_STRING
+MSSQL_SQLAUTH_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<db>;Encrypt=True;User ID=novedu_sqlauth;Password=<strong-password>;
+```
+
+Run just this spec (both modes) with: `npm run test:e2e -- e2e/db-auth.live.spec.ts`.
 
 ## Testing the chat gate and server components WITHOUT infra
 
