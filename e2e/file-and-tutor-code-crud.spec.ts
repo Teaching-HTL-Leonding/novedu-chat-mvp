@@ -83,7 +83,7 @@ test.afterEach(async ({ page }) => {
 });
 
 test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
-  tag: "@live",
+  tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   // =========================================================================
   // FILE — create

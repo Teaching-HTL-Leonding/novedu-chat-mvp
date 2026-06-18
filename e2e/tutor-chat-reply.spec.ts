@@ -20,9 +20,9 @@ const TUTOR_URL = `${RAW_TUTORS}/linked-list-tutor.yaml`;
 test.setTimeout(120_000);
 
 // @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
-test("sending a message gets a non-empty reply from the tutor", { tag: "@live" }, async ({
-  page,
-}) => {
+test("sending a message gets a non-empty reply from the tutor", {
+  tag: ["@live", "@live-llm"],
+}, async ({ page }) => {
   await page.goto(`/${await mintTutorCode({ tutor: TUTOR_URL })}`);
 
   // Wait for the chat to initialize (the composer appears).

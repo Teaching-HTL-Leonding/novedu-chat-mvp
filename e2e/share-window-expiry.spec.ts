@@ -10,9 +10,9 @@ import { mintTutorCode } from "./tutor-code.utils";
 test.setTimeout(90_000);
 
 // @live: minting the code and every chat request need the live database.
-test("when the window closes mid-session the chat stays on screen", { tag: "@live" }, async ({
-  page,
-}) => {
+test("when the window closes mid-session the chat stays on screen", {
+  tag: ["@live", "@live-db"],
+}, async ({ page }) => {
   // A window that ends shortly after the page loads. Generous enough for a dev
   // compile; the test then waits out whatever remains.
   const endOffset = 25;

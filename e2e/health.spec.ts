@@ -41,9 +41,9 @@ test.describe("as a teacher", () => {
   test.setTimeout(60_000);
 
   // @live: probes hit the real Azure SQL DB + SCCH endpoint — excluded in CI (test:e2e:ci).
-  test("renders the shell immediately and resolves all probes", { tag: "@live" }, async ({
-    page,
-  }) => {
+  test("renders the shell immediately and resolves all probes", {
+    tag: ["@live", "@live-llm"],
+  }, async ({ page }) => {
     await page.goto("/health");
 
     // Shell facts (session-derived, no probe round-trip) are correct at once.

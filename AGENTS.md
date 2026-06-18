@@ -213,13 +213,17 @@ wiring real infra into CI. This is a public teaching repo — fork PRs run untru
 code on our runners. Invariants:
 
 - **`qa.yml` (runs on fork `pull_request`) stays secret-free** — no `secrets.*`,
-  `permissions: contents: read`, dummy `env:` values only. The secret-bearing
-  workflow is **`docker-publish.yml`**, which runs only on `push` to `main` /
-  `workflow_dispatch` (forks cannot trigger it).
-- **Live tests never run on a fork `pull_request`.** `@live` tests (real Azure SQL
-  / SCCH) are excluded via `npm run test:e2e:ci`; real credentials may only run on
-  a trusted trigger (push to `main`, a schedule, or a reviewer-gated environment).
-  **Never add `pull_request_target`.**
+  `permissions: contents: read`, dummy `env:` values only. Its `e2e` job runs an
+  **ephemeral SQL Server container** (non-secret dummy SA password, reached via SQL
+  auth) so the DB-backed `@live-db` tests run on PRs without any real credential.
+  The secret-bearing workflow is **`docker-publish.yml`**, which runs only on
+  `push` to `main` / `workflow_dispatch` (forks cannot trigger it).
+- **No REAL credentials on a fork `pull_request`.** The live tag is split:
+  `@live-db` (SQL Server, no LLM) runs in CI against the non-secret container;
+  `@live-llm` (the SCCH LLM — geo-blocked to Austria) is excluded via
+  `npm run test:e2e:ci` (`--grep-invert @live-llm`) and runs local-only. Real Azure
+  SQL / SCCH may only run on a trusted trigger (push to `main`, a schedule, or a
+  reviewer-gated environment). **Never add `pull_request_target`.**
 
 ### Testing strategy → `docs/testing.md`
 
@@ -227,12 +231,17 @@ Read it before adding a test or tagging one `@live`. Invariants:
 
 - **Prefer fast, secret-free unit/component tests** (Vitest `unit` =
   `**/*.unit.test.{ts,tsx}`, `component` = `**/*.browser.test.tsx`). A test is
-  `@live` **only** if it genuinely needs the real DB or LLM — not just because the
-  code path sits behind one. Gate checks (which short-circuit before the runtime)
-  and pure-prop rendering belong in fast tests, mocking the I/O seams while keeping
-  the security-critical pure module (e.g. `lib/thread-token.ts`) REAL.
-- A single **`@live`** tag is the boundary: CI runs everything else; the `@live`
-  set is the local-only pre-push smoke (`npm run test:e2e -- --grep @live`).
+  `@live` **only** if it genuinely needs the real DB (`@live-db`) or LLM
+  (`@live-llm`) — not just because the code path sits behind one. Gate checks
+  (which short-circuit before the runtime) and pure-prop rendering belong in fast
+  tests, mocking the I/O seams while keeping the security-critical pure module
+  (e.g. `lib/thread-token.ts`) REAL.
+- Every live test carries **`@live`** plus exactly one of **`@live-db`** (needs a
+  SQL Server) or **`@live-llm`** (also needs the SCCH LLM). CI runs hermetic +
+  `@live-db` against an **ephemeral SQL Server container** and excludes `@live-llm`
+  (`npm run test:e2e:ci` = `--grep-invert @live-llm`); `@live-llm` is local-only
+  (SCCH is geo-blocked to Austria). `npm run test:e2e -- --grep @live` is the full
+  local smoke.
 
 ### Publishing the `@novedu/cli` npm package → `docs/cli-publish.md`
 

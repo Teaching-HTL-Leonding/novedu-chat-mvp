@@ -20,8 +20,9 @@ export const VALID_TUTOR_URL = `${RAW_TUTORS}/simple-tutor.yaml`;
 export const BROKEN_TUTOR_URL = `${RAW_TUTORS}/broken-tutor.yaml`;
 
 // Rows minted here are attributed to a recognizable fake teacher, so they are
-// easy to tell apart (and clean up) in the table. Short windows expire fast
-// and the server's hourly GC removes them.
+// easy to tell apart (and clean up) in the table. There is no automatic GC, so a
+// spec that mints a code cleans up after itself; in CI the whole SQL Server
+// container is ephemeral and discarded with the runner, so nothing accumulates.
 const E2E_CREATOR = "e2e-test-suite";
 
 const CODE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";

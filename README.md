@@ -169,14 +169,15 @@ npm run start
 | `npm run lint` / `npm run format` | Biome lint only / format-write only. |
 | `npm run typecheck` | `tsc --noEmit`. |
 | `npm run test` | Vitest (unit + component). (`test:unit` / `test:component` for one project.) |
-| `npm run test:e2e` | Playwright end-to-end tests. (`test:e2e:ci` skips `@live` tests needing real infra.) |
+| `npm run test:e2e` | Playwright end-to-end tests. (`test:e2e:ci` runs hermetic + `@live-db` against a SQL container, skips `@live-llm`.) |
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
 | `npm run qa` | `check` + `typecheck` + `test` + `build`. (`qa:e2e` adds the e2e suite.) |
 
 > Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
 
-> Testing layers, the `@live` boundary, and the patterns for testing the chat gate
-> without a database or LLM are documented in [`docs/testing.md`](docs/testing.md).
+> Testing layers, the `@live-db` / `@live-llm` split (and how DB-backed live tests
+> run in CI against a SQL Server container), and the patterns for testing the chat
+> gate without a database or LLM are documented in [`docs/testing.md`](docs/testing.md).
 
 ## Tutors
 
