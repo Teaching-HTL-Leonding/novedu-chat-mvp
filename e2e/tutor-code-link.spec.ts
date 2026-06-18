@@ -9,8 +9,9 @@ import { mintTutorCode } from "./tutor-code.utils";
 // window <time>) is now covered by fast tests that need no database:
 //   - the page's consumption of checkTutorCode → app/[code]/page.unit.test.tsx
 //   - the rejection components themselves → tests/component/tutor-code-error.browser.test.tsx
-// What remains here is one @live happy-path smoke that genuinely needs a minted
-// code + the real chat runtime (local-only; excluded in CI via test:e2e:ci).
+// What remains here is one @live-db happy-path smoke that genuinely needs a minted
+// code + a real database (no LLM — the composer renders without SCCH), so it runs
+// in CI against the SQL Server container as well as locally.
 
 // The valid-code smoke fetches the sample tutor from GitHub — give it room.
 test.setTimeout(60_000);
@@ -43,7 +44,9 @@ test("a malformed code in the URL is rejected without a database lookup", async 
   await expect(page.getByPlaceholder("Type a message...")).toHaveCount(0);
 });
 
-test("a valid code opens the tutor chat for a student", { tag: "@live" }, async ({ page }) => {
+test("a valid code opens the tutor chat for a student", { tag: ["@live", "@live-db"] }, async ({
+  page,
+}) => {
   const code = await mintTutorCode();
   await page.goto(`/${code}`);
 

@@ -68,7 +68,7 @@ async function sendTurnAndSettle(
 
 // @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
 test("a two-turn chat stores each turn once (no replayed-history duplicates)", {
-  tag: "@live",
+  tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
   const code = await mintTutorCode({ tutor: TUTOR_URL });
   await page.goto(`/${code}`);

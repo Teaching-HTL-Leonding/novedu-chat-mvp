@@ -3,12 +3,12 @@ import { expect, test } from "@playwright/test";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "../lib/azure-credential";
 
-// @live: opens REAL Azure SQL connections — one per auth mode — to prove the
+// @live-db: opens REAL SQL connections — one per auth mode — to prove the
 // `buildMssqlConnectionConfig` seam (lib/azure-credential.ts) authenticates
 // end-to-end under BOTH supported modes: passwordless Microsoft Entra ID and
-// classic SQL user/password. Excluded from CI by `test:e2e:ci`
-// (`--grep-invert @live`); the secret-bearing SQL-auth string lives only in a
-// local `.env` (provisioning + how-to-run live in docs/testing.md).
+// classic SQL user/password. The SQL-auth half RUNS IN CI against the ephemeral
+// SQL Server container; the Entra half needs real Azure SQL + `az login`, so it
+// SKIPS in CI and runs locally. See docs/testing.md.
 //
 // Each test builds its pool through the REAL seam (not a hand-rolled config),
 // asserts the chosen auth MODE, then runs a query that reports WHICH principal
@@ -40,10 +40,18 @@ async function probe(connectionString: string): Promise<Probe> {
 
 test.describe("Azure SQL auth modes", () => {
   test("a passwordless connection string authenticates via Entra ID", {
-    tag: "@live",
+    tag: ["@live", "@live-db"],
   }, async () => {
     const connectionString = process.env.MSSQL_CONNECTION_STRING;
     test.skip(!connectionString, "MSSQL_CONNECTION_STRING is not set");
+    // In CI, MSSQL_CONNECTION_STRING points at a SQL-auth container, so this
+    // Entra-only test SKIPS there; it runs locally where the string is
+    // passwordless (real Azure SQL + `az login`). Detected via the real seam.
+    test.skip(
+      buildMssqlConnectionConfig(connectionString as string).authentication?.type !==
+        "token-credential",
+      "MSSQL_CONNECTION_STRING is a SQL-auth string, not passwordless Entra",
+    );
 
     const { config, who, db } = await probe(connectionString as string);
 
@@ -57,7 +65,7 @@ test.describe("Azure SQL auth modes", () => {
   });
 
   test("a User ID/Password connection string authenticates as that SQL login", {
-    tag: "@live",
+    tag: ["@live", "@live-db"],
   }, async () => {
     const connectionString = process.env.MSSQL_SQLAUTH_CONNECTION_STRING;
     // By design this test PASSES by skipping when the SQL-auth string is absent,

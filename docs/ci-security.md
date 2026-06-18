@@ -25,15 +25,20 @@ run untrusted PR code.**
 | **`docker-publish.yml`** | `push` to `main`, `workflow_dispatch` | No | Yes |
 
 - **`qa.yml`** is the per-PR quality gate (biome, typecheck, unit + component
-  tests, `next build`, hermetic Playwright e2e, and a production **Docker image
-  build**). It runs untrusted fork code, so it is **secret-free by construction**:
-  it references no `secrets.*`, sets `permissions: contents: read`, and feeds only
-  **test-only dummy values** in its `env:` block. Those dummies exist because
-  `auth.ts` calls `required()` for the `AZURE_*` vars and `TEACHER_GROUP_ID` at
-  module load (also during `next build`), and `AUTH_SECRET` only has to *match*
-  between the e2e helpers and the dev server — e2e tests mint Auth.js session
-  cookies directly, so no real Entra round-trip happens. There is nothing real in
-  this environment to steal.
+  tests, `next build`, Playwright e2e — hermetic + DB-backed `@live-db` — and a
+  production **Docker image build**). It runs untrusted fork code, so it is
+  **secret-free by construction**: it references no `secrets.*`, sets
+  `permissions: contents: read`, and feeds only **test-only dummy values** in its
+  `env:` block. Those dummies exist because `auth.ts` calls `required()` for the
+  `AZURE_*` vars and `TEACHER_GROUP_ID` at module load (also during `next build`),
+  and `AUTH_SECRET` only has to *match* between the e2e helpers and the dev server —
+  e2e tests mint Auth.js session cookies directly, so no real Entra round-trip
+  happens. There is nothing real in this environment to steal.
+  - The `e2e` job runs an **ephemeral SQL Server 2022 service container** so the
+    DB-backed `@live-db` tests run on every PR. This stays secret-free: the
+    container's `MSSQL_SA_PASSWORD` is a **non-secret dummy literal**, the app
+    reaches it with throwaway **SQL auth** (not Entra), and the database is
+    discarded with the runner. No `secrets.*`, no real Azure SQL.
   - The `prod-build` job (PR-only — `if: github.event_name == 'pull_request'`)
     reproduces `docker-publish.yml`'s multi-stage image build so a build break
     surfaces on the PR instead of after merge. It is **also secret-free**: it never
@@ -71,12 +76,14 @@ run untrusted PR code.**
 - **`qa.yml` stays secret-free.** Never add a `secrets.*` reference or a real
   credential to a workflow that runs on `pull_request`. The `env:` block is
   dummies only.
-- **Live tests never run on a fork `pull_request`.** Tests that need real infra
-  (Azure SQL / the SCCH LLM) are tagged `@live` and excluded from the PR run via
-  `npm run test:e2e:ci` (`--grep-invert @live`). If the project ever splits that
-  tag (e.g. `@db` vs `@llm`) or wants live tests in CI, they must run only on a
-  **trusted trigger** — `push` to `main`, a `schedule`, or a reviewer-gated
-  GitHub *Environment* — never on fork PR code.
+- **No real credentials on a fork `pull_request`.** The live tag is split:
+  `@live-db` (needs a SQL Server, no LLM) runs in CI against the **ephemeral
+  container** above — safe because the container is a non-secret dummy, not real
+  infra. `@live-llm` (needs the SCCH LLM — geo-blocked to Austria +
+  un-containerizable) is excluded from the PR run via `npm run test:e2e:ci`
+  (`--grep-invert @live-llm`) and runs local-only. Tests against **real** Azure SQL
+  or SCCH must run only on a **trusted trigger** — `push` to `main`, a `schedule`,
+  or a reviewer-gated GitHub *Environment* — never on fork PR code.
 - **Keep `permissions:` least-privilege.** `qa.yml` only reads code and runs
   tests, so `contents: read`. Any workflow that needs more should request the
   minimum it needs, scoped to the job.

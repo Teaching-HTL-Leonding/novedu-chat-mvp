@@ -56,7 +56,9 @@ async function openChat(page: import("@playwright/test").Page, tutorFile: string
 
 // A REAL multi-modal round-trip: attach a solid-red PNG and ask for its color.
 // @live: needs the SCCH model endpoint + Azure SQL — excluded in CI (test:e2e:ci).
-test("the tutor answers a question about an attached image", { tag: "@live" }, async ({ page }) => {
+test("the tutor answers a question about an attached image", {
+  tag: ["@live", "@live-llm"],
+}, async ({ page }) => {
   // Image upload + a full vision-model round-trip — give it room.
   test.setTimeout(120_000);
   await openChat(page, "vision-tutor.yaml");
