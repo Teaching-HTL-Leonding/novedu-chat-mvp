@@ -22,12 +22,13 @@ The app hosts two kinds of YAML files (explained in §4):
 Today teachers edit these as raw YAML in a code editor (`/files` → "Edit"). Your job
 is a **form-based GUI** alternative. Two deliverables:
 
-1. **GUI editor** (`StudentFileEditor`) — reached from the **"Edit in GUI"** button on
-   the `/files` list. Loads an existing file and lets the teacher edit it with form
-   controls, then **validate** and **save** (and **delete**). Full lifecycle.
+1. **GUI editor** (`StudentFileEditor`) — reached from the **"Edit in GUI"** button in
+   the `/files` list **Actions column** (it links to `/files/gui/edit/<name>`). Loads an
+   existing file and lets the teacher edit it with form controls, then **validate** and
+   **save** (and **delete**). Full lifecycle.
 2. **GUI viewer** (`StudentFileViewer`) — reached from the **"View in GUI"** button on
-   the `/validate-tutor` page. **Read-only**: it shows a YAML fetched from an external
-   URL (e.g. GitHub) in your GUI. No saving.
+   the `/validate-tutor` page (it links to `/files/gui/view?url=…&kind=…`). **Read-only**:
+   it shows a YAML fetched from an external URL (e.g. GitHub) in your GUI. No saving.
 
 The two buttons and the routes already exist and render your (currently placeholder)
 components — so you can see your work in the real app from day one.
@@ -156,7 +157,8 @@ Rules your GUI must respect (the validator enforces all of these):
 ## 5. The API you use — `@/lib/yaml-files`
 
 This is the **only** app module you may import (besides your own files and npm
-packages). It re-exports the exact functions the built-in editor uses.
+packages). It re-exports the exact functions the built-in editor uses. (This boundary
+is a convention enforced by review / CODEOWNERS, not lint.)
 
 ### Load
 
@@ -357,7 +359,7 @@ npm run typecheck        # TypeScript
 
 - Keep unit/component tests **next to** your components.
 - Tag an e2e test that needs the real database `{ tag: ["@live", "@live-db"] }` —
-  those now **run in CI** against an ephemeral SQL Server container, so your
+  those **run in CI** against an ephemeral SQL Server container, so your
   DB-backed specs get CI coverage. You never need `@live-llm` (the GUI doesn't use
   the LLM). Leave a spec untagged if it needs no real database. See `docs/testing.md`.
 - Prefer many small, fast unit tests over a few slow e2e ones.

@@ -165,7 +165,7 @@ runtime is built, and the page maps a check result to a view. The pattern (see
    `renderToStaticMarkup`; assert status / JSON / HTML.
 
 This is how the thread-ownership, window-enforcement, and rejection-rendering
-behaviors — formerly only reachable via `@live` e2e — now run in CI.
+behaviors run in CI without infra.
 
 ## CI
 

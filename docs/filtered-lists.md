@@ -108,8 +108,8 @@ and behaves identically and improves once. The pieces:
 | per-list bulk action | `lib/*-actions.ts` (`"use server"`) | gated like the single delete; calls the store's bulk function; passed to `DeleteSelectedButton` as a prop |
 
 **The reuse rule — identical business logic, never a second copy.** A bulk delete
-must do *exactly* what pressing each row's trash button does. So each single-delete
-was refactored into a **per-item helper that takes a `DbExecutor`** (the shared
+must do *exactly* what pressing each row's trash button does. Each single delete and
+its bulk counterpart share a **per-item helper that takes a `DbExecutor`** (the shared
 `Db | Transaction` type from `lib/db`): `closeActiveFile` (files), `deleteCodeRows`
 + `deleteCodeConversations` (tutor codes). The single delete calls the helper on the
 root handle; the bulk function loops it inside **one `getDb().transaction(...)`**.

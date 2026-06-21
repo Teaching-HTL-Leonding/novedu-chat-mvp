@@ -32,7 +32,7 @@ publish workflow carries `id-token: write` but no `secrets.*`, and runs only on 
 The trust is pinned on npmjs.com to **this repo + this workflow filename**, so a
 fork minting its own id-token in its own run cannot publish our package.
 
-### One-time npmjs.com setup (already done)
+### One-time npmjs.com setup
 
 `npmjs.com → @novedu/cli → Settings → Trusted Publishing → GitHub Actions`:
 
@@ -116,9 +116,9 @@ npm view @novedu/cli@<version> dist.attestations
 
 ## Manual publish (bootstrap / break-glass)
 
-The very first publish (`0.1.0`) was done by hand to *create* the package — npm's
-trusted-publisher config can only be attached to a package that already exists.
-The same steps work as a break-glass path if CI is unavailable:
+The package must be created by a manual publish before npm's trusted-publisher
+config can attach (it only attaches to a package that already exists). The same
+manual steps are the break-glass path if CI is unavailable:
 
 ```bash
 npm whoami                              # must be a publisher in the @novedu org

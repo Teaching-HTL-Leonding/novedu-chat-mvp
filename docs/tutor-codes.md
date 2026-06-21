@@ -80,7 +80,7 @@ since `app/[code]` catches all non-static top-level paths.
 `/tutor-codes/new` ("New Tutor Code", teacher-only via `requireTeacherPage()` on
 the page + `requireTeacherUserId()` in the action; reached from the "New Tutor
 Code" button on `/tutor-codes`, or with `?tutor=<url>` pre-filled from the YAML
-Files "create tutor code" shortcut — the old `/share-tutor` route 308-redirects
+Files "create tutor code" shortcut — `/share-tutor` 308-redirects
 here): tutor URL, optional note, window as `datetime-local` (converted to unix
 seconds IN THE BROWSER — the only place the teacher's timezone is known). The
 action (`lib/tutor-code-actions.ts`) validates the input, then loads the tutor
@@ -103,7 +103,7 @@ no YAML re-validation is needed.
 `/tutor-codes` ("Shared Tutor Codes", teacher-only) lists **ALL** codes — any
 effective teacher may see and manage every code (RBAC planned) — via
 `listAllTutorCodes({ search, createdBy })`, newest first, active + not-yet-started
-(`upcoming` badge) + already-expired (`expired` badge), since codes are no longer
+(`upcoming` badge) + already-expired (`expired` badge), since codes are not
 garbage-collected. Filtering (a text contains-match over note/code + an "Only my
 codes" toggle) happens **in the database** through URL search params, never in
 memory — the shared filtered-list concept (`docs/filtered-lists.md`). Each row:
@@ -173,7 +173,7 @@ already stored, so Mastra appends only the new user message + its reply. The
 flip side: the model's whole view of the conversation is then the recalled
 `lastMessages` window (`app/mastra/tutor-agent.ts`, currently **40** ≈ 20
 exchanges) — raise it if longer sessions must see further back. Conversations
-recorded BEFORE this fix still hold the telescoped duplicates; the viewer
+recorded without this trimming hold telescoped duplicates; the viewer
 collapses them on read (see below).
 
 ## Stats & conversation viewer
@@ -204,8 +204,8 @@ student-side isolation and is unaffected.
   `resourceId = code`) and converts each stored Mastra message to an AG-UI
   `Message` (text rebuilt from `parts`, since the top-level `content` is
   sometimes absent; `file` parts become inline images). It then **collapses any
-  replayed history** (`collapseReplayedRuns`): conversations recorded before the
-  route-level `trimToNewTurn` fix stored the history as telescoping runs
+  replayed history** (`collapseReplayedRuns`): conversations that stored the
+  full replayed history as telescoping runs
   `R1 ⊂ R2 ⊂ … ⊂ Rk` (each run re-sent the whole prefix and appended one turn),
   so the viewer would otherwise show each turn many times. A run is dropped only
   when it is an exact element-wise prefix of the next, so a clean (already

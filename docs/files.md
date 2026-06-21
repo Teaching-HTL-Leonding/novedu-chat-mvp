@@ -67,8 +67,8 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
 `undefined` / `{ ok: false, reason }`, which callers turn into a graceful message.
 
 - `FILE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,100}$/`, the pure `validateFileName()` and
-  `isFileKind()` now live in **`lib/file-name.ts`** (no DB import) and are **re-exported
-  here** for back-compat — one definition of a legal name (trims, then enforces the
+  `isFileKind()` live in **`lib/file-name.ts`** (no DB import) and are re-exported
+  here — one definition of a legal name (trims, then enforces the
   pattern), shared by the GET route, the create action, AND the client-safe
   `@/lib/yaml-files` facade (which must not import the DB-bound store).
 - `listFiles({ search?, createdBy? })` — active rows, newest first, **without**
@@ -146,6 +146,16 @@ The public origin is resolved once on the server (`resolveAppOrigin` /
 `resolveAppOriginOr` in `lib/app-origin.ts`) and the public URL is built by
 `filePublicUrl` / `filesUrlPrefix` in `lib/file-url.ts` (pure, importable by client
 and server).
+
+### App-hosted URL resolution — `lib/app-hosted-fetcher.ts`
+
+Resolving a YAML reference (the save-time validator, the quiz loader, and the GUI's
+`loadYamlFromUrlAction`) goes through one shared resolver, **`appHostedFetcher`** in
+`lib/app-hosted-fetcher.ts`. It handles absolute / relative / app-hosted URLs and
+reads an app-hosted file straight from the DB (`getActiveFile`) instead of a loopback
+HTTP fetch. It is a plain module (NOT `"use server"`), so every server module can
+import it; `lib/files-actions.ts` and `lib/quiz-fetch.ts` both do. Don't reimplement
+this resolution at a call site.
 
 ## Public GET endpoint & the access gate
 

@@ -44,7 +44,7 @@ runs don't have to rediscover the setup:
   `isTeacher`, which is stored on the token and exposed as **`session.user.isTeacher`**.
   The `session.user.preferredUsername` field is likewise carried over from the ID token
   (`name`/`email`/`image` are populated by Auth.js automatically). The flag is computed
-  **once at sign-in** — sessions minted before it existed read `false` until re-sign-in.
+  **once at sign-in**, so a stale session reads `false` until re-sign-in.
   Gate teacher-only server actions / route handlers with
   **`requireEffectiveTeacher()`** from `lib/student-mode.ts` (throws → respond 403);
   it honors student mode (see below). `requireTeacher()` in `auth.ts` checks only the
