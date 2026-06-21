@@ -68,9 +68,9 @@ import { recentCodes, tutorCodes, userChats } from "@/lib/db/schema";
 import {
   deleteTutorCodeAndData,
   deleteTutorCodesAndData,
+  getCodeStats,
   getConversationMessages,
   getInteractionCounts,
-  getTutorCodeStats,
 } from "@/lib/tutor-stats-store";
 
 // Convenience: the stored v2 message envelope, JSON-stringified into a row.
@@ -118,7 +118,7 @@ describe("getInteractionCounts", () => {
   });
 });
 
-describe("getTutorCodeStats", () => {
+describe("getCodeStats", () => {
   it("counts conversations and distinct students, mapping each interaction (non-anonymous)", async () => {
     const t1 = new Date("2026-06-12T10:00:00Z");
     const t2 = new Date("2026-06-12T10:05:00Z");
@@ -130,7 +130,7 @@ describe("getTutorCodeStats", () => {
       // Anonymous conversation (no recorded user) — counts toward no student.
       { threadId: "th4", firstAt: t1, lastAt: t2, userMessageCount: 1, userId: null },
     ];
-    const stats = await getTutorCodeStats("aaaaaaaaaa", false);
+    const stats = await getCodeStats("aaaaaaaaaa", false);
     expect(stats?.conversations).toBe(4);
     expect(stats?.studentCount).toBe(2);
     expect(stats?.interactions[0]).toEqual({
@@ -153,7 +153,7 @@ describe("getTutorCodeStats", () => {
       { threadId: "th1", firstAt: t1, lastAt: t2, userMessageCount: 3, userId: "stu-1" },
       { threadId: "th2", firstAt: t1, lastAt: t2, userMessageCount: 2, userId: "stu-2" },
     ];
-    const stats = await getTutorCodeStats("aaaaaaaaaa", true);
+    const stats = await getCodeStats("aaaaaaaaaa", true);
     // Conversations and message counts are still reported — only the identity goes.
     expect(stats?.conversations).toBe(2);
     expect(stats?.studentCount).toBe(0);
@@ -163,7 +163,7 @@ describe("getTutorCodeStats", () => {
 
   it("returns zeroes for a code with no conversations", async () => {
     fake.state.recordset = [];
-    await expect(getTutorCodeStats("aaaaaaaaaa", false)).resolves.toEqual({
+    await expect(getCodeStats("aaaaaaaaaa", false)).resolves.toEqual({
       conversations: 0,
       studentCount: 0,
       interactions: [],
@@ -172,7 +172,7 @@ describe("getTutorCodeStats", () => {
 
   it("returns undefined instead of throwing when the query fails", async () => {
     fake.state.executeError = new Error("connection lost");
-    await expect(getTutorCodeStats("aaaaaaaaaa", false)).resolves.toBeUndefined();
+    await expect(getCodeStats("aaaaaaaaaa", false)).resolves.toBeUndefined();
   });
 });
 

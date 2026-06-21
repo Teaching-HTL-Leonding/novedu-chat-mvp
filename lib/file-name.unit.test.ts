@@ -27,9 +27,10 @@ describe("validateFileName", () => {
 });
 
 describe("isFileKind", () => {
-  it("is true only for 'tutor' or 'fragment'", () => {
+  it("is true only for 'tutor', 'fragment' or 'quiz'", () => {
     expect(isFileKind("tutor")).toBe(true);
     expect(isFileKind("fragment")).toBe(true);
+    expect(isFileKind("quiz")).toBe(true);
     expect(isFileKind("other")).toBe(false);
     expect(isFileKind(undefined)).toBe(false);
   });

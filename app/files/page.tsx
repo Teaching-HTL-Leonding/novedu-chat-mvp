@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
-import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon } from "@/components/icons";
+import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon, StatsIcon } from "@/components/icons";
 import { ListFilterBar } from "@/components/list-filter-bar";
 import listStyles from "@/components/list-page.module.css";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
@@ -94,7 +94,13 @@ export default async function FilesPage({
       header: "Kind",
       render: (row) => (
         <span
-          className={`${styles.kindBadge} ${row.kind === "tutor" ? styles.kindTutor : styles.kindFragment}`}
+          className={`${styles.kindBadge} ${
+            row.kind === "tutor"
+              ? styles.kindTutor
+              : row.kind === "quiz"
+                ? styles.kindQuiz
+                : styles.kindFragment
+          }`}
         >
           {row.kind}
         </span>
@@ -143,6 +149,26 @@ export default async function FilesPage({
               >
                 <ShareIcon />
               </Link>
+            ) : null}
+            {row.kind === "quiz" ? (
+              <>
+                <Link
+                  href={`/share-quiz?quiz=${encodeURIComponent(url)}`}
+                  className={styles.iconButton}
+                  aria-label="Create quiz link"
+                  title="Create quiz link"
+                >
+                  <ShareIcon />
+                </Link>
+                <Link
+                  href={`/quizzes/${row.name}/discussions`}
+                  className={styles.iconButton}
+                  aria-label="View quiz discussions"
+                  title="Discussions"
+                >
+                  <StatsIcon />
+                </Link>
+              </>
             ) : null}
             <Link
               href={`/files/edit/${row.name}`}
@@ -211,8 +237,8 @@ export default async function FilesPage({
           isFiltered={q !== ""}
           emptyState={
             <>
-              No files yet. <Link href="/files/new">Create one</Link> to host a tutor or fragment
-              YAML.
+              No files yet. <Link href="/files/new">Create one</Link> to host a tutor, fragment or
+              quiz YAML.
             </>
           }
           noMatchState="No files match your filter."

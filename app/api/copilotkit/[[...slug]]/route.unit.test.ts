@@ -20,6 +20,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const auth = vi.hoisted(() => vi.fn());
 const checkTutorCode = vi.hoisted(() => vi.fn());
 const recordUserChat = vi.hoisted(() => vi.fn());
+const recordQuizChat = vi.hoisted(() => vi.fn());
+const loadQuiz = vi.hoisted(() => vi.fn());
 const getLocalAgents = vi.hoisted(() => vi.fn(() => []));
 const endpointFetch = vi.hoisted(() =>
   vi.fn(async (_req: Request) => new Response("{}", { status: 200 })),
@@ -27,7 +29,10 @@ const endpointFetch = vi.hoisted(() =>
 
 vi.mock("@/auth", () => ({ auth }));
 vi.mock("@/lib/tutor-code-store", () => ({ checkTutorCode }));
-vi.mock("@/lib/user-chat-store", () => ({ recordUserChat }));
+vi.mock("@/lib/user-chat-store", () => ({ recordUserChat, recordQuizChat }));
+// Mock the quiz LOADER (DB/network) but keep the quiz-LINK HMAC real, like the
+// thread token — the signature check is the security boundary under test.
+vi.mock("@/lib/quiz-fetch", () => ({ loadQuiz }));
 // Importing the real Mastra instance would pull in @mastra/mssql + the Azure
 // credential chain; the handler only passes it through to getLocalAgents.
 vi.mock("@/app/mastra", () => ({ mastra: {} }));
@@ -51,6 +56,7 @@ vi.mock("@mastra/core/request-context", () => ({
 // thread-token module is REAL and memoizes it, so reset between tests.
 process.env.AUTH_SECRET = "test-secret-for-route-unit";
 
+import { getQuizLinkSecret, resetQuizLinkSecretForTests, signQuizPayload } from "@/lib/quiz-link";
 import {
   getThreadTokenSecret,
   resetThreadTokenSecretForTests,
@@ -89,13 +95,49 @@ function runRequest(
   });
 }
 
+// A signed quiz link reused by the quiz-branch tests. The window is wide enough
+// to always contain "now"; the secret is the real AUTH_SECRET-derived one.
+const QUIZ_URL = "https://example.com/api/files/q";
+const QUIZ_START = 1000;
+const QUIZ_END = 9_999_999_999;
+
+function quizRunRequest(
+  opts: { threadId?: string; token?: string; agent?: string; sig?: string } = {},
+) {
+  const sig =
+    opts.sig ??
+    signQuizPayload({ quiz: QUIZ_URL, start: QUIZ_START, end: QUIZ_END }, getQuizLinkSecret());
+  const headers: Record<string, string> = {
+    "x-quiz-url": QUIZ_URL,
+    "x-quiz-start": String(QUIZ_START),
+    "x-quiz-end": String(QUIZ_END),
+    "x-quiz-sig": sig,
+    "content-type": "application/json",
+  };
+  if (opts.token !== undefined) headers["x-thread-token"] = opts.token;
+  return new Request(`${BASE}/agent/${opts.agent ?? "quizDiscussion"}/run`, {
+    method: "POST",
+    headers,
+    body: runBody(opts.threadId),
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   resetThreadTokenSecretForTests();
+  resetQuizLinkSecretForTests();
   // Default: an authenticated student with a valid code. Individual tests
   // override as needed.
   auth.mockResolvedValue({ user: { id: USER_ID } });
   checkTutorCode.mockResolvedValue({ ok: true, entry: { tutorUrl: "https://example.com/t.yaml" } });
+  loadQuiz.mockResolvedValue({
+    ok: true,
+    quiz: {
+      model: "m",
+      anonymous: true,
+      questions: [{ id: "q1", question: "Q", evaluation: "E" }],
+    },
+  });
   getLocalAgents.mockReturnValue([]);
   endpointFetch.mockResolvedValue(new Response("{}", { status: 200 }));
 });
@@ -222,6 +264,67 @@ describe("happy path past the gate", () => {
     const res = await POST(runRequest({ threadId, token }));
     expect(res.status).toBe(200);
     expect(getLocalAgents).toHaveBeenCalledWith(expect.objectContaining({ resourceId: CODE }));
+  });
+});
+
+describe("quiz discussion branch (signed link + thread token)", () => {
+  function quizToken(threadId: string, code = QUIZ_URL, userId = USER_ID) {
+    return signThreadToken({ code, userId, threadId }, getThreadTokenSecret());
+  }
+
+  it("forwards a discussion run with a valid link + token, scoped to the quiz URL", async () => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(quizRunRequest({ threadId, token: quizToken(threadId) }));
+    expect(res.status).toBe(200);
+    expect(getLocalAgents).toHaveBeenCalledWith(expect.objectContaining({ resourceId: QUIZ_URL }));
+    // The grader is never consulted by the discussion branch.
+    expect(checkTutorCode).not.toHaveBeenCalled();
+  });
+
+  it("404s a quiz request targeting the quizEvaluator agent (grader is never web-reachable)", async () => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(
+      quizRunRequest({ threadId, token: quizToken(threadId), agent: "quizEvaluator" }),
+    );
+    expect(res.status).toBe(404);
+    expect(getLocalAgents).not.toHaveBeenCalled();
+  });
+
+  it("403s a tampered quiz-link signature", async () => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(
+      quizRunRequest({ threadId, token: quizToken(threadId), sig: "deadbeef" }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("403s a thread token bound to a tutor code rather than the quiz URL", async () => {
+    const threadId = crypto.randomUUID();
+    // Token signed with a tutor-style code, not the quiz URL → ownership fails.
+    const res = await POST(quizRunRequest({ threadId, token: quizToken(threadId, CODE) }));
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("tutor branch agent gating", () => {
+  it("404s a tutor-code request targeting a non-tutor agent", async () => {
+    const threadId = crypto.randomUUID();
+    const token = signThreadToken(
+      { code: CODE, userId: USER_ID, threadId },
+      getThreadTokenSecret(),
+    );
+    const res = await POST(
+      new Request(`${BASE}/agent/quizEvaluator/run`, {
+        method: "POST",
+        headers: {
+          "x-tutor-code": CODE,
+          "x-thread-token": token,
+          "content-type": "application/json",
+        },
+        body: runBody(threadId),
+      }),
+    );
+    expect(res.status).toBe(404);
   });
 });
 

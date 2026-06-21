@@ -14,11 +14,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const isEffectiveTeacher = vi.hoisted(() => vi.fn());
 const getTutorCode = vi.hoisted(() => vi.fn());
-const getTutorCodeStats = vi.hoisted(() => vi.fn());
+const getCodeStats = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/student-mode", () => ({ isEffectiveTeacher }));
 vi.mock("@/lib/tutor-code-store", () => ({ getTutorCode }));
-vi.mock("@/lib/tutor-stats-store", () => ({ getTutorCodeStats }));
+vi.mock("@/lib/tutor-stats-store", () => ({ getCodeStats }));
 // next/link needs no router in these static renders — a plain anchor is enough.
 vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => (
@@ -85,7 +85,7 @@ describe("gating", () => {
 
   it("shows a transient notice when stats fail to load", async () => {
     getTutorCode.mockResolvedValue(entry());
-    getTutorCodeStats.mockResolvedValue(undefined);
+    getCodeStats.mockResolvedValue(undefined);
     const html = await render();
     expect(html).toContain("Stats temporarily unavailable");
   });
@@ -94,7 +94,7 @@ describe("gating", () => {
 describe("anonymous code", () => {
   beforeEach(() => {
     getTutorCode.mockResolvedValue(entry({ anonymous: true }));
-    getTutorCodeStats.mockResolvedValue({
+    getCodeStats.mockResolvedValue({
       conversations: 1,
       studentCount: 0,
       interactions: [interaction],
@@ -117,14 +117,14 @@ describe("anonymous code", () => {
 
   it("forwards the frozen anonymous flag so the store redacts ids", async () => {
     await render();
-    expect(getTutorCodeStats).toHaveBeenCalledWith(CODE, true);
+    expect(getCodeStats).toHaveBeenCalledWith(CODE, true);
   });
 });
 
 describe("non-anonymous code", () => {
   beforeEach(() => {
     getTutorCode.mockResolvedValue(entry({ anonymous: false }));
-    getTutorCodeStats.mockResolvedValue({
+    getCodeStats.mockResolvedValue({
       conversations: 1,
       studentCount: 1,
       interactions: [interaction],
@@ -140,14 +140,14 @@ describe("non-anonymous code", () => {
 
   it("forwards anonymous=false to the store", async () => {
     await render();
-    expect(getTutorCodeStats).toHaveBeenCalledWith(CODE, false);
+    expect(getCodeStats).toHaveBeenCalledWith(CODE, false);
   });
 });
 
 describe("empty state", () => {
   it("notes when a code has no conversations yet", async () => {
     getTutorCode.mockResolvedValue(entry());
-    getTutorCodeStats.mockResolvedValue({ conversations: 0, studentCount: 0, interactions: [] });
+    getCodeStats.mockResolvedValue({ conversations: 0, studentCount: 0, interactions: [] });
     const html = await render();
     expect(html).toContain("No conversations yet");
   });

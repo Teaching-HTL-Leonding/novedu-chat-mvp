@@ -32,3 +32,17 @@ test("a tutor-code URL still requires sign-in", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/api\/auth\/signin/);
 });
+
+test("unauthenticated users cannot reach the create-quiz-link page", async ({ page }) => {
+  await page.goto("/share-quiz");
+
+  await expect(page).toHaveURL(/\/api\/auth\/signin/);
+});
+
+test("a quiz link still requires sign-in", async ({ page }) => {
+  // Like a tutor code, the signed quiz link authorizes the quiz + window, never
+  // the user — the Entra gate (proxy.ts) must still apply to `/q`.
+  await page.goto("/q?quiz=https%3A%2F%2Fexample.com%2Fq&start=1&end=9999999999&sig=deadbeef");
+
+  await expect(page).toHaveURL(/\/api\/auth\/signin/);
+});

@@ -57,6 +57,11 @@
   color: color-mix(in srgb, seagreen 70%, var(--foreground));
 }
 
+.kindQuiz {
+  background: color-mix(in srgb, darkorange 22%, transparent);
+  color: color-mix(in srgb, darkorange 70%, var(--foreground));
+}
+
 /* Square icon button shared by every row action — defined once in the shared
    module so the Files and Tutor-Codes screens can't drift. */
 .iconButton {

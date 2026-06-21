@@ -75,19 +75,19 @@ export interface Interaction {
   userMessageCount: number;
   /**
    * The student's session user id (Entra `oid`), if recorded AND the code is non-anonymous.
-   * `getTutorCodeStats` forces this to `null` for anonymous codes (see there),
+   * `getCodeStats` forces this to `null` for anonymous codes (see there),
    * so a thread is attributable here only for an `anonymous: false` tutor.
    */
   userId: string | null;
 }
 
 /** The detailed stats for a single tutor code. */
-export interface TutorCodeStats {
+export interface CodeStats {
   /** Number of qualifying conversations. */
   conversations: number;
   /**
    * Distinct students with at least one conversation. Always `0` for anonymous
-   * codes — `getTutorCodeStats` zeroes it there, so it is meaningful only for
+   * codes — `getCodeStats` zeroes it there, so it is meaningful only for
    * `anonymous: false` tutors.
    */
   studentCount: number;
@@ -111,10 +111,10 @@ export interface TutorCodeStats {
  * frozen display flag are read separately; see docs/tutor-codes.md). The UI's
  * own `!anonymous` gating is now belt-and-braces on top of this.
  */
-export async function getTutorCodeStats(
+export async function getCodeStats(
   code: string,
   anonymous: boolean,
-): Promise<TutorCodeStats | undefined> {
+): Promise<CodeStats | undefined> {
   try {
     const res = await getDb().execute<{
       threadId: string;

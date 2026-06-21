@@ -111,9 +111,23 @@ describe("createFileAction", () => {
     const result = await createFileAction({ ...FRAGMENT, kind: "nonsense" });
     expect(result).toMatchObject({
       ok: false,
-      message: expect.stringMatching(/tutor or a fragment/i),
+      message: expect.stringMatching(/tutor, fragment or quiz/i),
     });
     expect(mocks.createFile).not.toHaveBeenCalled();
+  });
+
+  it("stores a quiz WITHOUT validating it (stub) and denormalizes null title/description", async () => {
+    await expect(
+      createFileAction({ name: "my-quiz", kind: "quiz", content: "id: q\n" }),
+    ).rejects.toThrow("REDIRECT:/files/edit/my-quiz");
+    // The quiz path runs no validator (neither tutor nor fragment) …
+    expect(mocks.loadAndBuildTutorPrompt).not.toHaveBeenCalled();
+    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
+    // … and stores with NULL title/description, like a fragment.
+    expect(mocks.createFile).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "quiz", title: null, description: null }),
+      "teacher-1",
+    );
   });
 
   it("rejects empty content", async () => {
@@ -259,6 +273,21 @@ describe("validateNewFileAction", () => {
     const result = await validateNewFileAction(FRAGMENT);
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
     expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
+  });
+
+  it("passes a quiz with the not-implemented warning and never validates or stores", async () => {
+    const result = await validateNewFileAction({
+      name: "my-quiz",
+      kind: "quiz",
+      content: "id: q\n",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      warnings: [{ code: "QUIZ_VALIDATION_NOT_IMPLEMENTED" }],
+    });
+    expect(mocks.loadAndBuildTutorPrompt).not.toHaveBeenCalled();
+    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
+    expect(mocks.createFile).not.toHaveBeenCalled();
   });
 
   it("rejects a malformed name without validating", async () => {

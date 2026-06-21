@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { getDb } from "@/lib/db";
 import { userChats } from "@/lib/db/schema";
 import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
@@ -105,5 +106,53 @@ export async function recordUserChat(
     }
     // NOT cached: a transient DB error should retry on the next run request.
     console.error("user-chat-store: failed to record user chat", error);
+  }
+}
+
+// A QUIZ discussion's resourceId is the full quiz URL, which does NOT fit
+// `novedu_user_chats.code` (varchar(10), sized for tutor codes). The quiz stats
+// query (lib/tutor-stats-store) joins by `thread_id`, so the stored `code` is
+// incidental for quizzes — we store a stable short token instead. The "q:"
+// prefix contains a ':' that a `[a-z0-9]{10}` tutor code never has, so a quiz
+// row can never collide with (or be deleted alongside) a real tutor code.
+function quizChatCode(resourceId: string): string {
+  return `q:${createHash("sha256").update(resourceId).digest("hex").slice(0, 8)}`;
+}
+
+/**
+ * Records the user↔chat link for a QUIZ discussion thread when the quiz opts into
+ * attribution (`anonymous: false`). Unlike `recordUserChat`, the `anonymous` flag
+ * is read by the caller (the runtime route already parsed the quiz YAML) and
+ * passed in — the value is still server-derived, never client-supplied. Mirrors
+ * the dedupe + duplicate-key handling of `recordUserChat`. Never throws.
+ */
+export async function recordQuizChat(
+  resourceId: string,
+  threadId: string,
+  userId: string,
+  anonymous: boolean,
+): Promise<void> {
+  if (!THREAD_ID_PATTERN.test(threadId)) {
+    console.error("user-chat-store: rejecting malformed thread id, quiz chat not recorded");
+    return;
+  }
+  const key = `quiz:${resourceId}/${threadId}`;
+  if (dedupeCache.has(key)) return;
+  if (anonymous) {
+    rememberDecision(key, false);
+    return;
+  }
+
+  try {
+    await getDb()
+      .insert(userChats)
+      .values({ threadId, code: quizChatCode(resourceId), userId, createdAt: new Date() });
+    rememberDecision(key, true);
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      rememberDecision(key, true);
+      return;
+    }
+    console.error("user-chat-store: failed to record quiz chat", error);
   }
 }

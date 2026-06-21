@@ -8,8 +8,8 @@ mechanism — the loader (`lib/tutors/load.ts`) fetches any `http(s)` URL throug
 injectable `Fetcher` and does not care about host or content-type. The always-on
 invariants are summarized in `AGENTS.md`; this file has the full mechanics. Read it
 before touching `app/files/*`, `app/api/files/*`, `lib/file-store.ts`,
-`lib/files-actions.ts`, the `novedu_files` schema, or the `api/files` entry in
-`proxy.ts`.
+`lib/files-actions.ts`, `lib/app-hosted-fetcher.ts`, the `novedu_files` schema, or
+the `api/files` entry in `proxy.ts`.
 
 ## Surfaces
 
@@ -120,7 +120,14 @@ the file being saved resolves to its in-editor buffer, and a sibling hosted file
 (`./other` → `…/api/files/other`) resolves from the database via `getActiveFile`.
 Everything else (e.g. a fragment on GitHub) is fetched for real. This avoids a
 loopback fetch to our own public origin (which a container may not be able to reach)
-and any fragility around exact self-URL string matching. Validation parity with the
+and any fragility around exact self-URL string matching.
+
+The sibling/external part — "app-hosted URL → DB, anything else → real fetch" — is
+the shared **`appHostedFetcher`** (`lib/app-hosted-fetcher.ts`), the **one
+definition** of that resolution. `selfFetcher` wraps it (adding only the unsaved-
+buffer special case), and the GUI loader (`loadYamlFromUrlAction`) and the quiz
+loader (`lib/quiz-fetch.ts`) import the same function — it is a plain module, not
+`"use server"`, so every server module can reuse it. Validation parity with the
 rest of the app:
 
 - **tutor** → `loadAndBuildTutorPrompt(selfUrl, selfFetcher, { validateLibraries: true })`
@@ -128,6 +135,12 @@ rest of the app:
   strict-rendered), matching share time and the validate page. Returns
   `title`/`description` for the denormalized columns.
 - **fragment** → `loadAndCheckFragmentFile(selfUrl, selfFetcher)`.
+- **quiz** → a **STUB**: returns OK + a single `QUIZ_VALIDATION_NOT_IMPLEMENTED`
+  warning and NULL `title`/`description` — quizzes have no structural validator in
+  the MVP, so saving never blocks and the Validate button passes for any quiz YAML
+  (the lenient parse happens only at run time — see `docs/quizzes.md`). The
+  create-file kind selector therefore offers **tutor / fragment / quiz**, and the
+  `/files` list adds **"Create quiz link"** + **"Discussions"** actions on quiz rows.
 
 The public origin is resolved once on the server (`resolveAppOrigin` /
 `resolveAppOriginOr` in `lib/app-origin.ts`) and the public URL is built by

@@ -145,8 +145,51 @@ or the two placeholder buttons. Invariants:
   (`/files/gui/edit/<name>`) and **"View in GUI"** on `/validate-tutor`
   (`/files/gui/view?url=…&kind=…`).
 - `loadYamlFromUrlAction` reuses the **same** self/relative/app-hosted resolution as
-  the save-time validator (`appHostedFetcher` in `lib/files-actions.ts`) — one
-  definition of how an app-hosted URL resolves from the DB instead of a loopback fetch.
+  the save-time validator and the quiz loader — the shared **`appHostedFetcher`** in
+  **`lib/app-hosted-fetcher.ts`** (a plain module, NOT `"use server"`, so it can be
+  imported from every server module). One definition of how an app-hosted URL
+  resolves from the DB instead of a loopback fetch; `lib/files-actions.ts` and
+  `lib/quiz-fetch.ts` both import it.
+
+### Quizzes (LLM-graded open-ended quizzes, signed links, discussions) → `docs/quizzes.md`
+
+Read it before touching `app/q/*`, `app/share-quiz/*`, `app/quizzes/*`,
+`lib/quiz-*.ts`, `app/mastra/quiz-agents.ts`, or the quiz branch of the CopilotKit
+route. An MVP that reuses the files/chat/stats stack — **no new DB table, no
+migration.** Invariants:
+
+- A quiz is a `novedu_files` row with **`kind: "quiz"`** — **NOT structurally
+  validated** (the Validate button + save pass with a `QUIZ_VALIDATION_NOT_IMPLEMENTED`
+  warning; `title`/`description` stored NULL). The only quiz parsing is the lenient
+  runtime `parseQuiz` (`lib/quiz-yaml.ts`); **`toPublicQuiz` strips the server-only
+  `evaluation` grading prompts** so they NEVER reach the browser.
+- Students reach a quiz ONLY via a **stateless HMAC-signed link**
+  (`/q?quiz=&start=&end=&sig=`, `lib/quiz-link.ts`) — the AUTH_SECRET-derived secret
+  (`"novedu:quiz-link:v1"`, like `lib/thread-token.ts`; **no new env var**),
+  RE-VERIFIED on **every** server touch (the `/q` page, `submitAnswer`,
+  `startDiscussion`, every runtime quiz request). `/q` is a STATIC segment so it
+  wins over `/[code]`.
+- Grading goes through the **memory-less `quizEvaluator`** Mastra agent with Mastra
+  `structuredOutput` (verified to work on gemma-4 via OpenAI `response_format:
+  json_schema`; no `jsonPromptInjection` needed). It is registered but the runtime
+  route RUNS exactly one agent per branch (`tutor` / `quizDiscussion`) — **the
+  grader is NEVER web-reachable** (`agent/quizEvaluator/*` 404s).
+- The per-question discussion is **IN-PAGE** (a modal `<dialog>` on `/q`, never a
+  navigation): `startDiscussion` seeds a Mastra thread (3 messages, **`resourceId =
+  the quiz URL`**, thread-token `(quizUrl,userId,threadId)`) for the agent's memory
+  and returns ONLY the thread id + token (the seeds stay server-side). The dialog
+  shows just the **graded feedback** on top (the verdict card is hidden behind the
+  modal) above the live chat — it does NOT re-print the seeds as bubbles. The
+  route's **quiz branch** (keyed on `x-quiz-*`) re-verifies link + token, sets the
+  discussion system prompt, and runs the **`quizDiscussion`** agent (memory-backed,
+  `trimToNewTurn`, so the seeded turn is never re-stored).
+- Teacher Discussions/transcript pages (`/quizzes/<name>/…`) REUSE the tutor-code
+  stats reader (renamed `getCodeStats`/`getConversationMessages`,
+  `lib/tutor-stats-store.ts`) and the read-only `ConversationView`, keyed by the
+  quiz URL. Non-anonymous attribution uses `recordQuizChat`
+  (`lib/user-chat-store.ts`) — stored under a short `q:<hash>` code because the
+  `novedu_user_chats.code` column is `varchar(10)`. `anonymous` is read LIVE from
+  the YAML. **No `proxy.ts` change** — `/q`/`/share-quiz`/`/quizzes` are authed.
 
 ### Filtered lists (shared list UI: filter spot, action spot, table) → `docs/filtered-lists.md`
 

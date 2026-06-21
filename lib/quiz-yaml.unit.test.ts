@@ -1,0 +1,149 @@
+import { describe, expect, it } from "vitest";
+import { parseQuiz, type Quiz, toPublicQuiz } from "@/lib/quiz-yaml";
+
+const VALID = `
+id: countries-basics
+name: "Countries"
+title: "World Geography Quiz"
+description: |
+  A short quiz.
+anonymous: false
+shuffle: false
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+discussion:
+  instructions: |
+    Be a friendly tutor.
+questions:
+  - id: capital-australia
+    title: "Capital of Australia"
+    question: |
+      What is the **capital** of Australia?
+    evaluation: |
+      The correct answer is Canberra.
+  - id: continents-count
+    question: |
+      How many continents are there?
+    evaluation: |
+      Seven.
+`;
+
+describe("parseQuiz", () => {
+  it("parses a complete quiz", () => {
+    const result = parseQuiz(VALID);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const q = result.quiz;
+    expect(q.id).toBe("countries-basics");
+    expect(q.title).toBe("World Geography Quiz");
+    expect(q.anonymous).toBe(false);
+    expect(q.shuffle).toBe(false);
+    expect(q.model).toBe("RedHatAI/gemma-4-31B-it-FP8-Dynamic");
+    expect(q.discussionInstructions).toContain("friendly tutor");
+    expect(q.questions).toHaveLength(2);
+    expect(q.questions[0]?.evaluation).toContain("Canberra");
+  });
+
+  it("defaults anonymous and shuffle to true when omitted", () => {
+    const result = parseQuiz(`
+llm:
+  model: m
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.anonymous).toBe(true);
+    expect(result.quiz.shuffle).toBe(true);
+  });
+
+  it.each([
+    ["invalid YAML", ":::not yaml::: ["],
+    ["missing model", "questions:\n  - id: a\n    question: Q\n    evaluation: E\n"],
+    ["no questions", "llm:\n  model: m\n"],
+    [
+      "no complete questions",
+      "llm:\n  model: m\nquestions:\n  - id: a\n    question: Q\n", // no evaluation
+    ],
+  ])("rejects %s with a friendly message", (_label, content) => {
+    const result = parseQuiz(content);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(typeof result.message).toBe("string");
+  });
+
+  it("accepts numeric and boolean scalar ids/titles (YAML types them by value)", () => {
+    // A teacher writing the natural `- id: 1` must not lose the question: the
+    // YAML parser hands `1` over as a number, which must still be a usable id.
+    const result = parseQuiz(`
+llm:
+  model: m
+questions:
+  - id: 1
+    title: 2024
+    question: Q1
+    evaluation: E1
+  - id: 2
+    question: Q2
+    evaluation: E2
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.questions.map((q) => q.id)).toEqual(["1", "2"]);
+    expect(result.quiz.questions[0]?.title).toBe("2024");
+  });
+
+  it("skips incomplete and duplicate-id questions", () => {
+    const result = parseQuiz(`
+llm:
+  model: m
+questions:
+  - id: a
+    question: Q1
+    evaluation: E1
+  - id: a
+    question: Q1-dup
+    evaluation: E1-dup
+  - id: b
+    question: Q2
+    # missing evaluation -> skipped
+  - id: c
+    question: Q3
+    evaluation: E3
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.questions.map((q) => q.id)).toEqual(["a", "c"]);
+  });
+});
+
+describe("toPublicQuiz", () => {
+  it("strips evaluation prompts and server-only fields", () => {
+    const result = parseQuiz(VALID);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const pub = toPublicQuiz(result.quiz);
+    const serialized = JSON.stringify(pub);
+    expect(serialized).not.toContain("Canberra"); // evaluation text must not leak
+    expect(serialized).not.toContain("gemma"); // model must not leak
+    expect(serialized).not.toContain("friendly tutor"); // discussion instructions must not leak
+    for (const q of pub.questions) {
+      expect(q).not.toHaveProperty("evaluation");
+    }
+    expect(pub.questions).toHaveLength(2);
+    expect(pub.title).toBe("World Geography Quiz");
+    expect(pub.shuffle).toBe(false);
+  });
+
+  it("does not carry the anonymous flag to the client", () => {
+    const quiz: Quiz = {
+      id: "x",
+      anonymous: false,
+      shuffle: true,
+      model: "m",
+      questions: [{ id: "a", question: "Q", evaluation: "E" }],
+    };
+    expect(toPublicQuiz(quiz)).not.toHaveProperty("anonymous");
+  });
+});

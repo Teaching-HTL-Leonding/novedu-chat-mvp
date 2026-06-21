@@ -7,6 +7,12 @@
       "skillPath": "skills/a2ui-renderer/SKILL.md",
       "computedHash": "34496b26908f75680136ffcb2e6404f2fdf512699a7969e9e5004774fd4cb353"
     },
+    "brainstorming": {
+      "source": "obra/superpowers",
+      "sourceType": "github",
+      "skillPath": "skills/brainstorming/SKILL.md",
+      "computedHash": "26a8eb33d548f0c4ead9e7bc13a90c3853398d30345c651245a61a12b869f130"
+    },
     "copilotkit-agui": {
       "source": "CopilotKit/CopilotKit",
       "sourceType": "github",

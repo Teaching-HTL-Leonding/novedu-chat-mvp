@@ -74,4 +74,22 @@ test.describe("as a teacher", () => {
     // Validate never stores, so we stay on the create page (no redirect to edit).
     await expect(page).toHaveURL(/\/files\/new$/);
   });
+
+  // Hermetic: a quiz is NOT structurally validated (MVP stub) — Validate must
+  // PASS with the "not implemented" warning and never store. No DB or network.
+  test("a quiz validates with the not-implemented warning (no structural check)", async ({
+    page,
+  }) => {
+    await page.goto("/files/new");
+    await page.getByLabel(/Name/).fill("validate-quiz");
+    await page.getByLabel("Kind").selectOption("quiz");
+    // Deliberately minimal/structurally-unchecked content — the stub accepts it.
+    await setEditorContent(page, "id: q\nquestions: []\n");
+    await page.getByRole("button", { name: "Validate", exact: true }).click();
+
+    await expect(page.getByText(/Quiz validation is not implemented yet/i)).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(page).toHaveURL(/\/files\/new$/);
+  });
 });
