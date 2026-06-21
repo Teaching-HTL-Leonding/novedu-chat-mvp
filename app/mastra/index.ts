@@ -3,6 +3,7 @@ import { PinoLogger } from "@mastra/loggers";
 import { MSSQLStore } from "@mastra/mssql";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "@/lib/azure-credential";
+import { quizDiscussionAgent, quizEvaluatorAgent } from "./quiz-agents";
 import { tutorAgent } from "./tutor-agent";
 
 const logger = new PinoLogger({ name: "Mastra", level: "info" });
@@ -38,7 +39,17 @@ export const mastra = new Mastra({
   // (system prompt + model) and persists its conversation via the shared store.
   // NOTE: the registry KEY (not the agent's `id`) is the AG-UI agentId the
   // frontend references — so this must be `tutor` to match `agentId="tutor"`.
-  agents: { tutor: tutorAgent },
+  //
+  // The quiz agents share the same store. `quizDiscussion` is reached through the
+  // CopilotKit route (agentId="quizDiscussion") for the per-question discussion
+  // chat; the route's quiz branch allows ONLY that agent id. `quizEvaluator` is
+  // invoked server-side by the `submitAnswer` action (never through the route —
+  // the route never allows its id), so the grader is never web-exposed.
+  agents: {
+    tutor: tutorAgent,
+    quizDiscussion: quizDiscussionAgent,
+    quizEvaluator: quizEvaluatorAgent,
+  },
   // Persistent storage is Azure SQL (Microsoft SQL Server) via `@mastra/mssql`,
   // authenticated with SQL user/password or Microsoft Entra ID depending on the
   // connection string. Undefined when no connection string is configured (see above).

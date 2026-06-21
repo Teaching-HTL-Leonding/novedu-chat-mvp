@@ -22,8 +22,11 @@ Three kinds of e2e, by the external infra they need:
   service container reached with SQL auth (see "DB-backed `@live-db` in CI" below),
   and locally against real Azure SQL.
 - **`@live-llm` e2e** — also need the SCCH LLM (chat round-trips, vision, the
-  health probe). The SCCH endpoint is **geo-blocked to Austria** and cannot be
-  containerized, so these are **excluded from CI** and run locally only.
+  health probe, and the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`).
+  The SCCH endpoint is **geo-blocked to Austria** and cannot be containerized, so
+  these are **excluded from CI** and run locally only. (Such a test is tagged
+  `@live-llm` ONLY — the DB it also uses is implied — so a `--grep @live-db` run
+  never selects it.)
 
 Every live test carries **`@live`** (so the local `--grep @live` smoke runs them
 all) **plus exactly one** of `@live-db` / `@live-llm`. CI runs hermetic +

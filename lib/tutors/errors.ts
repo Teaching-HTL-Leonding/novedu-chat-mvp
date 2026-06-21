@@ -29,7 +29,10 @@ export type ErrorCode =
 export type WarningCode =
   | "UNDECLARED_VARIABLE"
   | "DUPLICATE_FRAGMENT_REFERENCE"
-  | "REQUIRED_PROPERTY_HAS_DEFAULT";
+  | "REQUIRED_PROPERTY_HAS_DEFAULT"
+  // Emitted by the quiz-kind save/validate path: quizzes are stored WITHOUT
+  // structural checks for the MVP (no quiz validator yet — see docs/quizzes.md).
+  | "QUIZ_VALIDATION_NOT_IMPLEMENTED";
 
 export interface ValidationError {
   code: ErrorCode;

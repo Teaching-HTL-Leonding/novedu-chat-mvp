@@ -63,6 +63,7 @@ test.describe("as a student", () => {
     await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Validate Tutor" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Shared Tutor Codes" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Share Quiz" })).toHaveCount(0);
   });
 });
 
@@ -89,5 +90,6 @@ test.describe("as a teacher", () => {
 
     await expect(page.getByRole("link", { name: "Validate Tutor" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Shared Tutor Codes" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Share Quiz" })).toBeVisible();
   });
 });

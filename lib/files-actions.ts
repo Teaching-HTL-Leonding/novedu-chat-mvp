@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { appHostedFetcher } from "@/lib/app-hosted-fetcher";
 import { resolveAppOrigin } from "@/lib/app-origin";
 import {
   createFile,
@@ -66,27 +67,6 @@ function gateFailure(
 }
 
 /**
- * A {@link Fetcher} that resolves references to APP-HOSTED files
- * (`<origin>/api/files/<name>`) from the database via {@link getActiveFile}
- * instead of doing a network round-trip back to our own public origin (which a
- * container may not be able to reach). Everything else is fetched for real with
- * {@link defaultFetcher}. Shared by the save-time buffer validator and the
- * student GUI's referenced-fragment loader so the resolution lives in ONE place.
- */
-function appHostedFetcher(origin: string): Fetcher {
-  const prefix = filesUrlPrefix(origin);
-  return async (url) => {
-    if (url.startsWith(prefix)) {
-      const refName = decodeURIComponent(url.slice(prefix.length).split(/[?#]/)[0] ?? "");
-      const file = await getActiveFile(refName);
-      if (file) return { ok: true, status: 200, text: async () => file.content };
-      return { ok: false, status: 404, text: async () => "" };
-    }
-    return defaultFetcher(url);
-  };
-}
-
-/**
  * Validates the in-editor YAML buffer with the SAME core the chat and the
  * /validate-tutor page use, BEFORE anything is stored. The validator is URL-based
  * with an injectable fetcher; we intercept references to app-hosted files
@@ -135,6 +115,26 @@ async function validateFileContent(
     return hostedFetcher(url);
   };
 
+  if (kind === "quiz") {
+    // QUIZ is a STUB for the MVP: no structural validation yet (no quiz
+    // validator — see docs/quizzes.md). Saving therefore never blocks and the
+    // Validate button passes; title/description stay NULL (like fragments), so
+    // the /files list shows a quiz by name. A non-blocking warning makes the
+    // "not checked" status explicit to the author.
+    return {
+      ok: true,
+      title: null,
+      description: null,
+      warnings: [
+        {
+          code: "QUIZ_VALIDATION_NOT_IMPLEMENTED",
+          message:
+            "Quiz validation is not implemented yet — the file was stored without structural checks.",
+        },
+      ],
+    };
+  }
+
   if (kind === "fragment") {
     const result = await loadAndCheckFragmentFile(selfUrl, selfFetcher);
     if (!result.ok) return { ok: false, errors: result.errors };
@@ -172,7 +172,7 @@ export async function createFileAction(input: {
   const name = nameValidation.name;
 
   if (!isFileKind(input.kind)) {
-    return { ok: false, message: "Choose whether this is a tutor or a fragment file." };
+    return { ok: false, message: "Choose whether this is a tutor, fragment or quiz file." };
   }
   if (typeof input.content !== "string" || input.content.trim() === "") {
     return { ok: false, message: "The file is empty — add some YAML before creating it." };
@@ -269,7 +269,7 @@ export async function validateNewFileAction(input: {
   const name = nameValidation.name;
 
   if (!isFileKind(input.kind)) {
-    return { ok: false, message: "Choose whether this is a tutor or a fragment file." };
+    return { ok: false, message: "Choose whether this is a tutor, fragment or quiz file." };
   }
   if (typeof input.content !== "string" || input.content.trim() === "") {
     return { ok: false, message: "The file is empty — add some YAML before validating." };

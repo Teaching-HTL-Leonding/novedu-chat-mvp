@@ -3,7 +3,7 @@ import { BackLink } from "@/components/back-link";
 import { Notice } from "@/components/notice";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { getTutorCode } from "@/lib/tutor-code-store";
-import { getTutorCodeStats } from "@/lib/tutor-stats-store";
+import { getCodeStats } from "@/lib/tutor-stats-store";
 import { LocalTime } from "../../local-time";
 import pageStyles from "../../page.module.css";
 import styles from "./stats.module.css";
@@ -51,7 +51,7 @@ export default async function TutorCodeStatsPage({
   // Pass the code's frozen `anonymous` flag: the store nulls every userId and
   // zeroes studentCount for anonymous codes, so the privacy gate holds at the
   // data layer (the `!entry.anonymous` checks below are belt-and-braces).
-  const stats = await getTutorCodeStats(code, entry.anonymous);
+  const stats = await getCodeStats(code, entry.anonymous);
 
   return (
     <main className={pageStyles.main}>

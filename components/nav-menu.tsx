@@ -26,6 +26,7 @@ const NAV_ITEMS = [
     teacherOnly: true,
   },
   { href: "/files", label: "YAML Files", heading: "YAML Files", teacherOnly: true },
+  { href: "/share-quiz", label: "Share Quiz", heading: "Share Quiz", teacherOnly: true },
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
 ] as const;
 
@@ -50,6 +51,11 @@ function dynamicHeading(pathname: string): string | undefined {
     //                          is not a real page, so it gets no special heading)
     if (segments[1] === "new") return "New YAML File";
     if (segments[1] === "edit" && segments.length >= 3) return "Edit YAML File";
+  }
+  if (segments[0] === "quizzes" && segments.length >= 2) {
+    // /quizzes/<name>/discussions       → the discussion list
+    // /quizzes/<name>/c/<thread>        → a single discussion transcript
+    return segments[2] === "c" ? "Quiz Discussion" : "Quiz Discussions";
   }
   return undefined;
 }
