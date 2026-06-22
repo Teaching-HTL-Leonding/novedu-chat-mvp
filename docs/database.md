@@ -33,7 +33,10 @@ no separate env flag.
 - **SQL auth is a DEV/TEST-ONLY escape hatch** for environments that cannot do
   Entra — e.g. a remote coding agent or CI box with no `az login` and no Managed
   Identity. Both code paths exist so those environments can still reach the DB;
-  neither path may be removed (dev/test needs SQL, prod needs Entra).
+  neither path may be removed (dev/test needs SQL, prod needs Entra). The
+  test-only `MSSQL_SQLAUTH_CONNECTION_STRING` (read solely by
+  `e2e/db-auth.live.spec.ts`) supplies a SQL-auth string for that test and must
+  never be set in prod.
 - A SQL `User ID`/`Password` connection string **is itself a secret** (unlike the
   passwordless Entra string), so treat it like one wherever it lives.
 
@@ -133,15 +136,6 @@ data live until a teacher deletes a code on `/tutor-codes`. The delete action
    then the `novedu_tutor_codes` row LAST (so a mid-way failure leaves the code
    still listed and the operation safe to retry; it is idempotent).
 
-(Earlier versions ran an hourly in-process timer that deleted expired codes; it
-and `lib/tutor-code-gc.ts` were removed so a code's stats stay reachable after
-its window closes. The READ side of stats — counts, per-conversation timings —
+The READ side of stats — counts, per-conversation timings —
 is plain by-value SQL against `mastra_threads`/`mastra_messages`; see
-`docs/tutor-codes.md`.)
-
-## History
-
-Earlier versions stored share links in Azure Table Storage
-(`stnoveduchatmvp`/`novedusharedlinks`, Entra-only auth). That dependency is
-gone — the storage account and table are no longer used by the app and can be
-deleted by an operator.
+`docs/tutor-codes.md`.

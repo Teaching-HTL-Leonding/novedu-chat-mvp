@@ -64,15 +64,14 @@ optional `discussion.instructions`, and `questions[]` each with `id`, optional
 
 ## Stateless signed links — `lib/quiz-link.ts`
 
-A near-verbatim revival of the app's original tutor share-link mechanism (removed
-when tutor codes landed), keyed for quizzes:
+Stateless HMAC-signed links for quizzes:
 
 - Payload `{ quiz: URL.href, start, end }` (unix seconds, both bounds inclusive);
   canonical string `quiz=<quiz>&start=<start>&end=<end>` with a digits-only guard
   on start/end (keeps the form injective even when the quiz URL contains `&start=`).
 - HMAC-SHA256 hex, constant-time hex compare. **Secret is AUTH_SECRET-derived**
   (`getQuizLinkSecret`, domain `"novedu:quiz-link:v1"`, like `lib/thread-token.ts`)
-  — **no new env var** (the old code's `SHARE_LINK_SECRET` is NOT revived).
+  — **no new env var**.
 - `verifyQuizLink` → `{ ok }` or `missing-params | invalid-signature | not-started
   | expired`. Re-verified on **every** server touch: the `/q` page, `submitAnswer`,
   `startDiscussion`, and every runtime quiz request. The `/q` page renders the rich
@@ -138,9 +137,9 @@ thread id: the **graded feedback** on top, then a live `CopilotChat`
 
 ## Teacher visibility (reused stats viewer)
 
-The tutor-code stats reader was renamed to neutral names and reused unchanged:
-`getCodeStats` / `getConversationMessages` (`lib/tutor-stats-store.ts`) take a
-plain key string and read `mastra_threads` / `mastra_messages` filtered by
+The neutral-named stats reader `getCodeStats` / `getConversationMessages`
+(`lib/tutor-stats-store.ts`) takes a
+plain key string and reads `mastra_threads` / `mastra_messages` filtered by
 `resourceId`, with `novedu_user_chats` only a LEFT JOIN for the student id. The
 quiz Discussions page keys them by `resourceId = new URL(filePublicUrl(origin,
 name)).href` (the same URL.href the signed link carried). A discussion thread
