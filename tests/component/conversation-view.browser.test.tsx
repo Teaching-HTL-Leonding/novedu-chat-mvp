@@ -29,7 +29,7 @@ vi.mock("@copilotkit/react-core/v2", () => ({
   },
 }));
 
-import { ConversationView } from "@/app/tutor-codes/[code]/c/[threadId]/conversation-view";
+import { ConversationView } from "@/app/codes/[code]/c/[threadId]/conversation-view";
 
 const MESSAGES: Message[] = [
   { id: "m1", role: "user", content: "Hi" },

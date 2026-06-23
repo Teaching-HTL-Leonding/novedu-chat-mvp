@@ -2,7 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
-import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon, StatsIcon } from "@/components/icons";
+import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon } from "@/components/icons";
 import { ListFilterBar } from "@/components/list-filter-bar";
 import listStyles from "@/components/list-page.module.css";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
@@ -140,35 +140,15 @@ export default async function FilesPage({
             >
               <ExternalLinkIcon />
             </a>
-            {row.kind === "tutor" ? (
+            {row.kind === "tutor" || row.kind === "quiz" ? (
               <Link
-                href={`/tutor-codes/new?tutor=${encodeURIComponent(url)}`}
+                href={`/codes/new?module=${row.kind}&file=${encodeURIComponent(url)}`}
                 className={styles.iconButton}
-                aria-label="Create tutor code"
-                title="Create tutor code"
+                aria-label="Create code"
+                title="Create code"
               >
                 <ShareIcon />
               </Link>
-            ) : null}
-            {row.kind === "quiz" ? (
-              <>
-                <Link
-                  href={`/share-quiz?quiz=${encodeURIComponent(url)}`}
-                  className={styles.iconButton}
-                  aria-label="Create quiz link"
-                  title="Create quiz link"
-                >
-                  <ShareIcon />
-                </Link>
-                <Link
-                  href={`/quizzes/${row.name}/discussions`}
-                  className={styles.iconButton}
-                  aria-label="View quiz discussions"
-                  title="Discussions"
-                >
-                  <StatsIcon />
-                </Link>
-              </>
             ) : null}
             <Link
               href={`/files/edit/${row.name}`}

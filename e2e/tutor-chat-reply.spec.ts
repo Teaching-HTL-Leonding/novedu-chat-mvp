@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mintTutorCode, RAW_TUTORS } from "./tutor-code.utils";
+import { mintTutorCode, RAW_TUTORS } from "./code.utils";
 
 // A REAL end-to-end chat: open a tutor code, send "Hi!", and assert the tutor
 // streams back a non-empty answer (content doesn't matter — only that it

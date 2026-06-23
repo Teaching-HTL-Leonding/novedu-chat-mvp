@@ -9,28 +9,26 @@ import {
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
 import { auth } from "@/auth";
+import { type CodeRejection, checkCode } from "@/lib/code-store";
 import { loadQuiz } from "@/lib/quiz-fetch";
-import { getQuizLinkSecret, quizLinkRejectionMessage, verifyQuizLink } from "@/lib/quiz-link";
 import { type QuizVerdict, verdictLabel } from "@/lib/quiz-types";
 import type { Quiz, QuizQuestion } from "@/lib/quiz-yaml";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
 
 // The student-facing quiz server actions. The whole app sits behind the Entra
-// gate, so any caller is authenticated; the SIGNED LINK is what authorizes the
-// quiz experience, and it is RE-VERIFIED on every action (so an expired link
-// stops accepting answers / opening discussions mid-session). The server-only
-// `evaluation` grading prompts are read here and NEVER returned to the client.
+// gate, so any caller is authenticated; the quiz CODE (a `novedu_codes` row with
+// `module: "quiz"`) is what authorizes the quiz experience, and it is RE-VERIFIED
+// on every action (so a code outside its window stops accepting answers / opening
+// discussions mid-session). The server-only `evaluation` grading prompts are read
+// here and NEVER returned to the client.
 //
-// Grading goes through the memory-less `quizEvaluator` agent; the discussion is
-// a Mastra thread seeded with three messages that the runtime route's quiz
-// branch then continues with the `quizDiscussion` agent. resourceId = the
-// normalized quiz URL throughout (see docs/quizzes.md).
+// Grading goes through the memory-less `quizEvaluator` agent; the discussion is a
+// Mastra thread seeded with three messages that the runtime route then continues
+// with the `quizDiscussion` agent. resourceId = the CODE throughout (see
+// docs/codes.md), exactly like every other module.
 
-export interface QuizLinkInput {
-  quiz: string;
-  start: string;
-  end: string;
-  sig: string;
+export interface QuizCodeInput {
+  code: string;
 }
 
 export type SubmitAnswerResult =
@@ -53,31 +51,52 @@ interface QuizSeedMessage {
 type LoadedQuestion = {
   ok: true;
   userId: string;
-  quizUrl: string;
+  code: string;
+  fileUrl: string;
   quiz: Quiz;
   question: QuizQuestion;
 };
 
-// Shared preamble for both actions: authenticated session + valid, in-window
-// link + the (server-authoritative) quiz question by id. Returns a ready-to-show
+const CODE_REJECTION_MESSAGES: Record<CodeRejection, string> = {
+  "unknown-code": "This quiz code is not valid.",
+  "not-started": "This quiz's availability window has not started yet.",
+  expired: "This quiz's availability window has ended.",
+  "lookup-failed": "Quiz codes cannot be checked right now — try again in a moment.",
+};
+
+// Shared preamble for both actions: authenticated session + valid, in-window quiz
+// code + the (server-authoritative) quiz question by id. Returns a ready-to-show
 // message on any failure.
 async function verifyAndLoadQuestion(
-  input: QuizLinkInput & { questionId: string },
+  input: QuizCodeInput & { questionId: string },
 ): Promise<LoadedQuestion | { ok: false; message: string }> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) return { ok: false, message: "Please sign in to continue." };
 
-  const link = verifyQuizLink(input, getQuizLinkSecret(), Math.floor(Date.now() / 1000));
-  if (!link.ok) return { ok: false, message: quizLinkRejectionMessage(link.reason) };
+  const verification = await checkCode(input.code);
+  if (!verification.ok) {
+    return { ok: false, message: CODE_REJECTION_MESSAGES[verification.reason] };
+  }
+  const { entry } = verification;
+  if (entry.module !== "quiz") {
+    return { ok: false, message: "This code is not a quiz." };
+  }
 
-  const loaded = await loadQuiz(link.quiz);
+  const loaded = await loadQuiz(entry.fileUrl);
   if (!loaded.ok) return { ok: false, message: loaded.message };
 
   const question = loaded.quiz.questions.find((q) => q.id === input.questionId);
   if (!question) return { ok: false, message: "That question is no longer part of this quiz." };
 
-  return { ok: true, userId, quizUrl: link.quiz, quiz: loaded.quiz, question };
+  return {
+    ok: true,
+    userId,
+    code: input.code,
+    fileUrl: entry.fileUrl,
+    quiz: loaded.quiz,
+    question,
+  };
 }
 
 // The grading system prompt. The question's `evaluation` is authoritative and
@@ -102,12 +121,12 @@ function buildGradingPrompt(question: QuizQuestion): string {
 }
 
 /**
- * Grades one free-text answer. Re-verifies the link, re-loads the quiz, finds the
- * question, and runs the stateless `quizEvaluator` for a structured verdict.
+ * Grades one free-text answer. Re-verifies the quiz code, re-loads the quiz, finds
+ * the question, and runs the stateless `quizEvaluator` for a structured verdict.
  * Returns the verdict + markdown feedback; nothing is persisted.
  */
 export async function submitAnswer(
-  input: QuizLinkInput & { questionId: string; answer: string },
+  input: QuizCodeInput & { questionId: string; answer: string },
 ): Promise<SubmitAnswerResult> {
   const answer = typeof input.answer === "string" ? input.answer.trim() : "";
   if (!answer) return { ok: false, message: "Type an answer before submitting." };
@@ -146,10 +165,11 @@ function safeVerdict(value: unknown): QuizVerdict {
  * thread-ownership token, and seeds a Mastra thread with three messages
  * (question / answer / verdict+feedback) so the discussion agent has full context
  * via memory recall. Returns the thread id + token for the inline chat to mount.
- * resourceId = the normalized quiz URL (groups a quiz's discussions for stats).
+ * resourceId = the quiz CODE (groups a quiz's discussions for stats), and the
+ * token binds `(code, userId, threadId)` like every other module.
  */
 export async function startDiscussion(
-  input: QuizLinkInput & {
+  input: QuizCodeInput & {
     questionId: string;
     answer: string;
     result: QuizVerdict;
@@ -164,7 +184,7 @@ export async function startDiscussion(
   if (!ctx.ok) return ctx;
 
   const threadId = randomUUID();
-  const resourceId = ctx.quizUrl;
+  const resourceId = ctx.code;
   const threadToken = signThreadToken(
     { code: resourceId, userId: ctx.userId, threadId },
     getThreadTokenSecret(),

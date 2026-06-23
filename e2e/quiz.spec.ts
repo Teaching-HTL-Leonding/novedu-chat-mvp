@@ -1,11 +1,13 @@
 import { expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
+import { mintCode } from "./code.utils";
 
-// End-to-end coverage for the Quizzes feature. The link-rejection gate is
-// hermetic (no DB, no LLM — runs in CI). The full author → share → answer →
-// discuss flow is `@live` (`@live-llm`: it grades a real answer and runs the
-// discussion through the SCCH model) and is excluded from CI like the tutor
-// chat-reply spec.
+// End-to-end coverage for the Quizzes feature, now reached as first-class CODES
+// (a `novedu_codes` row with `module: "quiz"`) at `/<code>` — no signed links.
+// The code-expiry gate needs the DB but no LLM (@live-db, runs in CI). The full
+// author → code → answer → discuss flow is `@live` (`@live-llm`: it grades a real
+// answer and runs the discussion through the SCCH model) and is excluded from CI
+// like the tutor chat-reply spec.
 //
 // CopilotKit v2 testids (shared with the tutor chat): copilot-chat-textarea,
 // copilot-send-button, copilot-user-message, copilot-assistant-message.
@@ -41,23 +43,32 @@ async function setEditorContent(page: Page, text: string): Promise<void> {
   await page.keyboard.insertText(text);
 }
 
-// Hermetic: a `/q` link with a bad signature is rejected server-side and the
-// student sees the friendly error — no DB and no LLM are touched.
-test("a tampered quiz link shows the invalid-link notice", async ({ page }) => {
-  test.setTimeout(90_000); // dev compilation of /q
-  await page.goto("/q?quiz=https%3A%2F%2Fexample.com%2Fq&start=1&end=9999999999&sig=deadbeef");
+// A quiz code outside its window is refused exactly like any other code — the
+// shared window check fires before the quiz is ever loaded, so this needs the DB
+// (to mint the row) but no LLM.
+test("an expired quiz code shows the window-error notice", { tag: ["@live", "@live-db"] }, async ({
+  page,
+}) => {
+  test.setTimeout(90_000); // dev compilation of /[code]
+  // The file URL is never fetched — the expiry check rejects first.
+  const code = await mintCode({
+    module: "quiz",
+    file: "https://example.com/api/files/never-loaded",
+    endOffset: -10,
+  });
+  await page.goto(`/${code}`);
 
-  await expect(page.getByRole("heading", { name: /Invalid quiz link/i })).toBeVisible({
+  await expect(page.getByRole("heading", { name: "Code expired" })).toBeVisible({
     timeout: 30_000,
   });
 });
 
-// Full @live flow: author a quiz file, mint a link through the share form, take
-// it, get a graded verdict, and run a discussion turn.
+// Full @live flow: author a quiz file, mint a quiz CODE for it, open it, get a
+// graded verdict, and run a discussion turn.
 // Tagged @live-llm only (not @live-db): like the tutor chat-reply spec, it also
 // writes the DB, but an LLM test implies the DB — tagging it @live-db too would
 // make a `--grep @live-db`-only run (CI) select it and fail without the LLM.
-test("author → share → answer → discuss", { tag: ["@live", "@live-llm"] }, async ({ page }) => {
+test("author → code → answer → discuss", { tag: ["@live", "@live-llm"] }, async ({ page }) => {
   test.setTimeout(180_000);
 
   const name = `e2e-quiz-${Date.now()}`;
@@ -70,17 +81,12 @@ test("author → share → answer → discuss", { tag: ["@live", "@live-llm"] },
   await page.getByRole("button", { name: "Validate & create" }).click();
   await expect(page).toHaveURL(new RegExp(`/files/edit/${name}$`), { timeout: 60_000 });
 
-  // 2. Mint a quiz link via the share form (prefilled with the file's URL).
+  // 2. Mint a quiz code pointing at the authored file's public URL.
   const quizUrl = `${new URL(page.url()).origin}/api/files/${name}`;
-  await page.goto(`/share-quiz?quiz=${encodeURIComponent(quizUrl)}`);
-  await page.getByRole("button", { name: "Now" }).click();
-  await page.getByRole("button", { name: "+1d" }).click();
-  await page.getByRole("button", { name: "Create quiz link" }).click();
-  const link = await page.getByLabel("Quiz link").inputValue();
-  expect(link).toContain("/q?quiz=");
+  const code = await mintCode({ module: "quiz", file: quizUrl });
 
-  // 3. Take the quiz: answer the question and get a verdict.
-  await page.goto(link);
+  // 3. Open the quiz at /<code>: answer the question and get a verdict.
+  await page.goto(`/${code}`);
   const answer = page.getByLabel("Your answer");
   await expect(answer).toBeVisible({ timeout: 30_000 });
   await answer.fill("The capital of Austria is Vienna.");
@@ -110,7 +116,8 @@ test("author → share → answer → discuss", { tag: ["@live", "@live-llm"] },
     .toBeGreaterThan(0);
   await expect(page.getByText(/not found after runtime sync/i)).toHaveCount(0);
 
-  // 5. Clean up the quiz file (no automatic GC).
+  // 5. Clean up the quiz file (no automatic GC; the minted code lingers like the
+  // other mint-and-leave specs — harmless and tidied with the CI container).
   await page.goto(`/files/edit/${name}`);
   page.once("dialog", (dialog) => dialog.accept());
   const del = page.getByRole("button", { name: /delete/i }).first();

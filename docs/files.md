@@ -138,7 +138,7 @@ rest of the app:
 - **quiz** → a **STUB**: returns OK + a single `QUIZ_VALIDATION_NOT_IMPLEMENTED`
   warning and NULL `title`/`description` — quizzes have no structural validator in
   the MVP, so saving never blocks and the Validate button passes for any quiz YAML
-  (the lenient parse happens only at run time — see `docs/quizzes.md`). The
+  (the lenient parse happens only at run time — see `docs/codes.md`). The
   create-file kind selector therefore offers **tutor / fragment / quiz**, and the
   `/files` list adds **"Create quiz link"** + **"Discussions"** actions on quiz rows.
 

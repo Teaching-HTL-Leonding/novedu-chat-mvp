@@ -15,12 +15,11 @@ import {
   validateFileName,
 } from "@/lib/file-store";
 import { filePublicUrl, filesUrlPrefix } from "@/lib/file-url";
+import { fileValidators } from "@/lib/file-validators";
 import { requireTeacherUserId } from "@/lib/student-mode";
 import {
   defaultFetcher,
   type Fetcher,
-  loadAndBuildTutorPrompt,
-  loadAndCheckFragmentFile,
   type ValidationError,
   type ValidationWarning,
 } from "@/lib/tutors";
@@ -95,7 +94,7 @@ async function validateFileContent(
         {
           code: "INVALID_URL",
           message:
-            "Could not determine the app's public address. Set TUTOR_CODE_ORIGIN in the server configuration.",
+            "Could not determine the app's public address. Set CODE_ORIGIN in the server configuration.",
         },
       ],
     };
@@ -115,39 +114,15 @@ async function validateFileContent(
     return hostedFetcher(url);
   };
 
-  if (kind === "quiz") {
-    // QUIZ is a STUB for the MVP: no structural validation yet (no quiz
-    // validator — see docs/quizzes.md). Saving therefore never blocks and the
-    // Validate button passes; title/description stay NULL (like fragments), so
-    // the /files list shows a quiz by name. A non-blocking warning makes the
-    // "not checked" status explicit to the author.
-    return {
-      ok: true,
-      title: null,
-      description: null,
-      warnings: [
-        {
-          code: "QUIZ_VALIDATION_NOT_IMPLEMENTED",
-          message:
-            "Quiz validation is not implemented yet — the file was stored without structural checks.",
-        },
-      ],
-    };
-  }
-
-  if (kind === "fragment") {
-    const result = await loadAndCheckFragmentFile(selfUrl, selfFetcher);
-    if (!result.ok) return { ok: false, errors: result.errors };
-    return { ok: true, title: null, description: null, warnings: result.warnings };
-  }
-
-  // tutor: the THOROUGH authoring gate (every fragment in every referenced
-  // library is strict-rendered), matching share time and the validate page.
-  const result = await loadAndBuildTutorPrompt(selfUrl, selfFetcher, { validateLibraries: true });
+  // Layer 2: the validator keyed by FileKind is the single source of truth for
+  // both /files save and code-create (see lib/file-validators.ts). It surfaces
+  // the title/description for the denormalized search columns; the `anonymous`
+  // flag it also carries is unused here (only code-create freezes it).
+  const result = await fileValidators[kind].validate(selfUrl, selfFetcher);
   if (!result.ok) return { ok: false, errors: result.errors };
   return {
     ok: true,
-    title: result.title ?? null,
+    title: result.title,
     description: result.description,
     warnings: result.warnings,
   };

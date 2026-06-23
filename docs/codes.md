@@ -1,0 +1,381 @@
+# Codes
+
+Deep reference for how students reach an **activity** — a tutor chat or a quiz —
+and how teachers mint and manage the **codes** that hand them out. The always-on
+invariants are summarized in `AGENTS.md`; this file has the full mechanics. Read
+it before touching the entry points (`app/page.tsx`, `app/[code]/**`), the
+teacher surfaces (`app/codes/**`), the runtime route
+(`app/api/copilotkit/[[...slug]]/route.ts`), the validator/module seams
+(`lib/file-validators.ts`, `lib/code-modules/**`), or the `novedu_*` stores in
+`lib/code-*.ts`.
+
+## The model
+
+A **code** is a `[a-z0-9-]` string (1–32 chars; `generateCode()` mints 10 random
+`[a-z0-9]`, 36^10 ≈ 3.6 × 10^15 — unguessable) minted by a teacher on
+`/codes/new` and stored as a row in the `novedu_codes` SQL table:
+
+| Column | Meaning |
+| --- | --- |
+| `code` (PK) | the code, `varchar(32)` (sized for future teacher-defined memorable codes) |
+| `module` | the dispatch discriminator — `tutor` \| `quiz` (\| future), picks the renderer + agent |
+| `created_by` | session user id (Entra `oid`) of the creating teacher |
+| `file_url` | public URL of the activity YAML (normalized via `URL.href`) |
+| `valid_from` / `valid_until` | availability window, UTC `datetime2`, **both bounds inclusive** |
+| `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
+| `origin` | **documentation-only**: where the code was created (DEV vs PROD rows). Lookups never read it — a code created on localhost works in production, since all environments share the database |
+| `anonymous` | the activity YAML's `anonymous` flag (default `true`), **frozen at create time** — a later YAML edit does NOT update it. Governs whether the stats page shows per-student data |
+| `created_at` | creation time |
+
+Indexes: PK on `code`; `created_by` (the teacher list); `module` (the
+module-filtered list).
+
+**The stored row is the security boundary.** There is no signature and no
+stateless link form: an activity opens if (and only while) a row with that code
+exists and "now" is inside its window. The single check lives in `checkCode()`
+(`lib/code-store.ts`) and is used by every gate (the student entry route, the
+runtime route, and the quiz actions), each re-checking on **every** server touch
+— one PK SELECT on the pooled connection — so an open activity stops accepting
+input the moment its window closes (403 / error with a human-readable reason).
+Malformed codes are pattern-rejected without a database round-trip — which also
+gives every unknown single-segment URL (`/whatever`) a clean "unknown code" page,
+since `app/[code]` catches all non-static top-level paths.
+
+## Three layers: FileKind → validator → CodeModule
+
+The subsystem is cleanly split so a new activity (or a pure library kind) slots
+in without touching the core.
+
+**Layer 1 — `FileKind`** (`lib/file-name.ts`): `tutor | fragment | quiz`. Drives
+the `/files` editor kind selector and `novedu_files.kind`. (`writing` is designed
+for but not built.)
+
+**Layer 2 — the validator registry** (`lib/file-validators.ts`):
+`fileValidators[kind].validate(url, fetcher) → { ok, errors?, warnings, title?,
+description?, anonymous? }` is the **single source of truth** for "is this YAML
+valid, and what metadata does it carry." It is consumed by `/files` save + the
+standalone **Validate** button (fetcher resolves the editor buffer + app-hosted
+siblings) AND by code-create (fetcher = `appHostedFetcher`; url = the row's
+`file_url`).
+
+- `tutor` → the THOROUGH gate (`loadAndBuildTutorPrompt`, `validateLibraries:
+  true`): every fragment in every referenced library is strict-rendered, surfacing
+  `title`/`description`/`anonymous`.
+- `fragment` → `loadAndCheckFragmentFile`: a real validator with **no module** —
+  the canonical "validator without a module." A future pure library kind likewise
+  adds only a validator entry.
+- `quiz` → a lenient stub: it parses (`parseQuiz`) to surface `anonymous`/`title`
+  but still emits a non-blocking `QUIZ_VALIDATION_NOT_IMPLEMENTED` warning, so
+  saving a quiz never blocks. Upgrading this to a real structural validator is a
+  one-spot change here, picked up by `/files` save AND code-create at once.
+
+**Layer 3 — the `CodeModule` registry** (`lib/code-modules/`): the registry of
+shareable activities.
+
+- `types.ts` is **client-safe** (`CodeModule = "tutor" | "quiz"` + display labels)
+  so client components and the `/codes` module filter can name modules without
+  importing server code.
+- `registry.ts` is **server-only** (`codeModules: Record<CodeModule,
+  CodeModuleDef>`). Each descriptor carries a `fileKind` (which Layer-2 validator
+  to reuse) and only what is genuinely activity-specific:
+  - `validateOnCreate` — literally `fileValidators[fileKind].validate`; a module
+    never redefines validation.
+  - `runtime` — `{ agentId, buildRequestContext(entry) }`: which Mastra agent the
+    runtime route runs and how its per-request `RequestContext` (system prompt +
+    model) is built.
+  - `stats` (optional) — a module-specific panel rendered below the generic stats
+    shell.
+- `tutor.ts`, `quiz.ts` are the two descriptors.
+
+Student **rendering** is NOT a registry seam: it is a thin `switch (entry.module)`
+in `app/[code]/page.tsx` delegating to each module's own server component
+(`render-tutor.tsx`, `render-quiz.tsx`), so no React/JSX lives in the server-only
+registry.
+
+**Adding a module** touches a small, fixed set of seams: a descriptor file + one
+`codeModules` line, a client label (`lib/code-modules/types.ts`), a render case
+(the thin `switch` in `app/[code]/page.tsx`) with its own render component +
+agent, and — for a **new file kind** — that kind's validator and `readAnonymousFlag`
+branch in the FileKind layer (`lib/file-validators.ts`). The **generic flow** never
+changes: the code store, the runtime route, the stats shell, and attribution all
+dispatch by `module`/`fileKind`. **Adding a pure library kind** = one Layer-2
+validator entry, no module; the `fragment` kind proves the asymmetry is real.
+
+## Student entry & runtime dispatch
+
+`app/[code]/page.tsx` is a thin **dispatcher** (server component):
+
+1. `checkCode(code)` → on failure render `app/code-error.tsx` (`unknown-code` /
+   `not-started` / `expired` / `lookup-failed`, with the window bounds in local
+   time where known).
+2. record/clean up the user's recent codes (off the response path).
+3. mint a server-side `threadId` and sign the thread-ownership token `(code,
+   userId, threadId)`.
+4. `switch (entry.module)` → delegate to the module's render component, which
+   loads the activity YAML (uncached, so edits show immediately) and renders the
+   surface (`<TutorChat>` / `<QuizRunner>`).
+
+The chat **runtime route** (`app/api/copilotkit/[[...slug]]/route.ts`) uses ONE
+header scheme: **`x-code`** (+ `x-thread-token`; headers, not a query string,
+because CopilotKit appends sub-paths like `/info` to the runtime URL). It
+`checkCode`s the header, reads `module` off the row, looks up
+`codeModules[module].runtime` to pick the agent id and build the
+`RequestContext`, and runs that one agent. `resourceId` is the **code** for every
+module. One access check, one header scheme, module-driven agent selection.
+
+The runtime route additionally enforces **thread ownership**: every
+thread-touching request (`agent/{id}/run`, `agent/{id}/connect`,
+`agent/{id}/stop/{threadId}`) must carry an `x-thread-token` whose HMAC-SHA256
+over `(code, userId, threadId)` (key derived from `AUTH_SECRET`,
+`lib/thread-token.ts`) matches the **session user**, so a leaked threadId (even
+with its token) is useless to anyone else. This is the ONLY thread isolation
+there is — Mastra fetches threads by id without checking the resourceId — and it
+is stateless on purpose; an ownership table would break the anonymity promise
+below. All runtime endpoints the app does not use (`/threads/*`, `/transcribe`,
+…) return 404.
+
+## URLs & entry page
+
+- An activity lives at **`/<code>`** — no query parameters. Teachers hand out
+  `https://<host>/<code>`; the code alone also works.
+- **`/`** is the entry page (`app/code-entry.tsx`): a form that accepts a bare
+  code or a pasted full URL (the client extracts the last path segment;
+  format-only validation against `[a-z0-9-]{1,32}`), plus the user's **recently
+  used codes** as one-click shortcuts.
+- Recents live in SQL (`novedu_recent_codes`, PK `user_id` + `code`,
+  `last_used`), recorded server-side after every successful open and capped at the
+  newest 10 per user. The entry page lists them via an inner join with
+  `novedu_codes` (label = `note`, fallback code) — so codes whose row was deleted
+  disappear by themselves. Clicking a recent code that turns out dead
+  (`unknown-code` / `expired`) removes the row server-side; `not-started` and
+  transient `lookup-failed` keep it.
+
+## Creating & editing codes
+
+`/codes/new` ("New code", teacher-only via `requireTeacherPage()` on the page +
+`requireTeacherUserId()` in the action; reached from the "New code" button on
+`/codes`, or with `?module=<kind>&file=<url>` pre-filled from the YAML Files
+"Create code" shortcut — `/share-tutor` and `/share-quiz` both 308-redirect
+here): a **module** selector + the file URL + optional note + window as
+`datetime-local` (converted to unix seconds IN THE BROWSER — the only place the
+teacher's timezone is known). The action (`createCodeAction`,
+`lib/code-actions.ts`) validates the input, then runs the chosen module's
+`validateOnCreate` (the Layer-2 validator for its `fileKind`), **freezes**
+`anonymous`/`title` from the result, and inserts the row. **A storage failure is a
+hard error** — without a row there is nothing to hand out. On success the action
+**redirects to `/codes/edit/<code>`**, which shows the shareable URL (copy
+button) — its origin comes from `CODE_ORIGIN` (read first), then
+`TUTOR_CODE_ORIGIN` (fallback), then the request's forwarded/host headers (fine
+for dev); it is display-only.
+
+**Editing** (`/codes/edit/[code]`, the SAME `CodeForm` in `mode="edit"` →
+`updateCodeAction` → `updateCode`) changes only the **note** and the
+**availability window**. The module and the file URL are shown **read-only** and
+are never submitted, so the frozen `anonymous` flag (which the file implies) stays
+valid and no YAML re-validation is needed.
+
+`/codes` ("Codes", teacher-only) lists **ALL** codes across modules — any
+effective teacher may see and manage every code (RBAC planned) — via `listCodes({
+search, createdBy, module })`, newest first, active + not-yet-started (`upcoming`
+badge) + already-expired (`expired` badge), since codes are not garbage-collected.
+Filtering (a text contains-match over note/code, an "Only my codes" toggle, and a
+**module** `<select>`) happens **in the database** through URL search params,
+never in memory — the shared filtered-list concept (`docs/filtered-lists.md`).
+Each row: a **Module** badge, note (fallback code, `file_url` tooltip), window in
+local time, an **interaction** count (qualifying Mastra threads under
+`resourceId = code` — `getInteractionCounts`, ONE aggregate query for the whole
+filtered set, no per-row query), a stats link, an Open link (active codes only), a
+Copy button, an **Edit** link, and a **Delete** button (confirms first, then wipes
+the code and all of its conversation data — see Lifecycle).
+
+## Chats, memory & the join model
+
+The Mastra memory **`resourceId` is the code** (set in the runtime route), and
+`threadId` is a per-chat UUID generated **server-side per page load**, pinned into
+the CopilotKit client via CopilotChat's `threadId` prop (explicit mode — see the
+comment in `app/tutor-chat.tsx` for why the prop, not the configuration provider)
+and proven back to the runtime by the `x-thread-token` ownership token (nothing is
+persisted client-side — a reload starts a fresh thread). Relationships across the
+Drizzle- and Mastra-owned tables are **by value — never foreign keys**
+(`docs/database.md`):
+
+```
+novedu_codes.code        = novedu_user_chats.code = mastra_threads.resourceId
+novedu_user_chats.thread_id = mastra_threads.id   = mastra_messages.thread_id
+novedu_user_chats.user_id   = Entra oid (the student)
+novedu_codes.created_by     = Entra oid (the teacher)
+```
+
+- **All chats/discussions for a code**: `SELECT * FROM mastra_threads WHERE
+  resourceId = '<code>'`.
+- **user → userchat → history**: filter `novedu_user_chats` by `user_id`, join
+  `mastra_threads`/`mastra_messages` via `thread_id`.
+
+`novedu_user_chats` is the ONLY place tying users to chats, and it is
+privacy-gated by the activity YAML's **`anonymous` flag (default `true`)**: by
+default nothing is written — chats cannot be attributed to a student. Only an
+activity with `anonymous: false` records `(thread_id, code, user_id)`;
+`recordUserChat` (`lib/user-chat-store.ts`, called from the runtime route off the
+response path via `after()` — only after a token-verified run got a 2xx — deduped
+per thread) reads the flag **live** from the YAML behind the stored `file_url`,
+dispatching by the code's file kind (tutor → `loadAndBuildTutorPrompt`, quiz →
+`loadQuiz`). It is privacy-safe on a YAML load failure, which is retried rather
+than cached. The per-user `novedu_recent_codes` shortcuts are deliberately
+separate — they say "this user opened this code", never which chat is theirs.
+
+Note two SEPARATE reads of the same `anonymous` flag. The RUNTIME attribution path
+above always reads it **live** from the YAML (so toggling an activity to
+`anonymous: false` starts attributing immediately). The STATS page instead reads
+the copy **frozen onto `novedu_codes.anonymous` at create time** — it only decides
+whether to surface per-student numbers, and freezing keeps that decision stable
+for a code's lifetime even if the YAML changes later.
+
+Caveat: with `resourceId = code`, any *resource-scoped* Mastra memory (working
+memory, semantic recall) would be shared across all students using the same code.
+Today only per-thread `lastMessages` is configured — keep it that way or re-think
+the scoping first.
+
+**Only the new turn is persisted per run.** CopilotKit/AG-UI re-sends the ENTIRE
+client-side history on every run, and Mastra persists whatever messages it is
+handed (each with a fresh id) — so forwarding the whole history re-stores every
+prior turn again, ballooning a conversation quadratically (`@mastra/memory`'s own
+docs warn against this). The runtime route therefore trims each `run` body to the
+turn AFTER the last assistant reply (`trimToNewTurn`) before forwarding it; prior
+turns are already stored, so Mastra appends only the new user message + its reply.
+The flip side: the model's whole view of the conversation is then the recalled
+`lastMessages` window (currently **40** ≈ 20 exchanges, in `tutor-agent.ts` /
+`quiz-agents.ts`) — raise it if longer sessions must see further back.
+Conversations recorded without this trimming hold telescoped duplicates; the
+viewer collapses them on read (see below).
+
+## Stats & conversation viewer
+
+Teacher-only, under the `/codes` prefix (so the root `/[code]` student catch-all
+never collides). Both pages are **role-gated, not owner-gated**:
+`requireTeacherPage()` + `getCode(code)` (no `created_by` check) — any effective
+teacher may read ANY code's stats/conversations (a larger RBAC feature is
+planned). This is NOT the thread-ownership token, which remains the student-side
+isolation and is unaffected.
+
+- **`/codes/[code]`** — a generic stats shell (`getCodeStats(code, anonymous)`):
+  the interaction count (labelled per module — "Conversations" for tutor,
+  "Discussions" for quiz), and for non-anonymous codes (the frozen `anonymous`
+  flag) the number of distinct students; then a table of every interaction
+  (first/last message time, user id when recorded, user-message count), each row
+  linking to the viewer — **plus** the optional `codeModules[module].stats` panel.
+  "Interaction" = a Mastra thread with ≥ 1 `role = 'user'` message
+  (opened-but-silent threads do not count). Anonymity is enforced **at the data
+  layer**: the page passes the code's frozen `anonymous` flag into `getCodeStats`,
+  which for an anonymous code forces every `userId` to `null` and `studentCount`
+  to `0` *before returning* — so it cannot surface who a student is even if
+  `novedu_user_chats` holds rows (the documented case where the YAML was toggled
+  to non-anonymous AFTER the code was minted). The page's own `!anonymous`
+  rendering checks are belt-and-braces on top of that.
+- **`/codes/[code]/c/[threadId]`** — a READ-ONLY transcript. The server loads the
+  messages (`getConversationMessages`, which re-checks the thread's `resourceId =
+  code`) and converts each stored Mastra message to an AG-UI `Message` (text
+  rebuilt from `parts`; `file` parts become inline images). It then **collapses
+  any replayed history** (`collapseReplayedRuns`): conversations that stored the
+  full replayed history as telescoping runs `R1 ⊂ R2 ⊂ … ⊂ Rk` would otherwise
+  show each turn many times; a run is dropped only when it is an exact element-wise
+  prefix of the next, so a clean conversation passes through untouched. The client
+  (`ConversationView`) renders them with the **same message components the live
+  chat uses**, so bubbles, markdown, math and code match. There is NO
+  `CopilotChat`/`useAgent`, so nothing runs or connects an agent. Those components
+  DO reach into `CopilotKitCore`, so they need a `CopilotKitProvider`; the provider
+  requires a `runtimeUrl` and pings `/api/copilotkit/info` once on mount. That ping
+  succeeds (200) because the runtime route serves **`/info` as auth-only
+  metadata** — the agent registry + capabilities, no chat data, gated by
+  authentication ALONE — even though the viewer sends no `x-code` header. The DATA
+  endpoints (`run`/`connect`/`stop`) stay gated by the code AND the thread-ownership
+  token. Keep this split in mind when touching the runtime route.
+
+Privacy note: this lets a teacher read the *content* of conversations under their
+codes. By design that is allowed — `anonymous` only hides *who* a student is
+(the user id), never the message text; the thread-ownership HMAC remains the
+student-side isolation and is unaffected.
+
+## Quizzes (the `quiz` module)
+
+A quiz is a code with `module: "quiz"`; its `file_url` points at a `novedu_files`
+row of `kind: "quiz"`. Teachers author the quiz YAML on `/files/new` (kind
+**Quiz**) — stored with **zero** schema change — and mint a quiz code on
+`/codes/new` (module **Quiz**, the file pre-filled from the `/files` "Create code"
+shortcut). Students reach it at `/<code>` like any other activity; the runner +
+in-page discussion live in `app/[code]/_quiz/`.
+
+- **Quiz YAML** (`quizzes/sample-quiz.yaml`, parsed leniently by `parseQuiz` in
+  `lib/quiz-yaml.ts`): `id`, `name`, optional `title`/`description` (student
+  welcome), `anonymous` (default `true`), `shuffle` (default `true`), `llm.model`
+  (grades AND drives the discussion), optional `discussion.instructions`, and
+  `questions[]` each with `id`, optional `title`, `question` (markdown), and
+  `evaluation` (the SERVER-ONLY grading prompt).
+- **`evaluation` never reaches the browser.** `toPublicQuiz` strips it (and
+  `model`, `anonymous`, `discussion`) before anything reaches the client; the
+  runner ships only the `QuizPublic` projection. Verdict vocabulary is the internal
+  enum `correct | partial | incorrect` (`lib/quiz-types.ts`, client-safe), shown to
+  students via `verdictLabel` as **"correct / partly correct / wrong."**
+- **Grading** runs the memory-less **`quizEvaluator`** agent
+  (`app/mastra/quiz-agents.ts`): `submitAnswer` (`lib/quiz-actions.ts`) verifies
+  the **code** (`checkCode`), re-loads the quiz, finds the question, builds the
+  grading prompt (frame + the question's `evaluation`) onto a `RequestContext`, and
+  runs the agent with `structuredOutput: { schema: QUIZ_VERDICT_SCHEMA }`. No
+  `Memory` → a `generate()` persists nothing. **The grader is never web-reachable**
+  — it is not any module's `runtime.agentId`, so `agent/quizEvaluator/*` 404s on
+  the runtime route; only `submitAnswer` calls it.
+- **Discussion** is **non-negotiably in-page**: clicking "Chat about this" opens a
+  native modal `<dialog>` over the page (`quiz-runner.tsx` drives
+  `showModal()`/`close()`; Escape, a Close button, and a backdrop click all close
+  it; closing keeps the thread so "Continue discussion" reopens it, and Next /
+  Finish drop it). `startDiscussion` (`lib/quiz-actions.ts`, verifies the code)
+  mints a `threadId`, signs the thread-token `(code, userId, threadId)`, and
+  persists **three seed messages** (question / answer / verdict+feedback) into a
+  Mastra thread (`resourceId = the code`) via the discussion agent's memory; it
+  returns only `{ threadId, threadToken }`. The modal shows the graded **feedback**
+  on top, then a live `CopilotChat` (agentId `"quizDiscussion"`) that starts
+  visually empty (explicit-threadId `connect` replays only the in-process run
+  cache) while the model recalls the full seeded context from memory. A follow-up
+  is the only NEW turn, so `trimToNewTurn` keeps the DB from re-storing the seeds.
+
+## Lifecycle
+
+- Codes are **not** garbage-collected. A code and all of its conversation data
+  persist until the teacher deletes the code on `/codes` (`deleteCodeAndData` —
+  Mastra threads/messages via Mastra's own `deleteThread`, then the `novedu_*`
+  rows; see `docs/database.md`). An expired code stays listed: its activity no
+  longer opens (`checkCode`), but its stats remain reachable until it is deleted.
+  The list's **"Delete Selected"** removes several at once (`deleteCodesAndData`):
+  same teacher gate, same per-code logic, with the `novedu_*` row deletes batched
+  in one Drizzle transaction and the Mastra deletes per code outside it (the shared
+  multi-delete layer — `docs/filtered-lists.md`).
+- Drizzle migrations apply at startup — see `docs/database.md`.
+
+## Testing
+
+The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
+**`docs/testing.md`**. Code-specifics:
+
+- `e2e/code.utils.ts` mints codes (`mintCode({ module, file, … })`, plus a
+  `mintTutorCode` wrapper) by inserting rows directly into `novedu_codes` (loads
+  `.env` like Next does), so any browser spec that mints or resolves a code needs
+  the live database and is tagged `@live` (local only).
+- The security-critical paths run in CI with **no** DB, because the gate
+  short-circuits before any runtime is built: the runtime gate
+  (`app/api/copilotkit/[[...slug]]/route.unit.test.ts`, real thread-token HMAC,
+  asserts module dispatch + that the grader 404s), the dispatcher's consumption of
+  `checkCode` (`app/[code]/page.unit.test.tsx`) and the tutor render
+  (`render-tutor.unit.test.tsx`), the Layer-2 validator seam and the Layer-3
+  module dispatch, plus the rejection/error UI
+  (`tests/component/code-error.browser.test.tsx`) and the window/pattern logic
+  itself (`lib/code-store.unit.test.ts`).
+- The `@live-llm` flows (the tutor chat and the quiz answer→discuss flow **through
+  codes**) live in `e2e/quiz.spec.ts` / `e2e/tutor-chat-reply.spec.ts`, local-only.
+
+## Future work (deferred)
+
+- The **writing** module (the seams are validated against it; only its validator,
+  descriptor, render component, agent, and any module-owned storage are missing).
+- **Custom/memorable codes** (the `code` column + the centralized code seam in
+  `lib/code-store.ts` are already sized for them).
+- A **real quiz validator** (the Layer-2 stub becomes a one-spot change).
+- Result/attempt recording for per-question aggregates; finer-grained RBAC.

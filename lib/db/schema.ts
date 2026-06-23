@@ -22,32 +22,39 @@ import {
 // owns its schema and may recreate/migrate it at any time; we never couple to it.
 // The relationships are by-value instead:
 //
-//   novedu_tutor_codes.code = novedu_user_chats.code = mastra_threads.resourceId
+//   novedu_codes.code = novedu_user_chats.code = mastra_threads.resourceId
 //   novedu_user_chats.thread_id = mastra_threads.id = mastra_messages.thread_id
 //
 // so user → user-chat → chat-history joins work in plain SQL without FKs.
 
-// One row per shared tutor code. The creating teacher is `created_by` (the
-// session user id = Entra `oid`). The validity window is half-open in neither direction:
-// both bounds are inclusive, stored as UTC datetime2. `origin` documents where
-// the code was created (dev/prod host) and is NEVER used in lookups — a code
-// created on localhost must work in production, since all environments share
-// this database.
+// One row per shareable code, across every module. `module` (`tutor` | `quiz` |
+// future) is the dispatch discriminator: the student entry route and the runtime
+// route read it off the row to pick the renderer/agent. `file_url` is the
+// activity YAML the code hands out. The creating teacher is `created_by` (the
+// session user id = Entra `oid`). The validity window is inclusive in both
+// directions, stored as UTC datetime2. `origin` documents where the code was
+// created (dev/prod host) and is NEVER used in lookups — a code created on
+// localhost must work in production, since all environments share this database.
 //
-// `anonymous` is the tutor YAML's privacy flag FROZEN at create time (the
-// create action loads the YAML to validate it anyway). It governs whether
-// chats record who owns them in `novedu_user_chats` and whether the stats page
-// shows per-student data. Editing the YAML later does NOT update this column —
-// the value captured when the code was minted is the one that holds. Rows are
-// kept until the teacher deletes the code (no garbage collection), so the chat
-// at `/<code>` simply stops opening once the window closes (`checkTutorCode`)
-// while the code and its conversation data remain available for stats.
-export const tutorCodes = mssqlTable(
-  "novedu_tutor_codes",
+// `code` is sized generously (`varchar(32)`, `[a-z0-9-]`) so teacher-defined
+// memorable codes fit later; today `generateCode()` mints `[a-z0-9]{10}`.
+//
+// `anonymous` is the activity YAML's privacy flag FROZEN at create time (the
+// create action loads the YAML to validate it anyway). It governs the
+// stats-display decision (per-student data) for the code's life. Editing the
+// YAML later does NOT update this column — the value captured when the code was
+// minted is the one that holds. (The runtime attribution path reads `anonymous`
+// LIVE from the YAML instead — see lib/user-chat-store.ts.) Rows are kept until
+// the teacher deletes the code (no garbage collection), so the activity at
+// `/<code>` simply stops opening once the window closes (`checkCode`) while the
+// code and its conversation data remain available for stats.
+export const codes = mssqlTable(
+  "novedu_codes",
   {
-    code: varchar("code", { length: 10 }).primaryKey(),
+    code: varchar("code", { length: 32 }).primaryKey(),
+    module: varchar("module", { length: 16 }).notNull(),
     createdBy: nvarchar("created_by", { length: 64 }).notNull(),
-    tutorUrl: nvarchar("tutor_url", { length: 2048 }).notNull(),
+    fileUrl: nvarchar("file_url", { length: 2048 }).notNull(),
     validFrom: datetime2("valid_from").notNull(),
     validUntil: datetime2("valid_until").notNull(),
     note: nvarchar("note", { length: 200 }).notNull().default(""),
@@ -57,47 +64,49 @@ export const tutorCodes = mssqlTable(
     anonymous: bit("anonymous").notNull().default(true),
     createdAt: datetime2("created_at").notNull(),
   },
-  // The teacher's "Shared Tutor Codes" page (and the stats pages) list by
-  // creator. There is no longer an index on `valid_until`: nothing deletes by
-  // expiry anymore (garbage collection was removed in favor of explicit
-  // teacher-initiated deletion).
-  (t) => [index("ix_novedu_tutor_codes_created_by").on(t.createdBy)],
+  // The teacher's "Codes" page (and the stats pages) list by creator; the
+  // module filter narrows by activity. No index on `valid_until`: nothing
+  // deletes by expiry (deletion is explicit, teacher-initiated).
+  (t) => [
+    index("ix_novedu_codes_created_by").on(t.createdBy),
+    index("ix_novedu_codes_module").on(t.module),
+  ],
 );
 
-// Links a signed-in user to a chat (Mastra thread) opened under a tutor code.
-// Rows are written ONLY when the tutor YAML opts out of anonymity
-// (`anonymous: false`) — by default no user↔chat link is persisted.
+// Links a signed-in user to a chat (Mastra thread) opened under a code. Rows are
+// written ONLY when the activity YAML opts out of anonymity (`anonymous: false`)
+// — by default no user↔chat link is persisted. `code` is widened to match
+// novedu_codes.code so a real code (any module) stores by value.
 //
-// No FK to novedu_tutor_codes either: expired codes are garbage-collected
-// while these rows are deliberately kept, so chat-history attribution
-// outlives the code.
+// No FK to novedu_codes either: these rows are deliberately kept even after a
+// code is deleted, so chat-history attribution outlives the code.
 export const userChats = mssqlTable(
   "novedu_user_chats",
   {
     threadId: varchar("thread_id", { length: 64 }).primaryKey(),
-    code: varchar("code", { length: 10 }).notNull(),
+    code: varchar("code", { length: 32 }).notNull(),
     userId: nvarchar("user_id", { length: 64 }).notNull(),
     createdAt: datetime2("created_at").notNull(),
   },
   (t) => [
-    // "All chats for a tutor code" …
+    // "All chats for a code" …
     index("ix_novedu_user_chats_code").on(t.code),
     // … and "all chats of a user".
     index("ix_novedu_user_chats_user_id").on(t.userId),
   ],
 );
 
-// A user's recently used tutor codes, backing the shortcuts on the chat entry
-// page (`/`). Pure convenience bookkeeping: the displayed label (the teacher's
-// note) is NOT duplicated here — the entry page joins novedu_tutor_codes, so
-// codes whose row was garbage-collected silently drop out of the list. Kept
-// separate from novedu_user_chats on purpose: that table is the privacy-gated
-// user↔chat attribution, this one only says "this user opened this code".
+// A user's recently used codes, backing the shortcuts on the chat entry page
+// (`/`). Pure convenience bookkeeping: the displayed label (the teacher's note)
+// is NOT duplicated here — the entry page joins novedu_codes, so codes whose row
+// was deleted silently drop out of the list. Kept separate from
+// novedu_user_chats on purpose: that table is the privacy-gated user↔chat
+// attribution, this one only says "this user opened this code".
 export const recentCodes = mssqlTable(
   "novedu_recent_codes",
   {
     userId: nvarchar("user_id", { length: 64 }).notNull(),
-    code: varchar("code", { length: 10 }).notNull(),
+    code: varchar("code", { length: 32 }).notNull(),
     lastUsed: datetime2("last_used").notNull(),
   },
   // The PK doubles as the per-user lookup index (user_id prefix).
@@ -137,10 +146,10 @@ export const files = mssqlTable(
     // above). Allows letters/digits/underscore/hyphen today; `/`-separated
     // folder paths are a future extension (hence the generous length).
     name: nvarchar("name", { length: 450 }).notNull(),
-    // "tutor" | "fragment" — chosen at create time, picks the validator.
+    // "tutor" | "fragment" | "quiz" — chosen at create time, picks the validator.
     kind: varchar("kind", { length: 16 }).notNull(),
-    // Denormalized from the validated YAML (tutor only; null for fragments) so the
-    // file list can be searched by title/description without parsing every body.
+    // Denormalized from the validated YAML (tutor only; null for fragments/quiz) so
+    // the file list can be searched by title/description without parsing every body.
     title: nvarchar("title", { length: 512 }),
     description: nvarchar("description", { length: 2048 }),
     // The ENTIRE YAML for this version (NVARCHAR(MAX)).

@@ -20,30 +20,29 @@ const NAV_ITEMS = [
     teacherOnly: true,
   },
   {
-    href: "/tutor-codes",
-    label: "Shared Tutor Codes",
-    heading: "Shared Tutor Codes",
+    href: "/codes",
+    label: "Codes",
+    heading: "Codes",
     teacherOnly: true,
   },
   { href: "/files", label: "YAML Files", heading: "YAML Files", teacherOnly: true },
-  { href: "/share-quiz", label: "Share Quiz", heading: "Share Quiz", teacherOnly: true },
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
 ] as const;
 
 // Dynamic routes have no fixed NAV_ITEMS entry, but they still need a status-bar
 // heading (the pages themselves render no title — the bar is the single source).
-// Matched on the path shape: the tutor code carries no title we know client-side,
-// so a static heading per route is shown.
+// Matched on the path shape: the code carries no title we know client-side, so a
+// static heading per route is shown.
 function dynamicHeading(pathname: string): string | undefined {
   const segments = pathname.split("/").filter(Boolean);
-  if (segments[0] === "tutor-codes" && segments.length >= 2) {
-    // /tutor-codes/new              → create
-    // /tutor-codes/edit/<code>      → edit
-    // /tutor-codes/<code>           → stats
-    // /tutor-codes/<code>/c/<thread> → a single conversation
-    if (segments[1] === "new") return "New Tutor Code";
-    if (segments[1] === "edit") return "Edit Tutor Code";
-    return segments[2] === "c" ? "Conversation" : "Tutor Code Stats";
+  if (segments[0] === "codes" && segments.length >= 2) {
+    // /codes/new              → create
+    // /codes/edit/<code>      → edit
+    // /codes/<code>           → stats
+    // /codes/<code>/c/<thread> → a single conversation
+    if (segments[1] === "new") return "New Code";
+    if (segments[1] === "edit") return "Edit Code";
+    return segments[2] === "c" ? "Conversation" : "Code Stats";
   }
   if (segments[0] === "files") {
     // /files/new            → create
@@ -51,11 +50,6 @@ function dynamicHeading(pathname: string): string | undefined {
     //                          is not a real page, so it gets no special heading)
     if (segments[1] === "new") return "New YAML File";
     if (segments[1] === "edit" && segments.length >= 3) return "Edit YAML File";
-  }
-  if (segments[0] === "quizzes" && segments.length >= 2) {
-    // /quizzes/<name>/discussions       → the discussion list
-    // /quizzes/<name>/c/<thread>        → a single discussion transcript
-    return segments[2] === "c" ? "Quiz Discussion" : "Quiz Discussions";
   }
   return undefined;
 }

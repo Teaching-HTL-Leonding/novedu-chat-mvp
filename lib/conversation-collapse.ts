@@ -2,7 +2,7 @@ import type { Message } from "@ag-ui/core";
 
 // Pure helpers for turning stored Mastra messages into AG-UI messages and for
 // collapsing the "replayed history" duplicates. No DB or Mastra imports, so the
-// conversation viewer (`lib/tutor-stats-store.ts`) can render a clean transcript
+// conversation viewer (`lib/code-stats-store.ts`) can render a clean transcript
 // from rows that hold telescoped replays. See docs/tutor-codes.md ("Only the new
 // turn is persisted").
 

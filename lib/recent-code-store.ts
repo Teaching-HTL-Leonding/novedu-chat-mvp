@@ -1,19 +1,19 @@
 import { and, desc, eq, notInArray } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { recentCodes, tutorCodes } from "@/lib/db/schema";
+import { codes, recentCodes } from "@/lib/db/schema";
 
-// A user's recently used tutor codes (`novedu_recent_codes`), backing the
-// shortcuts on the chat entry page. Server-side bookkeeping around chat opens:
-// a successful open records the code, an open that fails with a dead code
-// removes it. All functions are best-effort and never throw — losing a
-// shortcut must never break opening a chat.
+// A user's recently used codes (`novedu_recent_codes`), backing the shortcuts on
+// the chat entry page. Server-side bookkeeping around opens: a successful open
+// records the code, an open that fails with a dead code removes it. All functions
+// are best-effort and never throw — losing a shortcut must never break opening an
+// activity.
 //
 // SERVER-ONLY: uses the database. Never import from client components.
 
 /** How many recently used codes are kept per user (and shown). */
 export const MAX_RECENT_CODES = 10;
 
-/** A recent code joined with its (still existing) tutor-code row. */
+/** A recent code joined with its (still existing) code row. */
 export interface RecentCode {
   code: string;
   /** The teacher's note — the shortcut's label (fallback: the code itself). */
@@ -21,7 +21,7 @@ export interface RecentCode {
   lastUsed: Date;
 }
 
-// Mirrors isDuplicateKeyError in tutor-code-store: mssql 2627/2601 wrapped in a
+// Mirrors isDuplicateKeyError in code-store: mssql 2627/2601 wrapped in a
 // DrizzleQueryError's `cause` chain.
 function isDuplicateKeyError(error: unknown): boolean {
   for (let e = error; typeof e === "object" && e !== null; e = (e as { cause?: unknown }).cause) {
@@ -32,19 +32,19 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 /**
- * The user's most recently used codes, newest first — joined with
- * `novedu_tutor_codes` for the note, so garbage-collected codes drop out of
- * the list by themselves (inner join). Includes currently expired or
- * not-yet-started codes as long as their row exists: clicking one shows the
- * window error, and definitively dead ones are removed there.
+ * The user's most recently used codes, newest first — joined with `novedu_codes`
+ * for the note, so deleted codes drop out of the list by themselves (inner join).
+ * Includes currently expired or not-yet-started codes as long as their row
+ * exists: clicking one shows the window error, and definitively dead ones are
+ * removed there.
  */
 export async function listRecentCodes(userId: string): Promise<RecentCode[]> {
   try {
     return await getDb()
-      .select({ code: recentCodes.code, note: tutorCodes.note, lastUsed: recentCodes.lastUsed })
+      .select({ code: recentCodes.code, note: codes.note, lastUsed: recentCodes.lastUsed })
       .top(MAX_RECENT_CODES)
       .from(recentCodes)
-      .innerJoin(tutorCodes, eq(recentCodes.code, tutorCodes.code))
+      .innerJoin(codes, eq(recentCodes.code, codes.code))
       .where(eq(recentCodes.userId, userId))
       .orderBy(desc(recentCodes.lastUsed));
   } catch (error) {

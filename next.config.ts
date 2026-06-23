@@ -14,11 +14,14 @@ const nextConfig: NextConfig = {
   // time, which only works when those modules load through Node's loader rather
   // than a bundle.
   serverExternalPackages: ["@mastra/*", "mssql", "tedious", "@azure/monitor-opentelemetry"],
-  // The "Create Tutor Code" flow moved from `/share-tutor` to `/tutor-codes/new`
-  // (the list page now owns the "New Tutor Code" button). Keep old links/bookmarks
-  // working; the `?tutor=` query is preserved by default.
+  // Code creation lives at `/codes/new` (the list page owns the "New code"
+  // button). The old share entry points 308-redirect there so any lingering link
+  // still lands somewhere useful (the teacher re-picks the file/module).
   async redirects() {
-    return [{ source: "/share-tutor", destination: "/tutor-codes/new", permanent: true }];
+    return [
+      { source: "/share-tutor", destination: "/codes/new", permanent: true },
+      { source: "/share-quiz", destination: "/codes/new", permanent: true },
+    ];
   },
 };
 
