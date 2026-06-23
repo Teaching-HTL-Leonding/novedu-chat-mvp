@@ -140,7 +140,8 @@ rest of the app:
   the MVP, so saving never blocks and the Validate button passes for any quiz YAML
   (the lenient parse happens only at run time — see `docs/codes.md`). The
   create-file kind selector therefore offers **tutor / fragment / quiz**, and the
-  `/files` list adds **"Create quiz link"** + **"Discussions"** actions on quiz rows.
+  `/files` list adds a single **"Create code"** action on tutor and quiz rows
+  (linking to `/codes/new?module=<kind>&file=<url>`).
 
 The public origin is resolved once on the server (`resolveAppOrigin` /
 `resolveAppOriginOr` in `lib/app-origin.ts`) and the public URL is built by
