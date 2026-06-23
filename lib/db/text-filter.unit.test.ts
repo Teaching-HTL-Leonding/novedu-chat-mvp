@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tutorCodes } from "@/lib/db/schema";
+import { codes } from "@/lib/db/schema";
 import { containsAny, escapeLikeTerm } from "@/lib/db/text-filter";
 
 describe("escapeLikeTerm", () => {
@@ -21,8 +21,8 @@ describe("escapeLikeTerm", () => {
 
 describe("containsAny", () => {
   it("returns undefined for a blank term (no filter)", () => {
-    expect(containsAny("", [tutorCodes.note])).toBeUndefined();
-    expect(containsAny("   ", [tutorCodes.note])).toBeUndefined();
+    expect(containsAny("", [codes.note])).toBeUndefined();
+    expect(containsAny("   ", [codes.note])).toBeUndefined();
   });
 
   it("returns undefined when there are no columns", () => {
@@ -30,7 +30,7 @@ describe("containsAny", () => {
   });
 
   it("returns an SQL condition for a real term + column", () => {
-    const condition = containsAny("hello", [tutorCodes.note, tutorCodes.code]);
+    const condition = containsAny("hello", [codes.note, codes.code]);
     expect(condition).toBeDefined();
   });
 });

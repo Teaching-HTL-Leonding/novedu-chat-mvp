@@ -27,7 +27,7 @@ runs don't have to rediscover the setup:
   callback captures `profile.oid` (Entra object id) onto the token and the `session`
   callback exposes it as `session.user.id` (falling back to `sub` only if a token
   ever lacks `oid`). This is the key everything user-scoped joins on: tutor-code
-  ownership (`novedu_tutor_codes.created_by`), the user↔chat link
+  ownership (`novedu_codes.created_by`), the user↔chat link
   (`novedu_user_chats.user_id`), and the `x-thread-token` signature. **Why `oid` and
   not `sub`:** Entra's `sub` is a *pairwise* subject id scoped to the redirect-URI
   host, so the SAME user receives a DIFFERENT `sub` on `localhost:3000` vs. the Azure

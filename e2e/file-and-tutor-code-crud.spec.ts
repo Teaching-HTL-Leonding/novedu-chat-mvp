@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { unixSecondsToDatetimeLocal } from "../lib/datetime-local";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { VALID_TUTOR_URL } from "./tutor-code.utils";
+import { VALID_TUTOR_URL } from "./code.utils";
 
 // @live end-to-end CRUD over BOTH a hosted YAML file and a tutor link ("tutor
 // code"), as a teacher, against the real database (the dev server authenticates
@@ -87,11 +87,11 @@ test.afterEach(async ({ page }) => {
     const label = createdCodeLabel;
     createdCodeLabel = null;
     try {
-      await applyFilter(page, "Filter tutor codes", label);
+      await applyFilter(page, "Filter codes", label);
       const row = page.getByRole("row").filter({ hasText: label });
       if ((await row.count()) > 0) {
         page.once("dialog", (dialog) => dialog.accept());
-        await row.getByRole("button", { name: `Delete tutor code ${label}` }).click();
+        await row.getByRole("button", { name: `Delete code ${label}` }).click();
         await expect(page.getByRole("row").filter({ hasText: label })).toHaveCount(0);
       }
     } catch {
@@ -154,23 +154,23 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   // =========================================================================
   const note = `e2e tutor link ${Date.now()}`;
   const now = Math.floor(Date.now() / 1000);
-  await page.goto("/tutor-codes/new");
-  await page.getByLabel("Tutor YAML URL").fill(VALID_TUTOR_URL);
+  await page.goto("/codes/new");
+  await page.getByLabel("Activity YAML URL").fill(VALID_TUTOR_URL);
   await page.getByLabel(/Note/).fill(note);
   await page.getByLabel(/Available from/).fill(unixSecondsToDatetimeLocal(now - 3600));
   await page.getByLabel(/Available until/).fill(unixSecondsToDatetimeLocal(now + 3600));
   createdCodeLabel = note;
-  await page.getByRole("button", { name: "Create Tutor Code" }).click();
+  await page.getByRole("button", { name: "Create code" }).click();
 
   // Lands on the new code's edit page, which shows the shareable chat URL.
-  await expect(page).toHaveURL(/\/tutor-codes\/edit\/[a-z0-9]{10}$/, { timeout: 60_000 });
-  const link = page.getByLabel("Tutor Code link", { exact: true });
+  await expect(page).toHaveURL(/\/codes\/edit\/[a-z0-9]{10}$/, { timeout: 60_000 });
+  const link = page.getByLabel("Share link", { exact: true });
   await expect(link).toBeVisible({ timeout: 30_000 });
   const linkValue = await link.inputValue();
   expect(linkValue).toMatch(/^http:\/\/localhost:3000\/[a-z0-9]{10}$/);
 
   // TUTOR LINK — update: change the note (the URL field is read-only).
-  await expect(page.getByLabel(/Tutor YAML URL/)).toHaveAttribute("readonly", "");
+  await expect(page.getByLabel(/Activity YAML URL/)).toHaveAttribute("readonly", "");
   const editedNote = `${note} edited`;
   await page.getByLabel(/Note/).fill(editedNote);
   createdCodeLabel = editedNote;
@@ -178,8 +178,8 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await expect(page.getByText("Saved")).toBeVisible({ timeout: 30_000 });
 
   // TUTOR LINK — read: the edited note is findable via the DB-side filter.
-  await page.goto("/tutor-codes");
-  await applyFilter(page, "Filter tutor codes", editedNote);
+  await page.goto("/codes");
+  await applyFilter(page, "Filter codes", editedNote);
   await expect(page).toHaveURL(/[?&]q=/);
   await expect(page.getByRole("row").filter({ hasText: editedNote })).toHaveCount(1);
 
@@ -188,12 +188,12 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 60_000 });
 
   // TUTOR LINK — delete (from the list row).
-  await page.goto("/tutor-codes");
-  await applyFilter(page, "Filter tutor codes", editedNote);
+  await page.goto("/codes");
+  await applyFilter(page, "Filter codes", editedNote);
   const codeRow = page.getByRole("row").filter({ hasText: editedNote });
   await expect(codeRow).toHaveCount(1);
   page.once("dialog", (dialog) => dialog.accept());
-  await codeRow.getByRole("button", { name: `Delete tutor code ${editedNote}` }).click();
+  await codeRow.getByRole("button", { name: `Delete code ${editedNote}` }).click();
   await expect(page.getByRole("row").filter({ hasText: editedNote })).toHaveCount(0);
   createdCodeLabel = null;
 });

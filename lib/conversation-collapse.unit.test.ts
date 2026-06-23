@@ -4,7 +4,7 @@ import type { Message } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { collapseReplayedRuns, toAguiMessage } from "@/lib/conversation-collapse";
 
-// Pure helpers behind the conversation viewer (lib/tutor-stats-store.ts). The
+// Pure helpers behind the conversation viewer (lib/code-stats-store.ts). The
 // end-to-end "getConversationMessages collapses replays" test lives in the
 // store's test; here we pin the pure logic directly.
 

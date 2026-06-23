@@ -101,16 +101,16 @@ the tutor agent's memory need the database.
   `db_owner`).
 - **HARD RULE: no foreign keys between `novedu_*` and `mastra_*` tables.**
   Mastra owns its data model; relationships are by-value (see
-  `docs/tutor-codes.md` for the join model). There is also deliberately no FK
-  `novedu_user_chats → novedu_tutor_codes` and none for `novedu_recent_codes`
+  `docs/codes.md` for the join model). There is also deliberately no FK
+  `novedu_user_chats → novedu_codes` and none for `novedu_recent_codes`
   (shortcuts join at read time).
 
-Tables (details in `docs/tutor-codes.md`):
+Tables (details in `docs/codes.md`):
 
 | Table | Keys | Purpose |
 | --- | --- | --- |
-| `novedu_tutor_codes` | PK `code` | Shared tutor codes: tutor URL, window, note, creating teacher, frozen `anonymous` flag |
-| `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only for `anonymous: false` tutors) |
+| `novedu_codes` | PK `code` | Shareable codes across modules: `module` discriminator, file URL, window, note, creating teacher, frozen `anonymous` flag |
+| `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only when the activity opts out of anonymity) |
 | `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (entry-page shortcuts) |
 | `novedu_files` | PK `id` (per-version); filtered UK `name WHERE valid_until IS NULL` | App-hosted YAML files, **temporal/append-only** (details in `docs/files.md`) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping |
@@ -124,18 +124,18 @@ Update = close the active row + insert a new one; delete = close only. See
 
 ## Deletion (no garbage collection)
 
-There is **no** automatic garbage collection. Tutor codes and their conversation
-data live until a teacher deletes a code on `/tutor-codes`. The delete action
-(`deleteTutorCodeAndData` in `lib/tutor-stats-store.ts`) removes, for that code:
+There is **no** automatic garbage collection. Codes and their conversation
+data live until a teacher deletes a code on `/codes`. The delete action
+(`deleteCodeAndData` in `lib/code-stats-store.ts`) removes, for that code:
 
 1. every Mastra thread under `resourceId = code` and its messages — through
    Mastra's OWN storage API (`getStore("memory").deleteThread`, which deletes a
    thread's messages and the thread in one transaction), so we never mutate the
    `mastra_*` schema by hand;
 2. the app-owned rows via Drizzle — `novedu_user_chats`, `novedu_recent_codes`,
-   then the `novedu_tutor_codes` row LAST (so a mid-way failure leaves the code
+   then the `novedu_codes` row LAST (so a mid-way failure leaves the code
    still listed and the operation safe to retry; it is idempotent).
 
 The READ side of stats — counts, per-conversation timings —
 is plain by-value SQL against `mastra_threads`/`mastra_messages`; see
-`docs/tutor-codes.md`.
+`docs/codes.md`.

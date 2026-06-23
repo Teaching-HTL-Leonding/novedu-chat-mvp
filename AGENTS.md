@@ -17,8 +17,8 @@ The highest-cost rules to break. They always apply, regardless of which subsyste
 
 - Gate teacher-only server actions / route handlers with **`requireEffectiveTeacher()`** (or **`requireTeacherUserId()`** in the file/CRUD actions) — **never** `session.user.isTeacher` or `requireTeacher()`, which ignore "view as student" mode.
 - The session user id is the Entra **`oid`**, not `sub`.
-- Student chat/quiz access is gated by **stateless HMAC** — the tutor-code check, the `x-thread-token` thread-ownership token, and signed quiz links — re-verified on **every** server touch, never a bare DB lookup.
-- The quiz **grader agent is never web-reachable**, and the server-only quiz `evaluation` prompts never reach the browser.
+- Student access to any activity (tutor chat / quiz) is gated by **`checkCode()`** on the stored `novedu_codes` row plus the **stateless-HMAC `x-thread-token`** thread-ownership token over `(code, userId, threadId)` — both re-verified on **every** server touch, never a bare DB lookup. There are no signed links; a quiz is just a code with `module: "quiz"`.
+- The quiz **grader agent (`quizEvaluator`) is never web-reachable** — it is not any module's runtime agent, so the runtime route 404s it; only `submitAnswer` calls it. The server-only quiz `evaluation` prompts never reach the browser.
 - Public **`GET /api/files/<name>`** is intentionally unauthenticated; every other file path is a teacher-only server action. Keep the route in the `proxy.ts` matcher.
 - Telemetry carries **no** message / prompt / PII content.
 - Fork-PR CI stays **secret-free**; never add `pull_request_target`.
@@ -35,16 +35,16 @@ Read before touching: `auth.ts`, `proxy.ts`, sessions, teacher gating, student m
 - The app is gated by Microsoft Entra ID (Auth.js v5); the gate is `proxy.ts` at the repo root (Next 16 renamed the `middleware` convention to `proxy`).
 - Teacher gating goes through `requireEffectiveTeacher()` (`lib/student-mode.ts`), which honors student mode — see the security block.
 
-### Tutor Codes → `docs/tutor-codes.md`
+### Codes → `docs/codes.md`
 
-Read before touching: `app/page.tsx`, `app/[code]/**`, `app/tutor-codes/**`, `app/api/copilotkit/**`, `lib/*tutor*`, `lib/thread-token.ts`, `novedu_tutor_codes`, `novedu_user_chats`.
+Read before touching: `app/page.tsx`, `app/[code]/**`, `app/codes/**`, `app/api/copilotkit/**`, `lib/code-*.ts`, `lib/code-modules/**`, `lib/file-validators.ts`, `lib/quiz-*.ts`, `app/mastra/quiz-agents.ts`, `lib/thread-token.ts`, `novedu_codes`, `novedu_user_chats`.
 
-- Chat is reachable only via `/<tutor-code>`. `checkTutorCode()` gates access in **two** sites that must stay in sync: `app/[code]/page.tsx` and the CopilotKit route (`x-tutor-code`, re-checked on every data request).
-- Student thread isolation is the signed `x-thread-token` (`lib/thread-token.ts`) — Mastra does not bind a thread to its owner, so without the token any code-holder could read another student's chat. The teacher side is **role-gated, not owner-gated**: any effective teacher may view/edit/delete any code.
-- `novedu_user_chats` is the only user↔chat link, written only for non-anonymous tutors (default: anonymous, nothing stored). `anonymous` is frozen onto the row at create time.
-- Editing a code changes only its note + availability window — never the tutor URL or the frozen `anonymous` flag.
-- Deleting a code also wipes all its Mastra threads/messages; codes are never garbage-collected, so expired ones still list.
-- Mastra memory `resourceId` is the tutor code.
+- Every shareable activity is a `novedu_codes` row reached at `/<code>`; `module` (`tutor` | `quiz` | …) dispatches the renderer/agent. `checkCode()` gates access in **two** sites that must stay in sync: `app/[code]/page.tsx` (a thin dispatcher) and the CopilotKit route (ONE `x-code` header, re-checked on every data request).
+- Three layers (see the doc): **FileKind** (`lib/file-name.ts`) → a **validator** keyed by kind (`lib/file-validators.ts`, the single source of truth for "valid? + what metadata", plus the runtime-light `readAnonymousFlag`) → a **CodeModule** descriptor (`lib/code-modules/`) that references a `fileKind` and supplies the runtime agent + stats. Adding a module = a descriptor + registry line + a client label + a render case (+ a validator/`readAnonymousFlag` branch for a new file kind); the generic flow (store, runtime route, stats shell, attribution) is untouched. `fragment` is a validator with **no** module.
+- Student thread isolation is the signed `x-thread-token` (`lib/thread-token.ts`) over `(code, userId, threadId)` — Mastra does not bind a thread to its owner, so without the token any code-holder could read another student's chat. The teacher side is **role-gated, not owner-gated**: any effective teacher may view/edit/delete any code. Mastra memory `resourceId` is the code (every module).
+- `novedu_user_chats` is the only user↔chat link, written only when the activity opts out of anonymity (default: anonymous, nothing stored). `anonymous` has **two reads**: the frozen row copy governs stats display; the runtime attribution path (`recordUserChat`) reads it **live** from the YAML per file kind.
+- Editing a code changes only its note + window — never the module, `file_url`, or the frozen `anonymous`. Deleting a code wipes all its Mastra threads/messages; codes are never garbage-collected, so expired ones still list.
+- **Quizzes** are the `quiz` module: a quiz is a `novedu_files` row with `kind: "quiz"` (not structurally validated — save/Validate pass with a warning; `toPublicQuiz` strips the server-only `evaluation` before anything reaches the browser). The runner + in-page modal `<dialog>` discussion live in `app/[code]/_quiz/`; the grader (`quizEvaluator`) stays server-only — see the security block.
 - List filtering + multi-delete follow `docs/filtered-lists.md`.
 
 ### App-hosted YAML files → `docs/files.md`
@@ -64,23 +64,13 @@ Read before touching: `app/files/gui/**`, `lib/yaml-files.ts`.
 - `app/files/gui/_studio/**` is student-owned; the two `page.tsx` shells (`edit/[...name]`, `view`) are app-owned — they gate (teacher-only), do the server-only load, and pass plain props. The `_studio` underscore keeps it out of routing.
 - The students' only app import is `@/lib/yaml-files` (a convention enforced by review / CODEOWNERS, not lint). They write client-side React only; new server behaviour extends the facade.
 
-### Quizzes → `docs/quizzes.md`
-
-Read before touching: `app/q/**`, `app/share-quiz/**`, `app/quizzes/**`, `lib/quiz-*.ts`, `app/mastra/quiz-agents.ts`, the quiz branch of the CopilotKit route.
-
-- A quiz is a `novedu_files` row with `kind: "quiz"` — not structurally validated (save/Validate pass with a warning). `toPublicQuiz` strips the server-only `evaluation` prompts before anything reaches the browser.
-- Students reach a quiz only via a stateless HMAC-signed link, re-verified on every server touch; `/q` is a static segment that wins over `/[code]`.
-- Grading runs the memory-less `quizEvaluator` agent, which is never web-reachable (the route runs exactly one agent per branch) — see the security block.
-- The per-question discussion is in-page (a modal `<dialog>`); `startDiscussion` seeds a thread (`resourceId` = the quiz URL) and returns only the thread id + token. Teacher stats/transcript pages reuse the tutor-code stats reader + `ConversationView`, keyed by the quiz URL.
-- No `proxy.ts` change — `/q`, `/share-quiz`, `/quizzes` are authed.
-
 ### Filtered lists → `docs/filtered-lists.md`
 
 Read before touching: `components/data-list.tsx`, `components/list-filter-bar.tsx`, `components/list-selection.tsx`, `components/selection-column.tsx`, `lib/db/text-filter.ts`, or a list page's `searchParams`.
 
 - List filtering happens in the database, never in memory: filter state lives in URL search params → a parameterized `WHERE` (text via `containsAny`).
 - Build a list from the reusable pieces — `DataList` (server table) + `ListFilterBar` (client) — and wrap in `SelectionProvider` + `selectionColumn` + `DeleteSelectedButton` for multi-delete.
-- Multi-delete reuses the exact same per-item store delete as the per-row trash button (single and bulk share one `DbExecutor` helper; bulk loops it in one transaction). For tutor codes the Mastra thread deletes run per-thread outside that transaction (separate pool).
+- Multi-delete reuses the exact same per-item store delete as the per-row trash button (single and bulk share one `DbExecutor` helper; bulk loops it in one transaction). For codes the Mastra thread deletes run per-code outside that transaction (separate pool).
 - Aggregated columns are a single raw-SQL aggregate over the filtered set — never a query per row.
 
 ### Azure SQL, Drizzle & credentials → `docs/database.md`

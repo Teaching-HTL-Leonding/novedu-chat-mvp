@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { mintTutorCode } from "./tutor-code.utils";
+import { mintTutorCode } from "./code.utils";
 
 // Mid-session window expiry: the backend rejects runtime requests the moment
 // the code's window closes (re-checked per request), but the chat SURFACE must
 // survive — the student may still want to read or copy the conversation. Only
-// a reload shows the full-page "Tutor code expired" explanation.
+// a reload shows the full-page "Code expired" explanation.
 
 // Page load + waiting out the window + the failed send.
 test.setTimeout(90_000);
@@ -37,5 +37,5 @@ test("when the window closes mid-session the chat stays on screen", {
   await expect(page.getByTestId("copilot-user-message")).toContainText("Can I still ask?");
   await expect(composer).toBeVisible();
   // No full-page error replaced the chat (that only happens on reload).
-  await expect(page.getByRole("heading", { name: "Tutor code expired" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Code expired" })).toHaveCount(0);
 });

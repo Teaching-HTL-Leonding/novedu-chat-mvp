@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getStoredMessages, mintTutorCode, RAW_TUTORS } from "./tutor-code.utils";
+import { getStoredMessages, mintTutorCode, RAW_TUTORS } from "./code.utils";
 
 // REGRESSION GUARD for the "replayed history" persistence bug (issue #28).
 //

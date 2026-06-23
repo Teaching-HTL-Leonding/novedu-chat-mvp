@@ -177,5 +177,5 @@ job is **secret-free**; that is a hard security invariant, not a convenience —
 
 ## Subsystem specifics
 
-- **Tutor codes / the chat gate** → `docs/tutor-codes.md` (Testing section).
+- **Tutor codes / the chat gate** → `docs/codes.md` (Testing section).
 - **Auth & e2e session cookies** → `docs/auth.md`.

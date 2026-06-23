@@ -8,7 +8,7 @@ import { render } from "vitest-browser-react";
 const push = vi.fn();
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
-  usePathname: () => "/tutor-codes",
+  usePathname: () => "/codes",
 }));
 
 import { ListFilterBar } from "@/components/list-filter-bar";
@@ -43,7 +43,7 @@ test("Apply pushes the typed term as ?q= (mine omitted when left checked)", asyn
 
   expect(push).toHaveBeenCalledTimes(1);
   const url = new URL(`http://x${pushedUrl()}`);
-  expect(url.pathname).toBe("/tutor-codes");
+  expect(url.pathname).toBe("/codes");
   expect(url.searchParams.get("q")).toBe("linked lists");
   // A default-on checkbox left checked stays "1".
   expect(url.searchParams.get("mine")).toBe("1");
@@ -68,7 +68,7 @@ test("Clear navigates to the bare path when a filter is active", async () => {
   );
 
   await screen.getByRole("button", { name: "Clear" }).click();
-  expect(push).toHaveBeenCalledWith("/tutor-codes");
+  expect(push).toHaveBeenCalledWith("/codes");
 });
 
 test("no Clear button when no filter is active", async () => {

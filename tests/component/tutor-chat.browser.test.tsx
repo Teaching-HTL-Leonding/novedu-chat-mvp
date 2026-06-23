@@ -45,7 +45,7 @@ const TUTOR_URL = "https://example.com/tutor.yaml";
 const TUTOR_CODE = "a1b2c3d4e5";
 const THREAD_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const RUNTIME_HEADERS = {
-  "x-tutor-code": TUTOR_CODE,
+  "x-code": TUTOR_CODE,
   "x-thread-token": "deadbeef".repeat(8),
 };
 

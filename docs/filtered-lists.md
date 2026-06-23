@@ -1,7 +1,7 @@
 # Filtered lists
 
 Teacher-facing list screens (YAML Files at `/files`, Shared Tutor Codes at
-`/tutor-codes`, and any future list) share **one** concept so they look and behave
+`/codes`, and any future list) share **one** concept so they look and behave
 the same and only have to be improved once. Read this before adding a new list or
 touching `components/data-list.tsx`, `components/list-filter-bar.tsx`,
 `components/list-page.module.css`, or a list page's `searchParams` handling.

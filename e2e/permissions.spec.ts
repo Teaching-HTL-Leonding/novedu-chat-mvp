@@ -15,15 +15,15 @@ test.describe("as a student", () => {
     await expect(page.getByRole("textbox")).toHaveCount(0);
   });
 
-  test("the New Tutor Code page is denied", async ({ page }) => {
-    await page.goto("/tutor-codes/new");
+  test("the New Code page is denied", async ({ page }) => {
+    await page.goto("/codes/new");
 
     await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Create Tutor Code" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Create code" })).toHaveCount(0);
   });
 
-  test("the Shared Tutor Codes page is denied", async ({ page }) => {
-    await page.goto("/tutor-codes");
+  test("the Codes page is denied", async ({ page }) => {
+    await page.goto("/codes");
 
     await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
     await expect(page.getByRole("table")).toHaveCount(0);
@@ -42,14 +42,14 @@ test.describe("as a student", () => {
     expect(body.errors[0].code).toBe("FORBIDDEN");
   });
 
-  test("the chat backend rejects DATA requests without a valid tutor code", async ({ page }) => {
+  test("the chat backend rejects DATA requests without a valid code", async ({ page }) => {
     // The code gate protects the DATA endpoints (run/connect/stop); GET /info is
     // auth-only metadata and intentionally needs no code (the read-only
     // conversation viewer relies on that). Probe a `run` with a malformed code —
     // it must be rejected before any thread/runtime work (pattern-rejected, so
     // this stays hermetic: no DB round-trip).
     const res = await page.request.post("/api/copilotkit/agent/tutor/run", {
-      headers: { "x-tutor-code": "zzzzzzzzz!", "content-type": "application/json" },
+      headers: { "x-code": "zzzzzzzzz!", "content-type": "application/json" },
       data: { threadId: "t", runId: "r", messages: [], tools: [], context: [], state: {} },
     });
 
@@ -62,8 +62,7 @@ test.describe("as a student", () => {
 
     await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Validate Tutor" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Shared Tutor Codes" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Share Quiz" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Codes", exact: true })).toHaveCount(0);
   });
 });
 
@@ -77,11 +76,11 @@ test.describe("as a teacher", () => {
     await expect(page.getByRole("button", { name: "Validate" })).toBeVisible();
   });
 
-  test("the New Tutor Code page is accessible", async ({ page }) => {
-    await page.goto("/tutor-codes/new");
+  test("the New Code page is accessible", async ({ page }) => {
+    await page.goto("/codes/new");
 
-    await expect(page.getByLabel("Tutor YAML URL")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Create Tutor Code" })).toBeVisible();
+    await expect(page.getByLabel("Activity YAML URL")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create code" })).toBeVisible();
   });
 
   test("the nav menu shows the teacher-only entries", async ({ page }) => {
@@ -89,7 +88,6 @@ test.describe("as a teacher", () => {
     await page.getByRole("button", { name: "Open navigation menu" }).click();
 
     await expect(page.getByRole("link", { name: "Validate Tutor" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Shared Tutor Codes" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Share Quiz" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Codes", exact: true })).toBeVisible();
   });
 });

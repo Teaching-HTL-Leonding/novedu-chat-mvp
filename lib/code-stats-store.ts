@@ -1,0 +1,287 @@
+import type { Message } from "@ag-ui/core";
+import { eq, sql } from "drizzle-orm";
+import { mastra } from "@/app/mastra";
+import { collapseReplayedRuns, toAguiMessage } from "@/lib/conversation-collapse";
+import { type DbExecutor, getDb } from "@/lib/db";
+import { codes as codesTable, recentCodes, userChats } from "@/lib/db/schema";
+
+// Read-side queries (and the destructive delete) behind a code's stats — shared
+// by every module (tutor conversations, quiz discussions, …).
+//
+// The data lives across BOTH the app-owned `novedu_*` tables and Mastra's
+// `mastra_*` tables, joined BY VALUE — the sanctioned cross-table pattern
+// (docs/codes.md): `mastra_threads.resourceId` = the code,
+// `mastra_messages.thread_id` = the thread, `novedu_user_chats.thread_id` ties a
+// thread to a student (only for `anonymous: false` activities). Mastra owns its
+// schema, so we only ever READ those tables with raw by-value SQL — never
+// declare them to Drizzle (that would make `db:generate` try to migrate them).
+// The one MUTATION of Mastra data, deleting a code's conversations, goes through
+// Mastra's OWN storage API (`deleteThread`), so we still never touch its schema.
+//
+// "Interaction" / "conversation" throughout means a Mastra thread that has at
+// least one `role = 'user'` message — a chat a student actually wrote into, not
+// one merely opened. (`mastra_messages.role` is only ever 'user' or
+// 'assistant' for these agents; there are no tools.)
+//
+// SERVER-ONLY: uses the database and the Mastra store. Never import from client
+// components.
+
+// Thread ids are server-generated UUIDs; this guards the value before it reaches
+// a query, mirroring the pattern in user-chat-store / the runtime route.
+const THREAD_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
+
+/**
+ * How many qualifying conversations each of the given codes has, as a map from
+ * code to count (codes with none are simply absent → treat as 0). Backs the
+ * interaction-count column on the Codes list, so it takes the whole set of a
+ * teacher's codes in one round trip. Returns `undefined` on a database error
+ * (the list then shows the count as unavailable). Never throws.
+ */
+export async function getInteractionCounts(
+  codes: string[],
+): Promise<Map<string, number> | undefined> {
+  if (codes.length === 0) return new Map();
+  try {
+    const inList = sql.join(
+      codes.map((code) => sql`${code}`),
+      sql`, `,
+    );
+    const res = await getDb().execute<{ code: string; interactions: number }>(sql`
+      SELECT t.resourceId AS code, COUNT(*) AS interactions
+      FROM mastra_threads t
+      WHERE t.resourceId IN (${inList})
+        AND EXISTS (
+          SELECT 1 FROM mastra_messages m
+          WHERE m.thread_id = t.id AND m.role = 'user'
+        )
+      GROUP BY t.resourceId
+    `);
+    const counts = new Map<string, number>();
+    for (const row of res.recordset) counts.set(row.code, Number(row.interactions));
+    return counts;
+  } catch (error) {
+    console.error("code-stats-store: counting interactions failed", error);
+    return undefined;
+  }
+}
+
+/** One conversation in a code's stats. */
+export interface Interaction {
+  threadId: string;
+  /** Timestamp of the first message in the conversation (user or assistant). */
+  firstAt: Date;
+  /** Timestamp of the last message in the conversation (user or assistant). */
+  lastAt: Date;
+  /** Number of `role = 'user'` messages — always ≥ 1 (that is what qualifies). */
+  userMessageCount: number;
+  /**
+   * The student's session user id (Entra `oid`), if recorded AND the code is non-anonymous.
+   * `getCodeStats` forces this to `null` for anonymous codes (see there),
+   * so a thread is attributable here only for an `anonymous: false` activity.
+   */
+  userId: string | null;
+}
+
+/** The detailed stats for a single code. */
+export interface CodeStats {
+  /** Number of qualifying conversations. */
+  conversations: number;
+  /**
+   * Distinct students with at least one conversation. Always `0` for anonymous
+   * codes — `getCodeStats` zeroes it there, so it is meaningful only for
+   * `anonymous: false` activities.
+   */
+  studentCount: number;
+  /** The conversations themselves, newest activity first. */
+  interactions: Interaction[];
+}
+
+/**
+ * Detailed stats for one code: every qualifying conversation with its first/last
+ * message time, user-message count, and (when recorded) the student. Returns
+ * `undefined` on a database error. Never throws. Authorization (is the caller an
+ * effective teacher?) is the caller's job — the page gates with
+ * `requireTeacherPage()` and looks the code up via `getCode`.
+ *
+ * `anonymous` is the code's FROZEN flag (`novedu_codes.anonymous`). When it is
+ * `true` this enforces the anonymity promise AT THE DATA LAYER: every `userId`
+ * comes back `null` and `studentCount` is `0`, so a caller cannot surface who a
+ * student is even by mistake — not even for the documented edge case where
+ * `novedu_user_chats` holds rows because the activity YAML was toggled to
+ * non-anonymous AFTER the code was minted (the live attribution flag and this
+ * frozen display flag are read separately; see docs/codes.md). The UI's own
+ * `!anonymous` gating is now belt-and-braces on top of this.
+ */
+export async function getCodeStats(
+  code: string,
+  anonymous: boolean,
+): Promise<CodeStats | undefined> {
+  try {
+    const res = await getDb().execute<{
+      threadId: string;
+      firstAt: Date;
+      lastAt: Date;
+      userMessageCount: number;
+      userId: string | null;
+    }>(sql`
+      SELECT
+        t.id AS threadId,
+        MIN(m.createdAt) AS firstAt,
+        MAX(m.createdAt) AS lastAt,
+        SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS userMessageCount,
+        uc.user_id AS userId
+      FROM mastra_threads t
+      JOIN mastra_messages m ON m.thread_id = t.id
+      LEFT JOIN novedu_user_chats uc ON uc.thread_id = t.id
+      WHERE t.resourceId = ${code}
+      GROUP BY t.id, uc.user_id
+      HAVING SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) >= 1
+      ORDER BY MAX(m.createdAt) DESC
+    `);
+
+    const interactions: Interaction[] = res.recordset.map((row) => ({
+      threadId: row.threadId,
+      firstAt: row.firstAt,
+      lastAt: row.lastAt,
+      userMessageCount: Number(row.userMessageCount),
+      // Anonymous code → never emit the student id, whatever the join returned.
+      userId: anonymous ? null : (row.userId ?? null),
+    }));
+
+    // Distinct recorded students. A student who opened several conversations
+    // counts once; anonymous conversations (userId null) count toward none. For
+    // an anonymous code every userId is null above, so this is 0.
+    const students = new Set<string>();
+    for (const i of interactions) if (i.userId) students.add(i.userId);
+
+    return { conversations: interactions.length, studentCount: students.size, interactions };
+  } catch (error) {
+    console.error("code-stats-store: loading code stats failed", error);
+    return undefined;
+  }
+}
+
+/**
+ * The messages of one conversation, oldest first, as AG-UI messages ready for
+ * `CopilotChatMessageView`. The `code` is required and re-checked against the
+ * thread's `resourceId` (defense in depth on top of the caller's ownership
+ * check). Replayed history is collapsed (`collapseReplayedRuns`) so each turn
+ * shows once. Returns `undefined` on a database error, `[]` for an
+ * unknown/empty thread. Never throws.
+ */
+export async function getConversationMessages(
+  code: string,
+  threadId: string,
+): Promise<Message[] | undefined> {
+  if (!THREAD_ID_PATTERN.test(threadId)) return [];
+  try {
+    const res = await getDb().execute<{ id: string; role: string; content: string }>(sql`
+      SELECT m.id, m.role, m.content
+      FROM mastra_messages m
+      JOIN mastra_threads t ON t.id = m.thread_id
+      WHERE m.thread_id = ${threadId} AND t.resourceId = ${code}
+      ORDER BY m.createdAt ASC, m.seq_id ASC
+    `);
+    const messages = res.recordset.map(toAguiMessage).filter((m): m is Message => m !== null);
+    return collapseReplayedRuns(messages);
+  } catch (error) {
+    console.error("code-stats-store: loading conversation messages failed", error);
+    return undefined;
+  }
+}
+
+/**
+ * Deletes ONE code's conversations (Mastra threads + their messages) through
+ * Mastra's OWN storage API so we never mutate its schema by hand. Lives in the
+ * Mastra pool, so it can NEVER share the Drizzle transaction the app-owned rows
+ * use. Best-effort: returns `false` (never throws) if any thread delete fails.
+ */
+async function deleteCodeConversations(code: string): Promise<boolean> {
+  try {
+    const storage = mastra.getStorage();
+    const memory = storage ? await storage.getStore("memory") : undefined;
+    if (!memory) {
+      console.error("code-stats-store: no Mastra storage configured — cannot delete conversations");
+      return false;
+    }
+    const { threads } = await memory.listThreads({
+      filter: { resourceId: code },
+      perPage: false,
+    });
+    for (const thread of threads) {
+      await memory.deleteThread({ threadId: thread.id });
+    }
+    return true;
+  } catch (error) {
+    console.error("code-stats-store: deleting conversations failed", error);
+    return false;
+  }
+}
+
+/**
+ * Deletes ONE code's app-owned Drizzle rows on the given executor — user_chats
+ * (attribution) and recent_codes (shortcuts) first, then the code row LAST
+ * (while it exists the code still appears in the list, so a mid-way failure is
+ * safe to retry). Runs on the root handle for a single delete or a transaction
+ * when a bulk caller batches several. Throws on a DB error (rolling a batch back).
+ */
+async function deleteCodeRows(executor: DbExecutor, code: string): Promise<void> {
+  await executor.delete(userChats).where(eq(userChats.code, code));
+  await executor.delete(recentCodes).where(eq(recentCodes.code, code));
+  await executor.delete(codesTable).where(eq(codesTable.code, code));
+}
+
+/**
+ * Deletes a code AND all of its conversation data — the teacher-initiated
+ * cleanup that replaced garbage collection. Conversation data (Mastra) first, the
+ * app-owned rows last. Best-effort and idempotent: returns `true` if everything we
+ * attempted succeeded, `false` if any step failed (the caller surfaces a retry
+ * hint). Never throws.
+ */
+export async function deleteCodeAndData(code: string): Promise<boolean> {
+  // 1. Conversations (Mastra — separate pool, no shared transaction).
+  let ok = await deleteCodeConversations(code);
+
+  // 2. App-owned rows (Drizzle), via the same per-code helper the bulk path uses.
+  try {
+    await deleteCodeRows(getDb(), code);
+  } catch (error) {
+    console.error("code-stats-store: deleting app-owned rows failed", error);
+    ok = false;
+  }
+
+  return ok;
+}
+
+export type DeleteCodesResult = { ok: boolean; deleted: number };
+
+/**
+ * Bulk delete (the list's "Delete Selected"): runs the SAME per-code helpers as
+ * the single delete so the business logic can't drift. The Mastra conversation
+ * deletes happen per code (separate pool — they can't join a Drizzle
+ * transaction); all the app-owned ROW deletes then run in ONE Drizzle transaction
+ * (all-or-nothing). `ok` is false if any Mastra step failed or the row
+ * transaction rolled back; `deleted` is the number of codes whose rows were
+ * processed (0 if the transaction rolled back). Never throws.
+ */
+export async function deleteCodesAndData(codes: string[]): Promise<DeleteCodesResult> {
+  if (codes.length === 0) return { ok: true, deleted: 0 };
+
+  // 1. Conversations (Mastra), per code — outside the Drizzle transaction.
+  let ok = true;
+  for (const code of codes) {
+    if (!(await deleteCodeConversations(code))) ok = false;
+  }
+
+  // 2. All app-owned rows in ONE transaction so the set commits or rolls back together.
+  try {
+    await getDb().transaction(async (tx) => {
+      for (const code of codes) await deleteCodeRows(tx, code);
+    });
+  } catch (error) {
+    console.error("code-stats-store: bulk deleting app-owned rows failed", error);
+    return { ok: false, deleted: 0 };
+  }
+
+  return { ok, deleted: codes.length };
+}

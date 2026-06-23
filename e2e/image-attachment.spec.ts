@@ -3,7 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { mintTutorCode } from "./tutor-code.utils";
+import { mintTutorCode } from "./code.utils";
 
 // A REAL multi-modal round-trip through the chat: attach an image and confirm
 // the model actually saw it. This is the only @live image test — the upload-UI
