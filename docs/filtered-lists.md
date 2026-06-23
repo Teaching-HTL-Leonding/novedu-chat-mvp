@@ -43,7 +43,7 @@ if (opts?.createdBy) conditions.push(eq(files.createdBy, opts.createdBy));
 ```
 
 **Aggregated stats are a separate, single query — never per row.** When a list shows
-a count joined from other tables (e.g. the tutor-code "Conversations" column comes
+a count joined from other tables (e.g. the codes list's "Interactions" column comes
 from the Mastra-owned `mastra_threads`/`mastra_messages`, joined by value and read
 with raw `sql`), run the filtered list first, then **one** aggregate over the whole
 result set (e.g. `getInteractionCounts(codes)` takes an `IN (…) … GROUP BY`). No
@@ -111,13 +111,13 @@ and behaves identically and improves once. The pieces:
 must do *exactly* what pressing each row's trash button does. Each single delete and
 its bulk counterpart share a **per-item helper that takes a `DbExecutor`** (the shared
 `Db | Transaction` type from `lib/db`): `closeActiveFile` (files), `deleteCodeRows`
-+ `deleteCodeConversations` (tutor codes). The single delete calls the helper on the
++ `deleteCodeConversations` (codes). The single delete calls the helper on the
 root handle; the bulk function loops it inside **one `getDb().transaction(...)`**.
 Both paths share the helper, so behaviour can't drift.
 
 **Two-pool transaction caveat.** Drizzle (`novedu_*`) and Mastra (`mastra_*`) are
 separate pools that can't share a transaction. So files (pure Drizzle soft-delete)
-are fully one transaction; tutor codes run the `novedu_*` row deletes for all
+are fully one transaction; codes run the `novedu_*` row deletes for all
 selected codes in one transaction but the **Mastra** thread/message deletes per code
 *outside* it — exactly as the single delete already does.
 

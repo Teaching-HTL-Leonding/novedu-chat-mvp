@@ -180,8 +180,10 @@ export default async function CodesPage({
             <Link
               href={`/${row.code}`}
               className={styles.iconButton}
-              aria-label="Open"
-              title="Open"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Open in new tab"
+              title="Open in new tab"
             >
               <ExternalLinkIcon />
             </Link>

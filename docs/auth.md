@@ -26,7 +26,7 @@ runs don't have to rediscover the setup:
 - **Stable user id — `session.user.id` is the Entra `oid`, NOT `sub`.** The `jwt`
   callback captures `profile.oid` (Entra object id) onto the token and the `session`
   callback exposes it as `session.user.id` (falling back to `sub` only if a token
-  ever lacks `oid`). This is the key everything user-scoped joins on: tutor-code
+  ever lacks `oid`). This is the key everything user-scoped joins on: code
   ownership (`novedu_codes.created_by`), the user↔chat link
   (`novedu_user_chats.user_id`), and the `x-thread-token` signature. **Why `oid` and
   not `sub`:** Entra's `sub` is a *pairwise* subject id scoped to the redirect-URI
