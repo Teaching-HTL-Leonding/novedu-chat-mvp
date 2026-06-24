@@ -40,6 +40,7 @@ vi.mock("@/lib/code-modules/registry", () => ({
   codeModules: {
     tutor: { fileKind: "tutor", runtime: { agentId: "tutor", buildRequestContext } },
     quiz: { fileKind: "quiz", runtime: { agentId: "quizDiscussion", buildRequestContext } },
+    writing: { fileKind: "writing", runtime: { agentId: "writing", buildRequestContext } },
   },
 }));
 // Importing the real Mastra instance would pull in @mastra/mssql + the Azure
@@ -273,6 +274,44 @@ describe("quiz module (reached via a quiz-module code)", () => {
     const res = await POST(
       runRequest({ threadId, token: token(threadId), agent: "quizDiscussion" }),
     );
+    expect(res.status).toBe(502);
+    expect(getLocalAgents).not.toHaveBeenCalled();
+  });
+});
+
+describe("writing module (reached via a writing-module code)", () => {
+  beforeEach(() => {
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { module: "writing", fileUrl: "https://example.com/api/files/w" },
+    });
+  });
+
+  it("forwards a run to the writing agent, scoped to the CODE, building its context", async () => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(runRequest({ threadId, token: token(threadId), agent: "writing" }));
+    expect(res.status).toBe(200);
+    expect(buildRequestContext).toHaveBeenCalledOnce();
+    expect(getLocalAgents).toHaveBeenCalledWith(expect.objectContaining({ resourceId: CODE }));
+  });
+
+  it("404s a writing-module request targeting a non-runtime agent id", async () => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(
+      runRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
+    );
+    expect(res.status).toBe(404);
+    expect(getLocalAgents).not.toHaveBeenCalled();
+  });
+
+  it("forwards the runtime status when buildRequestContext fails (writing load 502)", async () => {
+    buildRequestContext.mockResolvedValue({
+      ok: false,
+      status: 502,
+      message: "writing unavailable",
+    });
+    const threadId = crypto.randomUUID();
+    const res = await POST(runRequest({ threadId, token: token(threadId), agent: "writing" }));
     expect(res.status).toBe(502);
     expect(getLocalAgents).not.toHaveBeenCalled();
   });

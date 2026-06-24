@@ -5,6 +5,7 @@ import sql from "mssql";
 import { buildMssqlConnectionConfig } from "@/lib/azure-credential";
 import { quizDiscussionAgent, quizEvaluatorAgent } from "./quiz-agents";
 import { tutorAgent } from "./tutor-agent";
+import { writingAgent } from "./writing-agents";
 
 const logger = new PinoLogger({ name: "Mastra", level: "info" });
 
@@ -45,10 +46,15 @@ export const mastra = new Mastra({
   // chat; the route's quiz branch allows ONLY that agent id. `quizEvaluator` is
   // invoked server-side by the `submitAnswer` action (never through the route —
   // the route never allows its id), so the grader is never web-exposed.
+  //
+  // The `writing` agent backs the Writing feature's feedback chat (agentId="writing"
+  // through the runtime route); it is configured per request from the writing YAML
+  // and has no write/edit tool, so it can never mutate the student's text.
   agents: {
     tutor: tutorAgent,
     quizDiscussion: quizDiscussionAgent,
     quizEvaluator: quizEvaluatorAgent,
+    writing: writingAgent,
   },
   // Persistent storage is Azure SQL (Microsoft SQL Server) via `@mastra/mssql`,
   // authenticated with SQL user/password or Microsoft Entra ID depending on the

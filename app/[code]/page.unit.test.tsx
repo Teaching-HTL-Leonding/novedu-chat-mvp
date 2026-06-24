@@ -25,6 +25,11 @@ vi.mock("./render-tutor", () => ({
 vi.mock("./render-quiz", () => ({
   RenderQuiz: ({ code }: { code: string }) => <div data-testid="render-quiz">quiz {code}</div>,
 }));
+vi.mock("./render-writing", () => ({
+  RenderWriting: ({ code }: { code: string }) => (
+    <div data-testid="render-writing">writing {code}</div>
+  ),
+}));
 // after() schedules the recents mutation; run it inline so the call is observable.
 vi.mock("next/server", () => ({ after: (fn: () => void) => fn() }));
 
@@ -110,6 +115,17 @@ describe("module dispatch (valid code)", () => {
     const html = await renderPage();
     expect(html).toContain('data-testid="render-quiz"');
     expect(html).toContain("quiz a1b2c3d4e5");
+    expect(recordRecentCode).toHaveBeenCalledWith(USER_ID, CODE);
+  });
+
+  it("module=writing → records a recent and renders the writing module", async () => {
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { module: "writing", fileUrl: "https://example.com/api/files/w" },
+    });
+    const html = await renderPage();
+    expect(html).toContain('data-testid="render-writing"');
+    expect(html).toContain("writing a1b2c3d4e5");
     expect(recordRecentCode).toHaveBeenCalledWith(USER_ID, CODE);
   });
 });

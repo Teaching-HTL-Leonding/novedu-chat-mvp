@@ -141,7 +141,7 @@ describe("createCodeAction", () => {
 
   it("rejects a missing/invalid module without touching storage", async () => {
     const data = formData();
-    data.set("module", "writing"); // not a built module
+    data.set("module", "future-module"); // not a built module
     const state = await createCodeAction({ status: "idle" }, data);
     expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/activity/i) });
     expect(mocks.createCode).not.toHaveBeenCalled();

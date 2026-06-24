@@ -71,7 +71,7 @@ import {
   getConversationMessages,
   getInteractionCounts,
 } from "@/lib/code-stats-store";
-import { codes, recentCodes, userChats } from "@/lib/db/schema";
+import { codes, recentCodes, userChats, writingSubmissions } from "@/lib/db/schema";
 
 // Convenience: the stored v2 message envelope, JSON-stringified into a row.
 function row(id: string, role: string, content: unknown): Record<string, unknown> {
@@ -299,14 +299,14 @@ describe("deleteCodeAndData", () => {
     // Conversations removed via Mastra's own deleteThread (cascades messages).
     expect(mastra.state.deletedThreadIds).toEqual(["th1", "th2"]);
     // App-owned rows: attribution + shortcuts first, the code row LAST.
-    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, codes]);
+    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, writingSubmissions, codes]);
   });
 
   it("still clears the app rows but reports failure when storage is unavailable", async () => {
     mastra.state.storageNull = true;
     const ok = await deleteCodeAndData("aaaaaaaaaa");
     expect(ok).toBe(false);
-    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, codes]);
+    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, writingSubmissions, codes]);
   });
 
   it("reports failure (but attempts the app rows) when listing threads throws", async () => {
@@ -314,7 +314,7 @@ describe("deleteCodeAndData", () => {
     const ok = await deleteCodeAndData("aaaaaaaaaa");
     expect(ok).toBe(false);
     expect(mastra.state.deletedThreadIds).toEqual([]);
-    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, codes]);
+    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, writingSubmissions, codes]);
   });
 
   it("reports failure when an app-row delete throws", async () => {
@@ -339,9 +339,11 @@ describe("deleteCodesAndData", () => {
     expect(fake.state.deletedTables).toEqual([
       userChats,
       recentCodes,
+      writingSubmissions,
       codes,
       userChats,
       recentCodes,
+      writingSubmissions,
       codes,
     ]);
   });
@@ -361,9 +363,11 @@ describe("deleteCodesAndData", () => {
     expect(fake.state.deletedTables).toEqual([
       userChats,
       recentCodes,
+      writingSubmissions,
       codes,
       userChats,
       recentCodes,
+      writingSubmissions,
       codes,
     ]);
   });

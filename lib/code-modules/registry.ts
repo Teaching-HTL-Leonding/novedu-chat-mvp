@@ -7,6 +7,7 @@ import type { FileValidationResult } from "@/lib/file-validators";
 import type { Fetcher } from "@/lib/tutors";
 import { quizModule } from "./quiz";
 import { tutorModule } from "./tutor";
+import { writingModule } from "./writing";
 
 // Layer 3 of the codes architecture: the registry of shareable activities. Each
 // descriptor references a `fileKind` (which Layer-2 validator to reuse — never
@@ -61,4 +62,5 @@ export interface CodeModuleDef {
 export const codeModules: Record<CodeModule, CodeModuleDef> = {
   tutor: tutorModule,
   quiz: quizModule,
+  writing: writingModule,
 };

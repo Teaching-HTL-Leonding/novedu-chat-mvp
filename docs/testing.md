@@ -53,6 +53,7 @@ credentials (Azure SQL / SCCH / Azure Blob Storage) must never run on a fork
 | Hermetic e2e | Playwright | `e2e/*.spec.ts` (untagged) | dev server, no infra | ✅ |
 | `@live-db` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-db` | SQL Server (container in CI / Azure SQL local) | ✅ |
 | `@live-llm` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-llm` | real DB + SCCH LLM | ❌ local only |
+| `@live-storage` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-storage` | real DB + Azure Blob Storage | ❌ local only |
 
 - Config: **`vitest.config.mts`** defines the `unit` + `component` projects;
   **`playwright.config.ts`** the e2e suite (with `e2e/auth.setup.ts` minting

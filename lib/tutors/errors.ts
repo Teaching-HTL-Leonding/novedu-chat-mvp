@@ -32,7 +32,10 @@ export type WarningCode =
   | "REQUIRED_PROPERTY_HAS_DEFAULT"
   // Emitted by the quiz-kind save/validate path: quizzes are stored WITHOUT
   // structural checks for the MVP (no quiz validator yet — see docs/quizzes.md).
-  | "QUIZ_VALIDATION_NOT_IMPLEMENTED";
+  | "QUIZ_VALIDATION_NOT_IMPLEMENTED"
+  // Emitted by the writing-kind save/validate path: writing activities are stored
+  // WITHOUT structural checks (no writing validator yet — see docs/writing.md).
+  | "WRITING_VALIDATION_NOT_IMPLEMENTED";
 
 export interface ValidationError {
   code: ErrorCode;

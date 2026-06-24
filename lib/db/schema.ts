@@ -114,6 +114,29 @@ export const recentCodes = mssqlTable(
   (t) => [primaryKey({ columns: [t.userId, t.code] })],
 );
 
+// One saved text per `(code, student)` for the writing module — upserted on save
+// (single active version, NO history). The student's saved Markdown plus the last
+// save time. Rows exist only for non-anonymous writing codes (anonymous writing
+// disables saving); the teacher review reads them back. `code` is widened to match
+// novedu_codes.code so a real writing code stores by value; `user_id` is the
+// student's Entra `oid`.
+//
+// No foreign keys (same rule as the other novedu_* tables): no FK to novedu_codes,
+// so saved texts outlive a deleted code unless the code-delete path drops them
+// explicitly.
+export const writingSubmissions = mssqlTable(
+  "novedu_writing_submissions",
+  {
+    code: varchar("code", { length: 32 }).notNull(),
+    userId: nvarchar("user_id", { length: 64 }).notNull(),
+    text: nvarchar("text", { length: "max" }).notNull().default(""),
+    textUpdatedAt: datetime2("text_updated_at").notNull(),
+  },
+  // The PK enforces "one saved text per student per code" and doubles as the
+  // per-code lookup index (code prefix) for the teacher review.
+  (t) => [primaryKey({ columns: [t.code, t.userId] })],
+);
+
 // App-hosted YAML files (tutor definitions and fragment libraries) that teachers
 // author in-app instead of hosting on GitHub/S3/Azure Blob. The public GET
 // endpoint (`/api/files/<name>`) serves the latest version as raw YAML, so such a
