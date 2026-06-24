@@ -138,10 +138,16 @@ rest of the app:
 - **quiz** → a **STUB**: returns OK + a single `QUIZ_VALIDATION_NOT_IMPLEMENTED`
   warning and NULL `title`/`description` — quizzes have no structural validator in
   the MVP, so saving never blocks and the Validate button passes for any quiz YAML
-  (the lenient parse happens only at run time — see `docs/codes.md`). The
-  create-file kind selector therefore offers **tutor / fragment / quiz**, and the
-  `/files` list adds a single **"Create code"** action on tutor and quiz rows
-  (linking to `/codes/new?module=<kind>&file=<url>`).
+  (the lenient parse happens only at run time — see `docs/codes.md`).
+- **writing** → likewise a **STUB**: returns OK + a single
+  `WRITING_VALIDATION_NOT_IMPLEMENTED` warning, parsing the YAML only to surface
+  `title` and the `anonymous` flag (which defaults **`false`** for writing — see
+  `docs/writing.md`); it never blocks save.
+
+The create-file kind selector therefore offers **tutor / fragment / quiz / writing**,
+and the `/files` list adds a single **"Create code"** action on every row whose kind
+is a **module** — tutor, quiz, and writing, i.e. everything except `fragment`
+(gated by `isCodeModule`, linking to `/codes/new?module=<kind>&file=<url>`).
 
 The public origin is resolved once on the server (`resolveAppOrigin` /
 `resolveAppOriginOr` in `lib/app-origin.ts`) and the public URL is built by
@@ -175,7 +181,11 @@ stays gated.
 `@/components/validation-result` (`ErrorList` / `WarningList`), `@/components/copy-icon-button`,
 `@/components/back-link`, `@/components/require-teacher-page` (the page-level teacher
 gate), `@/components/icons`, and `app/files/yaml-editor.tsx` (a thin
-`@uiw/react-codemirror` + `@codemirror/lang-yaml` wrapper with an upload button). The
+`@uiw/react-codemirror` wrapper, switchable between `@codemirror/lang-yaml` and
+`@codemirror/lang-markdown` via a `language` prop that defaults to `yaml`. These
+forms show its "Upload file…" button — load a local file's text into the editor;
+the writing surface reuses the editor in `markdown` mode with `upload={false}`, so
+the button is files-only). The
 list itself is the shared filtered-list concept — `@/components/data-list` +
 `@/components/list-filter-bar` — so its filtering ("Only my files" + contains-search
 over name/title/description) runs **in the database** via URL search params, not in

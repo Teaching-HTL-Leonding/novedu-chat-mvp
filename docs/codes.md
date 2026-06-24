@@ -1,7 +1,8 @@
 # Codes
 
-Deep reference for how students reach an **activity** — a tutor chat or a quiz —
-and how teachers mint and manage the **codes** that hand them out. The always-on
+Deep reference for how students reach an **activity** — a tutor chat, a quiz, or a
+writing activity — and how teachers mint and manage the **codes** that hand them
+out. The always-on
 invariants are summarized in `AGENTS.md`; this file has the full mechanics. Read
 it before touching the entry points (`app/page.tsx`, `app/[code]/**`), the
 teacher surfaces (`app/codes/**`), the runtime route
@@ -18,13 +19,13 @@ A **code** is a `[a-z0-9-]` string (1–32 chars; `generateCode()` mints 10 rand
 | Column | Meaning |
 | --- | --- |
 | `code` (PK) | the code, `varchar(32)` (sized for future teacher-defined memorable codes) |
-| `module` | the dispatch discriminator — `tutor` \| `quiz` (\| future), picks the renderer + agent |
+| `module` | the dispatch discriminator — `tutor` \| `quiz` \| `writing`, picks the renderer + agent |
 | `created_by` | session user id (Entra `oid`) of the creating teacher |
 | `file_url` | public URL of the activity YAML (normalized via `URL.href`) |
 | `valid_from` / `valid_until` | availability window, UTC `datetime2`, **both bounds inclusive** |
 | `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
 | `origin` | **documentation-only**: where the code was created (DEV vs PROD rows). Lookups never read it — a code created on localhost works in production, since all environments share the database |
-| `anonymous` | the activity YAML's `anonymous` flag (default `true`), **frozen at create time** — a later YAML edit does NOT update it. Governs whether the stats page shows per-student data |
+| `anonymous` | the activity YAML's `anonymous` flag (default is module-specific — tutor/quiz `true`, writing `false`), **frozen at create time** — a later YAML edit does NOT update it. Governs whether the stats page shows per-student data |
 | `created_at` | creation time |
 
 Indexes: PK on `code`; `created_by` (the teacher list); `module` (the
@@ -46,9 +47,8 @@ since `app/[code]` catches all non-static top-level paths.
 The subsystem is cleanly split so a new activity (or a pure library kind) slots
 in without touching the core.
 
-**Layer 1 — `FileKind`** (`lib/file-name.ts`): `tutor | fragment | quiz`. Drives
-the `/files` editor kind selector and `novedu_files.kind`. (`writing` is designed
-for but not built.)
+**Layer 1 — `FileKind`** (`lib/file-name.ts`): `tutor | fragment | quiz | writing`.
+Drives the `/files` editor kind selector and `novedu_files.kind`.
 
 **Layer 2 — the validator registry** (`lib/file-validators.ts`):
 `fileValidators[kind].validate(url, fetcher) → { ok, errors?, warnings, title?,
@@ -68,13 +68,16 @@ siblings) AND by code-create (fetcher = `appHostedFetcher`; url = the row's
   but still emits a non-blocking `QUIZ_VALIDATION_NOT_IMPLEMENTED` warning, so
   saving a quiz never blocks. Upgrading this to a real structural validator is a
   one-spot change here, picked up by `/files` save AND code-create at once.
+- `writing` → the same kind of lenient stub (`parseWriting`,
+  `WRITING_VALIDATION_NOT_IMPLEMENTED`), differing only in that a parse failure
+  keeps writing's `anonymous: false` default — see `docs/writing.md`.
 
 **Layer 3 — the `CodeModule` registry** (`lib/code-modules/`): the registry of
 shareable activities.
 
-- `types.ts` is **client-safe** (`CodeModule = "tutor" | "quiz"` + display labels)
-  so client components and the `/codes` module filter can name modules without
-  importing server code.
+- `types.ts` is **client-safe** (`CodeModule = "tutor" | "quiz" | "writing"` +
+  display labels) so client components and the `/codes` module filter can name
+  modules without importing server code.
 - `registry.ts` is **server-only** (`codeModules: Record<CodeModule,
   CodeModuleDef>`). Each descriptor carries a `fileKind` (which Layer-2 validator
   to reuse) and only what is genuinely activity-specific:
@@ -85,12 +88,16 @@ shareable activities.
     model) is built.
   - `stats` (optional) — a module-specific panel rendered below the generic stats
     shell.
-- `tutor.ts`, `quiz.ts` are the two descriptors.
+- `tutor.ts`, `quiz.ts`, `writing.ts` are the three descriptors. `writing` is the
+  Markdown-writing-with-AI-feedback module (`docs/writing.md`): its `stats` panel is
+  the read-only teacher review of saved texts, and its agent reads the student's
+  live draft through the read-only `getCurrentText` frontend tool but has no tool to
+  change it.
 
 Student **rendering** is NOT a registry seam: it is a thin `switch (entry.module)`
 in `app/[code]/page.tsx` delegating to each module's own server component
-(`render-tutor.tsx`, `render-quiz.tsx`), so no React/JSX lives in the server-only
-registry.
+(`render-tutor.tsx`, `render-quiz.tsx`, `render-writing.tsx`), so no React/JSX lives
+in the server-only registry.
 
 **Adding a module** touches a small, fixed set of seams: a descriptor file + one
 `codeModules` line, a client label (`lib/code-modules/types.ts`), a render case
@@ -212,15 +219,16 @@ novedu_codes.created_by     = Entra oid (the teacher)
   `mastra_threads`/`mastra_messages` via `thread_id`.
 
 `novedu_user_chats` is the ONLY place tying users to chats, and it is
-privacy-gated by the activity YAML's **`anonymous` flag (default `true`)**: by
-default nothing is written — chats cannot be attributed to a student. Only an
-activity with `anonymous: false` records `(thread_id, code, user_id)`;
-`recordUserChat` (`lib/user-chat-store.ts`, called from the runtime route off the
-response path via `after()` — only after a token-verified run got a 2xx — deduped
-per thread) reads the flag **live** from the YAML behind the stored `file_url`,
-dispatching by the code's file kind (tutor → `loadAndBuildTutorPrompt`, quiz →
-`loadQuiz`). It is privacy-safe on a YAML load failure, which is retried rather
-than cached. The per-user `novedu_recent_codes` shortcuts are deliberately
+privacy-gated by the activity YAML's **`anonymous` flag, whose default is
+module-specific** (tutor/quiz default `true`; **writing defaults `false`** —
+`docs/writing.md`): when anonymous, nothing is written — chats cannot be attributed
+to a student. Only an activity with `anonymous: false` records `(thread_id, code,
+user_id)`; `recordUserChat` (`lib/user-chat-store.ts`, called from the runtime route
+off the response path via `after()` — only after a token-verified run got a 2xx —
+deduped per thread) reads the flag **live** from the YAML behind the stored
+`file_url`, dispatching by the code's file kind (tutor → `loadAndBuildTutorPrompt`,
+quiz → `loadQuiz`, writing → `loadWriting`, via `readAnonymousFlag`). It is
+privacy-safe on a YAML load failure, which is retried rather than cached. The per-user `novedu_recent_codes` shortcuts are deliberately
 separate — they say "this user opened this code", never which chat is theirs.
 
 Note two SEPARATE reads of the same `anonymous` flag. The RUNTIME attribution path
@@ -258,8 +266,8 @@ planned). This is NOT the thread-ownership token, which remains the student-side
 isolation and is unaffected.
 
 - **`/codes/[code]`** — a generic stats shell (`getCodeStats(code, anonymous)`):
-  the interaction count (labelled per module — "Conversations" for tutor,
-  "Discussions" for quiz), and for non-anonymous codes (the frozen `anonymous`
+  the interaction count (labelled per module — "Conversations" for tutor and
+  writing, "Discussions" for quiz), and for non-anonymous codes (the frozen `anonymous`
   flag) the number of distinct students; then a table of every interaction
   (first/last message time, user id when recorded, user-message count), each row
   linking to the viewer — **plus** the optional `codeModules[module].stats` panel.
@@ -393,13 +401,12 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   module dispatch, plus the rejection/error UI
   (`tests/component/code-error.browser.test.tsx`) and the window/pattern logic
   itself (`lib/code-store.unit.test.ts`).
-- The `@live-llm` flows (the tutor chat and the quiz answer→discuss flow **through
-  codes**) live in `e2e/quiz.spec.ts` / `e2e/tutor-chat-reply.spec.ts`, local-only.
+- The `@live-llm` flows (the tutor chat, the quiz answer→discuss flow, and the
+  writing feedback flow **through codes**) live in `e2e/quiz.spec.ts` /
+  `e2e/tutor-chat-reply.spec.ts` / `e2e/writing.spec.ts`, local-only.
 
 ## Future work (deferred)
 
-- The **writing** module (the seams are validated against it; only its validator,
-  descriptor, render component, agent, and any module-owned storage are missing).
 - **Custom/memorable codes** (the `code` column + the centralized code seam in
   `lib/code-store.ts` are already sized for them).
 - A **real quiz validator** (the Layer-2 stub becomes a one-spot change).

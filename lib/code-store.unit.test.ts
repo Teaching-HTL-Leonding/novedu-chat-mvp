@@ -326,10 +326,10 @@ describe("unknown module (forward-compat / corrupt row)", () => {
   // A row whose module is not a known CodeModule — e.g. a module written to the DB
   // before its registry entry exists, or a corrupt row. The store treats it as
   // ABSENT so no consumer ever indexes the module registry with an unknown key.
-  const writingRow = { ...entry(), module: "writing" } as unknown as CodeEntry;
+  const unknownRow = { ...entry(), module: "future-module" } as unknown as CodeEntry;
 
   it("checkCode reports unknown-code (never a half-built entry)", async () => {
-    fake.state.rows = [writingRow];
+    fake.state.rows = [unknownRow];
     await expect(checkCode("a1b2c3d4e5", NOW)).resolves.toEqual({
       ok: false,
       reason: "unknown-code",
@@ -337,12 +337,12 @@ describe("unknown module (forward-compat / corrupt row)", () => {
   });
 
   it("getCode returns null", async () => {
-    fake.state.rows = [writingRow];
+    fake.state.rows = [unknownRow];
     await expect(getCode("a1b2c3d4e5")).resolves.toBeNull();
   });
 
   it("listCodes drops the row instead of yielding an unknown module", async () => {
-    fake.state.rows = [entry(), writingRow, entry({ code: "f6g7h8i9j0" })];
+    fake.state.rows = [entry(), unknownRow, entry({ code: "f6g7h8i9j0" })];
     const result = await listCodes();
     expect(result).toHaveLength(2);
     expect(result?.every((e) => e.module === "tutor")).toBe(true);

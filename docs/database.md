@@ -112,15 +112,18 @@ Tables (details in `docs/codes.md`):
 | `novedu_codes` | PK `code` | Shareable codes across modules: `module` discriminator, file URL, window, note, creating teacher, frozen `anonymous` flag |
 | `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only when the activity opts out of anonymity) |
 | `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (entry-page shortcuts) |
+| `novedu_writing_submissions` | PK (`code`, `user_id`) | a student's saved writing text — one upserted row per student per code, non-anonymous codes only (details in `docs/writing.md`) |
 | `novedu_files` | PK `id` (per-version); filtered UK `name WHERE valid_until IS NULL` | App-hosted YAML files, **temporal/append-only** (details in `docs/files.md`) |
+| `novedu_images` | PK `id` (per-version); filtered UK `name WHERE valid_until IS NULL` | App-hosted image metadata (bytes in Blob Storage), **temporal/append-only** (details in `docs/images.md`) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping |
 
-`novedu_files` is the repo's one **temporal (append-only) table**: each row is one
-version of a file, the *active* version is the single row with `valid_until IS NULL`,
-and "at most one active version per name" is enforced by a SQL Server **filtered
-unique index** (`drizzle-orm`'s `uniqueIndex(...).on(name).where(sql\`valid_until IS NULL\`)`).
-Update = close the active row + insert a new one; delete = close only. See
-`docs/files.md` for the full model and the matching optimistic-concurrency guard.
+`novedu_files` and `novedu_images` are the repo's **temporal (append-only) tables**,
+sharing one model: each row is one version, the *active* version is the single row
+with `valid_until IS NULL`, and "at most one active version per name" is enforced by a
+SQL Server **filtered unique index** (`drizzle-orm`'s
+`uniqueIndex(...).on(name).where(sql\`valid_until IS NULL\`)`). Update = close the
+active row + insert a new one; delete = close only. See `docs/files.md` (and
+`docs/images.md`) for the full model and the matching optimistic-concurrency guard.
 
 ## Deletion (no garbage collection)
 

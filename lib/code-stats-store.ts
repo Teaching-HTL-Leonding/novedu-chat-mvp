@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { mastra } from "@/app/mastra";
 import { collapseReplayedRuns, toAguiMessage } from "@/lib/conversation-collapse";
 import { type DbExecutor, getDb } from "@/lib/db";
-import { codes as codesTable, recentCodes, userChats } from "@/lib/db/schema";
+import { codes as codesTable, recentCodes, userChats, writingSubmissions } from "@/lib/db/schema";
 
 // Read-side queries (and the destructive delete) behind a code's stats — shared
 // by every module (tutor conversations, quiz discussions, …).
@@ -220,14 +220,16 @@ async function deleteCodeConversations(code: string): Promise<boolean> {
 
 /**
  * Deletes ONE code's app-owned Drizzle rows on the given executor — user_chats
- * (attribution) and recent_codes (shortcuts) first, then the code row LAST
- * (while it exists the code still appears in the list, so a mid-way failure is
- * safe to retry). Runs on the root handle for a single delete or a transaction
- * when a bulk caller batches several. Throws on a DB error (rolling a batch back).
+ * (attribution), recent_codes (shortcuts), and writing_submissions (the writing
+ * module's saved texts) first, then the code row LAST (while it exists the code
+ * still appears in the list, so a mid-way failure is safe to retry). Runs on the
+ * root handle for a single delete or a transaction when a bulk caller batches
+ * several. Throws on a DB error (rolling a batch back).
  */
 async function deleteCodeRows(executor: DbExecutor, code: string): Promise<void> {
   await executor.delete(userChats).where(eq(userChats.code, code));
   await executor.delete(recentCodes).where(eq(recentCodes.code, code));
+  await executor.delete(writingSubmissions).where(eq(writingSubmissions.code, code));
   await executor.delete(codesTable).where(eq(codesTable.code, code));
 }
 

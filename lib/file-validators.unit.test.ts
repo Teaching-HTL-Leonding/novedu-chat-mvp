@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   loadAndCheckFragmentFile: vi.fn(),
   loadQuiz: vi.fn(),
   parseQuiz: vi.fn(),
+  loadWriting: vi.fn(),
+  parseWriting: vi.fn(),
 }));
 
 vi.mock("@/lib/tutors", () => ({
@@ -19,6 +21,8 @@ vi.mock("@/lib/tutors", () => ({
 }));
 vi.mock("@/lib/quiz-fetch", () => ({ loadQuiz: mocks.loadQuiz }));
 vi.mock("@/lib/quiz-yaml", () => ({ parseQuiz: mocks.parseQuiz }));
+vi.mock("@/lib/writing-fetch", () => ({ loadWriting: mocks.loadWriting }));
+vi.mock("@/lib/writing-yaml", () => ({ parseWriting: mocks.parseWriting }));
 
 import { fileValidators, readAnonymousFlag } from "@/lib/file-validators";
 
@@ -136,6 +140,49 @@ describe("fileValidators.quiz (lenient stub — never blocks)", () => {
   });
 });
 
+describe("fileValidators.writing (lenient stub — never blocks)", () => {
+  it("extracts anonymous/title and emits the NOT_IMPLEMENTED warning", async () => {
+    fetcher.mockResolvedValue({ ok: true, text: async () => "yaml" });
+    mocks.parseWriting.mockReturnValue({ ok: true, writing: { anonymous: false, title: "W" } });
+    const result = await fileValidators.writing.validate(URL_, fetcher);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.anonymous).toBe(false);
+      expect(result.title).toBe("W");
+      expect(result.warnings.map((w) => w.code)).toContain("WRITING_VALIDATION_NOT_IMPLEMENTED");
+    }
+  });
+
+  it("DEFAULTS anonymous to FALSE (the writing divergence) when the fetch fails", async () => {
+    fetcher.mockResolvedValue({ ok: false });
+    expect(await fileValidators.writing.validate(URL_, fetcher)).toMatchObject({
+      ok: true,
+      anonymous: false,
+      title: null,
+    });
+    expect(mocks.parseWriting).not.toHaveBeenCalled();
+  });
+
+  it("stays lenient (ok, anonymous:false) when the fetcher throws", async () => {
+    fetcher.mockRejectedValue(new Error("network"));
+    expect(await fileValidators.writing.validate(URL_, fetcher)).toMatchObject({
+      ok: true,
+      anonymous: false,
+      title: null,
+    });
+  });
+
+  it("keeps the false default when the parse fails", async () => {
+    fetcher.mockResolvedValue({ ok: true, text: async () => "bad" });
+    mocks.parseWriting.mockReturnValue({ ok: false });
+    expect(await fileValidators.writing.validate(URL_, fetcher)).toMatchObject({
+      ok: true,
+      anonymous: false,
+      title: null,
+    });
+  });
+});
+
 describe("readAnonymousFlag (runtime-light, by FileKind)", () => {
   it("quiz → reads the live flag via loadQuiz (definitive)", async () => {
     mocks.loadQuiz.mockResolvedValue({ ok: true, quiz: { anonymous: false } });
@@ -148,6 +195,30 @@ describe("readAnonymousFlag (runtime-light, by FileKind)", () => {
     expect(await readAnonymousFlag("tutor", URL_)).toEqual({ anonymous: false, definitive: true });
     // Called with the default fetcher and NO { validateLibraries: true } option.
     expect(mocks.loadAndBuildTutorPrompt).toHaveBeenCalledWith(URL_, {});
+  });
+
+  it("writing → reads the live flag via loadWriting, DEFAULTING to false (definitive)", async () => {
+    // parseWriting already defaults `anonymous` to false; readAnonymousFlag just
+    // forwards the loaded flag definitively when the YAML reads.
+    mocks.loadWriting.mockResolvedValue({ ok: true, writing: { anonymous: false } });
+    expect(await readAnonymousFlag("writing", URL_)).toEqual({
+      anonymous: false,
+      definitive: true,
+    });
+    expect(mocks.loadWriting).toHaveBeenCalledWith(URL_);
+  });
+
+  it("writing → an explicit anonymous:true is carried through definitively", async () => {
+    mocks.loadWriting.mockResolvedValue({ ok: true, writing: { anonymous: true } });
+    expect(await readAnonymousFlag("writing", URL_)).toEqual({ anonymous: true, definitive: true });
+  });
+
+  it("writing → falls back to the privacy-safe default when the YAML cannot be read", async () => {
+    mocks.loadWriting.mockResolvedValue({ ok: false, message: "gone" });
+    expect(await readAnonymousFlag("writing", URL_)).toEqual({
+      anonymous: true,
+      definitive: false,
+    });
   });
 
   it("falls back to anonymous:true NON-definitively when the YAML cannot be read", async () => {

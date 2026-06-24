@@ -1,0 +1,168 @@
+/* The writing student surface: a split screen (Markdown editor + collapsible
+   feedback chat) plus a formatted-preview lightbox. Mirrors the quiz runner's
+   button + dialog styling so the module feels native. */
+
+.surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+}
+
+/* Editor on the left, chat on the right. Collapsing the chat hands its column
+   width back to the editor. */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.chatCollapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 60rem) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.editorPane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.editorToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.editorActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.description {
+  font-size: 0.95rem;
+}
+
+.button {
+  flex: none;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--background);
+  background: var(--foreground);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.secondaryButton {
+  flex: none;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.error {
+  color: #b91c1c;
+  font-size: 0.9rem;
+}
+
+/* The chat column. */
+.chatPane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+/* The chat fills a fixed-height pane and lets CopilotChat own the internal
+   layout: the message list scrolls while the input stays pinned to the bottom.
+   Without the `> *` height the chat grows to its content and the page scrolls
+   instead, leaving the input below the fold. */
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 70vh;
+  min-height: 0;
+  overflow: hidden;
+  /* Horizontal breathing room so messages + input are not glued to the border. */
+  padding: 0 0.75rem;
+}
+
+.chat > * {
+  height: 100%;
+}
+
+/* The formatted-preview lightbox — mirrors the quiz discussion dialog. */
+.dialog {
+  width: min(48rem, 92vw);
+  height: 80vh;
+  max-width: 92vw;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+  border-radius: 0.75rem;
+  background: var(--background);
+  color: var(--foreground);
+  overflow: hidden;
+}
+
+.dialog::backdrop {
+  background: color-mix(in srgb, var(--foreground) 45%, transparent);
+}
+
+.dialogInner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+
+.dialogHeading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.dialogBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem;
+}

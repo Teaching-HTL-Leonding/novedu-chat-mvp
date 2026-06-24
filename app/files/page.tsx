@@ -10,6 +10,7 @@ import { Notice } from "@/components/notice";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { selectionColumn } from "@/components/selection-column";
 import { resolveAppOriginOr } from "@/lib/app-origin";
+import { isCodeModule } from "@/lib/code-modules/types";
 import { listFiles } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
@@ -140,7 +141,7 @@ export default async function FilesPage({
             >
               <ExternalLinkIcon />
             </a>
-            {row.kind === "tutor" || row.kind === "quiz" ? (
+            {isCodeModule(row.kind) ? (
               <Link
                 href={`/codes/new?module=${row.kind}&file=${encodeURIComponent(url)}`}
                 className={styles.iconButton}

@@ -85,6 +85,39 @@ describe("MarkdownRenderer — code", () => {
   });
 });
 
+describe("MarkdownRenderer — sanitization (untrusted student Markdown)", () => {
+  // The writing module renders UNTRUSTED student Markdown through this exact
+  // renderer (the "read formatted" lightbox and the teacher review). react-markdown
+  // does not parse raw HTML and there is no rehype-raw / dangerouslySetInnerHTML, so
+  // a script/raw-HTML payload must survive as INERT TEXT, never as live DOM.
+
+  it("does not produce a live <script> element from a raw-HTML payload", () => {
+    const { container } = render(
+      <MarkdownRenderer content={"# Hi\n\n<script>window.__pwned = 1;</script>\n"} />,
+    );
+    // No script node entered the DOM…
+    expect(container.querySelector("script")).toBeNull();
+    // …and the heading still rendered, so the surrounding Markdown is intact.
+    expect(container.querySelector("h1")?.textContent).toBe("Hi");
+  });
+
+  it("does not render an injected <img onerror=…> as a live element", () => {
+    const { container } = render(
+      <MarkdownRenderer content={'<img src="x" onerror="window.__pwned = 1">'} />,
+    );
+    // The raw <img> tag is not parsed into a live element with the handler.
+    expect(container.querySelector("img[onerror]")).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
+  });
+
+  it("renders the raw HTML as escaped text rather than executing it", () => {
+    const { container } = render(<MarkdownRenderer content={"before <b>not-bold</b> after"} />);
+    // The <b> is not promoted to a real element — it stays as literal text.
+    expect(container.querySelector("b")).toBeNull();
+    expect(container.textContent).toContain("<b>not-bold</b>");
+  });
+});
+
 describe("MarkdownRenderer — copy button", () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
 

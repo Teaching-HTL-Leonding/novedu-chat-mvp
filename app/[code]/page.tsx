@@ -9,6 +9,7 @@ import { CodeError } from "../code-error";
 import styles from "../page.module.css";
 import { RenderQuiz } from "./render-quiz";
 import { RenderTutor } from "./render-tutor";
+import { RenderWriting } from "./render-writing";
 
 // The student entry point for EVERY module, reachable ONLY through a code created
 // by a teacher (`/<code>`). A thin dispatcher: it checks the code + window
@@ -76,6 +77,10 @@ export default async function CodePage({ params }: { params: Promise<{ code: str
       );
     case "quiz":
       return <RenderQuiz entry={entry} code={code} />;
+    case "writing":
+      return (
+        <RenderWriting entry={entry} code={code} threadId={threadId} threadToken={threadToken} />
+      );
     default: {
       const exhaustive: never = entry.module;
       return exhaustive;
