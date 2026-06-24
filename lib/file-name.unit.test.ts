@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { FILE_NAME_PATTERN, isFileKind, validateFileName } from "@/lib/file-name";
+import {
+  extensionForImageMime,
+  FILE_NAME_PATTERN,
+  imageMimeFromExtension,
+  isFileKind,
+  isImageMime,
+  validateFileName,
+} from "@/lib/file-name";
 
 // The pure name/kind helpers are part of the YAML Files API contract (re-exported
 // by `@/lib/yaml-files` for the student GUI), so pin their behavior.
@@ -33,5 +40,67 @@ describe("isFileKind", () => {
     expect(isFileKind("quiz")).toBe(true);
     expect(isFileKind("other")).toBe(false);
     expect(isFileKind(undefined)).toBe(false);
+  });
+});
+
+// The image MIME helpers gate what the upload flow accepts and how the server
+// picks a blob extension, so pin their branches (they are otherwise only
+// exercised by the CI-excluded @live-storage e2e).
+describe("isImageMime", () => {
+  it("accepts exactly png, jpeg and svg+xml", () => {
+    expect(isImageMime("image/png")).toBe(true);
+    expect(isImageMime("image/jpeg")).toBe(true);
+    expect(isImageMime("image/svg+xml")).toBe(true);
+  });
+
+  it("rejects other types, casing and non-strings", () => {
+    for (const bad of [
+      "image/gif",
+      "image/jpg",
+      "IMAGE/PNG",
+      "text/plain",
+      "",
+      1,
+      null,
+      undefined,
+    ]) {
+      expect(isImageMime(bad as unknown)).toBe(false);
+    }
+  });
+});
+
+describe("imageMimeFromExtension", () => {
+  it("maps a bare extension to its MIME, case-insensitively", () => {
+    expect(imageMimeFromExtension("png")).toBe("image/png");
+    expect(imageMimeFromExtension("PNG")).toBe("image/png");
+    expect(imageMimeFromExtension("svg")).toBe("image/svg+xml");
+  });
+
+  it("maps jpg and jpeg both to image/jpeg", () => {
+    expect(imageMimeFromExtension("jpg")).toBe("image/jpeg");
+    expect(imageMimeFromExtension("jpeg")).toBe("image/jpeg");
+  });
+
+  it("reads the extension from a filename (last dot wins, any case)", () => {
+    expect(imageMimeFromExtension("diagram.PNG")).toBe("image/png");
+    expect(imageMimeFromExtension("my.photo.jpeg")).toBe("image/jpeg");
+    expect(imageMimeFromExtension(".svg")).toBe("image/svg+xml");
+  });
+
+  it("returns null for unknown or missing extensions", () => {
+    expect(imageMimeFromExtension("gif")).toBeNull();
+    expect(imageMimeFromExtension("noextension")).toBeNull();
+    expect(imageMimeFromExtension("archive.tar.gz")).toBeNull();
+    expect(imageMimeFromExtension("")).toBeNull();
+  });
+});
+
+describe("extensionForImageMime", () => {
+  it("returns the canonical dotless extension (jpeg -> jpg) and round-trips", () => {
+    expect(extensionForImageMime("image/png")).toBe("png");
+    expect(extensionForImageMime("image/jpeg")).toBe("jpg");
+    expect(extensionForImageMime("image/svg+xml")).toBe("svg");
+    expect(imageMimeFromExtension(extensionForImageMime("image/png"))).toBe("image/png");
+    expect(imageMimeFromExtension(extensionForImageMime("image/svg+xml"))).toBe("image/svg+xml");
   });
 });

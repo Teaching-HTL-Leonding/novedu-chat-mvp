@@ -9,11 +9,11 @@ tagging one `@live`, or changing the CI test jobs.
 Prefer fast, deterministic, **secret-free** unit/component tests that run in CI.
 Reserve full-stack e2e for what genuinely needs the real wired-together app. A
 test earns an `@live` tag **only** if its assertion truly needs the live
-database or the SCCH LLM — not merely because the code path happens to sit
-behind one. If the logic short-circuits before the runtime is built (the chat
-gate) or is pure-prop rendering, it belongs in a fast test.
+database, the SCCH LLM, or real Azure Blob Storage — not merely because the code
+path happens to sit behind one. If the logic short-circuits before the runtime is
+built (the chat gate) or is pure-prop rendering, it belongs in a fast test.
 
-Three kinds of e2e, by the external infra they need:
+Four kinds of e2e, by the external infra they need:
 
 - **Hermetic e2e** — no external infra (the auth gate, routing, teacher/student
   permissions, client-side validation). Untagged. **Run in CI.**
@@ -27,12 +27,21 @@ Three kinds of e2e, by the external infra they need:
   these are **excluded from CI** and run locally only. (Such a test is tagged
   `@live-llm` ONLY — the DB it also uses is implied — so a `--grep @live-db` run
   never selects it.)
+- **`@live-storage` e2e** — need real **Azure Blob Storage** (the image subsystem
+  in `e2e/image-management.live.spec.ts`): minting User-Delegation SAS URLs,
+  PUT/GET-ing actual blobs, plus the `novedu_images` metadata rows. The storage
+  account is reached with the passwordless data-store credential (`az login`) and
+  cannot be containerized in fork CI, so these are **excluded from CI** and run
+  locally only — exactly like `@live-llm`. (Such a test is tagged `@live-storage`
+  ONLY — the DB it also uses is implied — so a `--grep @live-db` run never selects
+  it.)
 
 Every live test carries **`@live`** (so the local `--grep @live` smoke runs them
-all) **plus exactly one** of `@live-db` / `@live-llm`. CI runs hermetic +
-`@live-db` and excludes `@live-llm` via `npm run test:e2e:ci`
-(`--grep-invert @live-llm`). Real credentials (Azure SQL / SCCH) must never run on
-a fork `pull_request`; the CI container's SA password is a non-secret dummy — see
+all) **plus exactly one** of `@live-db` / `@live-llm` / `@live-storage`. CI runs
+hermetic + `@live-db` and excludes `@live-llm` and `@live-storage` via
+`npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage"`). Real
+credentials (Azure SQL / SCCH / Azure Blob Storage) must never run on a fork
+`pull_request`; the CI container's SA password is a non-secret dummy — see
 `docs/ci-security.md`.
 
 ## Layers & tools

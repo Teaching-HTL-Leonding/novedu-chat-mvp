@@ -1,8 +1,10 @@
-// Client-safe quiz types and the verdict→label mapping. PURE — no imports, no
-// I/O, no YAML parser, no node:crypto — so a client component (the quiz runner)
-// can import the student-facing types and `verdictLabel` without pulling the
-// YAML parser into the browser bundle. The richer, server-only types and the
-// lenient parser live in `lib/quiz-yaml.ts`.
+// Client-safe quiz types and the verdict→label mapping. PURE — no I/O, no YAML
+// parser, no node:crypto (only the pure, client-safe `lib/image-ref` types) — so
+// a client component (the quiz runner) can import the student-facing types and
+// `verdictLabel` without pulling the YAML parser into the browser bundle. The
+// richer, server-only types and the lenient parser live in `lib/quiz-yaml.ts`.
+
+import type { ImageRef, ResolvedImage } from "@/lib/image-ref";
 
 // The grader's internal verdict vocabulary. Kept terse for the structured-output
 // schema; the student never sees these raw values (see `verdictLabel`).
@@ -27,6 +29,8 @@ export interface QuizQuestionPublic {
   title?: string;
   /** MARKDOWN shown to the student. */
   question: string;
+  /** Optional content image — carries no secret, so it crosses the wire unchanged. */
+  image?: ImageRef;
 }
 
 /** The student-facing projection of a quiz — everything the runner needs, nothing more. */
@@ -39,4 +43,14 @@ export interface QuizPublic {
   /** Present questions in a random order per attempt. */
   shuffle: boolean;
   questions: QuizQuestionPublic[];
+}
+
+/** A question with its `image` resolved to a usable URL for `<ContentImage>`. */
+export interface ResolvedQuizQuestion extends Omit<QuizQuestionPublic, "image"> {
+  image?: ResolvedImage;
+}
+
+/** A quiz whose questions carry resolved images — what the runner renders. */
+export interface ResolvedQuiz extends Omit<QuizPublic, "questions"> {
+  questions: ResolvedQuizQuestion[];
 }

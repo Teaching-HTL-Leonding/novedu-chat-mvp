@@ -1,6 +1,8 @@
 import { Notice } from "@/components/notice";
 import type { CodeEntry } from "@/lib/code-store";
+import { resolveImageRef } from "@/lib/image-resolve";
 import { loadQuiz } from "@/lib/quiz-fetch";
+import type { ResolvedQuiz, ResolvedQuizQuestion } from "@/lib/quiz-types";
 import { toPublicQuiz } from "@/lib/quiz-yaml";
 import styles from "../page.module.css";
 import { QuizRunner } from "./_quiz/quiz-runner";
@@ -22,9 +24,21 @@ export async function RenderQuiz({ entry, code }: { entry: CodeEntry; code: stri
     );
   }
 
+  // Resolve each question's optional content image to a usable URL here, at page
+  // render: hosted images are minted into short-lived read SAS URLs once on the
+  // server so the client runner only ever sees ready-to-render URLs.
+  const publicQuiz = toPublicQuiz(loaded.quiz);
+  const questions: ResolvedQuizQuestion[] = await Promise.all(
+    publicQuiz.questions.map(async ({ image, ...rest }) => {
+      const resolved = await resolveImageRef(image, entry.fileUrl);
+      return resolved ? { ...rest, image: resolved } : rest;
+    }),
+  );
+  const quiz: ResolvedQuiz = { ...publicQuiz, questions };
+
   return (
     <main className={styles.main}>
-      <QuizRunner code={code} quiz={toPublicQuiz(loaded.quiz)} />
+      <QuizRunner code={code} quiz={quiz} />
     </main>
   );
 }

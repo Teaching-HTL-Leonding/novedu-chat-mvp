@@ -32,3 +32,43 @@ export function validateFileName(name: unknown): FileNameValidation {
   }
   return { ok: true, name: trimmed };
 }
+
+/** Image content types the app accepts for hosted images. */
+export type ImageMime = "image/png" | "image/jpeg" | "image/svg+xml";
+
+export function isImageMime(value: unknown): value is ImageMime {
+  return value === "image/png" || value === "image/jpeg" || value === "image/svg+xml";
+}
+
+/**
+ * Maps a filename or bare extension (with or without a leading dot, any case)
+ * to an {@link ImageMime}; returns `null` for anything unrecognized. `jpg`/`jpeg`
+ * both map to `image/jpeg`, `svg` to `image/svg+xml`.
+ */
+export function imageMimeFromExtension(filename: string): ImageMime | null {
+  const lastDot = filename.lastIndexOf(".");
+  const ext = (lastDot >= 0 ? filename.slice(lastDot + 1) : filename).toLowerCase();
+  switch (ext) {
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "svg":
+      return "image/svg+xml";
+    default:
+      return null;
+  }
+}
+
+/** Canonical file extension (no dot) for an {@link ImageMime}; `image/jpeg` -> `jpg`. */
+export function extensionForImageMime(mime: ImageMime): string {
+  switch (mime) {
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+      return "jpg";
+    case "image/svg+xml":
+      return "svg";
+  }
+}

@@ -1,4 +1,5 @@
 import { parse as parseYamlText } from "yaml";
+import type { ImageRef } from "./image-ref";
 import type { QuizPublic, QuizQuestionPublic } from "./quiz-types";
 
 // LENIENT runtime parse of a quiz YAML. Quizzes are stored in `novedu_files`
@@ -20,6 +21,8 @@ export interface QuizQuestion {
   question: string;
   /** SERVER-ONLY grading prompt — embeds the expected answer + criteria. */
   evaluation: string;
+  /** Optional content image — carries no secret, so it survives into the public projection. */
+  image?: ImageRef;
 }
 
 /** A fully parsed quiz. `evaluation` prompts and `model` are server-side only. */
@@ -56,6 +59,26 @@ function asString(value: unknown): string | undefined {
 
 function asBool(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+// LENIENT read of an optional content image. Only a non-null object with a
+// trimmed non-empty string `src` yields a ref; anything malformed is dropped so
+// the question still renders without an image. `hosted` defaults to `false`;
+// `alt` and `credit` (the attribution shown below the image) are carried through
+// only when each is a trimmed non-empty string.
+function asImageRef(value: unknown): ImageRef | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const obj = value as Record<string, unknown>;
+  const src = asString(obj.src);
+  if (!src) return undefined;
+  const alt = asString(obj.alt);
+  const credit = asString(obj.credit);
+  return {
+    hosted: asBool(obj.hosted, false),
+    src,
+    ...(alt ? { alt } : {}),
+    ...(credit ? { credit } : {}),
+  };
 }
 
 /**
@@ -97,7 +120,13 @@ export function parseQuiz(content: string): QuizParseResult {
     // grading prompt — skip anything missing one rather than failing the quiz.
     if (!id || !question || !evaluation || seenIds.has(id)) continue;
     seenIds.add(id);
-    questions.push({ id, title: asString(q.title), question, evaluation });
+    questions.push({
+      id,
+      title: asString(q.title),
+      question,
+      evaluation,
+      image: asImageRef(q.image),
+    });
   }
   if (questions.length === 0) {
     return {
@@ -133,6 +162,8 @@ export function toPublicQuiz(quiz: Quiz): QuizPublic {
     id: q.id,
     title: q.title,
     question: q.question,
+    // The image carries no secret (unlike `evaluation`) — pass it through unchanged.
+    image: q.image,
   }));
   return {
     id: quiz.id,

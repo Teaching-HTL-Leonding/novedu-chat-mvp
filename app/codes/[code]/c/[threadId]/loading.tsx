@@ -1,10 +1,5 @@
-import { LoadingPanel } from "@/components/spinner";
-import pageStyles from "../../../../page.module.css";
+import { PageLoading } from "@/app/page-loading";
 
 export default function Loading() {
-  return (
-    <main className={pageStyles.main}>
-      <LoadingPanel label="Loading conversation…" />
-    </main>
-  );
+  return <PageLoading label="Loading conversation…" />;
 }

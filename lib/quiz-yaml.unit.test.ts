@@ -94,6 +94,82 @@ questions:
     expect(result.quiz.questions[0]?.title).toBe("2024");
   });
 
+  it("parses a question's content image (hosted default false, alt + credit carried)", () => {
+    const result = parseQuiz(`
+llm:
+  model: m
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+    image:
+      hosted: true
+      src: diagram
+      alt: A diagram
+      credit: CC BY 4.0
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.questions[0]?.image).toEqual({
+      hosted: true,
+      src: "diagram",
+      alt: "A diagram",
+      credit: "CC BY 4.0",
+    });
+  });
+
+  it("defaults a question image's hosted flag to false and omits a missing alt", () => {
+    const result = parseQuiz(`
+llm:
+  model: m
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+    image:
+      src: ./pic.png
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.questions[0]?.image).toEqual({ hosted: false, src: "./pic.png" });
+  });
+
+  it("leaves image undefined when the question has none", () => {
+    const result = parseQuiz(`
+llm:
+  model: m
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.questions[0]?.image).toBeUndefined();
+  });
+
+  it("drops a malformed image (no usable src) but keeps the question", () => {
+    const result = parseQuiz(`
+llm:
+  model: m
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+    image:
+      alt: orphan alt
+  - id: b
+    question: Q2
+    evaluation: E2
+    image: not-an-object
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.questions.map((q) => q.id)).toEqual(["a", "b"]);
+    expect(result.quiz.questions[0]?.image).toBeUndefined();
+    expect(result.quiz.questions[1]?.image).toBeUndefined();
+  });
+
   it("skips incomplete and duplicate-id questions", () => {
     const result = parseQuiz(`
 llm:
@@ -145,5 +221,18 @@ describe("toPublicQuiz", () => {
       questions: [{ id: "a", question: "Q", evaluation: "E" }],
     };
     expect(toPublicQuiz(quiz)).not.toHaveProperty("anonymous");
+  });
+
+  it("carries the raw ImageRef through unchanged (it holds no secret)", () => {
+    const image = { hosted: true, src: "diagram", alt: "A diagram" };
+    const quiz: Quiz = {
+      id: "x",
+      anonymous: true,
+      shuffle: true,
+      model: "m",
+      questions: [{ id: "a", question: "Q", evaluation: "E", image }],
+    };
+    const pub = toPublicQuiz(quiz);
+    expect(pub.questions[0]?.image).toEqual(image);
   });
 });

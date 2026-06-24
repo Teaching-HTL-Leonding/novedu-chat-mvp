@@ -151,9 +151,13 @@ the wired DB delete is the `@live-db` case in `e2e/file-and-tutor-code-crud.spec
 2. Make the page `async`, `await searchParams`, query, map to plain rows.
 3. Render `DataList` with your `columns`, an `actions` button, and a `ListFilterBar`
    holding your controls.
-4. Put list-specific cell/badge classes in the page's own `*.module.css`; reuse the
+4. Add a sibling `loading.tsx` to the route segment that renders
+   `<PageLoading label="Loading …" />` (`app/page-loading.tsx`). The page is an
+   async server component, so without it the route shows a frozen page during the
+   server query instead of a spinner.
+5. Put list-specific cell/badge classes in the page's own `*.module.css`; reuse the
    shared chrome and `composes:` the shared `iconButton`.
-5. (Optional) Opt into multi-delete: add a bulk store function + a teacher-gated
+6. (Optional) Opt into multi-delete: add a bulk store function + a teacher-gated
    server action that reuses the per-item delete helper, wrap the `DataList` in
    `SelectionProvider`, prepend `selectionColumn`, and add `DeleteSelectedButton` to
    `actions` (see "Multi-delete" above).

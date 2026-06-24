@@ -64,6 +64,14 @@ export const TrashIcon = (props: SVGProps<SVGSVGElement>) => (
   </Icon>
 );
 
+/** Eye — "View" (open the image in a lightbox). */
+export const EyeIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+    <circle cx="12" cy="12" r="3" />
+  </Icon>
+);
+
 /** Share nodes — "Create tutor code from this file". */
 export const ShareIcon = (props: SVGProps<SVGSVGElement>) => (
   <Icon {...props}>

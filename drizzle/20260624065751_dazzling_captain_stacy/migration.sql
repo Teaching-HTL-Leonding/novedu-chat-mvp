@@ -1,0 +1,1 @@
+ALTER TABLE [novedu_images] ADD [credit] nvarchar(512);
