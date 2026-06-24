@@ -2,6 +2,7 @@
 // assemble, returning a single `BuildResult`. The fetcher is injected so this
 // entire pipeline is unit-testable without touching the network.
 
+import { resolveRelativeUrl } from "@/lib/relative-url";
 import { assembleSystemPrompt } from "./assemble";
 import { checkConsistency } from "./consistency";
 import {
@@ -25,8 +26,7 @@ import { type FragmentFile, FragmentFileSchema, type Tutor, TutorSchema } from "
  * already guarantees the only inputs here are http(s) URLs or relative paths.
  */
 export function resolveFragmentUrl(ref: string, tutorUrl: string): string {
-  if (/^https?:\/\//i.test(ref)) return ref;
-  return new URL(ref, tutorUrl).href;
+  return resolveRelativeUrl(ref, tutorUrl);
 }
 
 async function fetchText(

@@ -20,6 +20,7 @@ The highest-cost rules to break. They always apply, regardless of which subsyste
 - Student access to any activity (tutor chat / quiz) is gated by **`checkCode()`** on the stored `novedu_codes` row plus the **stateless-HMAC `x-thread-token`** thread-ownership token over `(code, userId, threadId)` — both re-verified on **every** server touch, never a bare DB lookup. There are no signed links; a quiz is just a code with `module: "quiz"`.
 - The quiz **grader agent (`quizEvaluator`) is never web-reachable** — it is not any module's runtime agent, so the runtime route 404s it; only `submitAnswer` calls it. The server-only quiz `evaluation` prompts never reach the browser.
 - Public **`GET /api/files/<name>`** is intentionally unauthenticated; every other file path is a teacher-only server action. Keep the route in the `proxy.ts` matcher.
+- Image bytes use **passwordless User-Delegation-SAS** (account keys disabled on the storage account); retrieval is unauthenticated-but-time-limited (a short-lived read SAS, no app route serves bytes), and SVG is rendered only via `<img src>` on the blob origin — never inline markup.
 - Telemetry carries **no** message / prompt / PII content.
 - Fork-PR CI stays **secret-free**; never add `pull_request_target`.
 - Production SQL is **always** passwordless Entra / Managed Identity; SQL user/password is dev/test only.
@@ -57,6 +58,15 @@ Read before touching: `app/files/**`, `app/api/files/**`, `lib/file-store.ts`, `
 - App-hosted URL resolution (validator, quiz loader, GUI loader) goes through the shared `appHostedFetcher` (`lib/app-hosted-fetcher.ts`) — don't reimplement it as a loopback fetch.
 - List filtering + multi-delete follow `docs/filtered-lists.md`.
 
+### App-hosted images → `docs/images.md`
+
+Read before touching: `app/images/**`, `lib/image-store.ts`, `lib/image-blob.ts`, `lib/image-resolve.ts`, `lib/image-ref.ts`, `lib/relative-url.ts`, `lib/images-actions.ts`, `components/content-image.tsx`, the image helpers in `lib/file-name.ts`, `novedu_images`.
+
+- Module-agnostic subsystem in four layers: storage (`novedu_images` + `lib/image-store.ts` metadata, `lib/image-blob.ts` bytes) → the `/images` teacher surface → the `ImageRef`/`resolveImageRef` resolution primitive → the `<ContentImage>` display. A module embeds an `ImageRef` (`hosted` name | absolute URL | relative path); `resolveImageRef` mints a usable URL, leniently (`null` ⇒ omit).
+- `novedu_images` is temporal / append-only (active row = `valid_until IS NULL`, soft-delete only); `lib/image-store.ts` is the only access; one active version per name is a DB filtered unique index; images are never garbage-collected. The bytes live in Blob Storage, addressed by `blob_path`.
+- Upload is **confirm-only** (request SAS → direct-to-blob PUT → confirm; no DB row until confirm). Retrieval is direct-to-blob via SAS — there is NO app route serving image bytes, so don't add `/api/images` or change `proxy.ts`. SAS is passwordless User-Delegation — see the security block.
+- List filtering + multi-delete follow `docs/filtered-lists.md`.
+
 ### Student YAML GUI module → `docs/yaml-gui-student-contribution.md`
 
 Read before touching: `app/files/gui/**`, `lib/yaml-files.ts`.
@@ -69,7 +79,7 @@ Read before touching: `app/files/gui/**`, `lib/yaml-files.ts`.
 Read before touching: `components/data-list.tsx`, `components/list-filter-bar.tsx`, `components/list-selection.tsx`, `components/selection-column.tsx`, `lib/db/text-filter.ts`, or a list page's `searchParams`.
 
 - List filtering happens in the database, never in memory: filter state lives in URL search params → a parameterized `WHERE` (text via `containsAny`).
-- Build a list from the reusable pieces — `DataList` (server table) + `ListFilterBar` (client) — and wrap in `SelectionProvider` + `selectionColumn` + `DeleteSelectedButton` for multi-delete.
+- Build a list from the reusable pieces — `DataList` (server table) + `ListFilterBar` (client) — and wrap in `SelectionProvider` + `selectionColumn` + `DeleteSelectedButton` for multi-delete. The async list page needs a sibling `loading.tsx` rendering `<PageLoading>` (`app/page-loading.tsx`).
 - Multi-delete reuses the exact same per-item store delete as the per-row trash button (single and bulk share one `DbExecutor` helper; bulk loops it in one transaction). For codes the Mastra thread deletes run per-code outside that transaction (separate pool).
 - Aggregated columns are a single raw-SQL aggregate over the filtered set — never a query per row.
 

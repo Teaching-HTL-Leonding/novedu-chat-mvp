@@ -3,6 +3,7 @@ import {
   bit,
   datetime2,
   index,
+  int,
   mssqlTable,
   nvarchar,
   primaryKey,
@@ -172,5 +173,51 @@ export const files = mssqlTable(
     // "all active files" for the list page (active rows are the minority as
     // history accumulates, so an index on the discriminator pays off).
     index("ix_novedu_files_valid_until").on(t.validUntil),
+  ],
+);
+
+// App-hosted images that teachers upload for use in activity content. The bytes
+// live in Azure Blob Storage (one blob per row, addressed by `blob_path`); this
+// table only tracks metadata. Retrieval is direct-to-blob via a read-SAS — there
+// is no app route serving the bytes — and the blob is uploaded with a write-SAS
+// before any row exists (the row is written only on confirm).
+//
+// TEMPORAL / append-only versioning, mirroring novedu_files: each row is ONE
+// version of one image. The image's identity is its `name`; the ACTIVE version is
+// the single row with `valid_until IS NULL`, every other row is history.
+// `created_by` is the oid of whoever wrote a version; `closed_by` is the oid of
+// whoever ended it. "At most one active row per name" is enforced at the DATABASE
+// level by a FILTERED UNIQUE index (`name` WHERE `valid_until IS NULL`). There
+// are NO foreign keys (same rule as the other novedu_* tables).
+export const images = mssqlTable(
+  "novedu_images",
+  {
+    // Surrogate id, unique PER VERSION (a fresh uuid for every row).
+    id: varchar("id", { length: 36 }).primaryKey(),
+    // Public identifier the teacher picks. Bounded so it can be indexed.
+    name: nvarchar("name", { length: 450 }).notNull(),
+    // Server-chosen blob name within the container: `<uuid>.<ext>`.
+    blobPath: varchar("blob_path", { length: 80 }).notNull(),
+    // "image/png" | "image/jpeg" | "image/svg+xml".
+    mimeType: varchar("mime_type", { length: 32 }).notNull(),
+    // Size of the uploaded blob in bytes.
+    byteSize: int("byte_size").notNull(),
+    // Optional attribution / "Content Credentials" (e.g. a CC BY notice) shown
+    // below the image wherever it is rendered. NULL when the teacher gave none.
+    credit: nvarchar("credit", { length: 512 }),
+    // oid of the writer who created this version.
+    createdBy: nvarchar("created_by", { length: 64 }).notNull(),
+    // When this version became active.
+    validFrom: datetime2("valid_from").notNull(),
+    // When this version was closed; NULL = currently active.
+    validUntil: datetime2("valid_until"),
+    // oid of whoever set valid_until; NULL while active.
+    closedBy: nvarchar("closed_by", { length: 64 }),
+  },
+  (t) => [
+    // At most ONE active version per name — a SQL Server filtered unique index.
+    uniqueIndex("ux_novedu_images_active_name").on(t.name).where(sql`${t.validUntil} IS NULL`),
+    // "all active images" for the list page.
+    index("ix_novedu_images_valid_until").on(t.validUntil),
   ],
 );

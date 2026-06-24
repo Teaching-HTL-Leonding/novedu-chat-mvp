@@ -192,6 +192,9 @@ export default async function FilesPage({
               <Link href="/files/new" className={listStyles.button}>
                 New file
               </Link>
+              <Link href="/images" className={listStyles.button}>
+                Manage images
+              </Link>
               <DeleteSelectedButton action={deleteSelectedFilesAction} itemNoun="file" />
             </>
           }

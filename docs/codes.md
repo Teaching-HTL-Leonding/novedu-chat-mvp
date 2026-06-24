@@ -308,8 +308,33 @@ in-page discussion live in `app/[code]/_quiz/`.
   `lib/quiz-yaml.ts`): `id`, `name`, optional `title`/`description` (student
   welcome), `anonymous` (default `true`), `shuffle` (default `true`), `llm.model`
   (grades AND drives the discussion), optional `discussion.instructions`, and
-  `questions[]` each with `id`, optional `title`, `question` (markdown), and
-  `evaluation` (the SERVER-ONLY grading prompt).
+  `questions[]` each with `id`, optional `title`, `question` (markdown), an
+  optional content `image` (below), and `evaluation` (the SERVER-ONLY grading
+  prompt).
+- **An optional question `image`** (`quizzes/sample-image-quiz.yaml`) is an
+  `ImageRef` from the **image subsystem** (`docs/images.md`) — it carries no
+  secret (unlike `evaluation`), so it survives `toPublicQuiz` and is resolved
+  server-side (`resolveImageRef`) to a `ResolvedImage` rendered above the question
+  markdown by `<ContentImage>`. Its `src` resolves in **three cases**: a hosted
+  image **name** (`hosted: true` → looked up in `novedu_images`, minted to a
+  short-lived read SAS), an **absolute** `http(s)` URL (used as-is), or a path
+  **relative** to the quiz's own `file_url`. An optional **`credit`** ("Content
+  Credentials") is shown small below the image — for a hosted image it defaults to
+  the credit set at upload, and a per-question `credit` overrides it. Example:
+
+  ```yaml
+  questions:
+    - id: compass-rose
+      image:
+        hosted: true            # look src up by NAME in the app-hosted image store
+        src: sample-compass-rose
+        alt: A compass rose showing the four cardinal directions.
+        credit: Compass rose — CC BY 4.0   # optional, shown small below the image
+      question: |
+        Which direction is at the top of a standard map?
+      evaluation: |
+        North is at the top. …   # SERVER-ONLY, never reaches the browser
+  ```
 - **`evaluation` never reaches the browser.** `toPublicQuiz` strips it (and
   `model`, `anonymous`, `discussion`) before anything reaches the client; the
   runner ships only the `QuizPublic` projection. Verdict vocabulary is the internal

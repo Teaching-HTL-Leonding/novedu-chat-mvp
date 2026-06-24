@@ -80,10 +80,13 @@ run untrusted PR code.**
   `@live-db` (needs a SQL Server, no LLM) runs in CI against the **ephemeral
   container** above — safe because the container is a non-secret dummy, not real
   infra. `@live-llm` (needs the SCCH LLM — geo-blocked to Austria +
-  un-containerizable) is excluded from the PR run via `npm run test:e2e:ci`
-  (`--grep-invert @live-llm`) and runs local-only. Tests against **real** Azure SQL
-  or SCCH must run only on a **trusted trigger** — `push` to `main`, a `schedule`,
-  or a reviewer-gated GitHub *Environment* — never on fork PR code.
+  un-containerizable) and `@live-storage` (needs **real Azure Blob Storage** for the
+  image subsystem — no container substitutes for it, and the User-Delegation SAS
+  path needs the passwordless data-store credential) are both excluded from the PR
+  run via `npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage"`) and run
+  local-only. Tests against **real** Azure SQL, SCCH, or Azure Blob Storage must run
+  only on a **trusted trigger** — `push` to `main`, a `schedule`, or a
+  reviewer-gated GitHub *Environment* — never on fork PR code.
 - **Keep `permissions:` least-privilege.** `qa.yml` only reads code and runs
   tests, so `contents: read`. Any workflow that needs more should request the
   minimum it needs, scoped to the job.

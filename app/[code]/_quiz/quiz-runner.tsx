@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ContentImage } from "@/components/content-image";
 import { startDiscussion, submitAnswer } from "@/lib/quiz-actions";
 import {
-  type QuizPublic,
-  type QuizQuestionPublic,
   type QuizVerdict,
+  type ResolvedQuiz,
+  type ResolvedQuizQuestion,
   verdictLabel,
 } from "@/lib/quiz-types";
 import { MarkdownRenderer } from "../../markdown-renderer";
@@ -30,11 +31,11 @@ function shuffle<T>(items: T[]): T[] {
   return a;
 }
 
-export function QuizRunner({ quiz, code }: { quiz: QuizPublic; code: string }) {
+export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string }) {
   // Shuffle on the CLIENT after mount: server and first client render both use
   // the authored order (no hydration mismatch), then the effect reorders once.
   // `ready` gates the questions so the first visible question never flickers.
-  const [order, setOrder] = useState<QuizQuestionPublic[]>(quiz.questions);
+  const [order, setOrder] = useState<ResolvedQuizQuestion[]>(quiz.questions);
   const [ready, setReady] = useState(false);
   useEffect(() => {
     setOrder(quiz.shuffle ? shuffle(quiz.questions) : quiz.questions);
@@ -84,7 +85,7 @@ export function QuizRunner({ quiz, code }: { quiz: QuizPublic; code: string }) {
 
   const isLast = index >= total - 1;
 
-  async function handleSubmit(question: QuizQuestionPublic) {
+  async function handleSubmit(question: ResolvedQuizQuestion) {
     const trimmed = answer.trim();
     if (!trimmed || grading) return;
     setGrading(true);
@@ -100,7 +101,7 @@ export function QuizRunner({ quiz, code }: { quiz: QuizPublic; code: string }) {
     setAnswered((n) => n + 1);
   }
 
-  async function handleOpenDiscussion(question: QuizQuestionPublic) {
+  async function handleOpenDiscussion(question: ResolvedQuizQuestion) {
     if (!verdict || openingDiscussion || discussion) return;
     setOpeningDiscussion(true);
     setError(null);
@@ -159,6 +160,7 @@ export function QuizRunner({ quiz, code }: { quiz: QuizPublic; code: string }) {
 
       <section className={styles.card}>
         {current.title ? <h2 className={styles.questionTitle}>{current.title}</h2> : null}
+        {current.image ? <ContentImage image={current.image} /> : null}
         <div className={styles.questionBody}>
           <MarkdownRenderer content={current.question} />
         </div>

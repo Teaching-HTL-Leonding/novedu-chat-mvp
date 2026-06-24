@@ -1,5 +1,5 @@
 import { PageLoading } from "@/app/page-loading";
 
 export default function Loading() {
-  return <PageLoading label="Loading stats…" />;
+  return <PageLoading label="Loading images…" />;
 }

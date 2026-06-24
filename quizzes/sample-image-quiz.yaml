@@ -1,0 +1,79 @@
+# Sample quiz definition — "Reading a Map" — demonstrating a content image.
+#
+# A quiz is authored in YAML, just like a tutor or a fragment library, and is
+# served at a public URL (e.g. via the in-app YAML Files feature at
+# /api/files/<name>). A teacher then mints a QUIZ CODE pointing at that URL and
+# hands the /<code> link to students.
+#
+# This sample shows how to attach an optional content IMAGE to a question. The
+# image is resolved server-side and rendered above the question's markdown; the
+# image carries no secret (unlike `evaluation`), so it crosses to the browser.
+
+id: reading-a-map
+name: "Reading a Map — Basics"
+
+title: "Map Reading Quiz"
+description: |
+  A short quiz with a map image. Look at the picture on each question, then
+  answer in your own words. You can stop at any time and see your summary.
+
+anonymous: false
+shuffle: true
+
+# The model that grades answers AND drives the per-question discussion chat.
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+
+discussion:
+  instructions: |
+    You are a friendly geography tutor helping the student understand THIS quiz
+    question. Be encouraging and concise. You may reveal and explain the correct
+    answer, since the student has already submitted theirs. Stay on the topic of
+    this question and the image it shows.
+
+# Each question may carry an optional `image`:
+#   hosted — true to look the image up by NAME in the app-hosted image store
+#            (resolved server-side to a short-lived read URL); omit/false for an
+#            absolute http(s) URL or a path relative to the quiz's own URL.
+#   src    — the hosted image NAME (when hosted) or the URL/relative path.
+#   alt    — accessible description shown if the image cannot be loaded.
+#   credit — optional attribution ("Content Credentials") shown small below the
+#            image; for a hosted image it defaults to the credit set at upload.
+questions:
+  - id: compass-rose
+    title: "Compass directions"
+    image:
+      hosted: true
+      src: sample-compass-rose
+      alt: A compass rose showing the four cardinal directions.
+      credit: Compass rose — CC BY 4.0
+    question: |
+      The image above shows a **compass rose**. Which direction is at the **top**
+      of a standard map, and what are the four **cardinal directions**?
+    evaluation: |
+      On a standard map **north** is at the top. The four cardinal directions are
+      **north, east, south and west**.
+
+      Grade as:
+      - `correct`   — names north as up AND lists all four cardinal directions.
+      - `partial`   — gets the orientation OR the four directions, but not both.
+      - `incorrect` — wrong orientation and missing/incorrect directions.
+
+      In the feedback, confirm or gently correct, and note the clockwise order
+      N → E → S → W.
+
+  - id: map-scale
+    title: "Map scale"
+    question: |
+      A map's **scale** tells you how distance on the map relates to distance in
+      the real world. If a map has a scale of `1:100000`, how many **metres** in
+      reality does **1 cm** on the map represent?
+    evaluation: |
+      A scale of `1:100000` means 1 cm on the map equals 100000 cm in reality,
+      which is **1000 metres (1 km)**.
+
+      Grade as:
+      - `correct`   — 1000 m (or 1 km), with or without showing the conversion.
+      - `partial`   — correct method but an arithmetic slip, or the right figure
+                      in the wrong unit.
+      - `incorrect` — a clearly wrong value with no valid reasoning.

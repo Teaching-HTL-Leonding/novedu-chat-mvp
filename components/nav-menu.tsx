@@ -26,6 +26,7 @@ const NAV_ITEMS = [
     teacherOnly: true,
   },
   { href: "/files", label: "YAML Files", heading: "YAML Files", teacherOnly: true },
+  { href: "/images", label: "Images", heading: "Images", teacherOnly: true },
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
 ] as const;
 
@@ -51,6 +52,7 @@ function dynamicHeading(pathname: string): string | undefined {
     if (segments[1] === "new") return "New YAML File";
     if (segments[1] === "edit" && segments.length >= 3) return "Edit YAML File";
   }
+  if (segments[0] === "images" && segments[1] === "new") return "New Image";
   return undefined;
 }
 
