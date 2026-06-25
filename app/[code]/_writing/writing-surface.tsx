@@ -187,9 +187,7 @@ export function WritingSurface({
 
       function onMove(moveEvent: PointerEvent) {
         const fraction = (moveEvent.clientX - rect.left) / rect.width;
-        setEditorFraction(
-          Math.min(MAX_EDITOR_FRACTION, Math.max(MIN_EDITOR_FRACTION, fraction)),
-        );
+        setEditorFraction(Math.min(MAX_EDITOR_FRACTION, Math.max(MIN_EDITOR_FRACTION, fraction)));
       }
       function onUp() {
         window.removeEventListener("pointermove", onMove);
@@ -311,7 +309,11 @@ export function WritingSurface({
         ) : null}
       </div>
 
-      <Lightbox open={previewOpen} heading="Formatted preview" onClose={() => setPreviewOpen(false)}>
+      <Lightbox
+        open={previewOpen}
+        heading="Formatted preview"
+        onClose={() => setPreviewOpen(false)}
+      >
         <MarkdownRenderer content={buffer} />
       </Lightbox>
 
