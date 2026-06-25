@@ -47,8 +47,11 @@ function getPool(): Promise<sql.ConnectionPool> {
  * Inserts a code (any module) with a window of [now+startOffset, now+endOffset]
  * seconds and returns the code. `module` defaults to "tutor" and `file` to the
  * stable sample tutor; pass `module: "quiz"` + an app-hosted quiz `file` URL for
- * the quiz flow. Loads `.env` exactly as Next does, so the database and
- * credentials can never drift from the dev server's.
+ * the quiz flow. `anonymous` is the FROZEN row flag and defaults to `true`
+ * (matching tutor/quiz); pass `anonymous: false` for a writing code so its teacher
+ * review shows the savers list (the writing detail dispatches on this flag). Loads
+ * `.env` exactly as Next does, so the database and credentials can never drift from
+ * the dev server's.
  */
 export async function mintCode(
   options: {
@@ -57,6 +60,7 @@ export async function mintCode(
     startOffset?: number;
     endOffset?: number;
     note?: string;
+    anonymous?: boolean;
   } = {},
 ): Promise<string> {
   const pool = await getPool();
@@ -76,9 +80,10 @@ export async function mintCode(
     .input("validFrom", sql.DateTime2, new Date((now + (options.startOffset ?? -3600)) * 1000))
     .input("validUntil", sql.DateTime2, new Date((now + (options.endOffset ?? 3600)) * 1000))
     .input("note", sql.NVarChar(200), options.note ?? "e2e test code")
+    .input("anonymous", sql.Bit, options.anonymous === false ? 0 : 1)
     .query(
       `INSERT INTO novedu_codes (code, module, created_by, file_url, valid_from, valid_until, note, origin, anonymous, created_at)
-       VALUES (@code, @module, @createdBy, @fileUrl, @validFrom, @validUntil, @note, 'e2e', 1, SYSUTCDATETIME())`,
+       VALUES (@code, @module, @createdBy, @fileUrl, @validFrom, @validUntil, @note, 'e2e', @anonymous, SYSUTCDATETIME())`,
     );
 
   return code;

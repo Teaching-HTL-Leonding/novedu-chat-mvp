@@ -8,11 +8,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadQuiz = vi.hoisted(() => vi.fn());
 const quizValidate = vi.hoisted(() => vi.fn());
+const conversationStats = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/quiz-fetch", () => ({ loadQuiz }));
 vi.mock("@/lib/file-validators", () => ({
   fileValidators: { quiz: { validate: quizValidate } },
 }));
+// renderDetail calls the shared ConversationStats; mock it (the real one pulls in
+// the code-stats store → @/app/mastra, which this hermetic test must not load).
+vi.mock("@/app/codes/[code]/conversation-stats", () => ({ ConversationStats: conversationStats }));
 vi.mock("@/app/mastra/quiz-agents", () => ({
   QUIZ_DISCUSSION_INSTRUCTIONS: "quiz-discussion-instructions",
   QUIZ_DISCUSSION_MODEL: "quiz-discussion-model",
@@ -91,5 +95,14 @@ describe("quizModule.runtime.buildRequestContext", () => {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("quiz-discussion-instructions")).toContain("single quiz question");
     }
+  });
+});
+
+describe("quizModule.renderDetail", () => {
+  it("renders the shared conversation stats", () => {
+    conversationStats.mockReturnValue("<stats/>");
+    const out = quizModule.renderDetail(entry, {});
+    expect(conversationStats).toHaveBeenCalledWith({ entry });
+    expect(out).toBe("<stats/>");
   });
 });

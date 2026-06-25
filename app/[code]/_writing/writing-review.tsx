@@ -1,59 +1,80 @@
-import { MarkdownRenderer } from "@/app/markdown-renderer";
-import { listSubmissions } from "@/lib/writing-store";
+import Link from "next/link";
+import { DataList, type ListColumn } from "@/components/data-list";
+import { ListFilterBar } from "@/components/list-filter-bar";
+import listStyles from "@/components/list-page.module.css";
+import { listSavers, type Saver } from "@/lib/writing-store";
 import { LocalTime } from "../../local-time";
 import styles from "./writing-review.module.css";
 
-// The Writing module's teacher review panel — the Layer-3 stats seam rendered
-// below the generic stats shell on /codes/[code]. READ-ONLY: it lists every
-// student's saved text (one row per student, newest save first) with no editing
-// and no feedback. The student's Markdown is UNTRUSTED, so it is rendered ONLY
-// through `MarkdownRenderer` (react-markdown, no rehype-raw, URL-scheme
-// allowlisted — the same sanitized renderer the rest of the app uses).
+// The Writing module's teacher review: a list of the students who SAVED text for
+// this code (newest save first), each row linking to that student's text page.
+// Reading the saved text is the point — the chat is secondary, so its per-student
+// count is just one column and the conversations themselves live on the student
+// page. Saved-text LENGTH is not a column: it would mean loading every essay body
+// just to render the list, so it is shown on the student page instead.
 //
-// Access is ROLE-gated upstream: the /codes/[code] page already calls
-// `requireTeacherPage()`, so any effective teacher may review any code. An
-// anonymous writing code never accumulates submission rows, so the review is
-// simply empty for it.
+// The student id shown is the Entra `oid` (interim — human-readable names are
+// tracked as issue #49); the search box filters by it IN THE DATABASE.
 //
-// SERVER COMPONENT: reads the database via `listSubmissions`. The descriptor in
-// lib/code-modules/writing.ts calls this as a plain function to keep JSX out of
-// that server-only .ts file.
+// SERVER COMPONENT: reads the database via `listSavers`. The writing descriptor in
+// lib/code-modules/writing.ts calls this as a plain function so no JSX lives in
+// that server-only .ts file. Access is ROLE-gated upstream (the /codes/[code] page
+// calls requireTeacherPage()); only a non-anonymous writing code reaches here (an
+// anonymous one has no savers and renders the conversation stats instead).
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 
-export async function WritingReview({ code, anonymous }: { code: string; anonymous: boolean }) {
-  const submissions = await listSubmissions(code);
+export async function WritingSaversList({ code, search }: { code: string; search?: string }) {
+  const savers = await listSavers(code, { search });
+  const isFiltered = (search ?? "").trim() !== "";
+
+  const columns: ListColumn<Saver>[] = [
+    {
+      header: "Student",
+      className: styles.student,
+      render: (row) => (
+        <Link
+          href={`/codes/${code}/s/${encodeURIComponent(row.userId)}`}
+          title={row.userId}
+          data-testid="saver-link"
+        >
+          {row.userId}
+        </Link>
+      ),
+    },
+    {
+      header: "Saved",
+      className: listStyles.timeCell,
+      render: (row) => <LocalTime seconds={seconds(row.textUpdatedAt)} />,
+    },
+    {
+      header: "Conversations",
+      headerClassName: styles.numCell,
+      className: styles.numCell,
+      render: (row) => row.conversationCount,
+    },
+  ];
 
   return (
-    <section className={styles.section}>
-      <h2 className={styles.heading}>Submissions</h2>
-      {submissions.length === 0 ? (
-        <p className={styles.empty}>
-          Nothing yet — a submission appears once a student saves their text.
-        </p>
-      ) : (
-        <ul className={styles.list}>
-          {submissions.map((submission) => (
-            <li key={submission.userId} className={styles.item}>
-              <div className={styles.meta}>
-                {/* Anonymous writing codes hold no rows, so the student id is only
-                    shown when attribution applies; the flag is belt-and-braces. */}
-                {!anonymous ? (
-                  <span className={styles.user} title={submission.userId}>
-                    {submission.userId}
-                  </span>
-                ) : null}
-                <span className={styles.time}>
-                  <LocalTime seconds={seconds(submission.textUpdatedAt)} />
-                </span>
-              </div>
-              <div className={styles.text}>
-                <MarkdownRenderer content={submission.text} />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <DataList
+      rows={savers}
+      getRowKey={(row) => row.userId}
+      columns={columns}
+      filterBar={
+        <ListFilterBar hasActiveFilter={isFiltered} resetKey={search ?? ""}>
+          <input
+            type="search"
+            name="q"
+            className={listStyles.searchInput}
+            placeholder="Filter by student…"
+            defaultValue={search ?? ""}
+            aria-label="Filter savers"
+          />
+        </ListFilterBar>
+      }
+      isFiltered={isFiltered}
+      emptyState="Nothing yet — a student appears here once they save their text."
+      noMatchState="No students match your filter."
+    />
   );
 }
