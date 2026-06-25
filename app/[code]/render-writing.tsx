@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { Notice } from "@/components/notice";
 import type { CodeEntry } from "@/lib/code-store";
+import { buildRuntimeHeaders } from "@/lib/runtime-headers";
 import { loadWriting } from "@/lib/writing-fetch";
 import { getSubmission } from "@/lib/writing-store";
 import { toPublicWriting } from "@/lib/writing-yaml";
@@ -58,7 +59,7 @@ export async function RenderWriting({
         threadId={threadId}
         // The runtime re-checks both headers server-side on every request — the
         // code gates access, the token proves the thread belongs to this user.
-        runtimeHeaders={{ "x-code": code, "x-thread-token": threadToken }}
+        runtimeHeaders={buildRuntimeHeaders(code, threadToken)}
         writing={toPublicWriting(loaded.writing)}
         anonymous={anonymous}
         initialText={initialText}

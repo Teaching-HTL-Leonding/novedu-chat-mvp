@@ -7,6 +7,10 @@
   max-width: 1280px;
   margin: 0 auto;
   padding-top: 0.75rem;
+  /* A little breathing room below full-height surfaces (e.g. writing) so the
+     columns are not flush with the viewport edge. Inside main's border-box
+     height, so it never reintroduces page overflow. */
+  padding-bottom: 0.75rem;
 }
 
 .validationErrors {
@@ -135,15 +139,4 @@
 .exampleQuestion:hover {
   color: var(--foreground);
   background: color-mix(in srgb, var(--foreground) 8%, transparent);
-}
-
-.chat {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* Make the chat surface fill the available height. */
-.chat > * {
-  height: 100%;
 }

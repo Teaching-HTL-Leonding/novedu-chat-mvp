@@ -1,7 +1,7 @@
 "use client";
 
-import { CopilotChat, CopilotKitProvider } from "@copilotkit/react-core/v2";
-import "@copilotkit/react-core/v2/styles.css";
+import { ModuleChat } from "@/app/module-chat";
+import type { RuntimeHeaders } from "@/lib/runtime-headers";
 import { MarkdownRenderer } from "../../markdown-renderer";
 import styles from "./quiz-runner.module.css";
 
@@ -13,39 +13,42 @@ import styles from "./quiz-runner.module.css";
 // the live chat starts visually blank. To give the student context without
 // re-printing the whole question + answer, we show just the graded FEEDBACK at the
 // top (the verdict card is hidden behind the modal). The student's follow-ups then
-// appear in the CopilotChat below; nothing is duplicated in the DB because the
-// runtime route trims each run to the new turn, and the model still recalls the
-// full seeded context from memory.
+// appear in the chat below; nothing is duplicated in the DB because the runtime
+// route trims each run to the new turn, and the model still recalls the full
+// seeded context from memory.
 //
 // Provider keyed by threadId: opening a discussion on another question swaps in a
-// fresh thread + token (mirrors how the tutor chat keys its provider per code).
-// Headers carry the quiz CODE + the thread-ownership token, both re-verified by
-// the runtime route on every request.
+// fresh thread + token (a new discussion per question). Headers carry the quiz
+// CODE + the thread-ownership token, both re-verified by the runtime route on
+// every request.
 export function QuizDiscussion({
   threadId,
   headers,
   feedback,
 }: {
   threadId: string;
-  headers: Record<string, string>;
+  headers: RuntimeHeaders;
   feedback: string;
 }) {
+  // The discussion-body flex wrapper is quiz's own modal layout (feedback + chat
+  // sharing a column); ModuleChat is layout-agnostic, so it lives here, not in the
+  // primitive. The provider it wraps emits no DOM, so this div stays the surface's
+  // root either way.
   return (
-    <CopilotKitProvider key={threadId} runtimeUrl="/api/copilotkit" headers={headers}>
-      <div className={styles.discussionBody}>
+    <div className={styles.discussionBody}>
+      <ModuleChat
+        agentId="quizDiscussion"
+        providerKey={threadId}
+        threadId={threadId}
+        headers={headers}
+        className={styles.liveChat}
+      >
         {feedback ? (
           <div className={styles.discussionFeedback}>
             <MarkdownRenderer content={feedback} />
           </div>
         ) : null}
-        <div className={styles.liveChat}>
-          <CopilotChat
-            threadId={threadId}
-            agentId="quizDiscussion"
-            messageView={{ assistantMessage: { markdownRenderer: MarkdownRenderer } }}
-          />
-        </div>
-      </div>
-    </CopilotKitProvider>
+      </ModuleChat>
+    </div>
   );
 }

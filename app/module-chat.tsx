@@ -1,0 +1,93 @@
+"use client";
+
+import { CopilotChat, CopilotKitProvider } from "@copilotkit/react-core/v2";
+import "@copilotkit/react-core/v2/styles.css";
+import type { ComponentProps, ReactNode } from "react";
+import type { RuntimeHeaders } from "@/lib/runtime-headers";
+import { MarkdownRenderer } from "./markdown-renderer";
+
+// The one live-chat primitive. Every module's chat (tutor / writing / quiz) is
+// this component plus its own slots: it owns the dangerous, duplicated wiring —
+// the CopilotKitProvider pointed at /api/copilotkit, the runtime headers, the
+// threadId explicit-mode decision, the swap-the-default markdown renderer, and
+// the base chat container — so each module supplies only what is unique to it.
+// The backend seam (the /api/copilotkit route + the module runtime) is separate
+// and unchanged; see docs/chat.md and docs/codes.md.
+
+export type ModuleChatProps = {
+  /** The module runtime's agentId — must match the registered agent. */
+  agentId: string;
+  /**
+   * Server-generated Mastra thread id, signed into the `x-thread-token`
+   * runtime header. Pinned through CopilotChat's `threadId` prop (explicit
+   * mode); the runtime rejects any other threadId for this session.
+   */
+  threadId: string;
+  /** The code + thread-ownership token, both re-verified server-side per request. */
+  headers: RuntimeHeaders;
+  /**
+   * Remount boundary for the provider: changing it starts a fresh thread.
+   * Tutor/writing key by code (per-code memory scope); quiz keys by threadId
+   * (a new discussion per question).
+   */
+  providerKey: string;
+  /** The chat container class (module height/padding deltas; composes the base `.chat`). */
+  className?: string;
+  /** Rendered INSIDE the provider, before the chat — frontend tools, feedback headers. */
+  children?: ReactNode;
+  /** Welcome greeting override (tutor). */
+  labels?: ComponentProps<typeof CopilotChat>["labels"];
+  /** Welcome-screen view override (tutor). */
+  chatView?: ComponentProps<typeof CopilotChat>["chatView"];
+  /** Image-upload config (tutor, vision-capable model). */
+  attachments?: ComponentProps<typeof CopilotChat>["attachments"];
+};
+
+export function ModuleChat({
+  agentId,
+  threadId,
+  headers,
+  providerKey,
+  className,
+  children,
+  labels,
+  chatView,
+  attachments,
+}: ModuleChatProps) {
+  const body = (
+    <>
+      {children}
+      <div className={className}>
+        {/*
+          The server-issued threadId MUST go through CopilotChat's `threadId`
+          prop (explicit mode). Pinning it via CopilotChatConfigurationProvider
+          with `hasExplicitThreadId={false}` looks equivalent but is not: the
+          chat then strands its agent mid-run (messages cleared, stuck
+          "running") on the first send. Explicit mode also fires a connect
+          request on mount — harmless: the runtime replays the (empty)
+          in-process history for the fresh thread, token-checked like a run.
+        */}
+        <CopilotChat
+          threadId={threadId}
+          agentId={agentId}
+          labels={labels}
+          chatView={chatView}
+          messageView={{ assistantMessage: { markdownRenderer: MarkdownRenderer } }}
+          attachments={attachments}
+        />
+      </div>
+    </>
+  );
+
+  return (
+    // The code must NOT go in runtimeUrl's query string: CopilotKit builds
+    // sub-route URLs (e.g. /info) by appending to runtimeUrl, which would
+    // yield `/api/copilotkit?code=.../info` (404). Pass it as a header instead
+    // (x-code), sent on every runtime request and re-checked server-side.
+    // Keyed by providerKey so changing it remounts the provider — a fresh
+    // thread, matching the module's memory scope.
+    <CopilotKitProvider key={providerKey} runtimeUrl="/api/copilotkit" headers={headers}>
+      {body}
+    </CopilotKitProvider>
+  );
+}

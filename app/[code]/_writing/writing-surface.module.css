@@ -1,38 +1,114 @@
 /* The writing student surface: a split screen (Markdown editor + collapsible
-   feedback chat) plus a formatted-preview lightbox. Mirrors the quiz runner's
-   button + dialog styling so the module feels native. */
+   feedback chat) separated by a draggable divider, filling the viewport, plus two
+   lightboxes (formatted draft preview + full activity prompt). Mirrors the quiz
+   runner's button + dialog styling so the module feels native. */
 
 .surface {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
+  /* A horizontal gutter at every width: once the viewport is narrower than the
+     page max-width the auto margins give no inset, so without this the columns
+     would sit flush against the window edges. */
+  padding-inline: 1.25rem;
+}
+
+/* Editor on the left, chat on the right, a divider between. Both columns fill the
+   surface height; their widths follow the --editor-grow / --chat-grow split set
+   by the drag-resize (defaulting to an even split). */
+.split {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
   min-height: 0;
 }
 
-/* Editor on the left, chat on the right. Collapsing the chat hands its column
-   width back to the editor. */
-.split {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-}
-
-.chatCollapsed {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-@media (max-width: 60rem) {
-  .split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .editorPane {
+  flex: var(--editor-grow, 1) 1 0;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
+}
+
+/* Collapsing the chat removes its column; the editor grows to fill. */
+.chatPane {
+  flex: var(--chat-grow, 1) 1 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+/* The divider doubles as the assistant toggle and the resize handle. */
+.divider {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+/* A hairline rule down the middle, behind the toggle button. */
+.divider::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--foreground) 14%, transparent);
+}
+
+/* When the chat is collapsed there is nothing to resize — only the reopen toggle. */
+.chatCollapsed .divider {
+  cursor: default;
+}
+
+.dividerToggle {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 2.75rem;
+  padding: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.dividerToggle:hover {
+  background: color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+/* Narrow screens: stack the editor over the chat, each with a usable min height,
+   and drop the divider entirely — no collapse, no resize. The JS also stops
+   rendering the divider here; this hides it pre-hydration and without JS. The
+   `47.99rem` ceiling is complementary to the `min-width: 48rem` the JS watches. */
+@media (max-width: 47.99rem) {
+  .split {
+    flex-direction: column;
+  }
+  .editorPane,
+  .chatPane {
+    flex: none;
+    min-height: 60vh;
+  }
+  .divider {
+    display: none;
+  }
 }
 
 .editorToolbar {
@@ -58,6 +134,26 @@
 
 .description {
   font-size: 0.95rem;
+}
+
+/* The "more" affordance after a truncated prompt — a link, not a button block. */
+.moreLink {
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--foreground);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The editor fills the remaining column height (YamlEditor in `fill` mode). */
+.editorHost {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .button {
@@ -94,35 +190,19 @@
   font-size: 0.9rem;
 }
 
-/* The chat column. */
-.chatPane {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  border: 1px solid color-mix(in srgb, var(--foreground) 14%, transparent);
-  border-radius: 0.75rem;
-  overflow: hidden;
-}
-
-/* The chat fills a fixed-height pane and lets CopilotChat own the internal
-   layout: the message list scrolls while the input stays pinned to the bottom.
-   Without the `> *` height the chat grows to its content and the page scrolls
-   instead, leaving the input below the fold. */
+/* The chat fills its column and lets CopilotChat own the internal layout: the
+   message list scrolls while the input stays pinned to the bottom. The
+   min-height/overflow + the `> *` height rule come from the composed base; here
+   we add only a touch of horizontal padding so messages + input are not glued to
+   the border. */
 .chat {
+  composes: chat from "../../module-chat.module.css";
   display: flex;
   flex-direction: column;
-  height: 70vh;
-  min-height: 0;
-  overflow: hidden;
-  /* Horizontal breathing room so messages + input are not glued to the border. */
   padding: 0 0.75rem;
 }
 
-.chat > * {
-  height: 100%;
-}
-
-/* The formatted-preview lightbox — mirrors the quiz discussion dialog. */
+/* The lightboxes (formatted preview + full prompt) — mirror the quiz dialog. */
 .dialog {
   width: min(48rem, 92vw);
   height: 80vh;
