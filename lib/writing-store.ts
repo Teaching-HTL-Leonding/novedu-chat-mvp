@@ -1,6 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { writingSubmissions } from "@/lib/db/schema";
+import { containsAny } from "@/lib/db/text-filter";
 
 // Persistence for writing submissions in the `novedu_writing_submissions` SQL
 // table: one saved text per `(code, student)`, upserted on save (single version,
@@ -83,20 +84,53 @@ export async function saveSubmission(input: {
   }
 }
 
+/** A student who has saved text for a code — one row of the teacher's savers list. */
+export interface Saver {
+  /** The student's Entra `oid`. */
+  userId: string;
+  /** Last save time, UTC. */
+  textUpdatedAt: Date;
+  /** Qualifying conversations this student had for this code (≥ 1 user message). */
+  conversationCount: number;
+}
+
 /**
- * All saved texts for a code, newest first by save time — the teacher review's
- * read. Anonymous codes have no rows, so the review is empty for them. Never
- * throws: an unreachable database reads as an empty list.
+ * Students who saved text for a code, newest save first, each with a count of
+ * their qualifying conversations (threads with ≥ 1 user message). Backs the
+ * teacher's savers list; the optional `search` filters by student id IN THE
+ * DATABASE (docs/filtered-lists.md). NO text bodies are read — the list never
+ * loads essay content. The conversation count is a correlated subquery joining the
+ * Mastra tables BY VALUE (the sanctioned cross-table pattern; see code-stats-store)
+ * in ONE round trip — no N+1. Anonymous codes have no rows, so the list is empty
+ * for them. Never throws: an unreachable database reads as an empty list.
  */
-export async function listSubmissions(code: string): Promise<WritingSubmission[]> {
+export async function listSavers(code: string, opts?: { search?: string }): Promise<Saver[]> {
   try {
     return await getDb()
-      .select()
+      .select({
+        userId: writingSubmissions.userId,
+        textUpdatedAt: writingSubmissions.textUpdatedAt,
+        conversationCount: sql<number>`(
+          SELECT COUNT(*) FROM mastra_threads t
+          JOIN novedu_user_chats uc ON uc.thread_id = t.id
+          WHERE t.resourceId = ${writingSubmissions.code}
+            AND uc.user_id = ${writingSubmissions.userId}
+            AND EXISTS (
+              SELECT 1 FROM mastra_messages m
+              WHERE m.thread_id = t.id AND m.role = 'user'
+            )
+        )`.mapWith(Number),
+      })
       .from(writingSubmissions)
-      .where(eq(writingSubmissions.code, code))
+      .where(
+        and(
+          eq(writingSubmissions.code, code),
+          containsAny(opts?.search ?? "", [writingSubmissions.userId]),
+        ),
+      )
       .orderBy(desc(writingSubmissions.textUpdatedAt));
   } catch (error) {
-    console.error("writing-store: listing submissions failed", error);
+    console.error("writing-store: listing savers failed", error);
     return [];
   }
 }

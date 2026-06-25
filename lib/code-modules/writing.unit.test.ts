@@ -2,20 +2,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The writing code-module (Layer 3): validateOnCreate delegates to the writing
 // Layer-2 validator; buildRequestContext loads the writing YAML and sets the
-// agent instructions + model on the RequestContext (502 on load failure); the
-// stats panel delegates to the WritingReview server component as a plain
-// function. loadWriting + the validator + WritingReview are mocked; RequestContext
-// is stubbed with a Map so the keys read back without coupling to @mastra/core.
+// agent instructions + model on the RequestContext (502 on load failure); and
+// renderDetail dispatches to the savers list (attributed) or the shared
+// ConversationStats (anonymous). loadWriting + the validator + both render
+// components are mocked as plain functions; RequestContext is stubbed with a Map
+// so the keys read back without coupling to @mastra/core.
 
 const loadWriting = vi.hoisted(() => vi.fn());
 const writingValidate = vi.hoisted(() => vi.fn());
-const writingReview = vi.hoisted(() => vi.fn());
+const writingSaversList = vi.hoisted(() => vi.fn());
+const conversationStats = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/writing-fetch", () => ({ loadWriting }));
 vi.mock("@/lib/file-validators", () => ({
   fileValidators: { writing: { validate: writingValidate } },
 }));
-vi.mock("@/app/[code]/_writing/writing-review", () => ({ WritingReview: writingReview }));
+vi.mock("@/app/[code]/_writing/writing-review", () => ({ WritingSaversList: writingSaversList }));
+vi.mock("@/app/codes/[code]/conversation-stats", () => ({ ConversationStats: conversationStats }));
 vi.mock("@/app/mastra/writing-agents", () => ({
   WRITING_INSTRUCTIONS: "writing-instructions",
   WRITING_MODEL: "writing-model",
@@ -93,11 +96,27 @@ describe("writingModule.runtime.buildRequestContext", () => {
   });
 });
 
-describe("writingModule.stats.renderPanel", () => {
-  it("delegates to WritingReview with the code + anonymous flag", () => {
-    writingReview.mockReturnValue("<review/>");
-    const out = writingModule.stats?.renderPanel?.(entry);
-    expect(writingReview).toHaveBeenCalledWith({ code: entry.code, anonymous: false });
-    expect(out).toBe("<review/>");
+describe("writingModule.renderDetail", () => {
+  it("renders the savers list for an attributed code, passing the code + search", () => {
+    writingSaversList.mockReturnValue("<savers/>");
+    const out = writingModule.renderDetail(entry, { q: "ada" });
+    expect(writingSaversList).toHaveBeenCalledWith({ code: entry.code, search: "ada" });
+    expect(conversationStats).not.toHaveBeenCalled();
+    expect(out).toBe("<savers/>");
+  });
+
+  it("ignores a non-string search param (no filter)", () => {
+    writingSaversList.mockReturnValue("<savers/>");
+    writingModule.renderDetail(entry, {});
+    expect(writingSaversList).toHaveBeenCalledWith({ code: entry.code, search: undefined });
+  });
+
+  it("falls back to the conversation stats for an anonymous code", () => {
+    conversationStats.mockReturnValue("<stats/>");
+    const anon = { ...entry, anonymous: true } as unknown as CodeEntry;
+    const out = writingModule.renderDetail(anon, {});
+    expect(conversationStats).toHaveBeenCalledWith({ entry: anon });
+    expect(writingSaversList).not.toHaveBeenCalled();
+    expect(out).toBe("<stats/>");
   });
 });

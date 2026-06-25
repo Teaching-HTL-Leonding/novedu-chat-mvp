@@ -1,5 +1,6 @@
 import { RequestContext } from "@mastra/core/request-context";
-import { WritingReview } from "@/app/[code]/_writing/writing-review";
+import { WritingSaversList } from "@/app/[code]/_writing/writing-review";
+import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
 import { WRITING_INSTRUCTIONS, WRITING_MODEL } from "@/app/mastra/writing-agents";
 import { fileValidators } from "@/lib/file-validators";
 import { loadWriting } from "@/lib/writing-fetch";
@@ -11,9 +12,11 @@ import type { CodeModuleDef } from "./registry";
 // so it can never mutate the student's text — the only persistence is the
 // student's own Save (lib/writing-actions.ts), gated by the code + session oid.
 //
-// The stats panel is the read-only teacher review of saved submissions; it is
-// rendered by the `WritingReview` server component, called here as a plain
-// function so no JSX lives in this server-only .ts file.
+// The teacher detail inverts the usual emphasis: for an attributed code it is the
+// SAVERS LIST (WritingSaversList — saved text first, chat second); an anonymous
+// writing code disables saving, so it has no savers and falls back to the shared
+// ConversationStats. Both are server components called here as plain functions, so
+// no JSX lives in this server-only .ts file.
 
 export const writingModule: CodeModuleDef = {
   fileKind: "writing",
@@ -29,9 +32,11 @@ export const writingModule: CodeModuleDef = {
       return { ok: true, context };
     },
   },
-  stats: {
-    renderPanel(entry) {
-      return WritingReview({ code: entry.code, anonymous: entry.anonymous });
-    },
-  },
+  renderDetail: (entry, searchParams) =>
+    entry.anonymous
+      ? ConversationStats({ entry })
+      : WritingSaversList({
+          code: entry.code,
+          search: typeof searchParams.q === "string" ? searchParams.q : undefined,
+        }),
 };

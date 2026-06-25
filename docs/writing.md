@@ -6,12 +6,14 @@ prompt. The assistant can **read** the student's live draft but **cannot and mus
 not change it**, the student **saves** their text server-side, and a teacher
 **reads** saved texts read-only. It slots into the generic **codes** subsystem
 through the fixed seams that subsystem already exposes (`docs/codes.md`) — the
-generic flow (code store, runtime route, stats shell, attribution, multi-delete)
-is untouched. The always-on invariants are summarized in `AGENTS.md`; this file has
-the full mechanics. Read it before touching the writing libs (`lib/writing-*.ts`),
-the student surface (`app/[code]/_writing/**`, `app/[code]/render-writing.tsx`), the
-agent (`app/mastra/writing-agents.ts`), the descriptor
-(`lib/code-modules/writing.ts`), or the `novedu_writing_submissions` store.
+generic flow (code store, runtime route, attribution, multi-delete) is untouched.
+The always-on invariants are summarized in `AGENTS.md`; this file has the full
+mechanics. Read it before touching the writing libs (`lib/writing-*.ts`), the
+student surface (`app/[code]/_writing/**`, `app/[code]/render-writing.tsx`), the
+teacher review (`app/[code]/_writing/writing-review.tsx`, `app/codes/[code]/s/**`,
+`app/codes/[code]/conversation-stats.tsx`, `lib/code-stats-actions.ts`), the agent
+(`app/mastra/writing-agents.ts`), the descriptor (`lib/code-modules/writing.ts`), or
+the `novedu_writing_submissions` store.
 
 ## The seams it uses
 
@@ -32,7 +34,7 @@ through exactly that fixed set of seams; nothing in the generic flow changes.
   CodeModuleDef` with `fileKind: "writing"`, `validateOnCreate` delegating to
   `fileValidators.writing.validate`, a `runtime` (`agentId: "writing"`,
   `buildRequestContext` loading the YAML and setting the instructions + model on the
-  `RequestContext`), and a `stats` panel (the teacher review, below).
+  `RequestContext`), and a `renderDetail` (the teacher review, below).
 - **Registry + label** — one line in `codeModules` (`lib/code-modules/registry.ts`),
   `"writing"` in `CODE_MODULES`, and the label `{ badge: "Writing", countColumn:
   "Conversations" }` in `codeModuleLabels` (`lib/code-modules/types.ts`).
@@ -152,8 +154,12 @@ surfaces the error to its action.
   `isDuplicateKeyError` shape as `lib/code-store.ts`), stamping `text_updated_at =
   now`. The PK `(code, userId)` means a student can only ever write their own single
   row.
-- `listSubmissions(code)` — all saved texts for a code, **newest save first** — the
-  teacher review's read. Anonymous codes hold no rows, so the review is empty.
+- `listSavers(code, { search? })` — the students who saved, **newest save first**,
+  each with a count of their qualifying conversations (a correlated subquery joining
+  the Mastra tables by value — one round trip, no N+1) and an optional DB-side
+  `search` over the student id. It carries **no text bodies** (the list never loads
+  essay content); the student page loads one student's text on demand. Anonymous
+  codes hold no rows, so the list is empty.
 
 There is **no delete here**: a code's saved texts are dropped inline by
 `deleteCodeRows` (`lib/code-stats-store.ts`) on code delete, not through this store
@@ -288,26 +294,46 @@ runs it; every unused endpoint 404s.
 
 ## Teacher review (read-only)
 
-The descriptor's `stats` panel (`codeModules.writing.stats.renderPanel`) is rendered
-below the generic stats shell on `/codes/[code]` (the Layer-3 stats seam). The
-descriptor calls the `WritingReview` server component
-(`app/[code]/_writing/writing-review.tsx`) as a **plain function**, so no JSX lives
-in the server-only `.ts` descriptor. It calls `listSubmissions(code)` and lists each
-student's saved text — one row per student, newest save first — with the `user_id`
-(shown only when attributed; the flag is belt-and-braces over the fact that an
-anonymous code holds no rows), the `text_updated_at`, and the **rendered** Markdown.
-**No editing, no feedback.**
+The writing review inverts the usual emphasis: the **saved text** is the point, the
+chat is secondary. The descriptor's `renderDetail` (`codeModules.writing.renderDetail`,
+the per-module detail seam — `docs/codes.md`) IS the `/codes/[code]` body: for an
+attributed code it calls the `WritingSaversList` server component
+(`app/[code]/_writing/writing-review.tsx`); for an anonymous code (which has no
+savers) it falls back to the shared `ConversationStats`. Both are called as **plain
+functions**, so no JSX lives in the server-only `.ts` descriptor.
+
+- **Savers list** — `WritingSaversList` calls `listSavers(code, { search })` and
+  renders a filtered `DataList` (newest save first): a **Student** column (the Entra
+  `oid`, interim until issue #49 supplies names) linking to the student's page, a
+  **Saved** time, and a **Conversations** count. A `ListFilterBar` search filters by
+  student id in the DB. There is **no saved-text length column** — that would load
+  every essay body; length lives on the student page instead.
+- **Student page** — `/codes/[code]/s/[userId]`
+  (`app/codes/[code]/s/[userId]/page.tsx`) is the reading view: it loads the code
+  (a notice unless it is a non-anonymous writing code), the student's `getSubmission`,
+  the savers order (for **Prev/Next** across the class set), and
+  `listStudentConversations`. It shows the saved text **full width** through the
+  sanitized `MarkdownRenderer`, a word/character header from `computeTextStats`, and
+  the student's conversations below.
+- **Conversation lightbox** — `StudentConversations`
+  (`app/codes/[code]/s/[userId]/student-conversations.tsx`, a client component) lists
+  the student's conversations; opening one shows the read-only transcript in a
+  `<dialog>`, **lazy-loading** it via the `loadConversationTranscript` server action
+  (`lib/code-stats-actions.ts`, teacher-gated) and rendering the existing
+  `ConversationView`. Transcripts the teacher never opens are never fetched, and a
+  reopened one is served from a per-thread cache.
 
 Access is **role-gated, not owner-gated**, consistent with the rest of `/codes/**`:
-the `/codes/[code]` page already calls `requireTeacherPage()`, so any effective
-teacher may review any code. An anonymous writing code accumulates no rows, so the
-panel is empty for it.
+the `/codes/[code]` page and the student page both call `requireTeacherPage()`, and
+the transcript action calls `requireEffectiveTeacher()`, so any effective teacher may
+review any code. An anonymous writing code accumulates no rows, so it shows the
+conversation-stats fallback instead of a savers list.
 
 ## Sanitization — untrusted student Markdown
 
-Student-authored text is **untrusted** and is rendered in two places — the "read
-formatted" lightbox and the teacher review — both through the shared
-`MarkdownRenderer` (`app/markdown-renderer.tsx`). That renderer is `react-markdown`
+Student-authored text is **untrusted** and is rendered in two places — the student's
+"read formatted" lightbox and the teacher's student-text page — both through the
+shared `MarkdownRenderer` (`app/markdown-renderer.tsx`). That renderer is `react-markdown`
 with `remark-gfm` / `remark-math` / `rehype-katex` and **no `rehype-raw`**:
 react-markdown does **not** parse raw HTML and allowlists URL schemes, so a
 `<script>` or other raw-HTML payload in a student's draft does not survive
@@ -339,12 +365,19 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   still 404s a non-runtime agent id), and the `anonymous ⇒ no save` rejection in
   `saveWriting` (mock the store / YAML seams). Markdown sanitization is asserted (a
   `<script>` / raw-HTML payload does not survive rendering).
-- **Component** — browser component tests for the student surface: editor prefill,
-  the collapse toggle, the Save button shown only when non-anonymous, the
-  dirty/unsaved-changes state, and the lightbox rendering sanitized Markdown.
-- **E2E** — a `@live` Playwright flow through a minted writing code: write → save →
-  reload restores the text → open the chat → the assistant reads the draft via
-  `getCurrentText` → the teacher review shows the saved text. Tagged `@live` with
-  `@live-db`; the chat-reading-the-draft leg is `@live-llm` (local-only). The store
-  round-trip (`saveSubmission` upsert / `listSubmissions` ordering / the code-delete
-  cleanup that mirrors `deleteCodeRows`) runs against the ephemeral SQL container.
+- **Component** — browser/render tests for the student surface (editor prefill, the
+  collapse toggle, the Save button shown only when non-anonymous, the dirty state,
+  the lightbox rendering sanitized Markdown) AND for the teacher review: the savers
+  `DataList` (rows/links/empty/no-match), the student page (gating + the notice
+  branches, the word/char header, Prev/Next, the text routed through
+  `MarkdownRenderer`), the conversation lightbox (lazy-loads once, caches, error
+  state), and the shared `ConversationStats` (summary/table + privacy gating).
+- **E2E** — `@live` Playwright flows through a minted writing code: (1) `@live-db` —
+  write → save → reload restores → the teacher savers list → open the student to read
+  the saved text; (2) `@live-llm` — the assistant reads the draft via `getCurrentText`;
+  (3) `@live-llm` — the full round-trip (write → ask the coach and get SOME reply →
+  save → the savers list → the student text is retrievable), built straight on the
+  published sample YAML. The store round-trip (`saveSubmission` upsert / savers-list
+  ordering / the code-delete cleanup that mirrors `deleteCodeRows`) runs against the
+  ephemeral SQL container. Minting a writing code passes `anonymous: false` so the
+  review dispatches to the savers list.

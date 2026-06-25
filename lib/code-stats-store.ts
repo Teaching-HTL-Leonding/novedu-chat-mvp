@@ -161,6 +161,61 @@ export async function getCodeStats(
   }
 }
 
+/** One of a single student's conversations for a code (the userId is known). */
+export interface StudentConversation {
+  threadId: string;
+  /** Timestamp of the first message in the conversation (user or assistant). */
+  firstAt: Date;
+  /** Timestamp of the last message in the conversation (user or assistant). */
+  lastAt: Date;
+  /** Number of `role = 'user'` messages — always ≥ 1 (that is what qualifies). */
+  userMessageCount: number;
+}
+
+/**
+ * One student's qualifying conversations for a code (threads with ≥ 1 user
+ * message), newest activity first — backs the writing student page's conversation
+ * list. INNER-joins `novedu_user_chats`, since attribution rows exist only for the
+ * non-anonymous writing codes this serves. Returns `undefined` on a database
+ * error. Never throws. Authorization is the caller's job (the page gates with
+ * `requireTeacherPage()`; the lightbox action with `requireEffectiveTeacher()`).
+ */
+export async function listStudentConversations(
+  code: string,
+  userId: string,
+): Promise<StudentConversation[] | undefined> {
+  try {
+    const res = await getDb().execute<{
+      threadId: string;
+      firstAt: Date;
+      lastAt: Date;
+      userMessageCount: number;
+    }>(sql`
+      SELECT
+        t.id AS threadId,
+        MIN(m.createdAt) AS firstAt,
+        MAX(m.createdAt) AS lastAt,
+        SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS userMessageCount
+      FROM mastra_threads t
+      JOIN mastra_messages m ON m.thread_id = t.id
+      JOIN novedu_user_chats uc ON uc.thread_id = t.id
+      WHERE t.resourceId = ${code} AND uc.user_id = ${userId}
+      GROUP BY t.id
+      HAVING SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) >= 1
+      ORDER BY MAX(m.createdAt) DESC
+    `);
+    return res.recordset.map((row) => ({
+      threadId: row.threadId,
+      firstAt: row.firstAt,
+      lastAt: row.lastAt,
+      userMessageCount: Number(row.userMessageCount),
+    }));
+  } catch (error) {
+    console.error("code-stats-store: loading student conversations failed", error);
+    return undefined;
+  }
+}
+
 /**
  * The messages of one conversation, oldest first, as AG-UI messages ready for
  * `CopilotChatMessageView`. The `code` is required and re-checked against the

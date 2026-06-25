@@ -1,0 +1,69 @@
+.container {
+  flex: 1 1 auto;
+  padding: 1rem 1.25rem 1.5rem;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.5rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.student {
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+  font-size: 1.05rem;
+  word-break: break-all;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  font-size: 0.9rem;
+  color: color-mix(in srgb, var(--foreground) 70%, transparent);
+}
+
+.nav {
+  display: flex;
+  gap: 1rem;
+  margin-left: auto;
+}
+
+.navLink {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: inherit;
+}
+
+.navLink:hover {
+  text-decoration: underline;
+}
+
+.navDisabled {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--foreground) 35%, transparent);
+}
+
+.text {
+  border: 1px solid color-mix(in srgb, var(--foreground) 15%, transparent);
+  border-radius: 0.6rem;
+  padding: 1rem 1.25rem;
+  margin: 0 0 1.5rem;
+  overflow-wrap: break-word;
+}
+
+.section {
+  margin-top: 1.5rem;
+}
+
+.heading {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+}

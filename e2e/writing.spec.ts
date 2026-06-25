@@ -9,12 +9,14 @@ import { mintCode } from "./code.utils";
 // End-to-end coverage for the Writing module: a `novedu_codes` row with
 // `module: "writing"` reached at `/<code>`. The student writes Markdown on the
 // left, SAVES it (one row per (code, student) in `novedu_writing_submissions`),
-// and a teacher reviews saved texts on /codes/[code].
+// and a teacher reviews WHO saved on /codes/[code] (the savers list), opening a
+// student to read their text on /codes/[code]/s/[userId].
 //
-// The write → save → reload-restores → teacher-review legs need the DB but no LLM
-// (@live-db, run in CI against the ephemeral SQL container). The "assistant reads
-// the draft via getCurrentText" leg DOES hit the SCCH model, so it is split into a
-// separate @live-llm test (excluded from CI) — a `--grep @live-db` run skips it.
+// The write → save → reload-restores → savers-list → student-text leg needs the DB
+// but no LLM (@live-db, run in CI against the ephemeral SQL container). The legs
+// that hit the SCCH model — the getCurrentText read and the full write→chat→save→
+// review round-trip — are @live-llm (excluded from CI; a `--grep @live-db` run
+// skips them).
 //
 // CopilotKit v2 testids (shared with the tutor/quiz chats):
 //   copilot-chat-textarea, copilot-send-button, copilot-assistant-message.
@@ -34,6 +36,12 @@ instructions: |
   You are a writing coach. Use the getCurrentText tool to read the student's
   current draft, then state the EXACT first line of it back, verbatim.
 `;
+
+// The published sample writing activity (anonymous:false, with full coach
+// instructions) — used by the full round-trip test exactly as a teacher would: a
+// code pointed straight at a remote YAML URL, no local file to author.
+const REMOTE_WRITING_URL =
+  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/writings/human-animal-short-story.yaml";
 
 async function setCodeMirrorContent(page: Page, text: string): Promise<void> {
   const content = page.locator(".cm-content");
@@ -57,7 +65,10 @@ async function authorWritingCode(page: Page): Promise<{ code: string; name: stri
   await expect(page).toHaveURL(new RegExp(`/files/edit/${name}$`), { timeout: 60_000 });
 
   const fileUrl = `${new URL(page.url()).origin}/api/files/${name}`;
-  const code = await mintCode({ module: "writing", file: fileUrl });
+  // anonymous:false so Save + the savers review apply (the SAMPLE_WRITING YAML is
+  // attributed too; the frozen flag must agree for the teacher review to dispatch
+  // to the savers list rather than the anonymous conversation-stats fallback).
+  const code = await mintCode({ module: "writing", file: fileUrl, anonymous: false });
   return { code, name };
 }
 
@@ -90,12 +101,15 @@ test("write → save → reload restores → teacher review", {
     timeout: 30_000,
   });
 
-  // 4. Teacher review on /codes/[code] shows the saved text (rendered markdown).
+  // 4. Teacher review on /codes/[code] is the savers list — one student saved.
   await page.goto(`/codes/${code}`);
-  await expect(page.getByRole("heading", { name: "Submissions" })).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(page.getByText("first draft about linked lists")).toBeVisible();
+  const saver = page.getByTestId("saver-link");
+  await expect(saver).toBeVisible({ timeout: 30_000 });
+
+  // 5. Opening that student's page shows the saved text (rendered markdown).
+  await saver.click();
+  await expect(page).toHaveURL(new RegExp(`/codes/${code}/s/`), { timeout: 30_000 });
+  await expect(page.getByTestId("student-text")).toContainText("first draft about linked lists");
 
   await deleteFile(page, name);
 });
@@ -132,8 +146,57 @@ test("the assistant reads the draft via getCurrentText", {
   await deleteFile(page, name);
 });
 
+// The full round-trip a teacher cares about: create a writing code from the
+// published YAML, the student writes, asks the coach a question and gets SOME reply
+// (the model's content is NOT evaluated — only that an answer arrives), saves, and
+// the teacher then finds the student in the stats and reads the captured text.
+// @live-llm (the chat hits the model); an LLM test implies the DB, so it is not
+// also tagged @live-db (that would make a CI `--grep @live-db` run select it).
+test("writing round-trip: write → chat reply → save → teacher reads the saved text", {
+  tag: ["@live", "@live-llm"],
+}, async ({ page }) => {
+  test.setTimeout(180_000);
+  // A code straight at the published sample YAML — anonymous:false so Save + the
+  // savers review apply. No local file to author or clean up.
+  const code = await mintCode({
+    module: "writing",
+    file: REMOTE_WRITING_URL,
+    anonymous: false,
+    note: "e2e writing round-trip",
+  });
+  const DRAFT = "# Bond\n\nA UNIQUEMARKER story about a girl and her old dog walking home.";
+
+  // 1. Open the activity and write a draft.
+  await page.goto(`/${code}`);
+  await expect(page.locator(".cm-content")).toBeVisible({ timeout: 30_000 });
+  await setCodeMirrorContent(page, DRAFT);
+
+  // 2. Ask the coach anything; assert only that SOME assistant answer comes back.
+  const composer = page.getByTestId("copilot-chat-textarea");
+  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await composer.fill("Can you give me brief feedback on my story so far?");
+  await page.getByTestId("copilot-send-button").click();
+  // The agent may emit an intermediate tool-status message, so assert the LAST one.
+  const assistant = page.getByTestId("copilot-assistant-message").last();
+  await expect(assistant).toBeVisible({ timeout: 60_000 });
+  await expect(assistant).toContainText(/\w/, { timeout: 90_000 });
+
+  // 3. Save — this is what makes the text retrievable in the teacher review.
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible({ timeout: 30_000 });
+
+  // 4. Teacher statistics: the savers list shows this student.
+  await page.goto(`/codes/${code}`);
+  const saver = page.getByTestId("saver-link");
+  await expect(saver).toBeVisible({ timeout: 30_000 });
+
+  // 5. The captured text is retrievable on the student's page.
+  await saver.click();
+  await expect(page.getByTestId("student-text")).toContainText("UNIQUEMARKER", { timeout: 30_000 });
+});
+
 // The store round-trip, against the real table — upsert (insert then update on the
-// same key) and listSubmissions ordering, then the code-delete row cleanup. Uses the
+// same key) and savers-list ordering, then the code-delete row cleanup. Uses the
 // plain `mssql` driver (the Playwright CJS runner cannot load drizzle's ESM), with
 // statements that mirror lib/writing-store.ts. Needs the DB, no LLM.
 test("writing submissions store round-trip (upsert / list / delete)", {
@@ -188,7 +251,7 @@ test("writing submissions store round-trip (upsert / list / delete)", {
     expect(afterUpdate).toHaveLength(1);
     expect(afterUpdate[0]?.text).toBe("second version");
 
-    // A second student adds a row; listSubmissions returns newest first.
+    // A second student adds a row; the per-code read returns newest first.
     await upsert(userB, "b's text");
     const both = await list();
     expect(both.map((r) => r.user_id)).toEqual([userB, userA]);

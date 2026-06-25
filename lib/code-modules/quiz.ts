@@ -1,4 +1,5 @@
 import { RequestContext } from "@mastra/core/request-context";
+import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
 import { QUIZ_DISCUSSION_INSTRUCTIONS, QUIZ_DISCUSSION_MODEL } from "@/app/mastra/quiz-agents";
 import { fileValidators } from "@/lib/file-validators";
 import { loadQuiz } from "@/lib/quiz-fetch";
@@ -9,7 +10,8 @@ import type { CodeModuleDef } from "./registry";
 // submitAnswer, never through the runtime route). The discussion agent's system
 // prompt is the quiz's optional `discussionInstructions` on top of a default
 // frame; the question/answer/verdict are the thread's seed messages, recalled
-// from memory, NOT repeated here.
+// from memory, NOT repeated here. The teacher detail is the shared conversation
+// stats (labelled "Discussions").
 function buildDiscussionInstructions(quiz: Quiz): string {
   const base =
     "You are helping a student understand a single quiz question. The conversation " +
@@ -35,4 +37,5 @@ export const quizModule: CodeModuleDef = {
       return { ok: true, context };
     },
   },
+  renderDetail: (entry) => ConversationStats({ entry }),
 };

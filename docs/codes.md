@@ -86,25 +86,30 @@ shareable activities.
   - `runtime` — `{ agentId, buildRequestContext(entry) }`: which Mastra agent the
     runtime route runs and how its per-request `RequestContext` (system prompt +
     model) is built.
-  - `stats` (optional) — a module-specific panel rendered below the generic stats
-    shell.
+  - `renderDetail(entry, searchParams)` — **the** teacher detail body on
+    `/codes/[code]`. Each module owns it entirely; there is no privileged "stats
+    shell" a module overrides. tutor/quiz share the `ConversationStats` component by
+    calling it; writing renders its savers list. Descriptors call these server
+    components as **plain functions** (returning `ReactNode`), so no JSX lives in the
+    server-only registry.
 - `tutor.ts`, `quiz.ts`, `writing.ts` are the three descriptors. `writing` is the
-  Markdown-writing-with-AI-feedback module (`docs/writing.md`): its `stats` panel is
-  the read-only teacher review of saved texts, and its agent reads the student's
-  live draft through the read-only `getCurrentText` frontend tool but has no tool to
-  change it.
+  Markdown-writing-with-AI-feedback module (`docs/writing.md`): its `renderDetail` is
+  the savers-first teacher review (saved text first, chat second), and its agent reads
+  the student's live draft through the read-only `getCurrentText` frontend tool but
+  has no tool to change it.
 
-Student **rendering** is NOT a registry seam: it is a thin `switch (entry.module)`
+Student **rendering** is also NOT a registry seam: it is a thin `switch (entry.module)`
 in `app/[code]/page.tsx` delegating to each module's own server component
-(`render-tutor.tsx`, `render-quiz.tsx`, `render-writing.tsx`), so no React/JSX lives
-in the server-only registry.
+(`render-tutor.tsx`, `render-quiz.tsx`, `render-writing.tsx`). (The *teacher* detail
+body IS a registry seam — `renderDetail` above — but descriptors keep JSX out by
+calling components as plain functions.)
 
-**Adding a module** touches a small, fixed set of seams: a descriptor file + one
-`codeModules` line, a client label (`lib/code-modules/types.ts`), a render case
-(the thin `switch` in `app/[code]/page.tsx`) with its own render component +
-agent, and — for a **new file kind** — that kind's validator and `readAnonymousFlag`
-branch in the FileKind layer (`lib/file-validators.ts`). The **generic flow** never
-changes: the code store, the runtime route, the stats shell, and attribution all
+**Adding a module** touches a small, fixed set of seams: a descriptor file (with its
+`renderDetail`) + one `codeModules` line, a client label (`lib/code-modules/types.ts`),
+a student render case (the thin `switch` in `app/[code]/page.tsx`) with its own render
+component + agent, and — for a **new file kind** — that kind's validator and
+`readAnonymousFlag` branch in the FileKind layer (`lib/file-validators.ts`). The
+**generic flow** never changes: the code store, the runtime route, and attribution all
 dispatch by `module`/`fileKind`. **Adding a pure library kind** = one Layer-2
 validator entry, no module; the `fragment` kind proves the asymmetry is real.
 
@@ -266,20 +271,25 @@ teacher may read ANY code's stats/conversations (a larger RBAC feature is
 planned). This is NOT the thread-ownership token, which remains the student-side
 isolation and is unaffected.
 
-- **`/codes/[code]`** — a generic stats shell (`getCodeStats(code, anonymous)`):
-  the interaction count (labelled per module — "Conversations" for tutor and
-  writing, "Discussions" for quiz), and for non-anonymous codes (the frozen `anonymous`
-  flag) the number of distinct students; then a table of every interaction
-  (first/last message time, user id when recorded, user-message count), each row
-  linking to the viewer — **plus** the optional `codeModules[module].stats` panel.
-  "Interaction" = a Mastra thread with ≥ 1 `role = 'user'` message
-  (opened-but-silent threads do not count). Anonymity is enforced **at the data
-  layer**: the page passes the code's frozen `anonymous` flag into `getCodeStats`,
-  which for an anonymous code forces every `userId` to `null` and `studentCount`
-  to `0` *before returning* — so it cannot surface who a student is even if
-  `novedu_user_chats` holds rows (the documented case where the YAML was toggled
-  to non-anonymous AFTER the code was minted). The page's own `!anonymous`
-  rendering checks are belt-and-braces on top of that.
+- **`/codes/[code]`** — a thin **dispatcher**: it gates, loads `getCode(code)`,
+  renders the shared chrome (back-link + which code), then hands the body to
+  `codeModules[entry.module].renderDetail(entry, searchParams)`. Each module owns its
+  detail. tutor/quiz render the shared **`ConversationStats`** component
+  (`getCodeStats(code, anonymous)`): the interaction count (labelled per module —
+  "Conversations" for tutor, "Discussions" for quiz), and for non-anonymous codes
+  (the frozen `anonymous` flag) the number of distinct students; then a table of every
+  interaction (first/last message time, user id when recorded, user-message count),
+  each row linking to the viewer. "Interaction" = a Mastra thread with ≥ 1 `role =
+  'user'` message (opened-but-silent threads do not count). **Writing** renders its
+  savers list instead (`docs/writing.md`), or falls back to `ConversationStats` when
+  anonymous. Anonymity is enforced **at the data layer**: `ConversationStats` passes
+  the code's frozen `anonymous` flag into `getCodeStats`, which for an anonymous code
+  forces every `userId` to `null` and `studentCount` to `0` *before returning* — so it
+  cannot surface who a student is even if `novedu_user_chats` holds rows (the
+  documented case where the YAML was toggled to non-anonymous AFTER the code was
+  minted). The `!anonymous` rendering checks are belt-and-braces on top of that.
+- **`/codes/[code]/s/[userId]`** — the writing module's per-student reading page (one
+  student's saved text + their conversations in a lightbox); see `docs/writing.md`.
 - **`/codes/[code]/c/[threadId]`** — a READ-ONLY transcript. The server loads the
   messages (`getConversationMessages`, which re-checks the thread's `resourceId =
   code`) and converts each stored Mastra message to an AG-UI `Message` (text
