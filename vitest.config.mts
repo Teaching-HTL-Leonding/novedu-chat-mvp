@@ -34,7 +34,10 @@ export default defineConfig({
             enabled: true,
             provider: playwright(),
             headless: true,
-            instances: [{ browser: "chromium" }],
+            // A desktop viewport so responsive component tests (e.g. the writing
+            // surface's side-by-side split + divider) exercise the wide layout;
+            // the default tester iframe is too narrow and would render stacked.
+            instances: [{ browser: "chromium", viewport: { width: 1280, height: 800 } }],
           },
         },
       },

@@ -77,8 +77,9 @@ llm:
   model: <model-id>
 instructions: |                          # the teacher-provided system prompt
   You are a writing coach. Use the getCurrentText tool to read the student's
-  current draft. Give feedback on structure, argument, and clarity. Never
-  rewrite or edit the student's text; only advise.
+  current draft; it also returns word, character, and paragraph counts you can
+  use to check length limits. Give feedback on structure, argument, and clarity.
+  Never rewrite or edit the student's text; only advise.
 placeholder: ""                          # optional starter text for the editor
 ```
 
@@ -188,23 +189,39 @@ client, and — when the activity is **not** anonymous — prefills the student'
 previously saved text from `getSubmission(code, oid)` so a reload restores work.
 
 The client surface is `app/[code]/_writing/**` (the `_writing` underscore keeps it
-out of routing). `WritingSurface` is a **split screen**:
+out of routing). `WritingSurface` is a **split screen filling the viewport** — both
+columns span the full available height (the editor and the chat scroll internally,
+the page does not):
 
 - **Left** — the **same** CodeMirror editor used at `/files`
   (`app/files/yaml-editor.tsx`), in **Markdown** mode (`language="markdown"`)
-  instead of YAML. Markdown mode **wraps** long lines (`EditorView.lineWrapping`)
-  so prose flows instead of scrolling sideways, and it drops the editor's "Upload
-  file…" button (`upload={false}` — a student writes in place, not by uploading).
-  The editor buffer is the single source of truth for the draft; every edit mirrors
-  it into a `currentTextRef` the chat's read-only tool reads.
-- **Right** — a **collapsible** feedback chat (`WritingChat`). A "Hide assistant" /
-  "Show assistant" toggle collapses it (the editor widens) and re-expands it;
-  default expanded.
+  instead of YAML, and in `fill` mode (`fill` prop → the editor spans the column
+  height instead of the `/files` fixed `420px`). Markdown mode **wraps** long lines
+  (`EditorView.lineWrapping`) so prose flows instead of scrolling sideways, and it
+  drops the editor's "Upload file…" button (`upload={false}` — a student writes in
+  place, not by uploading). The editor buffer is the single source of truth for the
+  draft; every edit mirrors it into a `currentTextRef` the chat's read-only tool reads.
+- **Right** — a **collapsible** feedback chat (`WritingChat`) that fills the column.
+- **Divider** — the vertical bar between the columns is both the **toggle** (a
+  ›/‹ button that collapses the chat so the editor widens, and re-expands it;
+  default expanded) and a **resize handle** (dragging it shifts the editor/chat
+  width split, clamped 25–75%). The bar stays put when collapsed, showing ‹ to
+  reopen. Resize is a mouse-only enhancement for the side-by-side layout.
+- **Responsive** — at/above `48rem` the columns sit side by side with the divider.
+  Below it they **stack** vertically, each with a min height, and the divider is
+  **removed** (no collapse, no resize) — the chat is always shown, so a chat
+  collapsed on a wide screen is never stranded after shrinking to a narrow one. The
+  JS (`matchMedia`) and the CSS share the `48rem` breakpoint. The surface keeps a
+  horizontal gutter at every width so it is never flush with the window edges.
 
 Behaviour:
 
 - **Prefill** — non-anonymous + a saved row → the editor opens with the saved text;
   otherwise it opens from the activity's optional `placeholder`.
+- **Activity prompt** — the YAML `description`, rendered as Markdown above the
+  editor. Past 250 characters it collapses to a teaser (first 250 chars + "…") with
+  a **more** link that opens the full prompt in a lightbox, keeping vertical space
+  for the editor.
 - **Save button** — calls `saveWriting`; shown **only** when non-anonymous. A dirty
   flag (`buffer !== lastSaved`) drives its enabled state ("Save" / "Saving…" /
   "Saved") and a `beforeunload` **unsaved-changes warning**. There is **no
@@ -215,37 +232,40 @@ Behaviour:
   button, and a backdrop click all close it) rendering the **current buffer**
   through the shared `MarkdownRenderer` — the same renderer the chat uses. The
   buffer is **untrusted** student input, so it goes through that **sanitized**
-  pipeline (below).
+  pipeline (below). It and the full-prompt view share one `Lightbox` component
+  (the `<dialog>` open/close + chrome) in `writing-surface.tsx`.
 - **When `anonymous: true`** — no Save button, no prefill, no leave-warning; the
   editor is purely ephemeral. The lightbox and the AI chat still work.
 
 ## AI feedback via a read-only frontend tool
 
 This is the keystone, and the app's **first** frontend tool. The chat
-(`WritingChat`) **reuses the existing surface** — the same `CopilotKitProvider` +
-`CopilotChat` wiring the tutor/quiz chats use: `runtimeUrl="/api/copilotkit"`,
-`agentId="writing"`, the `x-code` + `x-thread-token` headers, the provider **keyed
-by code** (navigating between codes remounts it → a fresh thread per code, matching
-the per-code memory scope), and the server-minted `threadId` pinned via
-`CopilotChat`'s `threadId` prop (explicit mode — NOT the configuration provider,
-which would strand the agent mid-run; see `app/tutor-chat.tsx`). Message rendering,
-streaming, and input are **not** reimplemented; the same `MarkdownRenderer` drives
-assistant messages.
+(`WritingChat`) **consumes the shared `ModuleChat` primitive** (`docs/chat.md`) —
+it hands it `agentId="writing"`, `providerKey={code}` (navigating between codes
+remounts it → a fresh thread per code, matching the per-code memory scope), the
+server-minted `threadId`, and the `x-code` + `x-thread-token` headers. The provider,
+the pinned-`threadId` explicit mode, message rendering/streaming/input, and the
+`MarkdownRenderer` for assistant messages all live in `ModuleChat`, not here; the
+one thing `WritingChat` adds is the `getCurrentText` tool below.
 
 The one writing-specific addition is the **`getCurrentText`** frontend tool,
 registered with `useFrontendTool` (`@copilotkit/react-core/v2`) inside an inner
 component rendered **within** the provider (the hook must run in the CopilotKit
 context). It takes **no parameters**; its handler returns the **live editor
 buffer** through `currentTextRef` (never a stale closure — read on call, not
-captured). `@ag-ui/mastra` forwards the declared tool to the `writing` agent; when
-the agent calls it, the browser returns the current draft (whether or not it has
-been saved).
+captured), **plus live length statistics** computed from that buffer by the pure
+`computeTextStats` (`lib/writing-stats.ts`): `charactersIncludingWhitespace`,
+`charactersExcludingWhitespace`, `words`, and `paragraphs`. The assistant uses
+them to check a prompt's length requirements (e.g. a min/max word count) against
+the draft. `@ag-ui/mastra` forwards the declared tool to the `writing` agent; when
+the agent calls it, the browser returns `{ text, …stats }` for the current draft
+(whether or not it has been saved).
 
 **The "AI cannot edit the text" guarantee.** The `writing` agent
 (`app/mastra/writing-agents.ts`) has **no** write/edit tool — it is read-only **by
 construction**. The only tool it can call is the browser-side, parameter-less
-`getCurrentText`, which returns text and changes nothing; there is no server-side
-capability that mutates the student's draft. The teacher's `instructions` reinforce
+`getCurrentText`, which returns the draft and its length stats and changes
+nothing; there is no server-side capability that mutates the student's draft. The teacher's `instructions` reinforce
 read-only feedback, but the guarantee does not depend on the prompt — it is
 structural.
 

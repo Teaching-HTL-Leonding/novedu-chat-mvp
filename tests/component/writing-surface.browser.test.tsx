@@ -44,13 +44,22 @@ const CODE = "a1b2c3d4e5";
 const THREAD_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const RUNTIME_HEADERS = { "x-code": CODE, "x-thread-token": "deadbeef".repeat(8) };
 
-function renderSurface(props: { anonymous: boolean; initialText?: string; placeholder?: string }) {
+function renderSurface(props: {
+  anonymous: boolean;
+  initialText?: string;
+  placeholder?: string;
+  description?: string;
+}) {
   return render(
     <WritingSurface
       code={CODE}
       threadId={THREAD_ID}
       runtimeHeaders={RUNTIME_HEADERS}
-      writing={{ title: "Write your essay", placeholder: props.placeholder }}
+      writing={{
+        title: "Write your essay",
+        placeholder: props.placeholder,
+        description: props.description,
+      }}
       anonymous={props.anonymous}
       initialText={props.initialText ?? ""}
     />,
@@ -91,6 +100,28 @@ test("hides the Save button for an anonymous activity", async () => {
   // No Save/Saved button at all for an anonymous activity.
   await expect.element(screen.getByRole("button", { name: "Read formatted" })).toBeVisible();
   expect(screen.getByRole("button", { name: /save/i }).query()).toBeNull();
+});
+
+test("shows a short activity prompt in full with no 'more' link", async () => {
+  const screen = await renderSurface({ anonymous: false, description: "Write about your summer." });
+  await expect.element(screen.getByText("Write about your summer.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "more" }).query()).toBeNull();
+});
+
+test("truncates a long prompt and opens the full text in a lightbox", async () => {
+  // Past 250 chars, so the tail (the sentinel) is cut from the inline teaser and
+  // only reachable through the lightbox.
+  const description = `${"Write a detailed short story for this assignment. ".repeat(8)}UNIQUE_END_SENTINEL_42.`;
+  const screen = await renderSurface({ anonymous: false, description });
+
+  const more = screen.getByRole("button", { name: "more" });
+  await expect.element(more).toBeVisible();
+  // The tail lives only in the (closed) lightbox — present in the DOM but hidden.
+  await expect.element(screen.getByText(/UNIQUE_END_SENTINEL_42/)).not.toBeVisible();
+
+  await more.click();
+  // Opening the lightbox reveals the full prompt, tail included.
+  await expect.element(screen.getByText(/UNIQUE_END_SENTINEL_42/)).toBeVisible();
 });
 
 test("collapses and re-expands the assistant chat", async () => {

@@ -5,6 +5,10 @@
   max-width: 56rem;
   margin: 0 auto;
   width: 100%;
+  /* A horizontal gutter at every width so the quiz is not flush with the window
+     edges once the viewport is narrower than the content (the auto margins give
+     no inset there). */
+  padding-inline: 1.25rem;
 }
 
 .progress {

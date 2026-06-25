@@ -238,6 +238,32 @@
   overflow: hidden;
 }
 
+/* Fill mode (writing surface): the editor spans the parent's full height instead
+   of the default fixed 420px. Each level — wrap, box, the CodeMirror root, and
+   the editor itself — must fill so the `height: 100%` on `.cm-editor` resolves to
+   the available column height; the `.cm-scroller` inside then scrolls. The parent
+   (`.editorHost` in writing-surface) establishes the height this chain fills. */
+.editorWrapFill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.editorBoxFill {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editorBoxFill > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.editorBoxFill :global(.cm-editor) {
+  height: 100%;
+}
+
 .editorHint {
   margin: 0;
   font-size: 0.78rem;

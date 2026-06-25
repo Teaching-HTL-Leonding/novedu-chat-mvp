@@ -30,6 +30,7 @@ export function YamlEditor({
   disabled,
   language = "yaml",
   upload = true,
+  fill = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -38,6 +39,10 @@ export function YamlEditor({
   /** Show the "Upload file…" button (load a local file into the editor). The
    * `/files` forms keep it (default); the writing surface passes `false`. */
   upload?: boolean;
+  /** Fill the parent's height instead of the default fixed height. The writing
+   * surface passes `true` so the editor spans the full split-screen column; the
+   * `/files` forms keep the fixed `420px`. The parent must establish a height. */
+  fill?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const extensions = useMemo(
@@ -54,7 +59,7 @@ export function YamlEditor({
   }
 
   return (
-    <div className={styles.editorWrap}>
+    <div className={fill ? `${styles.editorWrap} ${styles.editorWrapFill}` : styles.editorWrap}>
       {upload ? (
         <div className={styles.editorToolbar}>
           <button
@@ -75,10 +80,10 @@ export function YamlEditor({
           <span className={styles.editorHint}>Uploading replaces the editor contents.</span>
         </div>
       ) : null}
-      <div className={styles.editorBox}>
+      <div className={fill ? `${styles.editorBox} ${styles.editorBoxFill}` : styles.editorBox}>
         <CodeMirror
           value={value}
-          height="420px"
+          height={fill ? "100%" : "420px"}
           extensions={extensions}
           editable={!disabled}
           onChange={onChange}

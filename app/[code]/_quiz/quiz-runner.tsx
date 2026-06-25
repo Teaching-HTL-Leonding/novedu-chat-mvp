@@ -9,6 +9,7 @@ import {
   type ResolvedQuizQuestion,
   verdictLabel,
 } from "@/lib/quiz-types";
+import { buildRuntimeHeaders } from "@/lib/runtime-headers";
 import { MarkdownRenderer } from "../../markdown-renderer";
 import { QuizDiscussion } from "./quiz-discussion";
 import styles from "./quiz-runner.module.css";
@@ -271,7 +272,7 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
             </div>
             <QuizDiscussion
               threadId={discussion.threadId}
-              headers={{ "x-code": code, "x-thread-token": discussion.threadToken }}
+              headers={buildRuntimeHeaders(code, discussion.threadToken)}
               feedback={discussion.feedback}
             />
           </div>

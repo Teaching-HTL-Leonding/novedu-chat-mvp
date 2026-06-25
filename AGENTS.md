@@ -59,6 +59,14 @@ Read before touching: `lib/writing-*.ts`, `app/[code]/_writing/**`, `app/[code]/
 - Writing **defaults `anonymous: false`** — see the security block. Teacher review is the role-gated, read-only `stats` panel.
 - Student-authored Markdown is **untrusted**: the lightbox and the teacher review render it through the sanitized `MarkdownRenderer` (no `rehype-raw`).
 
+### Chat (CopilotKit surface) → `docs/chat.md`
+
+Read before touching: `app/module-chat.tsx`, `app/tutor-chat.tsx`, `app/_tutor/welcome-view.tsx`, `app/[code]/_writing/writing-chat.tsx`, `app/[code]/_quiz/quiz-discussion.tsx`, `app/codes/[code]/c/[threadId]/conversation-view.tsx`, `lib/runtime-headers.ts`.
+
+- `ModuleChat` (`app/module-chat.tsx`) is the single live-chat primitive: it owns the `CopilotKitProvider` + `CopilotChat`, the `threadId` explicit mode, the `MarkdownRenderer`, and the runtime-header construction. Modules pass `agentId` + their extras (tutor's welcome view, writing's `getCurrentText` tool, quiz's feedback header) as slots/children.
+- Runtime headers go through `buildRuntimeHeaders` → `RuntimeHeaders` (`x-code` + `x-thread-token`), re-verified server-side on every request — see **Codes**.
+- The read-only transcript `ConversationView` is **NOT** a `ModuleChat` (no agent, no threadId) — it renders the message components directly.
+
 ### App-hosted YAML files → `docs/files.md`
 
 Read before touching: `app/files/**`, `app/api/files/**`, `lib/file-store.ts`, `lib/files-actions.ts`, `lib/yaml-files.ts`, `novedu_files`, the `api/files` matcher in `proxy.ts`.

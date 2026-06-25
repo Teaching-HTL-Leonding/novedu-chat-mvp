@@ -1,6 +1,7 @@
 import { Notice } from "@/components/notice";
 import { ErrorList, WarningList } from "@/components/validation-result";
 import type { CodeEntry } from "@/lib/code-store";
+import { buildRuntimeHeaders } from "@/lib/runtime-headers";
 import { defaultFetcher, loadAndBuildTutorPrompt, sampleExampleQuestions } from "@/lib/tutors";
 import styles from "../page.module.css";
 import { TutorChat } from "../tutor-chat";
@@ -46,7 +47,7 @@ export async function RenderTutor({
         tutorUrl={entry.fileUrl}
         // The runtime re-checks both headers server-side on every request — the
         // code gates access, the token proves the thread belongs to this user.
-        runtimeHeaders={{ "x-code": code, "x-thread-token": threadToken }}
+        runtimeHeaders={buildRuntimeHeaders(code, threadToken)}
         prompt={result.prompt}
         warnings={result.warnings}
         imageInput={result.imageInput}

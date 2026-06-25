@@ -5,6 +5,7 @@ import { mastra } from "@/app/mastra";
 import { auth } from "@/auth";
 import { codeModules } from "@/lib/code-modules/registry";
 import { type CodeRejection, checkCode } from "@/lib/code-store";
+import { RUNTIME_CODE_HEADER, RUNTIME_THREAD_TOKEN_HEADER } from "@/lib/runtime-headers";
 import { getThreadTokenSecret, verifyThreadToken } from "@/lib/thread-token";
 import { recordUserChat } from "@/lib/user-chat-store";
 
@@ -136,7 +137,7 @@ async function resolveThreadOwnership(
       }
     }
   }
-  const token = req.headers.get("x-thread-token");
+  const token = req.headers.get(RUNTIME_THREAD_TOKEN_HEADER);
   if (
     threadId === undefined ||
     !THREAD_ID_PATTERN.test(threadId) ||
@@ -215,7 +216,7 @@ async function handler(req: Request): Promise<Response> {
 
   // ACCESS: one header scheme for every module. The row's `module` drives the
   // rest (agent + RequestContext).
-  const code = req.headers.get("x-code") ?? "";
+  const code = req.headers.get(RUNTIME_CODE_HEADER) ?? "";
   const verification = await checkCode(code);
   if (!verification.ok) {
     return Response.json({ error: REJECTION_MESSAGES[verification.reason] }, { status: 403 });

@@ -199,10 +199,11 @@ the code and all of its conversation data — see Lifecycle).
 
 The Mastra memory **`resourceId` is the code** (set in the runtime route), and
 `threadId` is a per-chat UUID generated **server-side per page load**, pinned into
-the CopilotKit client via CopilotChat's `threadId` prop (explicit mode — see the
-comment in `app/tutor-chat.tsx` for why the prop, not the configuration provider)
-and proven back to the runtime by the `x-thread-token` ownership token (nothing is
-persisted client-side — a reload starts a fresh thread). Relationships across the
+the CopilotKit client via CopilotChat's `threadId` prop (explicit mode — the shared
+`ModuleChat` primitive owns this frontend wiring; see `docs/chat.md` for why the
+prop, not the configuration provider) and proven back to the runtime by the
+`x-thread-token` ownership token (nothing is persisted client-side — a reload starts
+a fresh thread). Relationships across the
 Drizzle- and Mastra-owned tables are **by value — never foreign keys**
 (`docs/database.md`):
 
@@ -287,13 +288,11 @@ isolation and is unaffected.
   full replayed history as telescoping runs `R1 ⊂ R2 ⊂ … ⊂ Rk` would otherwise
   show each turn many times; a run is dropped only when it is an exact element-wise
   prefix of the next, so a clean conversation passes through untouched. The client
-  (`ConversationView`) renders them with the **same message components the live
-  chat uses**, so bubbles, markdown, math and code match. There is NO
-  `CopilotChat`/`useAgent`, so nothing runs or connects an agent. Those components
-  DO reach into `CopilotKitCore`, so they need a `CopilotKitProvider`; the provider
-  requires a `runtimeUrl` and pings `/api/copilotkit/info` once on mount. That ping
-  succeeds (200) because the runtime route serves **`/info` as auth-only
-  metadata** — the agent registry + capabilities, no chat data, gated by
+  (`ConversationView`) renders them read-only with no agent ever run or connected —
+  the frontend rendering (the shared message components, the agent-less provider)
+  is `docs/chat.md`. Its `CopilotKitProvider` still pings `/api/copilotkit/info`
+  once on mount; that ping succeeds (200) because the runtime route serves **`/info`
+  as auth-only metadata** — the agent registry + capabilities, no chat data, gated by
   authentication ALONE — even though the viewer sends no `x-code` header. The DATA
   endpoints (`run`/`connect`/`stop`) stay gated by the code AND the thread-ownership
   token. Keep this split in mind when touching the runtime route.
