@@ -80,6 +80,13 @@ export interface Interaction {
    * so a thread is attributable here only for an `anonymous: false` activity.
    */
   userId: string | null;
+  /**
+   * The student's display name (resolved from `novedu_users`) under the same
+   * conditions as `userId`, or `null` when the code is anonymous, the thread is
+   * unattributed, or no name has been recorded yet. The UI shows this in place of
+   * the oid, falling back to `userId`.
+   */
+  userName: string | null;
 }
 
 /** The detailed stats for a single code. */
@@ -123,18 +130,21 @@ export async function getCodeStats(
       lastAt: Date;
       userMessageCount: number;
       userId: string | null;
+      userName: string | null;
     }>(sql`
       SELECT
         t.id AS threadId,
         MIN(m.createdAt) AS firstAt,
         MAX(m.createdAt) AS lastAt,
         SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS userMessageCount,
-        uc.user_id AS userId
+        uc.user_id AS userId,
+        un.display_name AS userName
       FROM mastra_threads t
       JOIN mastra_messages m ON m.thread_id = t.id
       LEFT JOIN novedu_user_chats uc ON uc.thread_id = t.id
+      LEFT JOIN novedu_users un ON un.user_id = uc.user_id
       WHERE t.resourceId = ${code}
-      GROUP BY t.id, uc.user_id
+      GROUP BY t.id, uc.user_id, un.display_name
       HAVING SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) >= 1
       ORDER BY MAX(m.createdAt) DESC
     `);
@@ -144,8 +154,9 @@ export async function getCodeStats(
       firstAt: row.firstAt,
       lastAt: row.lastAt,
       userMessageCount: Number(row.userMessageCount),
-      // Anonymous code → never emit the student id, whatever the join returned.
+      // Anonymous code → never emit the student id OR name, whatever the join returned.
       userId: anonymous ? null : (row.userId ?? null),
+      userName: anonymous ? null : (row.userName ?? null),
     }));
 
     // Distinct recorded students. A student who opened several conversations
@@ -277,9 +288,9 @@ async function deleteCodeConversations(code: string): Promise<boolean> {
  * Deletes ONE code's app-owned Drizzle rows on the given executor — user_chats
  * (attribution), recent_codes (shortcuts), and writing_submissions (the writing
  * module's saved texts) first, then the code row LAST (while it exists the code
- * still appears in the list, so a mid-way failure is safe to retry). Runs on the
- * root handle for a single delete or a transaction when a bulk caller batches
- * several. Throws on a DB error (rolling a batch back).
+ * still appears in the list, so a mid-way failure is safe to retry).
+ * `deleteCodesAndData` loops it inside one transaction. Throws on a DB error
+ * (rolling the batch back).
  */
 async function deleteCodeRows(executor: DbExecutor, code: string): Promise<void> {
   await executor.delete(userChats).where(eq(userChats.code, code));
@@ -288,36 +299,14 @@ async function deleteCodeRows(executor: DbExecutor, code: string): Promise<void>
   await executor.delete(codesTable).where(eq(codesTable.code, code));
 }
 
-/**
- * Deletes a code AND all of its conversation data — the teacher-initiated
- * cleanup that replaced garbage collection. Conversation data (Mastra) first, the
- * app-owned rows last. Best-effort and idempotent: returns `true` if everything we
- * attempted succeeded, `false` if any step failed (the caller surfaces a retry
- * hint). Never throws.
- */
-export async function deleteCodeAndData(code: string): Promise<boolean> {
-  // 1. Conversations (Mastra — separate pool, no shared transaction).
-  let ok = await deleteCodeConversations(code);
-
-  // 2. App-owned rows (Drizzle), via the same per-code helper the bulk path uses.
-  try {
-    await deleteCodeRows(getDb(), code);
-  } catch (error) {
-    console.error("code-stats-store: deleting app-owned rows failed", error);
-    ok = false;
-  }
-
-  return ok;
-}
-
 export type DeleteCodesResult = { ok: boolean; deleted: number };
 
 /**
- * Bulk delete (the list's "Delete Selected"): runs the SAME per-code helpers as
- * the single delete so the business logic can't drift. The Mastra conversation
- * deletes happen per code (separate pool — they can't join a Drizzle
- * transaction); all the app-owned ROW deletes then run in ONE Drizzle transaction
- * (all-or-nothing). `ok` is false if any Mastra step failed or the row
+ * Bulk delete (the list's "Delete Selected", the only way to delete a code) — the
+ * teacher-initiated cleanup that replaced garbage collection. For each code, the
+ * Mastra conversation deletes happen per code (separate pool — they can't join a
+ * Drizzle transaction); all the app-owned ROW deletes then run in ONE Drizzle
+ * transaction (all-or-nothing). `ok` is false if any Mastra step failed or the row
  * transaction rolled back; `deleted` is the number of codes whose rows were
  * processed (0 if the transaction rolled back). Never throws.
  */

@@ -44,12 +44,31 @@ async function applyFilter(page: Page, label: string, term: string): Promise<voi
   await page.getByRole("button", { name: "Apply" }).click();
 }
 
+// Remove a single list row via the shared "Delete Selected" multi-delete — the only
+// delete affordance the codes/files/images lists expose (per-row delete lives on the
+// edit page now). Filters to the row, ticks it, confirms. The filter term doubles as
+// the checkbox's accessible-name suffix ("Select <term>").
+async function bulkDeleteRow(
+  page: Page,
+  listPath: string,
+  filterLabel: string,
+  term: string,
+): Promise<void> {
+  await page.goto(listPath);
+  await applyFilter(page, filterLabel, term);
+  if ((await page.getByRole("row").filter({ hasText: term }).count()) === 0) return;
+  await page.getByRole("checkbox", { name: `Select ${term}` }).check();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: /Delete .*selected/i }).click();
+  await expect(page.getByRole("row").filter({ hasText: term })).toHaveCount(0);
+}
+
 // Best-effort cleanup so a mid-test failure does not leave strays in the shared
 // dev database (the file's filtered-unique index would otherwise reject a re-run).
 let createdFileName: string | null = null;
 let createdCodeLabel: string | null = null;
-// Extra files the multi-delete test creates; cleaned per-row (independent of the
-// multi-delete UI under test) so a mid-test failure still tidies up.
+// Extra files the multi-delete test creates; tidied here too so a mid-test failure
+// still leaves no strays.
 const createdFileNames: string[] = [];
 
 test.afterEach(async ({ page }) => {
@@ -57,13 +76,7 @@ test.afterEach(async ({ page }) => {
     const name = createdFileName;
     createdFileName = null;
     try {
-      await applyFilter(page, "Filter files", name);
-      const row = page.getByRole("row").filter({ hasText: name });
-      if ((await row.count()) > 0) {
-        page.once("dialog", (dialog) => dialog.accept());
-        await row.getByRole("button", { name: `Delete file ${name}` }).click();
-        await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0);
-      }
+      await bulkDeleteRow(page, "/files", "Filter files", name);
     } catch {
       // best-effort
     }
@@ -71,14 +84,7 @@ test.afterEach(async ({ page }) => {
   while (createdFileNames.length > 0) {
     const name = createdFileNames.pop() as string;
     try {
-      await page.goto("/files");
-      await applyFilter(page, "Filter files", name);
-      const row = page.getByRole("row").filter({ hasText: name });
-      if ((await row.count()) > 0) {
-        page.once("dialog", (dialog) => dialog.accept());
-        await row.getByRole("button", { name: `Delete file ${name}` }).click();
-        await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0);
-      }
+      await bulkDeleteRow(page, "/files", "Filter files", name);
     } catch {
       // best-effort
     }
@@ -87,13 +93,7 @@ test.afterEach(async ({ page }) => {
     const label = createdCodeLabel;
     createdCodeLabel = null;
     try {
-      await applyFilter(page, "Filter codes", label);
-      const row = page.getByRole("row").filter({ hasText: label });
-      if ((await row.count()) > 0) {
-        page.once("dialog", (dialog) => dialog.accept());
-        await row.getByRole("button", { name: `Delete code ${label}` }).click();
-        await expect(page.getByRole("row").filter({ hasText: label })).toHaveCount(0);
-      }
+      await bulkDeleteRow(page, "/codes", "Filter codes", label);
     } catch {
       // best-effort
     }
@@ -142,10 +142,8 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   const fileRes = await page.request.get(fileUrl);
   expect(await fileRes.text()).toContain("Hello from version two");
 
-  // FILE — delete (from the edit page).
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: `Delete file ${fileName}` }).click();
-  await expect(page).toHaveURL(/\/files$/, { timeout: 30_000 });
+  // FILE — delete (via the list's "Delete Selected" — the only delete path now).
+  await bulkDeleteRow(page, "/files", "Filter files", fileName);
   createdFileName = null;
   expect((await page.request.get(fileUrl)).status()).toBe(404);
 
@@ -169,7 +167,21 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   const linkValue = await link.inputValue();
   expect(linkValue).toMatch(/^http:\/\/localhost:3000\/[a-z0-9]{10}$/);
 
+  // TUTOR LINK — stats detail: opening /codes/<code> renders ConversationStats,
+  // which runs getCodeStats' RAW SQL (the `LEFT JOIN novedu_users` + `GROUP BY
+  // un.display_name` added for name resolution — untyped, so unit tests can't catch
+  // a malformed query). A freshly created code has no conversations, so the page
+  // must show the empty state — NOT the "stats temporarily unavailable" notice that
+  // getCodeStats returns when the query throws — which proves the join is valid SQL.
+  const codeId = linkValue.split("/").pop() as string;
+  await page.goto(`/codes/${codeId}`);
+  await expect(
+    page.getByText(/a conversation counts once a student sends at least one message/i),
+  ).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/Stats temporarily unavailable/i)).toHaveCount(0);
+
   // TUTOR LINK — update: change the note (the URL field is read-only).
+  await page.goto(`/codes/edit/${codeId}`);
   await expect(page.getByLabel(/Activity YAML URL/)).toHaveAttribute("readonly", "");
   const editedNote = `${note} edited`;
   await page.getByLabel(/Note/).fill(editedNote);
@@ -187,14 +199,18 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await page.goto(linkValue);
   await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 60_000 });
 
-  // TUTOR LINK — delete (from the list row).
+  // TUTOR LINK — delete (via the shared "Delete Selected" multi-delete; the codes
+  // list has no per-row delete button — see app/codes/page.tsx).
   await page.goto("/codes");
   await applyFilter(page, "Filter codes", editedNote);
   const codeRow = page.getByRole("row").filter({ hasText: editedNote });
   await expect(codeRow).toHaveCount(1);
+  await page.getByRole("checkbox", { name: `Select ${editedNote}` }).check();
   page.once("dialog", (dialog) => dialog.accept());
-  await codeRow.getByRole("button", { name: `Delete code ${editedNote}` }).click();
-  await expect(page.getByRole("row").filter({ hasText: editedNote })).toHaveCount(0);
+  await page.getByRole("button", { name: /Delete .*selected/i }).click();
+  await expect(page.getByRole("row").filter({ hasText: editedNote })).toHaveCount(0, {
+    timeout: 30_000,
+  });
   createdCodeLabel = null;
 });
 

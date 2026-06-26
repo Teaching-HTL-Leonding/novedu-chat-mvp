@@ -10,15 +10,10 @@
   white-space: nowrap;
 }
 
-/* Square icon button shared by every action (stats, open, copy, edit, delete) —
+/* Square icon button shared by every action (stats, open, copy, edit) —
    composed from the shared icon-button module so it can't drift. */
 .iconButton {
   composes: iconButton from "../../components/icon-button.module.css";
-}
-
-/* Delete: same shape, danger accent. */
-.iconButtonDanger {
-  composes: iconButtonDanger from "../../components/icon-button.module.css";
 }
 
 /* The "Conversations" count column: numeric, right-aligned, snug. */
@@ -61,11 +56,4 @@
 .badgeUpcoming {
   background: color-mix(in srgb, royalblue 18%, transparent);
   color: color-mix(in srgb, royalblue 75%, var(--foreground));
-}
-
-.deleteError {
-  margin-left: 0.5rem;
-  font-size: 0.82rem;
-  color: color-mix(in srgb, crimson 75%, var(--foreground));
-  white-space: normal;
 }

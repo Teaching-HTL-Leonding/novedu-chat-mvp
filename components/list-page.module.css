@@ -119,6 +119,13 @@
   border-bottom: 2px solid color-mix(in srgb, var(--foreground) 25%, transparent);
 }
 
+/* Right-align a numeric column's header so it lines up with its right-aligned
+   body cells. The compound selector is needed to out-specify `.table th` above —
+   a bare header class loses to it. Pair with a right-aligned body cell class. */
+.table th.numHeader {
+  text-align: right;
+}
+
 .table td {
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);

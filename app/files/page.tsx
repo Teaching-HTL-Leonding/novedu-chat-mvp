@@ -16,7 +16,6 @@ import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
 import { LocalTime } from "../local-time";
 import pageStyles from "../page.module.css";
-import { DeleteFileButton } from "./delete-file-button";
 import styles from "./files.module.css";
 
 // One active file as shown in the list (no content). `updatedSeconds` is the
@@ -167,7 +166,6 @@ export default async function FilesPage({
             >
               <LayoutIcon />
             </Link>
-            <DeleteFileButton name={row.name} />
           </>
         );
       },

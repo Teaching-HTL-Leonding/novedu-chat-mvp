@@ -7,14 +7,17 @@ import { LocalTime } from "../../local-time";
 import styles from "./writing-review.module.css";
 
 // The Writing module's teacher review: a list of the students who SAVED text for
-// this code (newest save first), each row linking to that student's text page.
+// this code (newest save first), each row carrying a "View" link to that student's
+// text page (matching the View action in ConversationStats for tutor/quiz).
 // Reading the saved text is the point — the chat is secondary, so its per-student
 // count is just one column and the conversations themselves live on the student
 // page. Saved-text LENGTH is not a column: it would mean loading every essay body
 // just to render the list, so it is shown on the student page instead.
 //
-// The student id shown is the Entra `oid` (interim — human-readable names are
-// tracked as issue #49); the search box filters by it IN THE DATABASE.
+// Each row shows the student's display name (resolved from `novedu_users` via
+// `listSavers`' LEFT JOIN), falling back to the raw Entra `oid` when no name has
+// been recorded yet; the oid is always the `title` so a teacher can still read it on
+// hover. The search box filters by name OR oid IN THE DATABASE.
 //
 // SERVER COMPONENT: reads the database via `listSavers`. The writing descriptor in
 // lib/code-modules/writing.ts calls this as a plain function so no JSX lives in
@@ -32,15 +35,7 @@ export async function WritingSaversList({ code, search }: { code: string; search
     {
       header: "Student",
       className: styles.student,
-      render: (row) => (
-        <Link
-          href={`/codes/${code}/s/${encodeURIComponent(row.userId)}`}
-          title={row.userId}
-          data-testid="saver-link"
-        >
-          {row.userId}
-        </Link>
-      ),
+      render: (row) => <span title={row.userId}>{row.displayName ?? row.userId}</span>,
     },
     {
       header: "Saved",
@@ -49,9 +44,23 @@ export async function WritingSaversList({ code, search }: { code: string; search
     },
     {
       header: "Conversations",
-      headerClassName: styles.numCell,
+      headerClassName: listStyles.numHeader,
       className: styles.numCell,
       render: (row) => row.conversationCount,
+    },
+    {
+      header: "Actions",
+      srOnlyHeader: true,
+      className: listStyles.actionsCell,
+      render: (row) => (
+        <Link
+          href={`/codes/${code}/s/${encodeURIComponent(row.userId)}`}
+          className={styles.viewLink}
+          data-testid="saver-link"
+        >
+          View
+        </Link>
+      ),
     },
   ];
 

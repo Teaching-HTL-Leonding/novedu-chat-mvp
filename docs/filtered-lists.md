@@ -81,7 +81,7 @@ return (
 
 `columns` are `{ header, render(row), className?, srOnlyHeader? }`. Because `DataList`
 is a **server** component, the `render` functions live in the page and may return
-client leaf components (`LocalTime`, `CopyIconButton`, delete buttons) — no
+client leaf components (`LocalTime`, `CopyIconButton`, the row checkbox) — no
 Server→Client function-prop boundary is crossed (that only applies to `"use client"`
 components).
 
@@ -105,21 +105,22 @@ and behaves identically and improves once. The pieces:
 | `SelectionProvider` | `components/list-selection.tsx` (**client**) | owns the selected-key `Set` + the in-flight `pending` flag; clears + `router.refresh()`es on a successful delete |
 | `selectionColumn(getRowKey, rowLabel?)` | `components/selection-column.tsx` (**server-safe**) | the leading checkbox column: `SelectAllControls` header (select-all / unselect-all icons) + a per-row `RowSelectCheckbox` |
 | `DeleteSelectedButton` | `components/list-selection.tsx` (**client**) | red, border-only toolbar button; disabled until ≥1 row; confirms with the count, runs the action, shows the shared `Spinner` while pending |
-| per-list bulk action | `lib/*-actions.ts` (`"use server"`) | gated like the single delete; calls the store's bulk function; passed to `DeleteSelectedButton` as a prop |
+| per-list bulk action | `lib/*-actions.ts` (`"use server"`) | teacher-gated; calls the store's bulk function; passed to `DeleteSelectedButton` as a prop |
 
-**The reuse rule — identical business logic, never a second copy.** A bulk delete
-must do *exactly* what pressing each row's trash button does. Each single delete and
-its bulk counterpart share a **per-item helper that takes a `DbExecutor`** (the shared
-`Db | Transaction` type from `lib/db`): `closeActiveFile` (files), `deleteCodeRows`
-+ `deleteCodeConversations` (codes). The single delete calls the helper on the
-root handle; the bulk function loops it inside **one `getDb().transaction(...)`**.
-Both paths share the helper, so behaviour can't drift.
+**Delete is bulk-only — one path, no second copy.** "Delete Selected" is the ONLY
+way to delete a code / file / image: there is no per-row trash button and no
+edit-page single delete. The store keeps the per-item work in a helper that takes a
+**`DbExecutor`** (the shared `Db | Transaction` type from `lib/db`):
+`closeActiveFile` (files), `closeActiveImage` (images), `deleteCodeRows` +
+`deleteCodeConversations` (codes). The bulk action loops that helper inside **one
+`getDb().transaction(...)`**, so every selected item is removed with identical
+per-item logic.
 
 **Two-pool transaction caveat.** Drizzle (`novedu_*`) and Mastra (`mastra_*`) are
 separate pools that can't share a transaction. So files (pure Drizzle soft-delete)
 are fully one transaction; codes run the `novedu_*` row deletes for all
-selected codes in one transaction but the **Mastra** thread/message deletes per code
-*outside* it — exactly as the single delete already does.
+selected codes in one transaction but the **Mastra** thread/message deletes run per
+code *outside* it.
 
 **Selection key ≠ React key.** The selection id is whatever the bulk action deletes
 by — a file **name**, a tutor **code** — which may differ from the DataList

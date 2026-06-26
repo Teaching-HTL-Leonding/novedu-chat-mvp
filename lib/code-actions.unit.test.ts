@@ -12,7 +12,6 @@ const mocks = vi.hoisted(() => ({
   createCode: vi.fn(),
   getCode: vi.fn(),
   updateCode: vi.fn(),
-  deleteCodeAndData: vi.fn(),
   deleteCodesAndData: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
@@ -45,19 +44,13 @@ vi.mock("@/lib/code-store", async (importOriginal) => {
 });
 // The destructive store is fully mocked — it pulls in @/app/mastra otherwise.
 vi.mock("@/lib/code-stats-store", () => ({
-  deleteCodeAndData: mocks.deleteCodeAndData,
   deleteCodesAndData: mocks.deleteCodesAndData,
 }));
 // validateCodeRequest (imported for real above) pulls in @/lib/db, which must not
 // try to talk to a database in unit tests.
 vi.mock("@/lib/db", () => ({ getDb: () => ({}) }));
 
-import {
-  createCodeAction,
-  deleteCodeAction,
-  deleteSelectedCodesAction,
-  updateCodeAction,
-} from "@/lib/code-actions";
+import { createCodeAction, deleteSelectedCodesAction, updateCodeAction } from "@/lib/code-actions";
 
 const FILE = "https://example.com/tutor.yaml";
 const START = 1_700_000_000;
@@ -250,33 +243,8 @@ describe("updateCodeAction", () => {
   });
 });
 
-describe("deleteCodeAction", () => {
-  it("deletes the code and revalidates — no ownership check (any teacher)", async () => {
-    mocks.deleteCodeAndData.mockResolvedValue(true);
-    const result = await deleteCodeAction("a1b2c3d4e5");
-    expect(result).toEqual({ ok: true });
-    expect(mocks.deleteCodeAndData).toHaveBeenCalledWith("a1b2c3d4e5");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/codes");
-  });
-
-  it("rejects non-teachers and never touches the data", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
-    const result = await deleteCodeAction("a1b2c3d4e5");
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
-    expect(mocks.deleteCodeAndData).not.toHaveBeenCalled();
-  });
-
-  it("reports failure (no revalidate) when the delete is only partial", async () => {
-    mocks.deleteCodeAndData.mockResolvedValue(false);
-    const result = await deleteCodeAction("a1b2c3d4e5");
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/repeat/i) });
-    expect(mocks.revalidatePath).not.toHaveBeenCalled();
-  });
-});
-
-// The bulk delete behind the list's "Delete Selected": the SAME teacher gate as
-// the single delete (still NOT owner-gated) and the SAME per-code logic via
-// `deleteCodesAndData`.
+// The bulk delete behind the list's "Delete Selected" — the only way to delete a
+// code: teacher-gated (NOT owner-gated) and runs `deleteCodesAndData`.
 describe("deleteSelectedCodesAction", () => {
   it("deletes the selected codes and revalidates — no ownership check", async () => {
     mocks.deleteCodesAndData.mockResolvedValue({ ok: true, deleted: 2 });

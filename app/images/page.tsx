@@ -13,7 +13,6 @@ import { listImages } from "@/lib/image-store";
 import { deleteSelectedImagesAction } from "@/lib/images-actions";
 import { LocalTime } from "../local-time";
 import pageStyles from "../page.module.css";
-import { DeleteImageButton } from "./delete-image-button";
 import styles from "./images.module.css";
 import { ViewImageButton } from "./view-image-button";
 
@@ -147,7 +146,6 @@ export default async function ImagesPage({
             className={styles.iconButton}
             promptLabel="Copy the image name:"
           />
-          <DeleteImageButton name={row.name} />
         </>
       ),
     },

@@ -27,7 +27,6 @@ export {
 // --- Save / update / delete (server actions) --------------------------------
 export {
   createFileAction,
-  deleteFileAction,
   type FileActionFailure,
   loadFileFromDbAction,
   // --- Load YAML: from a URL (DB / relative / external) and from the DB ------

@@ -68,17 +68,6 @@
   composes: iconButton from "../../components/icon-button.module.css";
 }
 
-.iconButtonDanger {
-  composes: iconButtonDanger from "../../components/icon-button.module.css";
-}
-
-.deleteError {
-  margin-left: 0.5rem;
-  font-size: 0.82rem;
-  color: color-mix(in srgb, crimson 75%, var(--foreground));
-  white-space: normal;
-}
-
 /* --- create / edit forms --- */
 .form {
   flex: none;

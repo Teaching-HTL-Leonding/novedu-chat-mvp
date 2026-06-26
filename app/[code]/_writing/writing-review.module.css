@@ -14,3 +14,16 @@
   text-align: right;
   white-space: nowrap;
 }
+
+.viewLink {
+  padding: 0.4rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--foreground) 25%, transparent);
+  border-radius: 0.5rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: inherit;
+}
+
+.viewLink:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}

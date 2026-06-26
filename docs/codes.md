@@ -197,8 +197,9 @@ Each row: a **Module** badge, note (fallback code, `file_url` tooltip), window i
 local time, an **interaction** count (qualifying Mastra threads under
 `resourceId = code` — `getInteractionCounts`, ONE aggregate query for the whole
 filtered set, no per-row query), a stats link, an Open link (active codes only), a
-Copy button, an **Edit** link, and a **Delete** button (confirms first, then wipes
-the code and all of its conversation data — see Lifecycle).
+Copy button, and an **Edit** link. Deletion is the list's **"Delete Selected"**
+multi-delete (tick the rows, confirm; it wipes each selected code and all of its
+conversation data — see Lifecycle and `docs/filtered-lists.md`).
 
 ## Chats, memory & the join model
 
@@ -278,14 +279,18 @@ isolation and is unaffected.
   (`getCodeStats(code, anonymous)`): the interaction count (labelled per module —
   "Conversations" for tutor, "Discussions" for quiz), and for non-anonymous codes
   (the frozen `anonymous` flag) the number of distinct students; then a table of every
-  interaction (first/last message time, user id when recorded, user-message count),
-  each row linking to the viewer. "Interaction" = a Mastra thread with ≥ 1 `role =
-  'user'` message (opened-but-silent threads do not count). **Writing** renders its
-  savers list instead (`docs/writing.md`), or falls back to `ConversationStats` when
-  anonymous. Anonymity is enforced **at the data layer**: `ConversationStats` passes
-  the code's frozen `anonymous` flag into `getCodeStats`, which for an anonymous code
-  forces every `userId` to `null` and `studentCount` to `0` *before returning* — so it
-  cannot surface who a student is even if `novedu_user_chats` holds rows (the
+  interaction (first/last message time, the student when recorded, user-message count),
+  each row linking to the viewer. The student is shown by **display name** —
+  `getCodeStats` LEFT-JOINs `novedu_users` and the cell falls back to the raw `oid`
+  (kept as the hover `title`) when no name is recorded yet (see `docs/auth.md`).
+  "Interaction" = a Mastra thread with ≥ 1 `role = 'user'` message (opened-but-silent
+  threads do not count). **Writing** renders its savers list instead
+  (`docs/writing.md`), or falls back to `ConversationStats` when anonymous. Anonymity
+  is enforced **at the data layer**: `ConversationStats` passes the code's frozen
+  `anonymous` flag into `getCodeStats`, which for an anonymous code forces every
+  `userId` **and resolved name** to `null` and `studentCount` to `0` *before
+  returning* — so it cannot surface who a student is even if `novedu_user_chats` holds
+  rows (the
   documented case where the YAML was toggled to non-anonymous AFTER the code was
   minted). The `!anonymous` rendering checks are belt-and-braces on top of that.
 - **`/codes/[code]/s/[userId]`** — the writing module's per-student reading page (one
@@ -382,14 +387,13 @@ in-page discussion live in `app/[code]/_quiz/`.
 ## Lifecycle
 
 - Codes are **not** garbage-collected. A code and all of its conversation data
-  persist until the teacher deletes the code on `/codes` (`deleteCodeAndData` —
-  Mastra threads/messages via Mastra's own `deleteThread`, then the `novedu_*`
-  rows; see `docs/database.md`). An expired code stays listed: its activity no
-  longer opens (`checkCode`), but its stats remain reachable until it is deleted.
-  The list's **"Delete Selected"** removes several at once (`deleteCodesAndData`):
-  same teacher gate, same per-code logic, with the `novedu_*` row deletes batched
-  in one Drizzle transaction and the Mastra deletes per code outside it (the shared
-  multi-delete layer — `docs/filtered-lists.md`).
+  persist until a teacher deletes it on `/codes` via **"Delete Selected"** — the
+  only delete path (`deleteCodesAndData`): for each selected code, the Mastra
+  threads/messages via Mastra's own `deleteThread`, then the `novedu_*` rows batched
+  in one Drizzle transaction with the Mastra deletes per code outside it (the shared
+  multi-delete layer — `docs/filtered-lists.md`; see also `docs/database.md`). An
+  expired code stays listed: its activity no longer opens (`checkCode`), but its
+  stats remain reachable until it is deleted.
 - Drizzle migrations apply at startup — see `docs/database.md`.
 
 ## Testing

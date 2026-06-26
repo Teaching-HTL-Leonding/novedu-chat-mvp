@@ -17,7 +17,7 @@ the `api/files` entry in `proxy.ts`.
 | --- | --- | --- | --- |
 | List | `/files` (`app/files/page.tsx`) | teacher | active versions only, contains-filter + "Only my files" (default on) |
 | Create | `/files/new` (`create-file-form.tsx`) | teacher | name + kind + CodeMirror editor + upload |
-| Edit / delete | `/files/edit/[...name]` (`edit-file-form.tsx`) | teacher | preloaded with the active version; copyable public URL; soft-delete |
+| Edit | `/files/edit/[...name]` (`edit-file-form.tsx`) | teacher | preloaded with the active version; copyable public URL (delete is the list's "Delete Selected" only) |
 | Public GET | `/api/files/<name>` (`app/api/files/[name]/route.ts`) | **anyone** | active version as `text/yaml`, `no-store` (404 once deleted) |
 | GUI editor | `/files/gui/edit/<name>` (`app/files/gui/edit/[...name]/page.tsx`) | teacher | student-built form GUI; "Edit in GUI" on the list |
 | GUI viewer | `/files/gui/view?url=…&kind=…` (`app/files/gui/view/page.tsx`) | teacher | read-only student GUI; "View in GUI" on `/validate-tutor` |
@@ -78,8 +78,9 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
 - `getActiveFile(name)` — the active row **with** `content`; `null` = malformed
   name or no active version (unknown/deleted), `undefined` = DB error. Backs both
   the edit page and the GET endpoint.
-- `createFile` / `updateFile` / `softDeleteFile` — the transitions above.
-  `createFile` maps a duplicate-key error (mssql 2601/2627, via
+- `createFile` / `updateFile` / `softDeleteFiles` — the transitions above (delete is
+  bulk-only: `softDeleteFiles` loops the per-item `closeActiveFile` primitive in one
+  transaction). `createFile` maps a duplicate-key error (mssql 2601/2627, via
   `isDuplicateKeyError`) to `reason: "name-taken"`.
 - `title` / `description` are **denormalized** from the validated tutor YAML so the
   list is searchable without parsing every body; they are clamped to the column
@@ -95,11 +96,10 @@ file is never persisted.
 
 - `createFileAction` → validate name + kind + YAML, store, then `redirect("/files/edit/<name>")`.
 - `updateFileAction(name, content)` → re-validate against the **stored** kind, store a new version.
-- `deleteFileAction(name)` → soft-delete (idempotent).
-- `deleteSelectedFilesAction(names)` → the list's **"Delete Selected"**: soft-deletes
-  every selected file in **one transaction** (`softDeleteFiles`), reusing the same
-  `closeActiveFile` primitive as the single delete — the shared multi-delete layer
-  (`docs/filtered-lists.md`).
+- `deleteSelectedFilesAction(names)` → the list's **"Delete Selected"**, the **only**
+  delete path: soft-deletes every selected file in **one transaction**
+  (`softDeleteFiles`, which loops the per-item `closeActiveFile` primitive) — the
+  shared multi-delete layer (`docs/filtered-lists.md`).
 - `validateNewFileAction` / `validateExistingFileAction` → **validate-only**: run the
   same preamble + validator as create/update but **never store**; on success they
   return the non-blocking `warnings`. They back the standalone **Validate** button

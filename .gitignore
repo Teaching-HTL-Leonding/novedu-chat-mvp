@@ -2,6 +2,7 @@
 
 2026-06-12-findings.md
 docs/superpowers/specs
+.agents/scheduled_tasks.lock
 
 .vitest-attachments/
 __screenshots__/

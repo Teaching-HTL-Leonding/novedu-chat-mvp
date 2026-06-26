@@ -21,7 +21,6 @@ import { LocalTime } from "../local-time";
 import pageStyles from "../page.module.css";
 import styles from "./codes.module.css";
 import { CopyCodeButton } from "./copy-code-button";
-import { DeleteCodeButton } from "./delete-code-button";
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 
@@ -158,7 +157,7 @@ export default async function CodesPage({
     },
     {
       header: "Interactions",
-      headerClassName: styles.numCell,
+      headerClassName: listStyles.numHeader,
       className: styles.numCell,
       render: (row) => (row.interactionCount === null ? "—" : row.interactionCount),
     },
@@ -197,7 +196,6 @@ export default async function CodesPage({
           >
             <EditIcon />
           </Link>
-          <DeleteCodeButton code={row.code} label={row.note || row.code} />
         </>
       ),
     },

@@ -57,7 +57,6 @@ import {
   createFile,
   getActiveFile,
   listFiles,
-  softDeleteFile,
   softDeleteFiles,
   updateFile,
 } from "@/lib/file-store";
@@ -234,46 +233,11 @@ describe("updateFile", () => {
   });
 });
 
-describe("softDeleteFile", () => {
-  it("closes the active row (rowsAffected >= 1)", async () => {
-    fake.state.closeResult = { rowsAffected: [1] };
-    await expect(softDeleteFile("linked-lists", "teacher-3")).resolves.toEqual({ ok: true });
-  });
-
-  it("returns not-found when nothing was active to close", async () => {
-    fake.state.closeResult = { rowsAffected: [0] };
-    await expect(softDeleteFile("ghost", "teacher-3")).resolves.toEqual({
-      ok: false,
-      reason: "not-found",
-    });
-  });
-
-  it("reads a scalar rowsAffected too (driver-shape robustness)", async () => {
-    fake.state.closeResult = { rowsAffected: 1 };
-    await expect(softDeleteFile("linked-lists", "teacher-3")).resolves.toEqual({ ok: true });
-  });
-
-  it("treats a missing rowsAffected as 0 (not-found, never a false success)", async () => {
-    fake.state.closeResult = {};
-    await expect(softDeleteFile("linked-lists", "teacher-3")).resolves.toEqual({
-      ok: false,
-      reason: "not-found",
-    });
-  });
-
-  it("returns reason:error on a database failure", async () => {
-    fake.state.updateError = new Error("down");
-    await expect(softDeleteFile("linked-lists", "teacher-3")).resolves.toEqual({
-      ok: false,
-      reason: "error",
-    });
-  });
-});
-
-// Bulk soft-delete reuses the SAME `closeActiveFile` primitive as softDeleteFile,
-// looped inside ONE transaction. These pin the batch contract: the count of rows
-// actually closed, the already-gone no-op, all-or-nothing rollback on a DB error,
-// and the empty-input short-circuit.
+// Bulk soft-delete (the list's "Delete Selected", the only delete path) loops the
+// `closeActiveFile` primitive inside ONE transaction. These pin the batch contract:
+// the count of rows actually closed, the already-gone no-op, the `rowsAffected`
+// driver-shape robustness, all-or-nothing rollback on a DB error, and the
+// empty-input short-circuit.
 describe("softDeleteFiles", () => {
   it("closes every named file and counts the rows actually closed", async () => {
     fake.state.closeResult = { rowsAffected: [1] };
@@ -289,6 +253,16 @@ describe("softDeleteFiles", () => {
       ok: true,
       deleted: 0,
     });
+  });
+
+  it("reads a scalar rowsAffected too (driver-shape robustness)", async () => {
+    fake.state.closeResult = { rowsAffected: 1 };
+    await expect(softDeleteFiles(["a"], "teacher-3")).resolves.toEqual({ ok: true, deleted: 1 });
+  });
+
+  it("treats a missing rowsAffected as 0 (not counted, never a false success)", async () => {
+    fake.state.closeResult = {};
+    await expect(softDeleteFiles(["a"], "teacher-3")).resolves.toEqual({ ok: true, deleted: 0 });
   });
 
   it("rolls the whole batch back on a database error (all-or-nothing)", async () => {

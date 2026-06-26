@@ -64,6 +64,35 @@ runs don't have to rediscover the setup:
   (`TEACHER_STORAGE_STATE`, `isTeacher: true`) — teacher-only specs opt in via
   `test.use({ storageState: TEACHER_STORAGE_STATE })`.
 
+## User display names
+
+The Entra `oid` is opaque, so teacher review surfaces resolve it to a human name
+through **`novedu_users`** — one row per user, `user_id` (oid) → `display_name` (the
+Entra `name` claim, i.e. exactly what the nav bar shows). The pieces:
+
+- **Write — once per sign-in.** The `jwt` callback (the only place `profile` is
+  present) upserts the name via **`lib/user-name-store.ts`** `upsertUserName`. This
+  is the **one database write in the whole auth flow**. It runs only on an
+  interactive sign-in, never on the per-request session decode, and the store is
+  imported **dynamically** so the SQL driver stays off the proxy's hot path. Any
+  error is **swallowed** — a DB hiccup must never block sign-in; the name just isn't
+  recorded that time. A blank `name` is skipped (no row), so the oid stays the
+  fallback. (Next 16's proxy runs on the **Node.js runtime** by default, so this is
+  not an edge-bundling constraint — but keeping the write off the decode path and
+  out of the static import graph is still the lean choice.)
+- **Read — by LEFT JOIN, with oid fallback.** Every surface that shows a student id
+  resolves it in the SAME query that loads the rows: `listSavers`
+  (`lib/writing-store.ts`) and `getCodeStats` (`lib/code-stats-store.ts`) LEFT-JOIN
+  `novedu_users` BY VALUE (no FK), and the writing student page reads the name off
+  the savers row it already loads. A missing row (a user who hasn't signed in since
+  the table existed) ⇒ `null` ⇒ the raw oid is shown, kept as the element `title` so
+  it's still visible on hover. The savers filter matches name **or** oid.
+- **No backfill, no history, no GC.** Names populate **gradually** as each user next
+  signs in (no Microsoft Graph backfill). The upsert overwrites (no history), and
+  rows are never garbage-collected — module-agnostic, so a deleted code never
+  touches them. Anonymity is respected for free: a name is only ever shown where the
+  oid already is (`getCodeStats` nulls both for anonymous codes).
+
 ## Student mode
 
 A real teacher can temporarily view the app as a student ("View as student" in the

@@ -11,7 +11,6 @@ import {
   type ValidationWarning,
   validateExistingFileAction,
 } from "@/lib/yaml-files";
-import { DeleteFileButton } from "../../delete-file-button";
 import styles from "../../files.module.css";
 import { YamlEditor } from "../../yaml-editor";
 
@@ -136,7 +135,6 @@ export function EditFileForm({
         <button type="button" className={styles.button} onClick={onSave} disabled={pending}>
           {saving ? "Saving…" : "Validate & save"}
         </button>
-        <DeleteFileButton name={name} redirectTo="/files" />
         {message ? <p className={styles.requestError}>{message}</p> : null}
         {saved && !message && !errors ? <span className={styles.saved}>Saved</span> : null}
         {passed && !saved && !message && !errors ? (

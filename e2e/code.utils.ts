@@ -102,6 +102,37 @@ export function mintTutorCode(
   });
 }
 
+/**
+ * Upserts a display name into `novedu_users` for a user id (the Entra `oid`, or the
+ * `sub` fallback the e2e sessions use — the minted teacher token carries no `oid`,
+ * so its id is `"e2e-teacher"`). Lets a @live-db review spec assert the savers list /
+ * student page resolve an opaque id to a NAME, not just the oid fallback. Mirrors
+ * lib/user-name-store.ts' upsert as a single MERGE. Pair with `deleteUserName` so the
+ * shared row never leaks to another spec.
+ */
+export async function setUserName(userId: string, displayName: string): Promise<void> {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("userId", sql.NVarChar(64), userId)
+    .input("displayName", sql.NVarChar(256), displayName)
+    .query(
+      `MERGE novedu_users AS t
+       USING (SELECT @userId AS user_id) AS s ON t.user_id = s.user_id
+       WHEN MATCHED THEN UPDATE SET display_name = @displayName
+       WHEN NOT MATCHED THEN INSERT (user_id, display_name) VALUES (@userId, @displayName);`,
+    );
+}
+
+/** Removes a `novedu_users` row — cleanup for `setUserName`. */
+export async function deleteUserName(userId: string): Promise<void> {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("userId", sql.NVarChar(64), userId)
+    .query(`DELETE FROM novedu_users WHERE user_id = @userId`);
+}
+
 /** One stored Mastra message row (role + the raw JSON content envelope). */
 export interface StoredMessageRow {
   role: string;

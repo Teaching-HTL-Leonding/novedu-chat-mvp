@@ -7,7 +7,7 @@ import { loadEnvConfig } from "@next/env";
 import { expect, type Page, test } from "@playwright/test";
 import { extensionForImageMime } from "../lib/file-name";
 import { deleteBlob, getBlobProperties, mintReadSas, mintWriteSas } from "../lib/image-blob";
-import { confirmImage, getActiveImage, listImages, softDeleteImage } from "../lib/image-store";
+import { confirmImage, getActiveImage, listImages, softDeleteImages } from "../lib/image-store";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { mintCode } from "./code.utils";
 
@@ -94,10 +94,11 @@ test.describe("image storage round-trip (seams)", () => {
       expect(got.ok(), `GET via read SAS failed: ${got.status()}`).toBeTruthy();
       expect((await got.body()).length).toBe(bytes.length);
 
-      // 6) Soft-delete closes the row AND removes the blob (best-effort, in the
-      //    store). The read SAS now 404s and no active version remains.
-      const deleted = await softDeleteImage(name, userId);
-      expect(deleted).toEqual({ ok: true });
+      // 6) Bulk soft-delete (the only delete path) closes the row AND removes the
+      //    blob (best-effort, in the store). The read SAS now 404s and no active
+      //    version remains.
+      const deleted = await softDeleteImages([name], userId);
+      expect(deleted).toEqual({ ok: true, deleted: 1 });
       confirmed = false;
 
       const afterDelete = await request.get(readUrl);
@@ -105,7 +106,7 @@ test.describe("image storage round-trip (seams)", () => {
       expect(await getActiveImage(name)).toBeNull();
     } finally {
       // Tidy up on any failure so a half-finished run leaves no stray blob/row.
-      if (confirmed) await softDeleteImage(name, userId).catch(() => {});
+      if (confirmed) await softDeleteImages([name], userId).catch(() => {});
       await deleteBlob(blobPath).catch(() => {});
     }
   });
@@ -229,15 +230,16 @@ test.describe("hosted image upload + student display", () => {
       await viewLarger.click();
       await expect(page.getByRole("button", { name: "Close" })).toBeVisible();
     } finally {
-      // CLEAN UP — delete the image (drops the row + its backing blob) via the list.
+      // CLEAN UP — delete the image (drops the row + its backing blob) via the list's
+      // "Delete Selected" multi-delete (the only delete affordance the list exposes).
       if (uploaded) {
         try {
           await page.goto("/images");
           await applyFilter(page, "Filter images", imageName);
-          const row = page.getByRole("row").filter({ hasText: imageName });
-          if ((await row.count()) > 0) {
+          if ((await page.getByRole("row").filter({ hasText: imageName }).count()) > 0) {
+            await page.getByRole("checkbox", { name: `Select ${imageName}` }).check();
             page.once("dialog", (dialog) => dialog.accept());
-            await row.getByRole("button", { name: `Delete image ${imageName}` }).click();
+            await page.getByRole("button", { name: /Delete .*selected/i }).click();
             await expect(page.getByRole("row").filter({ hasText: imageName })).toHaveCount(0);
           }
         } catch {

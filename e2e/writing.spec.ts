@@ -4,7 +4,7 @@ import { expect, type Page, test } from "@playwright/test";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "../lib/azure-credential";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { mintCode } from "./code.utils";
+import { deleteUserName, mintCode, setUserName } from "./code.utils";
 
 // End-to-end coverage for the Writing module: a `novedu_codes` row with
 // `module: "writing"` reached at `/<code>`. The student writes Markdown on the
@@ -79,39 +79,58 @@ async function deleteFile(page: Page, name: string): Promise<void> {
   if (await del.isVisible().catch(() => false)) await del.click();
 }
 
-// write → save → reload restores → teacher review shows the saved text. No LLM.
+// write → save → reload restores → teacher review shows the saved text, with the
+// student shown by display NAME (resolved from novedu_users). No LLM.
+//
+// The minted teacher session carries no `oid`, so its id falls back to `sub` —
+// "e2e-teacher" is therefore the saver's user_id. Seeding a novedu_users row for it
+// before the review exercises the real `listSavers` LEFT JOIN end to end (the name
+// resolves and renders), not just the oid fallback the un-seeded flow would show.
+const SAVER_ID = "e2e-teacher";
+const SAVER_NAME = "Reviewed E2E Student";
+
 test("write → save → reload restores → teacher review", {
   tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   const { code, name } = await authorWritingCode(page);
   const DRAFT = `# My essay\n\nThis is my first draft about linked lists.`;
 
-  // 1. Open the writing activity and write a draft.
-  await page.goto(`/${code}`);
-  await expect(page.locator(".cm-content")).toBeVisible({ timeout: 30_000 });
-  await setCodeMirrorContent(page, DRAFT);
+  try {
+    // 1. Open the writing activity and write a draft.
+    await page.goto(`/${code}`);
+    await expect(page.locator(".cm-content")).toBeVisible({ timeout: 30_000 });
+    await setCodeMirrorContent(page, DRAFT);
 
-  // 2. Save it. The button flips Save → Saved on success.
-  await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByRole("button", { name: "Saved" })).toBeVisible({ timeout: 30_000 });
+    // 2. Save it. The button flips Save → Saved on success.
+    await page.getByRole("button", { name: "Save" }).click();
+    await expect(page.getByRole("button", { name: "Saved" })).toBeVisible({ timeout: 30_000 });
 
-  // 3. Reload: the saved draft is prefilled back into the editor.
-  await page.goto(`/${code}`);
-  await expect(page.locator(".cm-content")).toContainText("first draft about linked lists", {
-    timeout: 30_000,
-  });
+    // 3. Reload: the saved draft is prefilled back into the editor.
+    await page.goto(`/${code}`);
+    await expect(page.locator(".cm-content")).toContainText("first draft about linked lists", {
+      timeout: 30_000,
+    });
 
-  // 4. Teacher review on /codes/[code] is the savers list — one student saved.
-  await page.goto(`/codes/${code}`);
-  const saver = page.getByTestId("saver-link");
-  await expect(saver).toBeVisible({ timeout: 30_000 });
+    // Record a display name for the saver so the review resolves the oid to a NAME.
+    await setUserName(SAVER_ID, SAVER_NAME);
 
-  // 5. Opening that student's page shows the saved text (rendered markdown).
-  await saver.click();
-  await expect(page).toHaveURL(new RegExp(`/codes/${code}/s/`), { timeout: 30_000 });
-  await expect(page.getByTestId("student-text")).toContainText("first draft about linked lists");
+    // 4. Teacher review on /codes/[code] is the savers list — one student saved,
+    //    shown by display name (NOT the raw oid).
+    await page.goto(`/codes/${code}`);
+    const saver = page.getByTestId("saver-link");
+    await expect(saver).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(SAVER_NAME)).toBeVisible();
 
-  await deleteFile(page, name);
+    // 5. Opening that student's page shows the saved text (rendered markdown) and the
+    //    resolved name in the header.
+    await saver.click();
+    await expect(page).toHaveURL(new RegExp(`/codes/${code}/s/`), { timeout: 30_000 });
+    await expect(page.getByTestId("student-text")).toContainText("first draft about linked lists");
+    await expect(page.getByText(SAVER_NAME)).toBeVisible();
+  } finally {
+    await deleteUserName(SAVER_ID).catch(() => {});
+    await deleteFile(page, name);
+  }
 });
 
 // The assistant reads the LIVE editor buffer through the read-only getCurrentText

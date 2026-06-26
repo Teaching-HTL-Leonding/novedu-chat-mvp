@@ -65,7 +65,6 @@ vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 vi.mock("@/app/mastra", () => ({ mastra: mastra.mastra }));
 
 import {
-  deleteCodeAndData,
   deleteCodesAndData,
   getCodeStats,
   getConversationMessages,
@@ -139,8 +138,32 @@ describe("getCodeStats", () => {
       lastAt: t2,
       userMessageCount: 3,
       userId: "stu-1",
+      // No name recorded for this row → null (the UI falls back to the oid).
+      userName: null,
     });
     expect(stats?.interactions[3]?.userId).toBeNull();
+  });
+
+  it("surfaces the joined display name (non-anonymous), and redacts it for an anonymous code", async () => {
+    const t1 = new Date("2026-06-12T10:00:00Z");
+    const t2 = new Date("2026-06-12T10:05:00Z");
+    const row = {
+      threadId: "th1",
+      firstAt: t1,
+      lastAt: t2,
+      userMessageCount: 3,
+      userId: "stu-1",
+      userName: "Ada Lovelace",
+    };
+    fake.state.recordset = [row];
+    expect((await getCodeStats("aaaaaaaaaa", false))?.interactions[0]?.userName).toBe(
+      "Ada Lovelace",
+    );
+    // Anonymous → the name is nulled at the data layer alongside the id.
+    fake.state.recordset = [row];
+    const anon = await getCodeStats("aaaaaaaaaa", true);
+    expect(anon?.interactions[0]?.userName).toBeNull();
+    expect(anon?.interactions[0]?.userId).toBeNull();
   });
 
   it("redacts every userId and zeroes studentCount for an anonymous code", async () => {
@@ -291,43 +314,11 @@ describe("getConversationMessages collapses replays end to end", () => {
   });
 });
 
-describe("deleteCodeAndData", () => {
-  it("deletes every thread, then the app rows in order, and reports success", async () => {
-    mastra.state.threads = [{ id: "th1" }, { id: "th2" }];
-    const ok = await deleteCodeAndData("aaaaaaaaaa");
-    expect(ok).toBe(true);
-    // Conversations removed via Mastra's own deleteThread (cascades messages).
-    expect(mastra.state.deletedThreadIds).toEqual(["th1", "th2"]);
-    // App-owned rows: attribution + shortcuts first, the code row LAST.
-    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, writingSubmissions, codes]);
-  });
-
-  it("still clears the app rows but reports failure when storage is unavailable", async () => {
-    mastra.state.storageNull = true;
-    const ok = await deleteCodeAndData("aaaaaaaaaa");
-    expect(ok).toBe(false);
-    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, writingSubmissions, codes]);
-  });
-
-  it("reports failure (but attempts the app rows) when listing threads throws", async () => {
-    mastra.state.listThreadsError = new Error("mastra down");
-    const ok = await deleteCodeAndData("aaaaaaaaaa");
-    expect(ok).toBe(false);
-    expect(mastra.state.deletedThreadIds).toEqual([]);
-    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, writingSubmissions, codes]);
-  });
-
-  it("reports failure when an app-row delete throws", async () => {
-    mastra.state.threads = [{ id: "th1" }];
-    fake.state.deleteError = new Error("connection lost");
-    await expect(deleteCodeAndData("aaaaaaaaaa")).resolves.toBe(false);
-  });
-});
-
-// Bulk delete reuses the SAME per-code helpers as the single delete: conversations
-// per code (Mastra), then ALL the app rows in ONE transaction. These pin the
-// batch contract — per-code row ordering, the all-or-nothing rollback, the
-// Mastra-failure-but-rows-still-attempted path, and the empty short-circuit.
+// Bulk delete (the list's "Delete Selected", the only way to delete a code):
+// conversations per code (Mastra), then ALL the app rows in ONE transaction. These
+// pin the batch contract — per-code row ordering, the all-or-nothing rollback, the
+// Mastra-failure-but-rows-still-attempted paths (storage unavailable AND listThreads
+// throwing), and the empty short-circuit.
 describe("deleteCodesAndData", () => {
   it("deletes each code's conversations then all app rows (per code) and reports success", async () => {
     mastra.state.threads = [{ id: "th1" }];
@@ -370,6 +361,14 @@ describe("deleteCodesAndData", () => {
       writingSubmissions,
       codes,
     ]);
+  });
+
+  it("reports failure (but still deletes the rows) when listing threads throws", async () => {
+    mastra.state.listThreadsError = new Error("mastra down");
+    const result = await deleteCodesAndData(["aaaaaaaaaa"]);
+    expect(result).toEqual({ ok: false, deleted: 1 });
+    expect(mastra.state.deletedThreadIds).toEqual([]);
+    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, writingSubmissions, codes]);
   });
 
   it("short-circuits an empty selection without touching Mastra or the database", async () => {

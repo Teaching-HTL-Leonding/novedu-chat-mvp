@@ -261,11 +261,10 @@ export type DeleteFileResult = { ok: true } | { ok: false; reason: "not-found" |
 
 /**
  * The ONE soft-delete primitive: closes a file's active row (`valid_until` +
- * `closed_by`) on the given executor — the root handle for a single delete, or a
- * transaction when a bulk caller batches several. A single conditional statement;
- * `not-found` (no active row) is NOT an error, so it never rolls a batch back. A
- * real DB error THROWS (so the surrounding transaction rolls back); the public
- * wrappers map that to `{ ok: false, reason: "error" }`.
+ * `closed_by`) on the given transaction executor — `softDeleteFiles` loops it over
+ * the selected names. A single conditional statement; `not-found` (no active row)
+ * is NOT an error, so it never rolls a batch back. A real DB error THROWS so the
+ * surrounding transaction rolls back.
  */
 async function closeActiveFile(
   executor: DbExecutor,
@@ -280,28 +279,15 @@ async function closeActiveFile(
   return affectedRows(closed) < 1 ? { ok: false, reason: "not-found" } : { ok: true };
 }
 
-/**
- * Soft-deletes a file: closes its active row so no active version remains — the
- * GET endpoint 404s and the list drops it, while the full history (including who
- * deleted it) stays. `not-found` if it was already gone.
- */
-export async function softDeleteFile(name: string, userId: string): Promise<DeleteFileResult> {
-  try {
-    return await closeActiveFile(getDb(), name, userId, new Date());
-  } catch (error) {
-    console.error("file-store: delete failed", error);
-    return { ok: false, reason: "error" };
-  }
-}
-
 export type DeleteFilesResult = { ok: boolean; deleted: number };
 
 /**
- * Bulk soft-delete (the list's "Delete Selected"): closes every named file in ONE
- * transaction, reusing the SAME `closeActiveFile` primitive as the single delete
- * so the per-file business logic can't drift. All-or-nothing — any DB error rolls
- * the whole batch back. `deleted` counts the rows actually closed (an
- * already-gone name is a no-op success, exactly like the single path).
+ * Bulk soft-delete (the list's "Delete Selected", the only delete path): closes
+ * every named file in ONE transaction via the `closeActiveFile` primitive — the
+ * GET endpoint then 404s and the list drops the row, while the full history
+ * (including who deleted it) stays. All-or-nothing: any DB error rolls the whole
+ * batch back. `deleted` counts the rows actually closed (an already-gone name is a
+ * no-op success).
  */
 export async function softDeleteFiles(names: string[], userId: string): Promise<DeleteFilesResult> {
   if (names.length === 0) return { ok: true, deleted: 0 };

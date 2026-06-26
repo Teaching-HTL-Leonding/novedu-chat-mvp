@@ -12,7 +12,6 @@ const actions = vi.hoisted(() => ({
   createFileAction: vi.fn(),
   validateExistingFileAction: vi.fn(),
   updateFileAction: vi.fn(),
-  deleteFileAction: vi.fn(async () => ({ ok: true })),
   // Re-exported by the `@/lib/yaml-files` barrel the forms import — the mock must
   // provide every value export the barrel re-exports or the re-export won't link.
   loadFileFromDbAction: vi.fn(),
