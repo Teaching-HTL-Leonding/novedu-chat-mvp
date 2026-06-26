@@ -187,7 +187,7 @@ validateNewFileAction(input: { name: string; kind: string; content: string }): P
 validateExistingFileAction(name: string, content: string): Promise<ValidateFileResult>
 ```
 
-### Save / delete
+### Save
 
 ```ts
 // Create version 1. On success it NAVIGATES to the file's edit page (returns only on failure).
@@ -195,9 +195,6 @@ createFileAction(input: { name: string; kind: string; content: string }): Promis
 
 // Save a new version of an existing file.
 updateFileAction(name: string, content: string): Promise<SaveFileResult>
-
-// Soft-delete (idempotent).
-deleteFileAction(name: string): Promise<{ ok: true } | { ok: false; message: string }>
 ```
 
 ### Result types

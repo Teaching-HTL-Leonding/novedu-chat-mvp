@@ -113,6 +113,7 @@ Tables (details in `docs/codes.md`):
 | `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only when the activity opts out of anonymity) |
 | `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (entry-page shortcuts) |
 | `novedu_writing_submissions` | PK (`code`, `user_id`) | a student's saved writing text — one upserted row per student per code, non-anonymous codes only (details in `docs/writing.md`) |
+| `novedu_users` | PK `user_id` | Entra `oid` → display name, upserted on sign-in; LEFT-JOINed by value to resolve a shown user id to a name (details in `docs/auth.md`) |
 | `novedu_files` | PK `id` (per-version); filtered UK `name WHERE valid_until IS NULL` | App-hosted YAML files, **temporal/append-only** (details in `docs/files.md`) |
 | `novedu_images` | PK `id` (per-version); filtered UK `name WHERE valid_until IS NULL` | App-hosted image metadata (bytes in Blob Storage), **temporal/append-only** (details in `docs/images.md`) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping |
@@ -128,8 +129,9 @@ active row + insert a new one; delete = close only. See `docs/files.md` (and
 ## Deletion (no garbage collection)
 
 There is **no** automatic garbage collection. Codes and their conversation
-data live until a teacher deletes a code on `/codes`. The delete action
-(`deleteCodeAndData` in `lib/code-stats-store.ts`) removes, for that code:
+data live until a teacher deletes them on `/codes` via "Delete Selected" (the
+only delete path). The bulk delete (`deleteCodesAndData` in
+`lib/code-stats-store.ts`) removes, per selected code:
 
 1. every Mastra thread under `resourceId = code` and its messages — through
    Mastra's OWN storage API (`getStore("memory").deleteThread`, which deletes a

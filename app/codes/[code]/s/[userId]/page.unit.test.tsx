@@ -121,6 +121,13 @@ describe("rendering the saved text", () => {
     const html = await render();
     expect(html).toContain("2 conversations");
   });
+
+  it("shows the resolved display name from the savers row, with the oid as the hover title", async () => {
+    listSavers.mockResolvedValue([{ userId: USER, displayName: "Ada Lovelace" }]);
+    const html = await render();
+    expect(html).toContain("Ada Lovelace");
+    expect(html).toContain(`title="${USER}"`);
+  });
 });
 
 describe("Prev/Next across the savers list", () => {

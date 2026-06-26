@@ -89,12 +89,12 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
 - `confirmImage(input, userId)` — writes version 1 **after** the blob is in place;
   a transaction makes the existence check + insert atomic, and a duplicate-key
   error (mssql 2601/2627, via `isDuplicateKeyError`) maps to `reason: "name-taken"`.
-- `softDeleteImage` / `softDeleteImages` — close the active row(s), then remove
-  the backing blob(s) **best-effort, OUTSIDE the transaction** (a blob failure
-  never fails the delete — an orphaned blob just lingers). The bulk path reuses
-  the same `closeActiveImage` primitive as the single delete so the per-image
-  logic can't drift; rows close in ONE transaction (all-or-nothing), blobs delete
-  per-image afterward (the shared multi-delete layer — `docs/filtered-lists.md`).
+- `softDeleteImages` — delete is **bulk-only**: closes the active rows, then removes
+  the backing blobs **best-effort, OUTSIDE the transaction** (a blob failure never
+  fails the delete — an orphaned blob just lingers). It loops the per-item
+  `closeActiveImage` primitive so the rows close in ONE transaction (all-or-nothing),
+  blobs delete per-image afterward (the shared multi-delete layer —
+  `docs/filtered-lists.md`).
 
 ## Blob client — `lib/image-blob.ts` (server-only)
 
@@ -137,9 +137,8 @@ image is **5 MB**; only `image/png` / `image/jpeg` / `image/svg+xml` are allowed
   trusted from the client**); a blob that is missing, too large, or of the wrong
   type is rejected — and a present-but-bad blob is deleted so it does not linger —
   then `confirmImage` writes the metadata row.
-- `deleteImageAction(name)` → soft-delete (idempotent); mirrors `deleteFileAction`.
-- `deleteSelectedImagesAction(names)` → the list's **"Delete Selected"**; mirrors
-  `deleteSelectedFilesAction`.
+- `deleteSelectedImagesAction(names)` → the list's **"Delete Selected"**, the **only**
+  delete path; mirrors `deleteSelectedFilesAction`.
 
 ## The upload flow — request → PUT → confirm
 

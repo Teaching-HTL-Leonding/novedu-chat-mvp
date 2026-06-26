@@ -79,7 +79,7 @@ export async function ConversationStats({ entry }: { entry: CodeEntry }) {
                 </td>
                 {!entry.anonymous ? (
                   <td className={styles.userCell} title={interaction.userId ?? undefined}>
-                    {interaction.userId ?? "—"}
+                    {interaction.userName ?? interaction.userId ?? "—"}
                   </td>
                 ) : null}
                 <td className={styles.numCell}>{interaction.userMessageCount}</td>

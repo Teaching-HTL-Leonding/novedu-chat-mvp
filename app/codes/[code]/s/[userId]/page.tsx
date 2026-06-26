@@ -79,6 +79,9 @@ export default async function StudentTextPage({
   const idx = savers.findIndex((s) => s.userId === userId);
   const prev = idx > 0 ? savers[idx - 1] : undefined;
   const next = idx >= 0 && idx < savers.length - 1 ? savers[idx + 1] : undefined;
+  // The savers row already carries the resolved display name; fall back to the raw
+  // oid when none has been recorded yet (the oid stays the hover title either way).
+  const displayName = (idx >= 0 ? savers[idx]?.displayName : null) ?? userId;
 
   return (
     <main className={pageStyles.main}>
@@ -87,7 +90,7 @@ export default async function StudentTextPage({
 
         <div className={styles.header}>
           <span className={styles.student} title={userId}>
-            {userId}
+            {displayName}
           </span>
           <span className={styles.meta}>
             <span>

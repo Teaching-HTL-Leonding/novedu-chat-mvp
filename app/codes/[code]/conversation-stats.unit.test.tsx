@@ -42,6 +42,7 @@ const interaction = {
   lastAt: new Date("2026-06-12T10:05:00Z"),
   userMessageCount: 3,
   userId: "student-sub-1",
+  userName: null as string | null,
 };
 
 async function render(e = entry()) {
@@ -98,11 +99,22 @@ describe("non-anonymous code", () => {
     });
   });
 
-  it("shows the Students tile, the Student column, and the user id", async () => {
+  it("shows the Students tile, the Student column, and the user id (no name recorded)", async () => {
     const html = await render(entry({ anonymous: false }));
     expect(html).toContain("Students");
     expect(html).toContain(">Student<");
     expect(html).toContain("student-sub-1");
+  });
+
+  it("shows the resolved display name when present, with the oid kept as the hover title", async () => {
+    getCodeStats.mockResolvedValue({
+      conversations: 1,
+      studentCount: 1,
+      interactions: [{ ...interaction, userName: "Grace Hopper" }],
+    });
+    const html = await render(entry({ anonymous: false }));
+    expect(html).toContain("Grace Hopper");
+    expect(html).toContain('title="student-sub-1"');
   });
 
   it("forwards anonymous=false to the store", async () => {

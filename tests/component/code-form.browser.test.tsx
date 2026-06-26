@@ -26,10 +26,8 @@ vi.mock("@/lib/code-actions", () => ({
     updated.push({ code, formData });
     return updateResult;
   }),
-  deleteCodeAction: vi.fn(async () => ({ ok: true })),
 }));
-// DeleteCodeButton (rendered in edit mode) reads useRouter; BackLink uses next/link.
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: () => {}, refresh: () => {} }) }));
+// BackLink uses next/link.
 vi.mock("next/link", () => ({
   __esModule: true,
   default: ({ href, children }: { href: unknown; children: unknown }) => (

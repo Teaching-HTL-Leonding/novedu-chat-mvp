@@ -97,6 +97,25 @@ export const userChats = mssqlTable(
   ],
 );
 
+// One row per signed-in user: the Entra `oid` mapped to the display name the app
+// shows in its nav bar (the Entra `name` claim). Upserted on every interactive
+// sign-in (lib/user-name-store.ts, called from the auth `jwt` callback), so the
+// stored name tracks the user's current Entra display name. Its sole purpose is to
+// resolve the otherwise-opaque `oid` to a human name wherever a student id is shown
+// to a teacher — the writing savers list, the student text page, and the
+// conversation-stats table each LEFT-JOIN this table BY VALUE and fall back to the
+// raw oid when no row exists yet (a user who has not signed in since this table was
+// introduced). No history (the upsert overwrites), never garbage-collected, and no
+// foreign keys (same rule as the other novedu_* tables).
+export const users = mssqlTable("novedu_users", {
+  // The Entra `oid` — the same stable user key stored as `user_id` in the tables
+  // above. PK doubles as the lookup index for the joins.
+  userId: nvarchar("user_id", { length: 64 }).primaryKey(),
+  // The Entra `name` claim. Never blank: the upsert skips an empty name, so an
+  // absent name leaves no row and the oid is shown as the fallback instead.
+  displayName: nvarchar("display_name", { length: 256 }).notNull(),
+});
+
 // A user's recently used codes, backing the shortcuts on the chat entry page
 // (`/`). Pure convenience bookkeeping: the displayed label (the teacher's note)
 // is NOT duplicated here — the entry page joins novedu_codes, so codes whose row

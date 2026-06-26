@@ -30,13 +30,3 @@
   width: 1.05rem;
   height: 1.05rem;
 }
-
-/* Destructive variant — applied ALONGSIDE .iconButton by callers. */
-.iconButtonDanger {
-  border-color: color-mix(in srgb, crimson 45%, transparent);
-  color: color-mix(in srgb, crimson 78%, var(--foreground));
-}
-
-.iconButtonDanger:hover:not(:disabled) {
-  background: color-mix(in srgb, crimson 12%, transparent);
-}

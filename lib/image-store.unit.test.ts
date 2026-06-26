@@ -59,13 +59,7 @@ const blob = vi.hoisted(() => ({ deleteBlob: vi.fn() }));
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 vi.mock("@/lib/image-blob", () => ({ deleteBlob: blob.deleteBlob }));
 
-import {
-  confirmImage,
-  getActiveImage,
-  listImages,
-  softDeleteImage,
-  softDeleteImages,
-} from "@/lib/image-store";
+import { confirmImage, getActiveImage, listImages, softDeleteImages } from "@/lib/image-store";
 
 // A duplicate-key (unique index) violation as drizzle wraps it: cause chain with
 // the mssql error number.
@@ -188,54 +182,11 @@ describe("confirmImage", () => {
   });
 });
 
-describe("softDeleteImage", () => {
-  it("closes the active row and deletes the backing blob (outside the tx)", async () => {
-    fake.state.rows = [{ blobPath: "abc.png" }];
-    fake.state.closeResult = { rowsAffected: [1] };
-    await expect(softDeleteImage("diagram", "teacher-3")).resolves.toEqual({ ok: true });
-    expect(blob.deleteBlob).toHaveBeenCalledWith("abc.png");
-  });
-
-  it("returns not-found and never deletes a blob when nothing was active", async () => {
-    fake.state.rows = [];
-    await expect(softDeleteImage("ghost", "teacher-3")).resolves.toEqual({
-      ok: false,
-      reason: "not-found",
-    });
-    expect(blob.deleteBlob).not.toHaveBeenCalled();
-  });
-
-  it("treats a lost conditional-close race as not-found (no blob delete)", async () => {
-    fake.state.rows = [{ blobPath: "abc.png" }];
-    fake.state.closeResult = { rowsAffected: [0] };
-    await expect(softDeleteImage("diagram", "teacher-3")).resolves.toEqual({
-      ok: false,
-      reason: "not-found",
-    });
-    expect(blob.deleteBlob).not.toHaveBeenCalled();
-  });
-
-  it("returns reason:error on a database failure (no blob delete)", async () => {
-    fake.state.rows = [{ blobPath: "abc.png" }];
-    fake.state.updateError = new Error("down");
-    await expect(softDeleteImage("diagram", "teacher-3")).resolves.toEqual({
-      ok: false,
-      reason: "error",
-    });
-    expect(blob.deleteBlob).not.toHaveBeenCalled();
-  });
-
-  it("still reports success when the best-effort blob delete throws", async () => {
-    fake.state.rows = [{ blobPath: "abc.png" }];
-    blob.deleteBlob.mockRejectedValue(new Error("blob gone"));
-    await expect(softDeleteImage("diagram", "teacher-3")).resolves.toEqual({ ok: true });
-  });
-});
-
-// Bulk soft-delete reuses the SAME `closeActiveImage` primitive, looped in ONE
-// transaction; the blobs are removed best-effort AFTER it commits. These pin the
-// count of rows closed, the already-gone no-op, the all-or-nothing rollback, and
-// the empty-input short-circuit.
+// Bulk soft-delete (the list's "Delete Selected", the only delete path) loops the
+// `closeActiveImage` primitive in ONE transaction; the blobs are removed
+// best-effort AFTER it commits. These pin the count of rows closed, the already-gone
+// no-op, the lost conditional-close race, the all-or-nothing rollback, the swallowed
+// best-effort blob failure, and the empty-input short-circuit.
 describe("softDeleteImages", () => {
   it("closes every named image, counts the closed rows, and deletes each blob", async () => {
     fake.state.rows = [{ blobPath: "abc.png" }];
@@ -254,6 +205,26 @@ describe("softDeleteImages", () => {
       deleted: 0,
     });
     expect(blob.deleteBlob).not.toHaveBeenCalled();
+  });
+
+  it("treats a lost conditional-close race as not counted (no blob delete)", async () => {
+    fake.state.rows = [{ blobPath: "abc.png" }];
+    fake.state.closeResult = { rowsAffected: [0] };
+    await expect(softDeleteImages(["diagram"], "teacher-3")).resolves.toEqual({
+      ok: true,
+      deleted: 0,
+    });
+    expect(blob.deleteBlob).not.toHaveBeenCalled();
+  });
+
+  it("still succeeds (best-effort) when a blob delete throws", async () => {
+    fake.state.rows = [{ blobPath: "abc.png" }];
+    fake.state.closeResult = { rowsAffected: [1] };
+    blob.deleteBlob.mockRejectedValue(new Error("blob gone"));
+    await expect(softDeleteImages(["diagram"], "teacher-3")).resolves.toEqual({
+      ok: true,
+      deleted: 1,
+    });
   });
 
   it("rolls the whole batch back on a database error (no blob delete)", async () => {

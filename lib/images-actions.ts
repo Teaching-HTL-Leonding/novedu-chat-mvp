@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { extensionForImageMime, isImageMime, validateFileName } from "@/lib/file-name";
 import { deleteBlob, getBlobProperties, mintWriteSas } from "@/lib/image-blob";
-import { confirmImage, getActiveImage, softDeleteImage, softDeleteImages } from "@/lib/image-store";
+import { confirmImage, getActiveImage, softDeleteImages } from "@/lib/image-store";
 import { requireTeacherUserId } from "@/lib/student-mode";
 
 // Teacher-only server actions for the app-hosted IMAGE surface. Mirrors
@@ -150,29 +150,10 @@ export async function confirmImageUpload(
 }
 
 /**
- * Soft-deletes an image (and its backing blob, best-effort, inside the store).
- * Idempotent: an already-gone image still reports success so the row clears from
- * the list. Revalidates the list on completion. Mirrors `deleteFileAction`.
- */
-export async function deleteImageAction(name: string): Promise<{ ok: boolean }> {
-  const gate = await requireTeacherUserId();
-  if (!gate.ok) return { ok: false };
-
-  const result = await softDeleteImage(name, gate.userId);
-  if (!result.ok && result.reason === "error") {
-    return { ok: false };
-  }
-
-  revalidatePath("/images");
-  return { ok: true };
-}
-
-/**
- * Bulk soft-delete behind the images list's "Delete Selected" button. Teacher-only
- * (same gate as the single delete) and runs the SAME store primitive in one
- * transaction (`softDeleteImages`), so a multi-delete is identical, row for row,
- * to pressing each row's trash button. Revalidates the list on success. Mirrors
- * `deleteSelectedFilesAction`.
+ * Bulk soft-delete behind the images list's "Delete Selected" button — the only way
+ * to delete an image. Teacher-only; soft-deletes every selected image (and its
+ * backing blob, best-effort) in one transaction (`softDeleteImages`). Revalidates
+ * the list on success. Mirrors `deleteSelectedFilesAction`.
  */
 export async function deleteSelectedImagesAction(
   names: string[],

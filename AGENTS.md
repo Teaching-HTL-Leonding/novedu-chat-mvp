@@ -34,8 +34,9 @@ Deep reference for each subsystem lives in `docs/`. These docs are **not** auto-
 
 Read before touching: `auth.ts`, `proxy.ts`, sessions, teacher gating, student mode.
 
-- The app is gated by Microsoft Entra ID (Auth.js v5); the gate is `proxy.ts` at the repo root (Next 16 renamed the `middleware` convention to `proxy`).
+- The app is gated by Microsoft Entra ID (Auth.js v5); the gate is `proxy.ts` at the repo root (Next 16 renamed the `middleware` convention to `proxy`, which now defaults to the **Node.js runtime**).
 - Teacher gating goes through `requireEffectiveTeacher()` (`lib/student-mode.ts`), which honors student mode — see the security block.
+- The `oid` is resolved to a human name via **`novedu_users`** (oid → the nav-bar display name): the `jwt` callback upserts it once per sign-in (`lib/user-name-store.ts`, dynamically imported — the only DB write in auth, swallowed on error, never blocks sign-in), and the teacher review surfaces LEFT-JOIN it BY VALUE with the oid as fallback. No backfill (names fill in as users sign in), no history, no GC.
 
 ### Codes → `docs/codes.md`
 
@@ -56,7 +57,7 @@ Read before touching: `lib/writing-*.ts`, `app/[code]/_writing/**`, `app/[code]/
 - The `writing` module: a student writes Markdown in the `/files` CodeMirror editor (Markdown mode) on a split screen, an AI assistant gives feedback, and the student **saves** their text. It adds itself through the codes seams (descriptor with its `renderDetail` + registry line + label + student render case + a `writing` validator/`readAnonymousFlag` branch + the agent + the store) — the generic flow is untouched.
 - The assistant **reads** the live draft via the app's first frontend tool — the read-only, parameter-less **`getCurrentText`** (`useFrontendTool`, forwarded by `@ag-ui/mastra`) — and the `writing` agent has **no** write tool, so it **cannot edit the text** by construction.
 - `novedu_writing_submissions` (`lib/writing-store.ts`, the only access) holds one upserted row per `(code, student)` — no history, no foreign keys; saved only when non-anonymous; dropped by the code-delete paths (`deleteCodeRows`). Save is gated by `checkCode` + the session `oid`; the action re-rejects anonymous activities (live YAML read).
-- Writing **defaults `anonymous: false`** — see the security block. Teacher review (role-gated, read-only) is the **savers list** (`renderDetail` → `WritingSaversList`) → per-student text page (`/codes/[code]/s/[userId]`: full text + Prev/Next + the student's conversations in a lazy `<dialog>` lightbox via `loadConversationTranscript`); an anonymous writing code has no savers and falls back to `ConversationStats`. Student id is the `oid` (interim — issue #49).
+- Writing **defaults `anonymous: false`** — see the security block. Teacher review (role-gated, read-only) is the **savers list** (`renderDetail` → `WritingSaversList`) → per-student text page (`/codes/[code]/s/[userId]`: full text + Prev/Next + the student's conversations in a lazy `<dialog>` lightbox via `loadConversationTranscript`); an anonymous writing code has no savers and falls back to `ConversationStats`. The student is shown by **display name** (resolved from `novedu_users`, oid fallback — see the Auth block).
 - Student-authored Markdown is **untrusted**: the lightbox and the teacher's student-text page render it through the sanitized `MarkdownRenderer` (no `rehype-raw`).
 
 ### Chat (CopilotKit surface) → `docs/chat.md`
@@ -99,7 +100,7 @@ Read before touching: `components/data-list.tsx`, `components/list-filter-bar.ts
 
 - List filtering happens in the database, never in memory: filter state lives in URL search params → a parameterized `WHERE` (text via `containsAny`).
 - Build a list from the reusable pieces — `DataList` (server table) + `ListFilterBar` (client) — and wrap in `SelectionProvider` + `selectionColumn` + `DeleteSelectedButton` for multi-delete. The async list page needs a sibling `loading.tsx` rendering `<PageLoading>` (`app/page-loading.tsx`).
-- Multi-delete reuses the exact same per-item store delete as the per-row trash button (single and bulk share one `DbExecutor` helper; bulk loops it in one transaction). For codes the Mastra thread deletes run per-code outside that transaction (separate pool).
+- Delete is **bulk-only**: **"Delete Selected"** (multi-delete) is the ONLY way to delete a code/file/image — there is no per-row trash button and no edit-page single delete. The bulk action loops a per-item store helper (`closeActiveFile` / `closeActiveImage` / `deleteCodeRows`+`deleteCodeConversations`) inside one `DbExecutor` transaction. For codes the Mastra thread deletes run per-code outside that transaction (separate pool).
 - Aggregated columns are a single raw-SQL aggregate over the filtered set — never a query per row.
 
 ### Azure SQL, Drizzle & credentials → `docs/database.md`

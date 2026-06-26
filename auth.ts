@@ -1,6 +1,7 @@
 import NextAuth, { type DefaultSession } from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { resolveTeacher } from "@/lib/teacher";
+import { displayNameFromProfile } from "@/lib/user-name";
 
 // Extra, app-specific fields we remember on the session. They are computed once
 // at sign-in from the Entra ID-token claims and stored in the encrypted session
@@ -68,7 +69,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // `profile` (the decoded Entra ID token) is only present on sign-in. Derive
     // the teacher flag and remember the preferred username then; on later calls
     // the values already live on the token.
-    jwt: ({ token, profile }) => {
+    jwt: async ({ token, profile }) => {
       if (profile) {
         const { isTeacher, overage } = resolveTeacher(profile, TEACHER_GROUP_ID);
         if (overage) {
@@ -87,6 +88,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const oid = (profile as { oid?: unknown }).oid;
         if (typeof oid === "string") {
           token.oid = oid;
+        }
+        // Remember the user's nav-bar display name (the Entra `name` claim) keyed
+        // by their oid, so teacher review surfaces can resolve the otherwise-opaque
+        // id to a human name. This is the ONE database write in the auth flow: it
+        // runs only here, once per interactive sign-in (the `profile` guard), never
+        // on the per-request session decode. The store is imported DYNAMICALLY so
+        // the SQL driver stays off the proxy's hot path, and any error is swallowed
+        // — a database hiccup must never block sign-in (the name just isn't
+        // recorded, and the oid is the fallback wherever it would be shown).
+        const name = displayNameFromProfile(profile);
+        if (typeof oid === "string" && name !== null) {
+          try {
+            const { upsertUserName } = await import("@/lib/user-name-store");
+            await upsertUserName({ userId: oid, displayName: name });
+          } catch (error) {
+            console.error("[auth] recording the user display name failed", error);
+          }
         }
       }
       return token;

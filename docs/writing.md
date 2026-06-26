@@ -156,10 +156,12 @@ surfaces the error to its action.
   row.
 - `listSavers(code, { search? })` — the students who saved, **newest save first**,
   each with a count of their qualifying conversations (a correlated subquery joining
-  the Mastra tables by value — one round trip, no N+1) and an optional DB-side
-  `search` over the student id. It carries **no text bodies** (the list never loads
-  essay content); the student page loads one student's text on demand. Anonymous
-  codes hold no rows, so the list is empty.
+  the Mastra tables by value — one round trip, no N+1) and their **display name**
+  (a LEFT JOIN on `novedu_users`, `null` ⇒ the caller shows the `oid`; see
+  `docs/auth.md`). The optional DB-side `search` matches the name **or** the oid. It
+  carries **no text bodies** (the list never loads essay content); the student page
+  loads one student's text on demand. Anonymous codes hold no rows, so the list is
+  empty.
 
 There is **no delete here**: a code's saved texts are dropped inline by
 `deleteCodeRows` (`lib/code-stats-store.ts`) on code delete, not through this store
@@ -303,11 +305,12 @@ savers) it falls back to the shared `ConversationStats`. Both are called as **pl
 functions**, so no JSX lives in the server-only `.ts` descriptor.
 
 - **Savers list** — `WritingSaversList` calls `listSavers(code, { search })` and
-  renders a filtered `DataList` (newest save first): a **Student** column (the Entra
-  `oid`, interim until issue #49 supplies names) linking to the student's page, a
-  **Saved** time, and a **Conversations** count. A `ListFilterBar` search filters by
-  student id in the DB. There is **no saved-text length column** — that would load
-  every essay body; length lives on the student page instead.
+  renders a filtered `DataList` (newest save first): a **Student** column showing the
+  display name (`listSavers` LEFT-JOINs `novedu_users`; the raw Entra `oid` is the
+  fallback and stays the hover `title` — see `docs/auth.md`) linking to the student's
+  page, a **Saved** time, and a **Conversations** count. A `ListFilterBar` search
+  filters by name OR oid in the DB. There is **no saved-text length column** — that
+  would load every essay body; length lives on the student page instead.
 - **Student page** — `/codes/[code]/s/[userId]`
   (`app/codes/[code]/s/[userId]/page.tsx`) is the reading view: it loads the code
   (a notice unless it is a non-anonymous writing code), the student's `getSubmission`,
@@ -347,10 +350,10 @@ Saved texts are **not** garbage-collected. A `novedu_writing_submissions` row
 persists until its student overwrites it (the upsert) or the **code** is deleted.
 On code delete, `deleteCodeRows` (`lib/code-stats-store.ts`) drops the code's
 submissions alongside its `user_chats` / `recent_codes` rows (the code row last),
-so both single delete (`deleteCodeAndData`) and the list's "Delete Selected"
-(`deleteCodesAndData`, one Drizzle transaction — `docs/filtered-lists.md`) clean up
-saved texts with no separate path. There are no foreign keys, so the explicit drop
-is what keeps a deleted code's texts from lingering. Drizzle migrations apply at
+so the list's "Delete Selected" (`deleteCodesAndData`, one Drizzle transaction — the
+only delete path; `docs/filtered-lists.md`) cleans up saved texts with no separate
+path. There are no foreign keys, so the explicit drop is what keeps a deleted code's
+texts from lingering. Drizzle migrations apply at
 startup — see `docs/database.md`.
 
 ## Testing

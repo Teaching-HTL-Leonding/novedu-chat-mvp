@@ -1,6 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { writingSubmissions } from "@/lib/db/schema";
+import { users, writingSubmissions } from "@/lib/db/schema";
 import { containsAny } from "@/lib/db/text-filter";
 
 // Persistence for writing submissions in the `novedu_writing_submissions` SQL
@@ -88,6 +88,11 @@ export async function saveSubmission(input: {
 export interface Saver {
   /** The student's Entra `oid`. */
   userId: string;
+  /**
+   * The student's display name (resolved from `novedu_users`), or `null` when no
+   * name has been recorded yet — the caller falls back to the `oid` then.
+   */
+  displayName: string | null;
   /** Last save time, UTC. */
   textUpdatedAt: Date;
   /** Qualifying conversations this student had for this code (≥ 1 user message). */
@@ -97,18 +102,22 @@ export interface Saver {
 /**
  * Students who saved text for a code, newest save first, each with a count of
  * their qualifying conversations (threads with ≥ 1 user message). Backs the
- * teacher's savers list; the optional `search` filters by student id IN THE
- * DATABASE (docs/filtered-lists.md). NO text bodies are read — the list never
- * loads essay content. The conversation count is a correlated subquery joining the
- * Mastra tables BY VALUE (the sanctioned cross-table pattern; see code-stats-store)
- * in ONE round trip — no N+1. Anonymous codes have no rows, so the list is empty
- * for them. Never throws: an unreachable database reads as an empty list.
+ * teacher's savers list; the optional `search` filters by the student's display
+ * name OR oid IN THE DATABASE (docs/filtered-lists.md). The display name is resolved
+ * by a LEFT JOIN on `novedu_users` (BY VALUE, no FK — the sanctioned cross-table
+ * pattern), so a student with no recorded name simply comes back with
+ * `displayName: null` and the caller falls back to the oid. NO text bodies are read
+ * — the list never loads essay content. The conversation count is a correlated
+ * subquery joining the Mastra tables BY VALUE in ONE round trip — no N+1. Anonymous
+ * codes have no rows, so the list is empty for them. Never throws: an unreachable
+ * database reads as an empty list.
  */
 export async function listSavers(code: string, opts?: { search?: string }): Promise<Saver[]> {
   try {
     return await getDb()
       .select({
         userId: writingSubmissions.userId,
+        displayName: users.displayName,
         textUpdatedAt: writingSubmissions.textUpdatedAt,
         conversationCount: sql<number>`(
           SELECT COUNT(*) FROM mastra_threads t
@@ -122,10 +131,11 @@ export async function listSavers(code: string, opts?: { search?: string }): Prom
         )`.mapWith(Number),
       })
       .from(writingSubmissions)
+      .leftJoin(users, eq(users.userId, writingSubmissions.userId))
       .where(
         and(
           eq(writingSubmissions.code, code),
-          containsAny(opts?.search ?? "", [writingSubmissions.userId]),
+          containsAny(opts?.search ?? "", [writingSubmissions.userId, users.displayName]),
         ),
       )
       .orderBy(desc(writingSubmissions.textUpdatedAt));

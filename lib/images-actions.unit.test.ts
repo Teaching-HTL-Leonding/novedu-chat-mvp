@@ -15,7 +15,6 @@ const mocks = vi.hoisted(() => ({
   deleteBlob: vi.fn(),
   getActiveImage: vi.fn(),
   confirmImage: vi.fn(),
-  softDeleteImage: vi.fn(),
   softDeleteImages: vi.fn(),
   revalidatePath: vi.fn(),
 }));
@@ -29,14 +28,12 @@ vi.mock("@/lib/image-blob", () => ({
 vi.mock("@/lib/image-store", () => ({
   getActiveImage: mocks.getActiveImage,
   confirmImage: mocks.confirmImage,
-  softDeleteImage: mocks.softDeleteImage,
   softDeleteImages: mocks.softDeleteImages,
 }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 
 import {
   confirmImageUpload,
-  deleteImageAction,
   deleteSelectedImagesAction,
   requestImageUpload,
 } from "@/lib/images-actions";
@@ -56,7 +53,6 @@ beforeEach(() => {
   mocks.deleteBlob.mockResolvedValue(undefined);
   mocks.getActiveImage.mockResolvedValue(null); // name free by default
   mocks.confirmImage.mockResolvedValue({ ok: true, name: "diagram" });
-  mocks.softDeleteImage.mockResolvedValue({ ok: true });
   mocks.softDeleteImages.mockResolvedValue({ ok: true, deleted: 2 });
 });
 
@@ -266,38 +262,8 @@ describe("confirmImageUpload", () => {
   });
 });
 
-describe("deleteImageAction", () => {
-  it("rejects a non-teacher and never touches the store", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
-    const result = await deleteImageAction("diagram");
-    expect(result).toEqual({ ok: false });
-    expect(mocks.softDeleteImage).not.toHaveBeenCalled();
-  });
-
-  it("treats an already-gone image as success (idempotent), still revalidating", async () => {
-    mocks.softDeleteImage.mockResolvedValue({ ok: false, reason: "not-found" });
-    const result = await deleteImageAction("ghost");
-    expect(result).toEqual({ ok: true });
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/images");
-  });
-
-  it("reports a hard store error and does NOT revalidate", async () => {
-    mocks.softDeleteImage.mockResolvedValue({ ok: false, reason: "error" });
-    const result = await deleteImageAction("diagram");
-    expect(result).toEqual({ ok: false });
-    expect(mocks.revalidatePath).not.toHaveBeenCalled();
-  });
-
-  it("succeeds and revalidates on a real delete, passing the session user id", async () => {
-    const result = await deleteImageAction("diagram");
-    expect(result).toEqual({ ok: true });
-    expect(mocks.softDeleteImage).toHaveBeenCalledWith("diagram", "teacher-1");
-    expect(mocks.revalidatePath).toHaveBeenCalledWith("/images");
-  });
-});
-
-// The bulk delete behind the list's "Delete Selected": the SAME teacher gate as
-// the single delete and the SAME store primitive (`softDeleteImages`).
+// The bulk delete behind the list's "Delete Selected" — the only delete path: the
+// teacher gate and the `softDeleteImages` store primitive.
 describe("deleteSelectedImagesAction", () => {
   it("rejects a non-teacher and never touches the store", async () => {
     mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });

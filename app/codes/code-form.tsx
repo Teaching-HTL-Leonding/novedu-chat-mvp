@@ -14,7 +14,6 @@ import {
   unixSecondsToDatetimeLocal,
 } from "@/lib/datetime-local";
 import styles from "./code-form.module.css";
-import { DeleteCodeButton } from "./delete-code-button";
 
 const INITIAL_STATE: CodeFormState = { status: "idle" };
 
@@ -297,9 +296,6 @@ export function CodeForm({
             {pending ? (isEdit ? "Saving…" : "Creating…") : isEdit ? "Save changes" : "Create code"}
           </button>
           {isEdit && state.status === "saved" ? <span className={styles.saved}>Saved</span> : null}
-          {isEdit && code ? (
-            <DeleteCodeButton code={code} label={initialNote || code} redirectTo="/codes" />
-          ) : null}
         </div>
       </form>
 

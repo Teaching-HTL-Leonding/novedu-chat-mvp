@@ -97,6 +97,12 @@
   white-space: nowrap;
 }
 
+/* The header carries `.numCell` too, but `.table th` above out-specifies a bare
+   class; this compound selector wins so the numeric header right-aligns. */
+.table th.numCell {
+  text-align: right;
+}
+
 .actionsHeader {
   width: 1%;
 }

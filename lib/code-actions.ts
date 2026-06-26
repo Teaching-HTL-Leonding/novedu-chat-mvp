@@ -6,7 +6,7 @@ import { appHostedFetcher } from "@/lib/app-hosted-fetcher";
 import { resolveAppOrigin } from "@/lib/app-origin";
 import { codeModules } from "@/lib/code-modules/registry";
 import { isCodeModule } from "@/lib/code-modules/types";
-import { deleteCodeAndData, deleteCodesAndData } from "@/lib/code-stats-store";
+import { deleteCodesAndData } from "@/lib/code-stats-store";
 import { createCode, getCode, updateCode, validateCodeRequest } from "@/lib/code-store";
 import { requireTeacherUserId } from "@/lib/student-mode";
 import type { ValidationError } from "@/lib/tutors";
@@ -105,48 +105,15 @@ export async function createCodeAction(
   redirect(`/codes/edit/${stored.code}`);
 }
 
-export type DeleteCodeResult = { ok: true } | { ok: false; message: string };
-
-/**
- * Permanently deletes a code AND all of its conversation data (threads, messages,
- * attribution). Teacher-only but NOT owner-only: any effective teacher may delete
- * any code (finer-grained RBAC is planned). Data lives until deleted here.
- * `deleteCodeAndData` is idempotent, so deleting an already-gone code is a no-op
- * success. Revalidates the Codes list on success.
- */
-export async function deleteCodeAction(code: string): Promise<DeleteCodeResult> {
-  const gate = await requireTeacherUserId();
-  if (!gate.ok) {
-    return {
-      ok: false,
-      message:
-        gate.reason === "not-teacher"
-          ? "Only teachers can delete codes."
-          : "Your session carries no user id — sign in again.",
-    };
-  }
-
-  const deleted = await deleteCodeAndData(code);
-  if (!deleted) {
-    return {
-      ok: false,
-      message: "Some data could not be deleted. Try again — deletion is safe to repeat.",
-    };
-  }
-
-  revalidatePath("/codes");
-  return { ok: true };
-}
-
 /** The uniform shape every list's "Delete Selected" action returns. */
 export type DeleteSelectedResult = { ok: true; deleted: number } | { ok: false; message: string };
 
 /**
- * Bulk version behind the codes list's "Delete Selected" button. Teacher-only
- * (same gate, NOT owner-only — RBAC planned) and runs the SAME per-code logic as
- * the single delete via `deleteCodesAndData`, so a multi-delete is identical,
- * code for code, to pressing each row's trash button. Idempotent; revalidates the
- * list on success.
+ * Bulk delete behind the codes list's "Delete Selected" button — the only way to
+ * delete a code. Permanently removes each selected code AND all of its conversation
+ * data (threads, messages, attribution) via `deleteCodesAndData`. Teacher-only but
+ * NOT owner-only: any effective teacher may delete any code (finer-grained RBAC is
+ * planned). Idempotent; revalidates the list on success.
  */
 export async function deleteSelectedCodesAction(codes: string[]): Promise<DeleteSelectedResult> {
   const gate = await requireTeacherUserId();

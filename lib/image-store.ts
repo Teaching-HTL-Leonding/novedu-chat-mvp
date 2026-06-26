@@ -190,12 +190,11 @@ export type DeleteImageResult = { ok: true } | { ok: false; reason: "not-found" 
 
 /**
  * The ONE soft-delete primitive: closes an image's active row (`valid_until` +
- * `closed_by`) on the given executor — the root handle for a single delete, or a
- * transaction when a bulk caller batches several. A single conditional statement;
- * `not-found` (no active row) is NOT an error, so it never rolls a batch back. A
- * real DB error THROWS (so the surrounding transaction rolls back); the public
- * wrappers map that to `{ ok: false, reason: "error" }`. The blob deletion is the
- * caller's job — it happens OUTSIDE the row transaction.
+ * `closed_by`) on the given transaction executor — `softDeleteImages` loops it over
+ * the selected names. A single conditional statement; `not-found` (no active row)
+ * is NOT an error, so it never rolls a batch back. A real DB error THROWS so the
+ * surrounding transaction rolls back. The blob deletion is the caller's job — it
+ * happens OUTSIDE the row transaction.
  */
 async function closeActiveImage(
   executor: DbExecutor,
@@ -221,46 +220,16 @@ async function deleteBlobBestEffort(blobPath: string): Promise<void> {
   }
 }
 
-/**
- * Soft-deletes an image: closes its active row so no active version remains — the
- * list drops it, while the full history (including who deleted it) stays. The
- * backing blob is then removed best-effort, OUTSIDE the transaction, so a blob
- * failure never fails the delete. `not-found` if it was already gone.
- */
-export async function softDeleteImage(name: string, userId: string): Promise<DeleteImageResult> {
-  let blobPath: string | undefined;
-  try {
-    blobPath = await getDb().transaction(async (tx) => {
-      const rows = await tx
-        .select({ blobPath: images.blobPath })
-        .from(images)
-        .where(and(eq(images.name, name), isNull(images.validUntil)));
-      const active = rows[0];
-      if (!active) return undefined;
-
-      const result = await closeActiveImage(tx, name, userId, new Date());
-      // The conditional close raced and lost — treat as already gone.
-      return result.ok ? active.blobPath : undefined;
-    });
-  } catch (error) {
-    console.error("image-store: delete failed", error);
-    return { ok: false, reason: "error" };
-  }
-  if (!blobPath) return { ok: false, reason: "not-found" };
-  await deleteBlobBestEffort(blobPath);
-  return { ok: true };
-}
-
 export type DeleteImagesResult = { ok: boolean; deleted: number };
 
 /**
- * Bulk soft-delete (the list's "Delete Selected"): closes every named image in ONE
- * transaction, reusing the SAME `closeActiveImage` primitive as the single delete
- * so the per-image business logic can't drift. All-or-nothing for the ROWS — any
- * DB error rolls the whole batch back. The backing blobs are removed best-effort,
- * per-image, AFTER the transaction commits (a blob failure never fails the
- * delete). `deleted` counts the rows actually closed (an already-gone name is a
- * no-op success, exactly like the single path).
+ * Bulk soft-delete (the list's "Delete Selected", the only delete path): closes
+ * every named image in ONE transaction via the `closeActiveImage` primitive — the
+ * list then drops the row, while the full history (including who deleted it) stays.
+ * All-or-nothing for the ROWS — any DB error rolls the whole batch back. The backing
+ * blobs are removed best-effort, per-image, AFTER the transaction commits (a blob
+ * failure never fails the delete). `deleted` counts the rows actually closed (an
+ * already-gone name is a no-op success).
  */
 export async function softDeleteImages(
   names: string[],

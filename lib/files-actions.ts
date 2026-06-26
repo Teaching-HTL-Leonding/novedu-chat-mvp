@@ -9,7 +9,6 @@ import {
   type FileKind,
   getActiveFile,
   isFileKind,
-  softDeleteFile,
   softDeleteFiles,
   updateFile,
   validateFileName,
@@ -284,34 +283,13 @@ export async function validateExistingFileAction(
   return { ok: true, warnings: validation.warnings };
 }
 
-/**
- * Soft-deletes a file. Idempotent: an already-gone file reports success so the
- * row clears from the list. Revalidates the list on completion.
- */
-export async function deleteFileAction(
-  name: string,
-): Promise<{ ok: true } | { ok: false; message: string }> {
-  const gate = await requireTeacherUserId();
-  if (!gate.ok) return gateFailure(gate.reason, "delete");
-  const userId = gate.userId;
-
-  const result = await softDeleteFile(name, userId);
-  if (!result.ok && result.reason === "error") {
-    return { ok: false, message: "The file could not be deleted. Try again." };
-  }
-
-  revalidatePath("/files");
-  return { ok: true };
-}
-
 /** The uniform shape every list's "Delete Selected" action returns. */
 export type DeleteSelectedResult = { ok: true; deleted: number } | { ok: false; message: string };
 
 /**
- * Bulk soft-delete behind the files list's "Delete Selected" button. Teacher-only
- * (same gate as the single delete) and runs the SAME store primitive in one
- * transaction (`softDeleteFiles`), so a multi-delete is identical, row for row, to
- * pressing each row's trash button. Revalidates the list on success.
+ * Bulk soft-delete behind the files list's "Delete Selected" button — the only way
+ * to delete a file. Teacher-only; soft-deletes every selected file in one
+ * transaction (`softDeleteFiles`). Revalidates the list on success.
  */
 export async function deleteSelectedFilesAction(names: string[]): Promise<DeleteSelectedResult> {
   const gate = await requireTeacherUserId();

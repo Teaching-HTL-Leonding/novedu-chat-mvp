@@ -43,6 +43,7 @@ describe("rows", () => {
     listSavers.mockResolvedValue([
       {
         userId: "student-oid-1",
+        displayName: null,
         textUpdatedAt: new Date("2026-06-12T10:00:00Z"),
         conversationCount: 2,
       },
@@ -65,6 +66,37 @@ describe("rows", () => {
   it("passes the search term to the store", async () => {
     await render({ search: "ada" });
     expect(listSavers).toHaveBeenCalledWith(CODE, { search: "ada" });
+  });
+});
+
+describe("display name resolution", () => {
+  it("shows the resolved display name, with the oid kept as the hover title", async () => {
+    listSavers.mockResolvedValue([
+      {
+        userId: "student-oid-1",
+        displayName: "Ada Lovelace",
+        textUpdatedAt: new Date("2026-06-12T10:00:00Z"),
+        conversationCount: 0,
+      },
+    ]);
+    const html = await render();
+    expect(html).toContain("Ada Lovelace");
+    expect(html).toContain('title="student-oid-1"');
+    // The link still targets the oid (names are not unique or stable URL keys).
+    expect(html).toContain(`/codes/${CODE}/s/student-oid-1`);
+  });
+
+  it("falls back to the oid when no name has been recorded", async () => {
+    listSavers.mockResolvedValue([
+      {
+        userId: "student-oid-1",
+        displayName: null,
+        textUpdatedAt: new Date("2026-06-12T10:00:00Z"),
+        conversationCount: 0,
+      },
+    ]);
+    const html = await render();
+    expect(html).toContain(">student-oid-1<");
   });
 });
 
