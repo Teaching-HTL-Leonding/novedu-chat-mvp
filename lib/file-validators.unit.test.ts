@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Layer-2 validator seam + the runtime-light readAnonymousFlag, both keyed by
-// FileKind. The underlying loaders (lib/tutors, lib/quiz-fetch, lib/quiz-yaml) are
-// mocked so this is hermetic — it asserts the MAPPING each kind performs (which
-// loader, which options, how the result is shaped), not the parsing itself.
+// FileKind. The underlying loaders (lib/tutors, lib/quiz-validate, lib/quiz-fetch,
+// lib/writing-validate, lib/writing-fetch) are mocked so this is hermetic — it
+// asserts the MAPPING each kind performs (which loader, which options, how the
+// result is shaped), not the validation itself.
 
 const mocks = vi.hoisted(() => ({
   loadAndBuildTutorPrompt: vi.fn(),
   loadAndCheckFragmentFile: vi.fn(),
   loadQuiz: vi.fn(),
-  parseQuiz: vi.fn(),
+  loadAndCheckQuiz: vi.fn(),
   loadWriting: vi.fn(),
-  parseWriting: vi.fn(),
+  loadAndCheckWriting: vi.fn(),
 }));
 
 vi.mock("@/lib/tutors", () => ({
@@ -20,9 +21,9 @@ vi.mock("@/lib/tutors", () => ({
   loadAndCheckFragmentFile: mocks.loadAndCheckFragmentFile,
 }));
 vi.mock("@/lib/quiz-fetch", () => ({ loadQuiz: mocks.loadQuiz }));
-vi.mock("@/lib/quiz-yaml", () => ({ parseQuiz: mocks.parseQuiz }));
+vi.mock("@/lib/quiz-validate", () => ({ loadAndCheckQuiz: mocks.loadAndCheckQuiz }));
 vi.mock("@/lib/writing-fetch", () => ({ loadWriting: mocks.loadWriting }));
-vi.mock("@/lib/writing-yaml", () => ({ parseWriting: mocks.parseWriting }));
+vi.mock("@/lib/writing-validate", () => ({ loadAndCheckWriting: mocks.loadAndCheckWriting }));
 
 import { fileValidators, readAnonymousFlag } from "@/lib/file-validators";
 
@@ -97,88 +98,71 @@ describe("fileValidators.fragment", () => {
   });
 });
 
-describe("fileValidators.quiz (lenient stub — never blocks)", () => {
-  it("extracts anonymous/title and emits the NOT_IMPLEMENTED warning", async () => {
-    fetcher.mockResolvedValue({ ok: true, text: async () => "yaml" });
-    mocks.parseQuiz.mockReturnValue({ ok: true, quiz: { anonymous: false, title: "Q" } });
+describe("fileValidators.quiz (strict gate — blocks an invalid quiz)", () => {
+  it("delegates to loadAndCheckQuiz and maps title/anonymous + warnings", async () => {
+    mocks.loadAndCheckQuiz.mockResolvedValue({
+      ok: true,
+      warnings: ["w"],
+      anonymous: false,
+      title: "Q",
+      quizId: "q",
+      model: "m",
+      questionCount: 3,
+    });
     const result = await fileValidators.quiz.validate(URL_, fetcher);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.anonymous).toBe(false);
-      expect(result.title).toBe("Q");
-      expect(result.warnings.map((w) => w.code)).toContain("QUIZ_VALIDATION_NOT_IMPLEMENTED");
-    }
-  });
-
-  it("keeps the privacy-safe defaults when the fetch fails", async () => {
-    fetcher.mockResolvedValue({ ok: false });
-    expect(await fileValidators.quiz.validate(URL_, fetcher)).toMatchObject({
+    expect(mocks.loadAndCheckQuiz).toHaveBeenCalledWith(URL_, fetcher);
+    expect(result).toEqual({
       ok: true,
-      anonymous: true,
-      title: null,
-    });
-    expect(mocks.parseQuiz).not.toHaveBeenCalled();
-  });
-
-  it("stays lenient (ok) when the fetcher throws", async () => {
-    fetcher.mockRejectedValue(new Error("network"));
-    expect(await fileValidators.quiz.validate(URL_, fetcher)).toMatchObject({
-      ok: true,
-      anonymous: true,
-      title: null,
+      warnings: ["w"],
+      title: "Q",
+      description: null,
+      anonymous: false,
     });
   });
 
-  it("keeps defaults when the parse fails", async () => {
-    fetcher.mockResolvedValue({ ok: true, text: async () => "bad" });
-    mocks.parseQuiz.mockReturnValue({ ok: false });
-    expect(await fileValidators.quiz.validate(URL_, fetcher)).toMatchObject({
-      ok: true,
-      anonymous: true,
-      title: null,
+  it("propagates the structured errors on a failed check (blocks the save)", async () => {
+    mocks.loadAndCheckQuiz.mockResolvedValue({
+      ok: false,
+      errors: [{ code: "QUIZ_SCHEMA_ERROR", message: "m" }],
+      warnings: [],
+    });
+    expect(await fileValidators.quiz.validate(URL_, fetcher)).toEqual({
+      ok: false,
+      errors: [{ code: "QUIZ_SCHEMA_ERROR", message: "m" }],
     });
   });
 });
 
-describe("fileValidators.writing (lenient stub — never blocks)", () => {
-  it("extracts anonymous/title and emits the NOT_IMPLEMENTED warning", async () => {
-    fetcher.mockResolvedValue({ ok: true, text: async () => "yaml" });
-    mocks.parseWriting.mockReturnValue({ ok: true, writing: { anonymous: false, title: "W" } });
+describe("fileValidators.writing (strict gate — blocks an invalid activity)", () => {
+  it("delegates to loadAndCheckWriting and maps title/anonymous + warnings", async () => {
+    mocks.loadAndCheckWriting.mockResolvedValue({
+      ok: true,
+      warnings: [],
+      anonymous: false,
+      title: "W",
+      writingId: "w",
+      model: "m",
+    });
     const result = await fileValidators.writing.validate(URL_, fetcher);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.anonymous).toBe(false);
-      expect(result.title).toBe("W");
-      expect(result.warnings.map((w) => w.code)).toContain("WRITING_VALIDATION_NOT_IMPLEMENTED");
-    }
-  });
-
-  it("DEFAULTS anonymous to FALSE (the writing divergence) when the fetch fails", async () => {
-    fetcher.mockResolvedValue({ ok: false });
-    expect(await fileValidators.writing.validate(URL_, fetcher)).toMatchObject({
+    expect(mocks.loadAndCheckWriting).toHaveBeenCalledWith(URL_, fetcher);
+    expect(result).toEqual({
       ok: true,
+      warnings: [],
+      title: "W",
+      description: null,
       anonymous: false,
-      title: null,
-    });
-    expect(mocks.parseWriting).not.toHaveBeenCalled();
-  });
-
-  it("stays lenient (ok, anonymous:false) when the fetcher throws", async () => {
-    fetcher.mockRejectedValue(new Error("network"));
-    expect(await fileValidators.writing.validate(URL_, fetcher)).toMatchObject({
-      ok: true,
-      anonymous: false,
-      title: null,
     });
   });
 
-  it("keeps the false default when the parse fails", async () => {
-    fetcher.mockResolvedValue({ ok: true, text: async () => "bad" });
-    mocks.parseWriting.mockReturnValue({ ok: false });
-    expect(await fileValidators.writing.validate(URL_, fetcher)).toMatchObject({
-      ok: true,
-      anonymous: false,
-      title: null,
+  it("propagates the structured errors on a failed check (blocks the save)", async () => {
+    mocks.loadAndCheckWriting.mockResolvedValue({
+      ok: false,
+      errors: [{ code: "WRITING_SCHEMA_ERROR", message: "m" }],
+      warnings: [],
+    });
+    expect(await fileValidators.writing.validate(URL_, fetcher)).toEqual({
+      ok: false,
+      errors: [{ code: "WRITING_SCHEMA_ERROR", message: "m" }],
     });
   });
 });

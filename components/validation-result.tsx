@@ -18,9 +18,10 @@ type OkFragment = Extract<FragmentCheckResult, { ok: true }>;
 export function locationOf(item: {
   fileAlias?: string;
   fragmentId?: string;
+  questionId?: string;
   variable?: string;
 }): string | null {
-  const parts = [item.fileAlias, item.fragmentId].filter(Boolean).join(" / ");
+  const parts = [item.fileAlias, item.fragmentId, item.questionId].filter(Boolean).join(" / ");
   if (!parts && !item.variable) return null;
   return item.variable ? `${parts}${parts ? " · " : ""}${item.variable}` : parts;
 }
@@ -35,7 +36,7 @@ export function ErrorList({ errors }: { errors: ValidationError[] }) {
           const issues = err.zodIssues ? formatZodIssues(err.zodIssues) : [];
           return (
             <li
-              key={`${err.code}-${err.fragmentId ?? ""}-${err.variable ?? ""}-${err.message}`}
+              key={`${err.code}-${err.fragmentId ?? ""}-${err.questionId ?? ""}-${err.variable ?? ""}-${err.message}`}
               className={styles.error}
             >
               <span className={styles.code}>{err.code}</span>

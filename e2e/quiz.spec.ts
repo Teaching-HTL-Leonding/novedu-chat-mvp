@@ -73,7 +73,7 @@ test("author → code → answer → discuss", { tag: ["@live", "@live-llm"] }, 
 
   const name = `e2e-quiz-${Date.now()}`;
 
-  // 1. Author the quiz file (kind=quiz → stored without structural checks).
+  // 1. Author the quiz file (kind=quiz → structurally validated, then stored).
   await page.goto("/files/new");
   await page.getByLabel(/Name/).fill(name);
   await page.getByLabel("Kind").selectOption("quiz");

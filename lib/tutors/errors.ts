@@ -23,19 +23,21 @@ export type ErrorCode =
   // own declared `input_schema` — a Handlebars syntax error or a reference to a
   // variable the fragment never declares. Surfaced by the standalone fragment
   // check and by thorough tutor validation (whole-library check).
-  | "FRAGMENT_TEMPLATE_ERROR";
+  | "FRAGMENT_TEMPLATE_ERROR"
+  // The quiz / writing YAML does not match its schema (a missing/misspelled field,
+  // a wrong type, no `llm.model`, no questions / no instructions). The quiz/writing
+  // validators are strict authoring gates, exactly like the tutor/fragment ones.
+  | "QUIZ_SCHEMA_ERROR"
+  | "WRITING_SCHEMA_ERROR"
+  // The same quiz question `id` is declared on more than one question (per-question
+  // stats key must be unique).
+  | "DUPLICATE_QUIZ_QUESTION_ID";
 
 /** Non-fatal smells: the prompt still builds, but something is worth flagging. */
 export type WarningCode =
   | "UNDECLARED_VARIABLE"
   | "DUPLICATE_FRAGMENT_REFERENCE"
-  | "REQUIRED_PROPERTY_HAS_DEFAULT"
-  // Emitted by the quiz-kind save/validate path: quizzes are stored WITHOUT
-  // structural checks for the MVP (no quiz validator yet — see docs/quizzes.md).
-  | "QUIZ_VALIDATION_NOT_IMPLEMENTED"
-  // Emitted by the writing-kind save/validate path: writing activities are stored
-  // WITHOUT structural checks (no writing validator yet — see docs/writing.md).
-  | "WRITING_VALIDATION_NOT_IMPLEMENTED";
+  | "REQUIRED_PROPERTY_HAS_DEFAULT";
 
 export interface ValidationError {
   code: ErrorCode;
@@ -47,6 +49,8 @@ export interface ValidationError {
   fileAlias?: string;
   /** The fragment id within that file (e.g. `socratic_tutor`). */
   fragmentId?: string;
+  /** The quiz question id (e.g. a duplicate-question-id error). */
+  questionId?: string;
   /** The offending variable name (missing/typed wrong). */
   variable?: string;
   expectedType?: string;

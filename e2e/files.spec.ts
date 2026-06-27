@@ -75,21 +75,33 @@ test.describe("as a teacher", () => {
     await expect(page).toHaveURL(/\/files\/new$/);
   });
 
-  // Hermetic: a quiz is NOT structurally validated (MVP stub) — Validate must
-  // PASS with the "not implemented" warning and never store. No DB or network.
-  test("a quiz validates with the not-implemented warning (no structural check)", async ({
-    page,
-  }) => {
+  // Hermetic: a quiz is structurally validated exactly like a fragment — an
+  // invalid quiz (no llm.model, no questions) reports QUIZ_SCHEMA_ERROR and is
+  // never stored, so we stay on the create page. No DB or network.
+  test("an invalid quiz reports QUIZ_SCHEMA_ERROR without creating", async ({ page }) => {
     await page.goto("/files/new");
     await page.getByLabel(/Name/).fill("validate-quiz");
     await page.getByLabel("Kind").selectOption("quiz");
-    // Deliberately minimal/structurally-unchecked content — the stub accepts it.
-    await setEditorContent(page, "id: q\nquestions: []\n");
+    await setEditorContent(page, "id: incomplete\nquestions: []\n");
     await page.getByRole("button", { name: "Validate", exact: true }).click();
 
-    await expect(page.getByText(/Quiz validation is not implemented yet/i)).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(page.getByText("QUIZ_SCHEMA_ERROR")).toBeVisible({ timeout: 30_000 });
+    await expect(page).toHaveURL(/\/files\/new$/);
+  });
+
+  // Hermetic: a writing activity is structurally validated exactly like a quiz —
+  // an invalid activity (no llm.model, no instructions) reports
+  // WRITING_SCHEMA_ERROR and is never stored. No DB or network.
+  test("an invalid writing activity reports WRITING_SCHEMA_ERROR without creating", async ({
+    page,
+  }) => {
+    await page.goto("/files/new");
+    await page.getByLabel(/Name/).fill("validate-writing");
+    await page.getByLabel("Kind").selectOption("writing");
+    await setEditorContent(page, "id: incomplete\n");
+    await page.getByRole("button", { name: "Validate", exact: true }).click();
+
+    await expect(page.getByText("WRITING_SCHEMA_ERROR")).toBeVisible({ timeout: 30_000 });
     await expect(page).toHaveURL(/\/files\/new$/);
   });
 });

@@ -135,14 +135,14 @@ rest of the app:
   strict-rendered), matching share time and the validate page. Returns
   `title`/`description` for the denormalized columns.
 - **fragment** → `loadAndCheckFragmentFile(selfUrl, selfFetcher)`.
-- **quiz** → a **STUB**: returns OK + a single `QUIZ_VALIDATION_NOT_IMPLEMENTED`
-  warning and NULL `title`/`description` — quizzes have no structural validator in
-  the MVP, so saving never blocks and the Validate button passes for any quiz YAML
-  (the lenient parse happens only at run time — see `docs/codes.md`).
-- **writing** → likewise a **STUB**: returns OK + a single
-  `WRITING_VALIDATION_NOT_IMPLEMENTED` warning, parsing the YAML only to surface
-  `title` and the `anonymous` flag (which defaults **`false`** for writing — see
-  `docs/writing.md`); it never blocks save.
+- **quiz** → `loadAndCheckQuiz(selfUrl, selfFetcher)` (`lib/quiz-validate.ts`): a
+  strict authoring gate — the `QuizYamlSchema` Zod check plus a duplicate-question-id
+  pass — that **blocks** an invalid save and surfaces `title` + the `anonymous` flag
+  (NULL `description`). The lenient runtime `parseQuiz` is separate (see `docs/codes.md`).
+- **writing** → `loadAndCheckWriting(selfUrl, selfFetcher)` (`lib/writing-validate.ts`):
+  likewise a strict `WritingYamlSchema` gate that **blocks** an invalid save and
+  surfaces `title` + the `anonymous` flag (which defaults **`false`** for writing — see
+  `docs/writing.md`).
 
 The create-file kind selector therefore offers **tutor / fragment / quiz / writing**,
 and the `/files` list adds a single **"Create code"** action on every row whose kind

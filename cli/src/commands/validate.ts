@@ -1,22 +1,34 @@
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Command } from "commander";
+import { loadAndCheckQuiz, type QuizCheckResult } from "@/lib/quiz-validate";
 import {
   type BuildResult,
   type FragmentCheckResult,
   loadAndBuildTutorPrompt,
   loadAndCheckFragmentFile,
 } from "@/lib/tutors";
+import { loadAndCheckWriting, type WritingCheckResult } from "@/lib/writing-validate";
 import { cliFetcher } from "../file-fetcher";
-import { formatFragmentResult, formatResult } from "../format";
+import {
+  formatFragmentResult,
+  formatQuizResult,
+  formatResult,
+  formatWritingResult,
+} from "../format";
 
 /** What the input YAML is validated AS — declared by the caller, never auto-detected. */
-export type ValidateKind = "tutor" | "fragment";
+export type ValidateKind = "tutor" | "fragment" | "quiz" | "writing";
+
+/** Every kind the `--kind` flag accepts (used for the option help + guard). */
+export const VALIDATE_KINDS: readonly ValidateKind[] = ["tutor", "fragment", "quiz", "writing"];
 
 /** The CLI-local outcome: the raw core result tagged with the kind that produced it, so the command can pick a formatter without re-deriving it. */
 export type ValidateOutcome =
   | { kind: "tutor"; result: BuildResult }
-  | { kind: "fragment"; result: FragmentCheckResult };
+  | { kind: "fragment"; result: FragmentCheckResult }
+  | { kind: "quiz"; result: QuizCheckResult }
+  | { kind: "writing"; result: WritingCheckResult };
 
 /**
  * Turn the CLI argument into a URL the tutor core understands: an http(s) URL is
@@ -38,26 +50,45 @@ export function toUrl(pathOrUrl: string): string {
 export function runValidate(pathOrUrl: string, kind: ValidateKind): Promise<ValidateOutcome> {
   const url = toUrl(pathOrUrl);
   const allowedSchemes = ["http:", "https:", "file:"];
-  if (kind === "fragment") {
-    return loadAndCheckFragmentFile(url, cliFetcher, { allowedSchemes }).then((result) => ({
-      kind,
-      result,
-    }));
+  switch (kind) {
+    case "fragment":
+      return loadAndCheckFragmentFile(url, cliFetcher, { allowedSchemes }).then((result) => ({
+        kind,
+        result,
+      }));
+    case "quiz":
+      return loadAndCheckQuiz(url, cliFetcher, { allowedSchemes }).then((result) => ({
+        kind,
+        result,
+      }));
+    case "writing":
+      return loadAndCheckWriting(url, cliFetcher, { allowedSchemes }).then((result) => ({
+        kind,
+        result,
+      }));
+    default:
+      return loadAndBuildTutorPrompt(url, cliFetcher, {
+        allowedSchemes,
+        validateLibraries: true,
+      }).then((result) => ({ kind, result }));
   }
-  return loadAndBuildTutorPrompt(url, cliFetcher, {
-    allowedSchemes,
-    validateLibraries: true,
-  }).then((result) => ({ kind, result }));
 }
 
 export function registerValidate(program: Command): void {
   program
     .command("validate")
     .description(
-      "Validate a tutor YAML (default) or a fragment library by local path or public http(s) URL",
+      "Validate a tutor (default), fragment library, quiz or writing YAML by local path or public http(s) URL",
     )
-    .argument("<pathOrUrl>", "path to a tutor or fragment YAML file, or a public http(s) URL")
-    .option("--kind <kind>", "what the file is: 'tutor' (default) or 'fragment'", "tutor")
+    .argument(
+      "<pathOrUrl>",
+      "path to a tutor, fragment, quiz or writing YAML file, or a public http(s) URL",
+    )
+    .option(
+      "--kind <kind>",
+      `what the file is: ${VALIDATE_KINDS.map((k) => `'${k}'`).join(", ")} ('tutor' is the default)`,
+      "tutor",
+    )
     .option("--json", "print the raw validation result as JSON")
     .addHelpText(
       "after",
@@ -69,27 +100,43 @@ Examples:
   # Validate a fragment library on its own
   $ novedu-cli validate ./tutors/my-fragments.yaml --kind fragment
 
+  # Validate a quiz or a writing activity
+  $ novedu-cli validate ./quizzes/my-quiz.yaml --kind quiz
+  $ novedu-cli validate ./writings/my-writing.yaml --kind writing
+
   # Machine-readable output for CI
   $ novedu-cli validate https://example.com/tutor.yaml --json`,
     )
     .action(async (pathOrUrl: string, options: { kind?: string; json?: boolean }) => {
-      if (options.kind !== undefined && options.kind !== "tutor" && options.kind !== "fragment") {
-        console.error(`Invalid --kind "${options.kind}": expected "tutor" or "fragment".`);
+      if (options.kind !== undefined && !VALIDATE_KINDS.includes(options.kind as ValidateKind)) {
+        console.error(
+          `Invalid --kind "${options.kind}": expected ${VALIDATE_KINDS.map((k) => `"${k}"`).join(", ")}.`,
+        );
         process.exitCode = 1;
         return;
       }
-      const kind: ValidateKind = options.kind === "fragment" ? "fragment" : "tutor";
+      const kind = (options.kind ?? "tutor") as ValidateKind;
       const outcome = await runValidate(pathOrUrl, kind);
       if (options.json) {
         console.log(JSON.stringify(outcome.result, null, 2));
       } else {
-        console.log(
-          outcome.kind === "fragment"
-            ? formatFragmentResult(outcome.result, pathOrUrl)
-            : formatResult(outcome.result, pathOrUrl),
-        );
+        console.log(formatOutcome(outcome, pathOrUrl));
       }
       // Non-zero exit on failure so the CLI is usable as a CI/pre-commit gate.
       process.exitCode = outcome.result.ok ? 0 : 1;
     });
+}
+
+/** Pick the formatter for the outcome's kind (each result type has its own renderer). */
+function formatOutcome(outcome: ValidateOutcome, source: string): string {
+  switch (outcome.kind) {
+    case "fragment":
+      return formatFragmentResult(outcome.result, source);
+    case "quiz":
+      return formatQuizResult(outcome.result, source);
+    case "writing":
+      return formatWritingResult(outcome.result, source);
+    default:
+      return formatResult(outcome.result, source);
+  }
 }

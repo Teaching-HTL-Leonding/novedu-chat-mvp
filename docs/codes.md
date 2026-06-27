@@ -64,13 +64,15 @@ siblings) AND by code-create (fetcher = `appHostedFetcher`; url = the row's
 - `fragment` → `loadAndCheckFragmentFile`: a real validator with **no module** —
   the canonical "validator without a module." A future pure library kind likewise
   adds only a validator entry.
-- `quiz` → a lenient stub: it parses (`parseQuiz`) to surface `anonymous`/`title`
-  but still emits a non-blocking `QUIZ_VALIDATION_NOT_IMPLEMENTED` warning, so
-  saving a quiz never blocks. Upgrading this to a real structural validator is a
-  one-spot change here, picked up by `/files` save AND code-create at once.
-- `writing` → the same kind of lenient stub (`parseWriting`,
-  `WRITING_VALIDATION_NOT_IMPLEMENTED`), differing only in that a parse failure
-  keeps writing's `anonymous: false` default — see `docs/writing.md`.
+- `quiz` → `loadAndCheckQuiz` (`lib/quiz-validate.ts`): a strict authoring gate —
+  the `QuizYamlSchema` Zod check plus a duplicate-question-id pass — that **blocks**
+  an invalid save and surfaces `anonymous`/`title`. The lenient runtime `parseQuiz`
+  (`lib/quiz-yaml.ts`) is a separate, deliberately permissive read for the student
+  path. The same validator backs `/files` save, code-create, and the
+  `novedu-cli validate --kind quiz` command.
+- `writing` → `loadAndCheckWriting` (`lib/writing-validate.ts`): the same kind of
+  strict `WritingYamlSchema` gate, differing only in that writing defaults
+  `anonymous: false` — see `docs/writing.md`.
 
 **Layer 3 — the `CodeModule` registry** (`lib/code-modules/`): the registry of
 shareable activities.

@@ -23,13 +23,13 @@ through exactly that fixed set of seams; nothing in the generic flow changes.
 - **FileKind** — `writing` joins the `FileKind` union (`lib/file-name.ts`), so the
   `/files` kind selector and `novedu_files.kind` carry it.
 - **Validator** — `writingValidator` in `fileValidators` (`lib/file-validators.ts`)
-  is a **lenient stub** exactly like `quizValidator`: it parses the YAML to surface
-  `title` and `anonymous`, emits a non-blocking `WRITING_VALIDATION_NOT_IMPLEMENTED`
-  warning, and never blocks save. A parse failure keeps the writing default
-  (`anonymous: false`, below). The `readAnonymousFlag` `writing` branch (same file)
-  reads the flag **live** from the YAML for the runtime attribution path. A real
-  structural validator later is a one-spot change here, picked up by `/files` save
-  AND code-create at once.
+  is a strict authoring gate exactly like `quizValidator`: it delegates to
+  `loadAndCheckWriting` (`lib/writing-validate.ts`), which runs the `WritingYamlSchema`
+  Zod check and **blocks** an invalid save, surfacing `title` and `anonymous` on
+  success. Writing defaults `anonymous: false` (below). The `readAnonymousFlag`
+  `writing` branch (same file) stays a **lenient** live read for the runtime
+  attribution path — deliberately separate from this strict gate. The same validator
+  backs `/files` save, code-create, and `novedu-cli validate --kind writing`.
 - **CodeModule descriptor** — `lib/code-modules/writing.ts` exports `writingModule:
   CodeModuleDef` with `fileKind: "writing"`, `validateOnCreate` delegating to
   `fileValidators.writing.validate`, a `runtime` (`agentId: "writing"`,

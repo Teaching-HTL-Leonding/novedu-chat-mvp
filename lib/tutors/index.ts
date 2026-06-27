@@ -10,14 +10,19 @@ export type {
   ValidationWarning,
   WarningCode,
 } from "./errors";
-export { formatZodIssues } from "./errors";
+export { error, formatZodIssues } from "./errors";
 export { defaultFetcher, type Fetcher, type FetchResponse } from "./fetcher";
 export {
   checkFragmentFileValue,
   checkFragmentTemplates,
   findDuplicateFragmentIds,
 } from "./fragment";
-export { type LoadOptions, loadAndBuildTutorPrompt, loadAndCheckFragmentFile } from "./load";
+export {
+  type LoadOptions,
+  loadAndBuildTutorPrompt,
+  loadAndCheckFragmentFile,
+  loadYaml,
+} from "./load";
 export { parseYaml, validate } from "./parse";
 export { sampleExampleQuestions } from "./sample";
 export {

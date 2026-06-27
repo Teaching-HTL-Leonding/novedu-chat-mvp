@@ -1,0 +1,16 @@
+# INTENTIONALLY BROKEN writing activity — committed for manual testing of validation.
+#
+# This file misspells `instructions` as `instructons`, so it is MISSING the
+# required coach prompt and carries an UNRECOGNIZED key. Validating it — in the
+# app's YAML Files page, or with
+# `novedu-cli validate writings/broken-writing.yaml --kind writing` — reports a
+# WRITING_SCHEMA_ERROR and refuses to save. Fix the typo (`instructons` →
+# `instructions`) to make it valid.
+id: broken-writing
+name: "Broken Writing — for testing"
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+instructons: |
+  You are an encouraging writing coach. Read the draft with `getCurrentText`
+  before giving feedback, and advise rather than rewrite.
+placeholder: ""

@@ -21,7 +21,11 @@ export function parseYaml(
 export function validate<T>(
   value: unknown,
   schema: z.ZodType<T>,
-  code: "TUTOR_SCHEMA_ERROR" | "FRAGMENT_FILE_SCHEMA_ERROR",
+  code:
+    | "TUTOR_SCHEMA_ERROR"
+    | "FRAGMENT_FILE_SCHEMA_ERROR"
+    | "QUIZ_SCHEMA_ERROR"
+    | "WRITING_SCHEMA_ERROR",
   url?: string,
 ): { ok: true; data: T } | { ok: false; error: ValidationError } {
   const result = schema.safeParse(value);

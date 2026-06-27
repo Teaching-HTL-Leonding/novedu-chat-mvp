@@ -80,10 +80,11 @@ const DEFAULT_ALLOWED_SCHEMES = ["http:", "https:"];
 /**
  * The shared front of every load: enforce the URL scheme allow-list (SSRF guard),
  * fetch the document, and parse it as YAML — returning the parsed-but-not-yet-schema-
- * validated value or the first structured error. Reused by the tutor builder and the
- * standalone fragment checker so both gate schemes identically.
+ * validated value or the first structured error. Reused by the tutor builder, the
+ * standalone fragment checker, and the quiz/writing validators so they all gate
+ * schemes identically.
  */
-async function loadYaml(
+export async function loadYaml(
   url: string,
   fetchImpl: Fetcher,
   opts: LoadOptions = {},

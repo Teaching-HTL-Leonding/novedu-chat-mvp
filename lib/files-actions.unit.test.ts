@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   getActiveFile: vi.fn(),
   loadAndBuildTutorPrompt: vi.fn(),
   loadAndCheckFragmentFile: vi.fn(),
+  loadAndCheckQuiz: vi.fn(),
+  loadAndCheckWriting: vi.fn(),
   defaultFetcher: vi.fn(),
   resolveAppOrigin: vi.fn(),
   revalidatePath: vi.fn(),
@@ -30,6 +32,11 @@ vi.mock("@/lib/tutors", () => ({
   loadAndBuildTutorPrompt: mocks.loadAndBuildTutorPrompt,
   loadAndCheckFragmentFile: mocks.loadAndCheckFragmentFile,
 }));
+// The quiz/writing validators are real (file-validators is not mocked), but their
+// loaders import the scheme-gated YAML core from `@/lib/tutors` (mocked above to a
+// subset). Mock the loaders so the seam's MAPPING is what's under test here.
+vi.mock("@/lib/quiz-validate", () => ({ loadAndCheckQuiz: mocks.loadAndCheckQuiz }));
+vi.mock("@/lib/writing-validate", () => ({ loadAndCheckWriting: mocks.loadAndCheckWriting }));
 // Keep the REAL validateFileName / isFileKind — they are part of the contract —
 // and mock only the storage calls.
 vi.mock("@/lib/file-store", async (importOriginal) => {
@@ -60,6 +67,18 @@ beforeEach(() => {
   mocks.requireTeacherUserId.mockResolvedValue({ ok: true, userId: "teacher-1" });
   mocks.resolveAppOrigin.mockResolvedValue("http://localhost:3000");
   mocks.loadAndCheckFragmentFile.mockResolvedValue({ ok: true });
+  mocks.loadAndCheckQuiz.mockResolvedValue({
+    ok: true,
+    warnings: [],
+    anonymous: true,
+    title: null,
+  });
+  mocks.loadAndCheckWriting.mockResolvedValue({
+    ok: true,
+    warnings: [],
+    anonymous: false,
+    title: null,
+  });
   mocks.loadAndBuildTutorPrompt.mockResolvedValue({
     ok: true,
     title: "Title",
@@ -112,18 +131,36 @@ describe("createFileAction", () => {
     expect(mocks.createFile).not.toHaveBeenCalled();
   });
 
-  it("stores a quiz WITHOUT validating it (stub) and denormalizes null title/description", async () => {
+  it("validates a quiz via loadAndCheckQuiz, then stores it with a null description", async () => {
+    mocks.loadAndCheckQuiz.mockResolvedValue({
+      ok: true,
+      warnings: [],
+      anonymous: true,
+      title: "Quiz Title",
+    });
     await expect(
       createFileAction({ name: "my-quiz", kind: "quiz", content: "id: q\n" }),
     ).rejects.toThrow("REDIRECT:/files/edit/my-quiz");
-    // The quiz path runs no validator (neither tutor nor fragment) …
+    // The quiz path runs the quiz validator, NOT the tutor/fragment loaders …
+    expect(mocks.loadAndCheckQuiz).toHaveBeenCalled();
     expect(mocks.loadAndBuildTutorPrompt).not.toHaveBeenCalled();
     expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
-    // … and stores with NULL title/description, like a fragment.
+    // … and stores the validator's title with a NULL description (quizzes carry none).
     expect(mocks.createFile).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "quiz", title: null, description: null }),
+      expect.objectContaining({ kind: "quiz", title: "Quiz Title", description: null }),
       "teacher-1",
     );
+  });
+
+  it("blocks an invalid quiz with structured errors and does NOT store", async () => {
+    mocks.loadAndCheckQuiz.mockResolvedValue({
+      ok: false,
+      errors: [{ code: "QUIZ_SCHEMA_ERROR", message: "no questions" }],
+      warnings: [],
+    });
+    const result = await createFileAction({ name: "my-quiz", kind: "quiz", content: "id: q\n" });
+    expect(result).toMatchObject({ ok: false, errors: [{ code: "QUIZ_SCHEMA_ERROR" }] });
+    expect(mocks.createFile).not.toHaveBeenCalled();
   });
 
   it("rejects empty content", async () => {
@@ -271,18 +308,37 @@ describe("validateNewFileAction", () => {
     expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
   });
 
-  it("passes a quiz with the not-implemented warning and never validates or stores", async () => {
+  it("validates a quiz via loadAndCheckQuiz and never stores", async () => {
+    mocks.loadAndCheckQuiz.mockResolvedValue({
+      ok: true,
+      warnings: [],
+      anonymous: true,
+      title: null,
+    });
     const result = await validateNewFileAction({
       name: "my-quiz",
       kind: "quiz",
       content: "id: q\n",
     });
-    expect(result).toMatchObject({
-      ok: true,
-      warnings: [{ code: "QUIZ_VALIDATION_NOT_IMPLEMENTED" }],
-    });
+    expect(result).toEqual({ ok: true, warnings: [] });
+    expect(mocks.loadAndCheckQuiz).toHaveBeenCalled();
     expect(mocks.loadAndBuildTutorPrompt).not.toHaveBeenCalled();
     expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
+    expect(mocks.createFile).not.toHaveBeenCalled();
+  });
+
+  it("blocks an invalid quiz with structured errors and never stores", async () => {
+    mocks.loadAndCheckQuiz.mockResolvedValue({
+      ok: false,
+      errors: [{ code: "QUIZ_SCHEMA_ERROR", message: "no questions" }],
+      warnings: [],
+    });
+    const result = await validateNewFileAction({
+      name: "my-quiz",
+      kind: "quiz",
+      content: "id: q\n",
+    });
+    expect(result).toMatchObject({ ok: false, errors: [{ code: "QUIZ_SCHEMA_ERROR" }] });
     expect(mocks.createFile).not.toHaveBeenCalled();
   });
 

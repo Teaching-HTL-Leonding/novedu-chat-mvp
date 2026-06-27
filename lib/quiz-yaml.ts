@@ -2,12 +2,13 @@ import { parse as parseYamlText } from "yaml";
 import type { ImageRef } from "./image-ref";
 import type { QuizPublic, QuizQuestionPublic } from "./quiz-types";
 
-// LENIENT runtime parse of a quiz YAML. Quizzes are stored in `novedu_files`
-// under `kind: "quiz"` and are NOT structurally validated at authoring time (the
-// Validate button is a stub — see docs/quizzes.md). This is the only place a
-// quiz YAML is parsed: a small typed read that checks just the essentials needed
-// to run and grade the quiz, with a friendly message when something required is
-// missing. It is NOT a `lib/tutors`-style schema/Zod gate.
+// LENIENT runtime parse of a quiz YAML — the STUDENT path. Quizzes are stored in
+// `novedu_files` under `kind: "quiz"`. This is a small typed read that checks just
+// the essentials needed to run and grade the quiz, with a friendly message when
+// something required is missing, so a student never hits a hard crash. It is NOT
+// the authoring gate: the strict schema/Zod validator that blocks a bad SAVE lives
+// in `lib/quiz-validate.ts` (`QuizYamlSchema`) and is deliberately separate and
+// stricter than this read.
 //
 // SERVER-SIDE: parses YAML and exposes the server-only `evaluation` prompts.
 // The student page must call `toPublicQuiz` before sending anything to the
