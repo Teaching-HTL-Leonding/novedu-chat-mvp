@@ -1,3 +1,4 @@
+import type { QuizCheckResult } from "@/lib/quiz-validate";
 import {
   type BuildResult,
   type FragmentCheckResult,
@@ -5,6 +6,7 @@ import {
   type ValidationError,
   type ValidationWarning,
 } from "@/lib/tutors";
+import type { WritingCheckResult } from "@/lib/writing-validate";
 
 // Pure presentation: turn a `BuildResult` into a human-readable terminal report.
 // No validation logic lives here — it only renders the structured errors/warnings
@@ -22,6 +24,7 @@ function context(item: ValidationError | ValidationWarning): string {
   const parts: string[] = [];
   if (item.fileAlias) parts.push(`file=${item.fileAlias}`);
   if (item.fragmentId) parts.push(`fragment=${item.fragmentId}`);
+  if ("questionId" in item && item.questionId) parts.push(`question=${item.questionId}`);
   if (item.variable) parts.push(`variable=${item.variable}`);
   if ("url" in item && item.url) parts.push(`url=${item.url}`);
   if ("expectedType" in item && item.expectedType) {
@@ -108,6 +111,58 @@ export function formatFragmentResult(result: FragmentCheckResult, source: string
   lines.push("");
   lines.push(red(`${result.errors.length} error(s):`));
   lines.push(...renderErrors(result.errors));
+  if (result.warnings.length) {
+    lines.push("");
+    lines.push(yellow(`${result.warnings.length} warning(s):`));
+    lines.push(...renderWarnings(result.warnings));
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Shared tail for the quiz/writing renderers: on failure, the error list (with any
+ * flattened Zod issues); plus any warnings on either branch.
+ */
+function renderFailureAndWarnings(
+  result: { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] },
+  label: string,
+  source: string,
+): string {
+  const lines = [red(`✘ Invalid ${label}`) + dim(` — ${source}`), ""];
+  lines.push(red(`${result.errors.length} error(s):`));
+  lines.push(...renderErrors(result.errors));
+  if (result.warnings.length) {
+    lines.push("");
+    lines.push(yellow(`${result.warnings.length} warning(s):`));
+    lines.push(...renderWarnings(result.warnings));
+  }
+  return lines.join("\n");
+}
+
+/** Renderer for a quiz check (`--kind quiz`). */
+export function formatQuizResult(result: QuizCheckResult, source: string): string {
+  if (!result.ok) return renderFailureAndWarnings(result, "quiz", source);
+
+  const lines = [green(`✔ Valid quiz`) + dim(` — ${source}`)];
+  lines.push(`  id: ${result.quizId}`);
+  lines.push(`  model: ${result.model}`);
+  lines.push(`  questions: ${result.questionCount}   anonymous: ${result.anonymous}`);
+  if (result.warnings.length) {
+    lines.push("");
+    lines.push(yellow(`${result.warnings.length} warning(s):`));
+    lines.push(...renderWarnings(result.warnings));
+  }
+  return lines.join("\n");
+}
+
+/** Renderer for a writing-activity check (`--kind writing`). */
+export function formatWritingResult(result: WritingCheckResult, source: string): string {
+  if (!result.ok) return renderFailureAndWarnings(result, "writing activity", source);
+
+  const lines = [green(`✔ Valid writing activity`) + dim(` — ${source}`)];
+  lines.push(`  id: ${result.writingId}`);
+  lines.push(`  model: ${result.model}`);
+  lines.push(`  anonymous: ${result.anonymous}`);
   if (result.warnings.length) {
     lines.push("");
     lines.push(yellow(`${result.warnings.length} warning(s):`));

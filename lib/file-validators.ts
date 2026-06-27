@@ -1,6 +1,6 @@
 import type { FileKind } from "@/lib/file-name";
 import { loadQuiz } from "@/lib/quiz-fetch";
-import { parseQuiz } from "@/lib/quiz-yaml";
+import { loadAndCheckQuiz } from "@/lib/quiz-validate";
 import {
   defaultFetcher,
   type Fetcher,
@@ -10,7 +10,7 @@ import {
   type ValidationWarning,
 } from "@/lib/tutors";
 import { loadWriting } from "@/lib/writing-fetch";
-import { parseWriting } from "@/lib/writing-yaml";
+import { loadAndCheckWriting } from "@/lib/writing-validate";
 
 // Layer 2 of the codes architecture: the validator seam, keyed by `FileKind`.
 // This is the SINGLE source of truth for "is this YAML valid, and what metadata
@@ -72,66 +72,39 @@ const fragmentValidator: FileValidator = {
   },
 };
 
-const QUIZ_NOT_IMPLEMENTED: ValidationWarning = {
-  code: "QUIZ_VALIDATION_NOT_IMPLEMENTED",
-  message:
-    "Quiz validation is not implemented yet — the file was stored without structural checks.",
-};
-
-// quiz: structural validation is still a STUB (never blocks save — a quiz is a
-// novedu_files row not structurally validated). It LENIENTLY extracts the
-// metadata code-create needs: the privacy flag and a title. A parse failure
-// keeps the privacy-safe `anonymous: true` default. A real quiz validator later
-// is a one-spot change here, picked up by /files save AND code-create at once.
+// quiz: a strict authoring gate, exactly like tutor/fragment — a structurally
+// broken quiz (bad YAML, missing field, no `llm.model`, no questions, duplicate
+// question id) returns ok:false and BLOCKS the save. On success it carries the
+// metadata code-create freezes onto the row: the privacy flag (default true) and a
+// title. Quizzes carry no denormalized description.
 const quizValidator: FileValidator = {
   async validate(url, fetcher) {
-    let anonymous = true;
-    let title: string | null = null;
-    try {
-      const res = await fetcher(url);
-      if (res.ok) {
-        const parsed = parseQuiz(await res.text());
-        if (parsed.ok) {
-          anonymous = parsed.quiz.anonymous;
-          title = parsed.quiz.title ?? null;
-        }
-      }
-    } catch {
-      // Lenient: a fetch/parse failure leaves the privacy-safe defaults in place.
-    }
-    return { ok: true, warnings: [QUIZ_NOT_IMPLEMENTED], title, description: null, anonymous };
+    const result = await loadAndCheckQuiz(url, fetcher);
+    if (!result.ok) return { ok: false, errors: result.errors };
+    return {
+      ok: true,
+      warnings: result.warnings,
+      title: result.title,
+      description: null,
+      anonymous: result.anonymous,
+    };
   },
 };
 
-const WRITING_NOT_IMPLEMENTED: ValidationWarning = {
-  code: "WRITING_VALIDATION_NOT_IMPLEMENTED",
-  message:
-    "Writing validation is not implemented yet — the file was stored without structural checks.",
-};
-
-// writing: structural validation is a STUB exactly like quiz (never blocks save —
-// a writing activity is a novedu_files row not structurally validated). It
-// LENIENTLY extracts the metadata code-create needs: the privacy flag and a title.
-// Writing DEFAULTS `anonymous: false` (the writing divergence), and a parse failure
-// keeps that default. A real writing validator later is a one-spot change here,
-// picked up by /files save AND code-create at once.
+// writing: a strict authoring gate exactly like quiz, except writing DEFAULTS
+// `anonymous: false` (the writing divergence). A structurally broken activity
+// (bad YAML, missing field, no `llm.model`, no instructions) BLOCKS the save.
 const writingValidator: FileValidator = {
   async validate(url, fetcher) {
-    let anonymous = false;
-    let title: string | null = null;
-    try {
-      const res = await fetcher(url);
-      if (res.ok) {
-        const parsed = parseWriting(await res.text());
-        if (parsed.ok) {
-          anonymous = parsed.writing.anonymous;
-          title = parsed.writing.title ?? null;
-        }
-      }
-    } catch {
-      // Lenient: a fetch/parse failure leaves the privacy default (false) in place.
-    }
-    return { ok: true, warnings: [WRITING_NOT_IMPLEMENTED], title, description: null, anonymous };
+    const result = await loadAndCheckWriting(url, fetcher);
+    if (!result.ok) return { ok: false, errors: result.errors };
+    return {
+      ok: true,
+      warnings: result.warnings,
+      title: result.title,
+      description: null,
+      anonymous: result.anonymous,
+    };
   },
 };
 

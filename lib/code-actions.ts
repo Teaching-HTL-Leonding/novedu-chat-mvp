@@ -71,9 +71,9 @@ export async function createCodeAction(
   }
 
   // Catch broken activities at create time, not when the first student opens the
-  // code. The module reuses its Layer-2 validator (for tutor this is the THOROUGH
-  // whole-library gate; quiz stays a lenient stub). The app-hosted fetcher
-  // resolves app-hosted file URLs from the DB directly (no loopback).
+  // code. The module reuses its Layer-2 validator — a strict structural gate for
+  // every module (for tutor, the THOROUGH whole-library gate). The app-hosted
+  // fetcher resolves app-hosted file URLs from the DB directly (no loopback).
   const result = await codeModules[module].validateOnCreate(
     validation.payload.fileUrl,
     appHostedFetcher(origin),

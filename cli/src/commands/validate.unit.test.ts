@@ -4,8 +4,11 @@ import { describe, expect, it } from "vitest";
 import { runValidate } from "./validate";
 
 // In-process, no network: drive the real validate handler (real loader + real
-// file fetcher) over the committed fixtures in `tutors/`. Runs in CI.
+// file fetcher) over the committed fixtures in `tutors/` / `quizzes/` / `writings/`.
+// Runs in CI.
 const tutorsDir = fileURLToPath(new URL("../../../tutors/", import.meta.url));
+const quizzesDir = fileURLToPath(new URL("../../../quizzes/", import.meta.url));
+const writingsDir = fileURLToPath(new URL("../../../writings/", import.meta.url));
 
 describe("runValidate — tutors (local files)", () => {
   it("accepts a valid tutor and reports its model", async () => {
@@ -57,6 +60,58 @@ describe("runValidate — fragment libraries (local files)", () => {
     expect(outcome.result.ok).toBe(false);
     if (!outcome.result.ok) {
       expect(outcome.result.errors.some((e) => e.code === "FRAGMENT_TEMPLATE_ERROR")).toBe(true);
+    }
+  });
+});
+
+describe("runValidate — quizzes (local files)", () => {
+  it("accepts a valid quiz and reports its model + question count", async () => {
+    const outcome = await runValidate(`${quizzesDir}sample-quiz.yaml`, "quiz");
+
+    expect(outcome.kind).toBe("quiz");
+    expect(outcome.result.ok).toBe(true);
+    if (outcome.kind === "quiz" && outcome.result.ok) {
+      expect(outcome.result.model).toBeTruthy();
+      expect(outcome.result.questionCount).toBeGreaterThan(0);
+    }
+  });
+
+  it("rejects the committed broken quiz with a QUIZ_SCHEMA_ERROR", async () => {
+    const outcome = await runValidate(`${quizzesDir}broken-quiz.yaml`, "quiz");
+
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors[0]?.code).toBe("QUIZ_SCHEMA_ERROR");
+    }
+  });
+
+  it("reports a missing file as a FETCH_FAILED error (no throw)", async () => {
+    const outcome = await runValidate(`${quizzesDir}does-not-exist.yaml`, "quiz");
+
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors[0]?.code).toBe("FETCH_FAILED");
+    }
+  });
+});
+
+describe("runValidate — writing activities (local files)", () => {
+  it("accepts a valid writing activity and reports its model", async () => {
+    const outcome = await runValidate(`${writingsDir}human-animal-short-story.yaml`, "writing");
+
+    expect(outcome.kind).toBe("writing");
+    expect(outcome.result.ok).toBe(true);
+    if (outcome.kind === "writing" && outcome.result.ok) {
+      expect(outcome.result.model).toBeTruthy();
+    }
+  });
+
+  it("rejects the committed broken writing activity with a WRITING_SCHEMA_ERROR", async () => {
+    const outcome = await runValidate(`${writingsDir}broken-writing.yaml`, "writing");
+
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors[0]?.code).toBe("WRITING_SCHEMA_ERROR");
     }
   });
 });

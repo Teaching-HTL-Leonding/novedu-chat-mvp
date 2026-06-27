@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 
 const cli = fileURLToPath(new URL("../dist/main.js", import.meta.url));
 const tutorsDir = fileURLToPath(new URL("../../tutors/", import.meta.url));
+const quizzesDir = fileURLToPath(new URL("../../quizzes/", import.meta.url));
+const writingsDir = fileURLToPath(new URL("../../writings/", import.meta.url));
 
 const RAW_BASE =
   "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors";
@@ -81,6 +83,54 @@ describe("novedu-cli validate — local files", () => {
 
     expect(code).toBe(1);
     expect(stdout).toContain("FRAGMENT_TEMPLATE_ERROR");
+  });
+
+  it("exits 0 for a valid quiz with --kind quiz", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${quizzesDir}sample-quiz.yaml`,
+      "--kind",
+      "quiz",
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("Valid quiz");
+  });
+
+  it("exits 1 with QUIZ_SCHEMA_ERROR for the committed broken quiz", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${quizzesDir}broken-quiz.yaml`,
+      "--kind",
+      "quiz",
+    ]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain("QUIZ_SCHEMA_ERROR");
+  });
+
+  it("exits 0 for a valid writing activity with --kind writing", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${writingsDir}human-animal-short-story.yaml`,
+      "--kind",
+      "writing",
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("Valid writing activity");
+  });
+
+  it("exits 1 with WRITING_SCHEMA_ERROR for the committed broken writing activity", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${writingsDir}broken-writing.yaml`,
+      "--kind",
+      "writing",
+    ]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain("WRITING_SCHEMA_ERROR");
   });
 
   it("rejects an invalid --kind", async () => {

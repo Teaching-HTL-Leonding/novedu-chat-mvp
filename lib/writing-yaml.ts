@@ -1,12 +1,13 @@
 import { parse as parseYamlText } from "yaml";
 import type { WritingPublic } from "./writing-types";
 
-// LENIENT runtime parse of a writing YAML. Writing activities are stored in
-// `novedu_files` under `kind: "writing"` and are NOT structurally validated at
-// authoring time (the validator is a lenient stub — see docs/writing.md). This is
-// the only place a writing YAML is parsed: a small typed read that checks just the
-// essentials needed to run the activity, with a friendly message when something
-// required is missing. It is NOT a `lib/tutors`-style schema/Zod gate.
+// LENIENT runtime parse of a writing YAML — the STUDENT path. Writing activities
+// are stored in `novedu_files` under `kind: "writing"`. This is a small typed read
+// that checks just the essentials needed to run the activity, with a friendly
+// message when something required is missing, so a student never hits a hard crash.
+// It is NOT the authoring gate: the strict schema/Zod validator that blocks a bad
+// SAVE lives in `lib/writing-validate.ts` (`WritingYamlSchema`) and is deliberately
+// separate and stricter than this read.
 //
 // SERVER-SIDE: parses YAML and exposes the server-only `instructions` (the
 // teacher's system prompt) and `model`. The student render path must call
