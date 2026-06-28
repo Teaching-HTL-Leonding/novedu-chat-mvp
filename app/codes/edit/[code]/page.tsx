@@ -47,8 +47,8 @@ export default async function EditCodePage({ params }: { params: Promise<{ code:
         initialModule={entry.module}
         initialFileUrl={entry.fileUrl}
         initialNote={entry.note}
-        initialStartSeconds={seconds(entry.validFrom)}
-        initialEndSeconds={seconds(entry.validUntil)}
+        initialStartSeconds={entry.validFrom ? seconds(entry.validFrom) : undefined}
+        initialEndSeconds={entry.validUntil ? seconds(entry.validUntil) : undefined}
         shareUrl={origin ? `${origin}/${entry.code}` : `/${entry.code}`}
       />
     </main>

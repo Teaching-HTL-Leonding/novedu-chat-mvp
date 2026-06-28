@@ -33,7 +33,9 @@ import {
 // route read it off the row to pick the renderer/agent. `file_url` is the
 // activity YAML the code hands out. The creating teacher is `created_by` (the
 // session user id = Entra `oid`). The validity window is inclusive in both
-// directions, stored as UTC datetime2. `origin` documents where the code was
+// directions, stored as UTC datetime2; each bound is OPTIONAL — a null
+// `valid_from` opens the code immediately, a null `valid_until` never expires it
+// (both null = always valid). `origin` documents where the code was
 // created (dev/prod host) and is NEVER used in lookups — a code created on
 // localhost must work in production, since all environments share this database.
 //
@@ -56,8 +58,8 @@ export const codes = mssqlTable(
     module: varchar("module", { length: 16 }).notNull(),
     createdBy: nvarchar("created_by", { length: 64 }).notNull(),
     fileUrl: nvarchar("file_url", { length: 2048 }).notNull(),
-    validFrom: datetime2("valid_from").notNull(),
-    validUntil: datetime2("valid_until").notNull(),
+    validFrom: datetime2("valid_from"),
+    validUntil: datetime2("valid_until"),
     note: nvarchar("note", { length: 200 }).notNull().default(""),
     origin: nvarchar("origin", { length: 256 }),
     // Default true = anonymous: the privacy-safe default, and what any row

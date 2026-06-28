@@ -169,14 +169,41 @@ describe("validateCodeRequest", () => {
     expect(validateCodeRequest({ ...valid, file }).ok).toBe(false);
   });
 
-  it("rejects missing or non-numeric timestamps", () => {
-    expect(validateCodeRequest({ ...valid, start: "" }).ok).toBe(false);
+  it("rejects a supplied timestamp that is non-numeric", () => {
+    expect(validateCodeRequest({ ...valid, start: "12abc" }).ok).toBe(false);
     expect(validateCodeRequest({ ...valid, end: "12abc" }).ok).toBe(false);
   });
 
   it("rejects a window that ends before (or at) its start", () => {
     const result = validateCodeRequest({ ...valid, end: valid.start });
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/after its start/) });
+  });
+
+  it("accepts a blank start as an open (null) lower bound", () => {
+    const result = validateCodeRequest({ ...valid, start: "" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payload.validFrom).toBeNull();
+      expect(result.payload.validUntil).toEqual(new Date(1_700_003_600 * 1000));
+    }
+  });
+
+  it("accepts a blank end as an open (null) upper bound", () => {
+    const result = validateCodeRequest({ ...valid, end: "" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payload.validFrom).toEqual(new Date(1_700_000_000 * 1000));
+      expect(result.payload.validUntil).toBeNull();
+    }
+  });
+
+  it("accepts both bounds blank as an always-valid (null/null) window", () => {
+    const result = validateCodeRequest({ ...valid, start: "", end: "" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payload.validFrom).toBeNull();
+      expect(result.payload.validUntil).toBeNull();
+    }
   });
 });
 
@@ -245,26 +272,42 @@ describe("checkCode", () => {
     await expect(checkCode("a1b2c3d4e5", NOW)).resolves.toEqual({ ok: true, entry: row });
   });
 
-  it("reports not-started with the window bounds", async () => {
+  it("reports not-started carrying only the start bound", async () => {
     const row = entry({ validFrom: new Date(NOW.getTime() + 1000) });
     fake.state.rows = [row];
     await expect(checkCode("a1b2c3d4e5", NOW)).resolves.toEqual({
       ok: false,
       reason: "not-started",
       validFrom: row.validFrom,
-      validUntil: row.validUntil,
     });
   });
 
-  it("reports expired with the window bounds", async () => {
+  it("reports expired carrying only the end bound", async () => {
     const row = entry({ validUntil: new Date(NOW.getTime() - 1000) });
     fake.state.rows = [row];
     await expect(checkCode("a1b2c3d4e5", NOW)).resolves.toEqual({
       ok: false,
       reason: "expired",
-      validFrom: row.validFrom,
       validUntil: row.validUntil,
     });
+  });
+
+  it("treats a null start as open: never not-started, even before the end", async () => {
+    const row = entry({ validFrom: null, validUntil: new Date(NOW.getTime() + 1000) });
+    fake.state.rows = [row];
+    await expect(checkCode("a1b2c3d4e5", NOW)).resolves.toEqual({ ok: true, entry: row });
+  });
+
+  it("treats a null end as open: never expired, even after the start", async () => {
+    const row = entry({ validFrom: new Date(NOW.getTime() - 1000), validUntil: null });
+    fake.state.rows = [row];
+    await expect(checkCode("a1b2c3d4e5", NOW)).resolves.toEqual({ ok: true, entry: row });
+  });
+
+  it("accepts an always-valid code (both bounds null)", async () => {
+    const row = entry({ validFrom: null, validUntil: null });
+    fake.state.rows = [row];
+    await expect(checkCode("a1b2c3d4e5", NOW)).resolves.toEqual({ ok: true, entry: row });
   });
 
   it("reports lookup-failed instead of throwing when the database is down", async () => {

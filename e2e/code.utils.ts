@@ -45,9 +45,11 @@ function getPool(): Promise<sql.ConnectionPool> {
 
 /**
  * Inserts a code (any module) with a window of [now+startOffset, now+endOffset]
- * seconds and returns the code. `module` defaults to "tutor" and `file` to the
- * stable sample tutor; pass `module: "quiz"` + an app-hosted quiz `file` URL for
- * the quiz flow. `anonymous` is the FROZEN row flag and defaults to `true`
+ * seconds and returns the code. Pass `startOffset: null` / `endOffset: null` to
+ * leave that bound OPEN (a NULL column → an open-ended code). `module` defaults to
+ * "tutor" and `file` to the stable sample tutor; pass `module: "quiz"` + an
+ * app-hosted quiz `file` URL for the quiz flow. `anonymous` is the FROZEN row flag
+ * and defaults to `true`
  * (matching tutor/quiz); pass `anonymous: false` for a writing code so its teacher
  * review shows the savers list (the writing detail dispatches on this flag). Loads
  * `.env` exactly as Next does, so the database and credentials can never drift from
@@ -57,8 +59,8 @@ export async function mintCode(
   options: {
     module?: string;
     file?: string;
-    startOffset?: number;
-    endOffset?: number;
+    startOffset?: number | null;
+    endOffset?: number | null;
     note?: string;
     anonymous?: boolean;
   } = {},
@@ -70,6 +72,11 @@ export async function mintCode(
     () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)],
   ).join("");
   const now = Math.floor(Date.now() / 1000);
+  // `null` offset → an open (NULL) bound; otherwise now + offset (default ∓1h).
+  const validFrom =
+    options.startOffset === null ? null : new Date((now + (options.startOffset ?? -3600)) * 1000);
+  const validUntil =
+    options.endOffset === null ? null : new Date((now + (options.endOffset ?? 3600)) * 1000);
 
   await pool
     .request()
@@ -77,8 +84,8 @@ export async function mintCode(
     .input("module", sql.VarChar(16), options.module ?? "tutor")
     .input("createdBy", sql.NVarChar(64), E2E_CREATOR)
     .input("fileUrl", sql.NVarChar(2048), options.file ?? VALID_TUTOR_URL)
-    .input("validFrom", sql.DateTime2, new Date((now + (options.startOffset ?? -3600)) * 1000))
-    .input("validUntil", sql.DateTime2, new Date((now + (options.endOffset ?? 3600)) * 1000))
+    .input("validFrom", sql.DateTime2, validFrom)
+    .input("validUntil", sql.DateTime2, validUntil)
     .input("note", sql.NVarChar(200), options.note ?? "e2e test code")
     .input("anonymous", sql.Bit, options.anonymous === false ? 0 : 1)
     .query(

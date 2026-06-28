@@ -92,6 +92,27 @@ test("create: +1h/+1d/+1w start from 'Available from' when until is empty, then 
   );
 });
 
+test("create: the Clear button empties a date field and submits it as an open bound", async () => {
+  created.length = 0;
+  const screen = await render(<CodeForm mode="create" />);
+
+  await screen.getByLabelText("Activity YAML URL").fill(FILE_URL);
+  await screen.getByLabelText(/Available from/).fill(START);
+  await screen.getByLabelText(/Available until/).fill(END);
+
+  // Clear the start: the field empties and the open-ended bound is submitted blank.
+  await screen.getByRole("button", { name: "Clear start" }).click();
+  expect(inputValue(screen.getByLabelText(/Available from/))).toBe("");
+
+  await screen.getByRole("button", { name: "Create code" }).click();
+
+  await vi.waitFor(() => expect(created).toHaveLength(1));
+  const formData = created[0];
+  if (!formData) throw new Error("no FormData captured");
+  expect(formData.get("startTs")).toBe("");
+  expect(formData.get("endTs")).toBe(String(datetimeLocalToUnixSeconds(END)));
+});
+
 test("edit: file URL is read-only, fields are pre-filled, and the shareable link shows", async () => {
   const shareUrl = "http://localhost:3000/a1b2c3d4e5";
   const screen = await render(

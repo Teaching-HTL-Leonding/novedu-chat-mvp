@@ -22,7 +22,7 @@ A **code** is a `[a-z0-9-]` string (1–32 chars; `generateCode()` mints 10 rand
 | `module` | the dispatch discriminator — `tutor` \| `quiz` \| `writing`, picks the renderer + agent |
 | `created_by` | session user id (Entra `oid`) of the creating teacher |
 | `file_url` | public URL of the activity YAML (normalized via `URL.href`) |
-| `valid_from` / `valid_until` | availability window, UTC `datetime2`, **both bounds inclusive** |
+| `valid_from` / `valid_until` | availability window, UTC `datetime2`, **both bounds inclusive**. Each is **nullable** — a null `valid_from` opens the code immediately, a null `valid_until` never expires it (both null = always valid). `checkCode` / `windowStatus` coalesce a null bound to `DISTANT_PAST` / `DISTANT_FUTURE` |
 | `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
 | `origin` | **documentation-only**: where the code was created (DEV vs PROD rows). Lookups never read it — a code created on localhost works in production, since all environments share the database |
 | `anonymous` | the activity YAML's `anonymous` flag (default is module-specific — tutor/quiz `true`, writing `false`), **frozen at create time** — a later YAML edit does NOT update it. Governs whether the stats page shows per-student data |
@@ -172,7 +172,8 @@ below. All runtime endpoints the app does not use (`/threads/*`, `/transcribe`,
 "Create code" shortcut — `/share-tutor` and `/share-quiz` both 308-redirect
 here): a **module** selector + the file URL + optional note + window as
 `datetime-local` (converted to unix seconds IN THE BROWSER — the only place the
-teacher's timezone is known). The action (`createCodeAction`,
+teacher's timezone is known). **Either window field may be left blank** for an
+open-ended code (no start / no end → a null bound). The action (`createCodeAction`,
 `lib/code-actions.ts`) validates the input, then runs the chosen module's
 `validateOnCreate` (the Layer-2 validator for its `fileKind`), **freezes**
 `anonymous`/`title` from the result, and inserts the row. **A storage failure is a
@@ -196,7 +197,8 @@ Filtering (a text contains-match over note/code, an "Only my codes" toggle, and 
 **module** `<select>`) happens **in the database** through URL search params,
 never in memory — the shared filtered-list concept (`docs/filtered-lists.md`).
 Each row: a **Module** badge, note (fallback code, `file_url` tooltip), window in
-local time, an **interaction** count (qualifying Mastra threads under
+local time (an open bound shows as **"No start"** / **"No end"**), an
+**interaction** count (qualifying Mastra threads under
 `resourceId = code` — `getInteractionCounts`, ONE aggregate query for the whole
 filtered set, no per-row query), a stats link, an Open link (active codes only), a
 Copy button, and an **Edit** link. Deletion is the list's **"Delete Selected"**

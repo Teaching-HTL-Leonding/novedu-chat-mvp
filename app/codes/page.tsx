@@ -15,7 +15,7 @@ import {
   parseModuleParam,
 } from "@/lib/code-modules/types";
 import { getInteractionCounts } from "@/lib/code-stats-store";
-import { listCodes } from "@/lib/code-store";
+import { DISTANT_FUTURE, DISTANT_PAST, listCodes } from "@/lib/code-store";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 import { LocalTime } from "../local-time";
 import pageStyles from "../page.module.css";
@@ -28,10 +28,17 @@ type WindowStatus = "active" | "upcoming" | "expired";
 
 // Where "now" falls relative to a code's window. Codes are never garbage-
 // collected, so expired ones stay listed — their activity won't open, but their
-// stats are still reachable and they can be deleted.
-function windowStatus(entry: { validFrom: Date; validUntil: Date }, now: Date): WindowStatus {
-  if (now < entry.validFrom) return "upcoming";
-  if (now > entry.validUntil) return "expired";
+// stats are still reachable and they can be deleted. A missing bound is coalesced
+// to its sentinel, so an open-ended code is never "upcoming"/"expired" on that
+// side.
+function windowStatus(
+  entry: { validFrom: Date | null; validUntil: Date | null },
+  now: Date,
+): WindowStatus {
+  const from = entry.validFrom ?? DISTANT_PAST;
+  const until = entry.validUntil ?? DISTANT_FUTURE;
+  if (now < from) return "upcoming";
+  if (now > until) return "expired";
   return "active";
 }
 
@@ -41,8 +48,8 @@ interface CodeRow {
   note: string;
   fileUrl: string;
   createdBy: string;
-  validFromSeconds: number;
-  validUntilSeconds: number;
+  validFromSeconds: number | null;
+  validUntilSeconds: number | null;
   status: WindowStatus;
   /** Qualifying-interaction count, or null when the count query failed. */
   interactionCount: number | null;
@@ -114,8 +121,8 @@ export default async function CodesPage({
     note: entry.note,
     fileUrl: entry.fileUrl,
     createdBy: entry.createdBy,
-    validFromSeconds: seconds(entry.validFrom),
-    validUntilSeconds: seconds(entry.validUntil),
+    validFromSeconds: entry.validFrom ? seconds(entry.validFrom) : null,
+    validUntilSeconds: entry.validUntil ? seconds(entry.validUntil) : null,
     status: windowStatus(entry, now),
     interactionCount: counts === undefined ? null : (counts.get(entry.code) ?? 0),
   }));
@@ -148,12 +155,12 @@ export default async function CodesPage({
     {
       header: "Valid from",
       className: listStyles.timeCell,
-      render: (row) => <LocalTime seconds={row.validFromSeconds} />,
+      render: (row) => <LocalTime seconds={row.validFromSeconds} fallback="No start" />,
     },
     {
       header: "Valid until",
       className: listStyles.timeCell,
-      render: (row) => <LocalTime seconds={row.validUntilSeconds} />,
+      render: (row) => <LocalTime seconds={row.validUntilSeconds} fallback="No end" />,
     },
     {
       header: "Interactions",
