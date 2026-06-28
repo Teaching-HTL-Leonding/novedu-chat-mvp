@@ -107,6 +107,17 @@ describe("createCodeAction", () => {
     });
   });
 
+  it("stores null bounds for an open-ended code (blank start and end)", async () => {
+    const data = formData();
+    data.set("startTs", "");
+    data.set("endTs", "");
+    await createCodeAction({ status: "idle" }, data);
+    expect(mocks.createCode).toHaveBeenCalledWith(
+      "teacher-sub-1",
+      expect.objectContaining({ validFrom: null, validUntil: null }),
+    );
+  });
+
   it("freezes the activity's anonymity flag from the validator result", async () => {
     mocks.validateOnCreate.mockResolvedValue({
       ok: true,

@@ -217,19 +217,28 @@ export function CodeForm({
         <div className={styles.row}>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="code-start">
-              Available from (your local time)
+              Available from (your local time — leave blank for no start)
             </label>
             <div className={styles.inputRow}>
               <input
                 id="code-start"
                 type="datetime-local"
                 name="start"
-                required
                 className={styles.input}
                 value={start}
                 onChange={(event) => setStart(event.target.value)}
                 disabled={pending}
               />
+              <button
+                type="button"
+                className={styles.quickButton}
+                onClick={() => setStart("")}
+                disabled={pending || !start}
+                title="No start"
+                aria-label="Clear start"
+              >
+                Clear
+              </button>
               <button
                 type="button"
                 className={styles.quickButton}
@@ -242,19 +251,28 @@ export function CodeForm({
           </div>
           <div className={styles.field}>
             <label className={styles.label} htmlFor="code-end">
-              Available until (your local time)
+              Available until (your local time — leave blank for no end)
             </label>
             <div className={styles.inputRow}>
               <input
                 id="code-end"
                 type="datetime-local"
                 name="end"
-                required
                 className={styles.input}
                 value={end}
                 onChange={(event) => setEnd(event.target.value)}
                 disabled={pending}
               />
+              <button
+                type="button"
+                className={styles.quickButton}
+                onClick={() => setEnd("")}
+                disabled={pending || !end}
+                title="No end"
+                aria-label="Clear end"
+              >
+                Clear
+              </button>
               <button
                 type="button"
                 className={styles.quickButton}

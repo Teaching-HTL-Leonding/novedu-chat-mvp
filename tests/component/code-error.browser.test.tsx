@@ -20,9 +20,7 @@ test("unknown code: explains the code does not exist, no <time>", async () => {
 
 test("not-started: names when the code becomes active", async () => {
   const screen = await render(
-    <CodeError
-      verification={{ ok: false, reason: "not-started", validFrom: FROM, validUntil: UNTIL }}
-    />,
+    <CodeError verification={{ ok: false, reason: "not-started", validFrom: FROM }} />,
   );
   await expect.element(screen.getByRole("heading", { name: "Not available yet" })).toBeVisible();
   // The <time> carries validFrom (when it opens), as a machine-readable ISO value.
@@ -31,9 +29,7 @@ test("not-started: names when the code becomes active", async () => {
 
 test("expired: names when the code was valid until", async () => {
   const screen = await render(
-    <CodeError
-      verification={{ ok: false, reason: "expired", validFrom: FROM, validUntil: UNTIL }}
-    />,
+    <CodeError verification={{ ok: false, reason: "expired", validUntil: UNTIL }} />,
   );
   await expect.element(screen.getByRole("heading", { name: "Code expired" })).toBeVisible();
   expect(document.querySelector("time")?.getAttribute("datetime")).toBe(UNTIL.toISOString());

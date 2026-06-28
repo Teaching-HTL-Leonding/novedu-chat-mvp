@@ -58,7 +58,6 @@ describe("rejection branches", () => {
     checkCode.mockResolvedValue({
       ok: false,
       reason: "expired",
-      validFrom: FROM,
       validUntil: UNTIL,
     });
     const html = await renderPage();
@@ -79,7 +78,6 @@ describe("rejection branches", () => {
       ok: false,
       reason: "not-started",
       validFrom: FROM,
-      validUntil: UNTIL,
     });
     const html = await renderPage();
     expect(html).toContain("Not available yet");

@@ -18,11 +18,7 @@ describe("CodeError", () => {
   });
 
   it("shows the local opening time for a not-yet-active code", () => {
-    render(
-      <CodeError
-        verification={{ ok: false, reason: "not-started", validFrom: FROM, validUntil: UNTIL }}
-      />,
-    );
+    render(<CodeError verification={{ ok: false, reason: "not-started", validFrom: FROM }} />);
     expect(screen.getByRole("heading", { name: "Not available yet" })).toBeInTheDocument();
     const time = document.querySelector("time");
     expect(time?.getAttribute("dateTime")).toBe(FROM.toISOString());
@@ -30,11 +26,7 @@ describe("CodeError", () => {
   });
 
   it("shows the local end time for an expired code", () => {
-    render(
-      <CodeError
-        verification={{ ok: false, reason: "expired", validFrom: FROM, validUntil: UNTIL }}
-      />,
-    );
+    render(<CodeError verification={{ ok: false, reason: "expired", validUntil: UNTIL }} />);
     expect(screen.getByRole("heading", { name: "Code expired" })).toBeInTheDocument();
     const time = document.querySelector("time");
     expect(time?.getAttribute("dateTime")).toBe(UNTIL.toISOString());

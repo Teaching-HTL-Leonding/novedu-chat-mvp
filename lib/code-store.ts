@@ -45,9 +45,16 @@ const TIMESTAMP_PATTERN = /^\d{1,15}$/;
 export type CodeRequestValidation =
   | {
       ok: true;
-      payload: { fileUrl: string; validFrom: Date; validUntil: Date; note: string };
+      payload: { fileUrl: string; validFrom: Date | null; validUntil: Date | null; note: string };
     }
   | { ok: false; message: string };
+
+// Sentinels for an absent window bound: a code with no start opens immediately, a
+// code with no end never expires. Coalescing a `null` bound to one of these lets
+// the window comparisons stay branch-free (see `windowStatus`). These are the JS
+// Date extremes, so they sort before/after any real "now".
+export const DISTANT_PAST = new Date(-8_640_000_000_000_000);
+export const DISTANT_FUTURE = new Date(8_640_000_000_000_000);
 
 /**
  * Validates a teacher's raw "create code" form input (file URL string,
@@ -74,14 +81,21 @@ export function validateCodeRequest(input: {
     return { ok: false, message: "Provide a public http(s) URL to the activity YAML file." };
   }
 
+  // Either bound may be blank — a blank start means the code opens immediately, a
+  // blank end means it never expires (open-ended codes). A bound that IS supplied
+  // must be a unix-second value; the window is only range-checked when both ends
+  // are present.
   const start = typeof input.start === "string" ? input.start : "";
   const end = typeof input.end === "string" ? input.end : "";
-  if (!TIMESTAMP_PATTERN.test(start) || !TIMESTAMP_PATTERN.test(end)) {
-    return { ok: false, message: "Pick both a start and an end date and time." };
+  if (start && !TIMESTAMP_PATTERN.test(start)) {
+    return { ok: false, message: "The start date and time is invalid." };
   }
-  const validFrom = new Date(Number(start) * 1000);
-  const validUntil = new Date(Number(end) * 1000);
-  if (validUntil <= validFrom) {
+  if (end && !TIMESTAMP_PATTERN.test(end)) {
+    return { ok: false, message: "The end date and time is invalid." };
+  }
+  const validFrom = start ? new Date(Number(start) * 1000) : null;
+  const validUntil = end ? new Date(Number(end) * 1000) : null;
+  if (validFrom && validUntil && validUntil <= validFrom) {
     return { ok: false, message: "The end of the availability window must be after its start." };
   }
 
@@ -102,10 +116,10 @@ export interface CodeEntry {
   createdBy: string;
   /** Public URL of the activity-definition YAML (normalized via `URL.href`). */
   fileUrl: string;
-  /** Window start, UTC. Inclusive. */
-  validFrom: Date;
-  /** Window end, UTC. Inclusive. */
-  validUntil: Date;
+  /** Window start, UTC. Inclusive. `null` = no start (the code opens immediately). */
+  validFrom: Date | null;
+  /** Window end, UTC. Inclusive. `null` = no end (the code never expires). */
+  validUntil: Date | null;
   /** Teacher's note, shown in their code list. May be empty. */
   note: string;
   /**
@@ -167,8 +181,8 @@ export async function createCode(
   data: {
     module: CodeModule;
     fileUrl: string;
-    validFrom: Date;
-    validUntil: Date;
+    validFrom: Date | null;
+    validUntil: Date | null;
     note: string;
     origin?: string;
     /** The activity YAML's `anonymous` flag, captured now and frozen on the row. */
@@ -206,9 +220,12 @@ export type CheckCodeResult =
   | { ok: true; entry: CodeEntry }
   // No row with this code — never issued or mistyped.
   | { ok: false; reason: "unknown-code" }
-  // The code exists but "now" is outside its window; the bounds are included so
-  // the UI can say WHEN the code opens/closed, in local time.
-  | { ok: false; reason: "not-started" | "expired"; validFrom: Date; validUntil: Date }
+  // The code exists but "now" is outside its window; the relevant bound is
+  // included so the UI can say WHEN the code opens/closed, in local time. Each
+  // rejection carries only the bound that fired (and which is therefore present —
+  // an absent bound can never reject), so no `null` reaches the error view.
+  | { ok: false; reason: "not-started"; validFrom: Date }
+  | { ok: false; reason: "expired"; validUntil: Date }
   // Database misconfigured/unreachable — retrying later may work.
   | { ok: false; reason: "lookup-failed" };
 
@@ -238,21 +255,15 @@ export async function checkCode(code: string, now: Date = new Date()): Promise<C
   const entry = toEntry(row);
   // An unrecognized module is as good as no code for a student.
   if (!entry) return { ok: false, reason: "unknown-code" };
-  if (now < entry.validFrom) {
-    return {
-      ok: false,
-      reason: "not-started",
-      validFrom: entry.validFrom,
-      validUntil: entry.validUntil,
-    };
+  // An absent bound is "open" on that side: the truthiness guard short-circuits,
+  // so a `null` start never reports not-started and a `null` end never expires
+  // (equivalent to coalescing to DISTANT_PAST / DISTANT_FUTURE). The guard also
+  // narrows the carried bound to non-null.
+  if (entry.validFrom && now < entry.validFrom) {
+    return { ok: false, reason: "not-started", validFrom: entry.validFrom };
   }
-  if (now > entry.validUntil) {
-    return {
-      ok: false,
-      reason: "expired",
-      validFrom: entry.validFrom,
-      validUntil: entry.validUntil,
-    };
+  if (entry.validUntil && now > entry.validUntil) {
+    return { ok: false, reason: "expired", validUntil: entry.validUntil };
   }
   return { ok: true, entry };
 }
@@ -324,7 +335,7 @@ export type UpdateCodeResult = { ok: true } | { ok: false; reason: "not-found" |
  */
 export async function updateCode(
   code: string,
-  data: { validFrom: Date; validUntil: Date; note: string },
+  data: { validFrom: Date | null; validUntil: Date | null; note: string },
 ): Promise<UpdateCodeResult> {
   if (!CODE_PATTERN.test(code)) return { ok: false, reason: "not-found" };
   try {
