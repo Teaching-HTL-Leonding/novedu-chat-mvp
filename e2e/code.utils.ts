@@ -96,9 +96,18 @@ export async function mintCode(
   return code;
 }
 
-/** Convenience wrapper for the common tutor case. */
+/**
+ * Convenience wrapper for the common tutor case. Like `mintCode`, a `null`
+ * `startOffset` / `endOffset` leaves that bound OPEN (a NULL column → an
+ * open-ended tutor code).
+ */
 export function mintTutorCode(
-  options: { tutor?: string; startOffset?: number; endOffset?: number; note?: string } = {},
+  options: {
+    tutor?: string;
+    startOffset?: number | null;
+    endOffset?: number | null;
+    note?: string;
+  } = {},
 ): Promise<string> {
   return mintCode({
     module: "tutor",
