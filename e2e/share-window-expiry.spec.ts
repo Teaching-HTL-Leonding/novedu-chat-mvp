@@ -39,3 +39,24 @@ test("when the window closes mid-session the chat stays on screen", {
   // No full-page error replaced the chat (that only happens on reload).
   await expect(page.getByRole("heading", { name: "Code expired" })).toHaveCount(0);
 });
+
+// An open-ended code (both window bounds NULL — opens immediately, never expires)
+// must serve. This is the ONLY automated coverage that a real NULL valid_from /
+// valid_until column round-trips: it proves the nullable-column migration took
+// effect (an INSERT of a null bound succeeds) and that checkCode coalesces an
+// absent bound to "open" against a live row, not just the in-memory fake.
+// @live-db only — the composer renders without the LLM, exactly like the
+// valid-code happy path.
+test("an open-ended code (both bounds null) opens the chat", {
+  tag: ["@live", "@live-db"],
+}, async ({ page }) => {
+  const code = await mintTutorCode({ startOffset: null, endOffset: null });
+  await page.goto(`/${code}`);
+
+  // The code serves: the chat initializes and the composer appears (the runtime
+  // route re-checks the code header server-side and accepts the null window).
+  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
+  // Neither window bound rejected it — no full-page "not yet" / "expired" error.
+  await expect(page.getByRole("heading", { name: "Not available yet" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Code expired" })).toHaveCount(0);
+});
