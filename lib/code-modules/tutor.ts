@@ -1,7 +1,5 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
-import { ShareLinkResult } from "@/app/codes/share-link-result";
-import { fileValidators } from "@/lib/file-validators";
 import type { CodeModuleDef } from "./registry";
 
 // The tutor module: a chat tutor whose system prompt + model come from the tutor
@@ -12,7 +10,6 @@ import type { CodeModuleDef } from "./registry";
 
 export const tutorModule: CodeModuleDef = {
   fileKind: "tutor",
-  validateOnCreate: (fileUrl, fetcher) => fileValidators.tutor.validate(fileUrl, fetcher),
   runtime: {
     agentId: "tutor",
     async buildRequestContext(entry) {
@@ -22,5 +19,5 @@ export const tutorModule: CodeModuleDef = {
     },
   },
   renderDetail: (entry) => ConversationStats({ entry }),
-  renderResult: (_entry, { shareUrl }) => ShareLinkResult({ shareUrl }),
+  // renderResult omitted — defaults to the share link (see `renderCodeResult`).
 };

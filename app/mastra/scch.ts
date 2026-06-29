@@ -1,8 +1,11 @@
 import { createOpenAI } from "@ai-sdk/openai";
+import { scchAuthHeader, scchModelsUrl } from "@/lib/scch-endpoint";
 
 // Our self-hosted vLLM GPU server exposes an OpenAI-compatible API.
 // Base URL + key live in `.env` (SCCH_BASE_URL, SCCH_API_KEY) and never reach
-// the browser — only this server-side module talks to the endpoint.
+// the browser — only this server-side module talks to the endpoint. The URL + auth
+// header are built by the shared, side-effect-free `lib/scch-endpoint` (the same shape
+// the coding proxy uses), so the two can never disagree.
 const BASE_URL = process.env.SCCH_BASE_URL;
 const API_KEY = process.env.SCCH_API_KEY;
 
@@ -35,8 +38,9 @@ async function fetchModels(): Promise<ScchModel[]> {
     return [];
   }
   try {
-    const res = await fetch(`${BASE_URL}/models`, {
-      headers: { Authorization: `Bearer ${API_KEY}` },
+    // Env is set (guarded above), so these getters won't throw.
+    const res = await fetch(scchModelsUrl(), {
+      headers: { Authorization: scchAuthHeader() },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = (await res.json()) as { data: { id: string }[] };

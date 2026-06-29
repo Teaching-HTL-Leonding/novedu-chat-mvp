@@ -1,26 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The writing code-module (Layer 3): validateOnCreate delegates to the writing
-// Layer-2 validator; buildRequestContext loads the writing YAML and sets the
-// agent instructions + model on the RequestContext (502 on load failure); and
+// The writing code-module (Layer 3): buildRequestContext loads the writing YAML and
+// sets the agent instructions + model on the RequestContext (502 on load failure); and
 // renderDetail dispatches to the savers list (attributed) or the shared
-// ConversationStats (anonymous). loadWriting + the validator + both render
-// components are mocked as plain functions; RequestContext is stubbed with a Map
-// so the keys read back without coupling to @mastra/core.
+// ConversationStats (anonymous). Create-time validation (derived from fileKind by the
+// registry) and the share-link result (the registry default) are not the descriptor's
+// concern. loadWriting + both render components are mocked as plain functions;
+// RequestContext is stubbed with a Map so the keys read back without coupling to
+// @mastra/core.
 
 const loadWriting = vi.hoisted(() => vi.fn());
-const writingValidate = vi.hoisted(() => vi.fn());
 const writingSaversList = vi.hoisted(() => vi.fn());
 const conversationStats = vi.hoisted(() => vi.fn());
-const shareLinkResult = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/writing-fetch", () => ({ loadWriting }));
-vi.mock("@/lib/file-validators", () => ({
-  fileValidators: { writing: { validate: writingValidate } },
-}));
 vi.mock("@/app/[code]/_writing/writing-review", () => ({ WritingSaversList: writingSaversList }));
 vi.mock("@/app/codes/[code]/conversation-stats", () => ({ ConversationStats: conversationStats }));
-vi.mock("@/app/codes/share-link-result", () => ({ ShareLinkResult: shareLinkResult }));
 vi.mock("@/app/mastra/writing-agents", () => ({
   WRITING_INSTRUCTIONS: "writing-instructions",
   WRITING_MODEL: "writing-model",
@@ -55,21 +50,6 @@ describe("writingModule descriptor", () => {
   it("references the writing file kind", () => {
     expect(writingModule.fileKind).toBe("writing");
     expect(writingModule.runtime?.agentId).toBe("writing");
-  });
-});
-
-describe("writingModule.validateOnCreate", () => {
-  it("delegates to the writing Layer-2 validator", async () => {
-    writingValidate.mockResolvedValue({
-      ok: true,
-      warnings: [],
-      title: null,
-      description: null,
-      anonymous: false,
-    });
-    const fetcher = vi.fn();
-    await writingModule.validateOnCreate(entry.fileUrl, fetcher);
-    expect(writingValidate).toHaveBeenCalledWith(entry.fileUrl, fetcher);
   });
 });
 
@@ -123,14 +103,8 @@ describe("writingModule.renderDetail", () => {
   });
 });
 
-describe("writingModule.renderResult", () => {
-  it("renders the shared share-link result with the share URL", () => {
-    shareLinkResult.mockReturnValue("<share/>");
-    const out = writingModule.renderResult(entry, {
-      shareUrl: "https://x/abc",
-      origin: "https://x",
-    });
-    expect(shareLinkResult).toHaveBeenCalledWith({ shareUrl: "https://x/abc" });
-    expect(out).toBe("<share/>");
+describe("writingModule result", () => {
+  it("uses the registry default (no renderResult override)", () => {
+    expect(writingModule.renderResult).toBeUndefined();
   });
 });

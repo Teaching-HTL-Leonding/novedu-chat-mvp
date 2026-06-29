@@ -1,6 +1,6 @@
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import type { CodeEntry } from "@/lib/code-store";
-import { loadCoding } from "@/lib/coding-fetch";
+import { codingConnectionProps, loadCoding } from "@/lib/coding-fetch";
 import styles from "../page.module.css";
 import connStyles from "./_coding/coding.module.css";
 import { CodingConnection } from "./_coding/coding-connection";
@@ -14,19 +14,13 @@ import { CodingConnection } from "./_coding/coding-connection";
 export async function RenderCoding({ entry, code }: { entry: CodeEntry; code: string }) {
   const loaded = await loadCoding(entry.fileUrl);
   const origin = await resolveAppOriginOr("");
-  const baseUrl = `${origin}/api/coding/v1`;
   const title = loaded.ok ? loaded.coding.title : undefined;
 
   return (
     <main className={styles.main}>
       <section className={connStyles.page}>
         <h1 className={connStyles.title}>{title ?? "Coding endpoint"}</h1>
-        <CodingConnection
-          baseUrl={baseUrl}
-          apiKey={code}
-          modelId="coding"
-          modelName={title ?? "Novedu coding"}
-        />
+        <CodingConnection {...codingConnectionProps(loaded, origin, code)} />
       </section>
     </main>
   );

@@ -31,10 +31,11 @@ through exactly that fixed set of seams; nothing in the generic flow changes.
   attribution path — deliberately separate from this strict gate. The same validator
   backs `/files` save, code-create, and `novedu-cli validate --kind writing`.
 - **CodeModule descriptor** — `lib/code-modules/writing.ts` exports `writingModule:
-  CodeModuleDef` with `fileKind: "writing"`, `validateOnCreate` delegating to
-  `fileValidators.writing.validate`, a `runtime` (`agentId: "writing"`,
+  CodeModuleDef` with `fileKind: "writing"` (create validation derives from it via the
+  registry's `validateCodeFile`), a `runtime` (`agentId: "writing"`,
   `buildRequestContext` loading the YAML and setting the instructions + model on the
-  `RequestContext`), and a `renderDetail` (the teacher review, below).
+  `RequestContext`), and a `renderDetail` (the teacher review, below). It does not set
+  `renderResult`, so the create/edit screen shows the default share link.
 - **Registry + label** — one line in `codeModules` (`lib/code-modules/registry.ts`),
   `"writing"` in `CODE_MODULES`, and the label `{ badge: "Writing", countColumn:
   "Conversations" }` in `codeModuleLabels` (`lib/code-modules/types.ts`).

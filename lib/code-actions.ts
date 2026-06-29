@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { appHostedFetcher } from "@/lib/app-hosted-fetcher";
 import { resolveAppOrigin } from "@/lib/app-origin";
-import { codeModules } from "@/lib/code-modules/registry";
+import { validateCodeFile } from "@/lib/code-modules/registry";
 import { isCodeModule } from "@/lib/code-modules/types";
 import { deleteCodesAndData } from "@/lib/code-stats-store";
 import { createCode, getCode, updateCode, validateCodeRequest } from "@/lib/code-store";
@@ -74,7 +74,8 @@ export async function createCodeAction(
   // code. The module reuses its Layer-2 validator — a strict structural gate for
   // every module (for tutor, the THOROUGH whole-library gate). The app-hosted
   // fetcher resolves app-hosted file URLs from the DB directly (no loopback).
-  const result = await codeModules[module].validateOnCreate(
+  const result = await validateCodeFile(
+    module,
     validation.payload.fileUrl,
     appHostedFetcher(origin),
   );

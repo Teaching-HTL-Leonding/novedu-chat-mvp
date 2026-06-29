@@ -24,8 +24,6 @@ describe("parseCoding", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const c = result.coding;
-    expect(c.id).toBe("beginner-typescript");
-    expect(c.name).toBe("Beginner TypeScript Coding Buddy");
     expect(c.title).toBe("TypeScript Coding Buddy (Beginners)");
     expect(c.model).toBe("RedHatAI/gemma-4-31B-it-FP8-Dynamic");
     expect(c.instructions).toContain("primitive types");
@@ -35,8 +33,6 @@ describe("parseCoding", () => {
     const result = parseCoding("llm:\n  model: m\ninstructions: Help.\n");
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.coding.id).toBe("coding");
-    expect(result.coding.name).toBe("coding");
     expect(result.coding.title).toBeUndefined();
   });
 

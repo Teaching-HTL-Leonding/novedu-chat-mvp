@@ -87,8 +87,10 @@ shareable activities.
 - `registry.ts` is **server-only** (`codeModules: Record<CodeModule,
   CodeModuleDef>`). Each descriptor carries a `fileKind` (which Layer-2 validator
   to reuse) and only what is genuinely activity-specific:
-  - `validateOnCreate` — literally `fileValidators[fileKind].validate`; a module
-    never redefines validation.
+  - Create-time validation is **not** a descriptor field — it is derived from
+    `fileKind` by `validateCodeFile(module, fileUrl, fetcher)` (literally
+    `fileValidators[fileKind].validate`), so a module never redefines validation and
+    can't wire the wrong validator.
   - `runtime` — `{ agentId, buildRequestContext(entry) }`: which Mastra agent the
     runtime route runs and how its per-request `RequestContext` (system prompt +
     model) is built. **Optional**: `coding` omits it (it has no in-app agent), and
@@ -99,10 +101,12 @@ shareable activities.
     calling it; writing renders its savers list; coding shows its config + connection
     details. Descriptors call these server components as **plain functions**
     (returning `ReactNode`), so no JSX lives in the server-only registry.
-  - `renderResult(entry, { shareUrl, origin })` — the create/edit screen's result
-    body (server-rendered on `/codes/edit/[code]`, handed to the client `CodeForm` as
-    a slot). tutor/quiz/writing share **`ShareLinkResult`** (the `/<code>` share link
-    with a copy button); `coding` shows its little-coder connection config instead
+  - `renderResult?(entry, { shareUrl, origin })` — **optional** override of the
+    create/edit screen's result body (server-rendered on `/codes/edit/[code]`, handed
+    to the client `CodeForm` as a slot), dispatched + defaulted by
+    `renderCodeResult(entry, ctx)`. Omitted, it defaults to **`ShareLinkResult`** (the
+    `/<code>` share link with a copy button — tutor/quiz/writing all use the default);
+    `coding` is the lone override, showing its little-coder connection config
     (`CodingResult` → `CodingConnection`) — a coding code is an API key, not a web
     link. Same plain-function pattern as `renderDetail`.
 - `tutor.ts`, `quiz.ts`, `writing.ts`, `coding.ts` are the descriptors. `writing` is
@@ -120,10 +124,12 @@ body IS a registry seam — `renderDetail` above — but descriptors keep JSX ou
 calling components as plain functions.)
 
 **Adding a module** touches a small, fixed set of seams: a descriptor file (with its
-`renderDetail` + `renderResult`) + one `codeModules` line, a client label (`lib/code-modules/types.ts`),
+`renderDetail`, plus a `renderResult` only if it overrides the share-link default) + one
+`codeModules` line, a client label (`lib/code-modules/types.ts`),
 a student render case (the thin `switch` in `app/[code]/page.tsx`) with its own render
 component + agent, and — for a **new file kind** — that kind's validator and
-`readAnonymousFlag` branch in the FileKind layer (`lib/file-validators.ts`). The
+`readAnonymousFlag` branch in the FileKind layer (`lib/file-validators.ts`). Create
+validation (from `fileKind`) and the share-link result (the default) come for free. The
 **generic flow** never changes: the code store, the runtime route, and attribution all
 dispatch by `module`/`fileKind`. **Adding a pure library kind** = one Layer-2
 validator entry, no module; the `fragment` kind proves the asymmetry is real.
@@ -187,13 +193,13 @@ here): a **module** selector + the file URL + optional note + window as
 `datetime-local` (converted to unix seconds IN THE BROWSER — the only place the
 teacher's timezone is known). **Either window field may be left blank** for an
 open-ended code (no start / no end → a null bound). The action (`createCodeAction`,
-`lib/code-actions.ts`) validates the input, then runs the chosen module's
-`validateOnCreate` (the Layer-2 validator for its `fileKind`), **freezes**
+`lib/code-actions.ts`) validates the input, then runs `validateCodeFile(module, …)`
+(the Layer-2 validator for the module's `fileKind`), **freezes**
 `anonymous`/`title` from the result, and inserts the row. **A storage failure is a
 hard error** — without a row there is nothing to hand out. On success the action
-**redirects to `/codes/edit/<code>`**, which shows the module's **result body**
-(`renderResult`): tutor/quiz/writing the shareable `/<code>` URL (copy button),
-coding its little-coder connection config. The origin comes from `CODE_ORIGIN` (read
+**redirects to `/codes/edit/<code>`**, which shows the module's **result body** via
+`renderCodeResult`: the default `/<code>` share link (copy button) for
+tutor/quiz/writing, coding its little-coder connection config. The origin comes from `CODE_ORIGIN` (read
 first), then `TUTOR_CODE_ORIGIN` (fallback), then the request's forwarded/host headers
 (fine for dev); it is display-only.
 

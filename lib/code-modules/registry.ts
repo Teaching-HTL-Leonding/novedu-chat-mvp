@@ -1,9 +1,10 @@
 import type { RequestContext } from "@mastra/core/request-context";
 import type { ReactNode } from "react";
+import { ShareLinkResult } from "@/app/codes/share-link-result";
 import type { CodeModule } from "@/lib/code-modules/types";
 import type { CodeEntry } from "@/lib/code-store";
 import type { FileKind } from "@/lib/file-name";
-import type { FileValidationResult } from "@/lib/file-validators";
+import { type FileValidationResult, fileValidators } from "@/lib/file-validators";
 import type { Fetcher } from "@/lib/tutors";
 import { codingModule } from "./coding";
 import { quizModule } from "./quiz";
@@ -12,10 +13,12 @@ import { writingModule } from "./writing";
 
 // Layer 3 of the codes architecture: the registry of shareable activities. Each
 // descriptor references a `fileKind` (which Layer-2 validator to reuse — never
-// redefining validation) and supplies only what is genuinely activity-specific:
-// create-time validation, the runtime agent + RequestContext, the teacher's per-code
-// detail body (`renderDetail`, on /codes/[code]), and the create/edit screen's result
-// body (`renderResult`) — each module owns the last two.
+// redefining validation) and supplies only what is genuinely activity-specific: the
+// runtime agent + RequestContext, the teacher's per-code detail body (`renderDetail`,
+// on /codes/[code]), and — only when it differs from the default — the create/edit
+// screen's result body (`renderResult`). Create-time validation is NOT per-descriptor:
+// it is DERIVED from `fileKind` by `validateCodeFile`. The result body defaults to the
+// share link (`renderCodeResult` → `ShareLinkResult`); only `coding` overrides it.
 // STUDENT rendering is NOT a registry seam — it is a thin `switch` in
 // app/[code]/page.tsx that delegates to each module's own server component.
 // Descriptors keep React/JSX out of this server-only registry by calling server
@@ -25,7 +28,8 @@ import { writingModule } from "./writing";
 // line in this registry, a client label (lib/code-modules/types.ts), a student
 // render case (the thin switch in app/[code]/page.tsx), a teacher `renderDetail`,
 // and — for a NEW file kind — that kind's validator + anonymous-read in the
-// FileKind layer (lib/file-validators.ts). The GENERIC flow never changes: the
+// FileKind layer (lib/file-validators.ts). Create validation and the share-link result
+// come for free from `fileKind`/the default. The GENERIC flow never changes: the
 // code store, the runtime route, and attribution all dispatch by `module`/
 // `fileKind` and stay untouched. A pure library kind (e.g. `fragment`) adds only a
 // Layer-2 validator and no entry here — the asymmetry the `fragment` kind proves.
@@ -49,10 +53,11 @@ export interface CodeModuleRuntime {
 }
 
 export interface CodeModuleDef {
-  /** Which Layer-2 validator this module reuses for create-time validation. */
+  /**
+   * Which Layer-2 validator this module reuses. Create-time validation is derived
+   * from it by `validateCodeFile` — there is no per-descriptor validate function.
+   */
   fileKind: FileKind;
-  /** Create-time validation — literally `fileValidators[fileKind].validate`. */
-  validateOnCreate(fileUrl: string, fetcher: Fetcher): Promise<FileValidationResult>;
   /**
    * The CopilotKit runtime branch (agent + per-request context). OPTIONAL: a module
    * served outside the in-app chat omits it. `coding` does — it is reached only
@@ -72,15 +77,14 @@ export interface CodeModuleDef {
     searchParams: { [key: string]: string | string[] | undefined },
   ): Promise<ReactNode>;
   /**
-   * Renders the create/edit screen's result body. Each module owns it:
-   * tutor/quiz/writing share `ShareLinkResult` (the `/<code>` share link with a copy
-   * button — the behavior the screen has always had); coding shows the little-coder
-   * connection config instead (a coding code is an API key, not a web link). Called
-   * server-side on the edit page and passed to the client `CodeForm` as a slot. A
-   * server component called as a plain function (returning ReactNode), so no JSX lives
-   * in this registry.
+   * OPTIONAL override of the create/edit screen's result body. Omit it to get the
+   * default `ShareLinkResult` (the `/<code>` share link with a copy button — what the
+   * link-based modules tutor/quiz/writing all use). Only `coding` overrides, to show
+   * the little-coder connection config instead (a coding code is an API key, not a web
+   * link). Dispatched + defaulted by `renderCodeResult`. A server component called as a
+   * plain function (returning ReactNode), so no JSX lives in this registry.
    */
-  renderResult(
+  renderResult?(
     entry: CodeEntry,
     ctx: { shareUrl: string; origin: string },
   ): ReactNode | Promise<ReactNode>;
@@ -92,3 +96,34 @@ export const codeModules: Record<CodeModule, CodeModuleDef> = {
   writing: writingModule,
   coding: codingModule,
 };
+
+/**
+ * Create-time validation for a module's activity: every module validates through its
+ * `fileKind`'s Layer-2 validator (for tutor, the THOROUGH whole-library gate). There is
+ * NO module-specific create validation, so this is derived from `fileKind` rather than
+ * repeated in each descriptor.
+ */
+export function validateCodeFile(
+  module: CodeModule,
+  fileUrl: string,
+  fetcher: Fetcher,
+): Promise<FileValidationResult> {
+  return fileValidators[codeModules[module].fileKind].validate(fileUrl, fetcher);
+}
+
+/**
+ * Renders a module's create/edit-screen result body, applying the default. The
+ * link-based modules (tutor/quiz/writing) get `ShareLinkResult` (the `/<code>` share
+ * link); `coding` is the lone override (its little-coder connection config). Called
+ * server-side and handed to the client `CodeForm` as a slot, so the client never
+ * touches this server-only registry.
+ */
+export function renderCodeResult(
+  entry: CodeEntry,
+  ctx: { shareUrl: string; origin: string },
+): ReactNode | Promise<ReactNode> {
+  const def = codeModules[entry.module];
+  return def.renderResult
+    ? def.renderResult(entry, ctx)
+    : ShareLinkResult({ shareUrl: ctx.shareUrl });
+}

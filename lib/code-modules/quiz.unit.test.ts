@@ -1,25 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The quiz code-module (Layer 3): validateOnCreate delegates to the quiz Layer-2
-// validator, and buildRequestContext loads the quiz YAML to set the discussion
-// system prompt + model (502 on load failure). loadQuiz + the validator are
-// mocked; RequestContext is stubbed with a Map so the keys can be read back
-// without coupling to @mastra/core internals.
+// The quiz code-module (Layer 3): buildRequestContext loads the quiz YAML to set the
+// discussion system prompt + model (502 on load failure), and renderDetail dispatches
+// to the shared conversation stats. Create-time validation (derived from fileKind by
+// the registry) and the share-link result (the registry default) are not the
+// descriptor's concern. loadQuiz is mocked; RequestContext is stubbed with a Map so the
+// keys can be read back without coupling to @mastra/core internals.
 
 const loadQuiz = vi.hoisted(() => vi.fn());
-const quizValidate = vi.hoisted(() => vi.fn());
 const conversationStats = vi.hoisted(() => vi.fn());
-const shareLinkResult = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/quiz-fetch", () => ({ loadQuiz }));
-vi.mock("@/lib/file-validators", () => ({
-  fileValidators: { quiz: { validate: quizValidate } },
-}));
 // renderDetail calls the shared ConversationStats; mock it (the real one pulls in
 // the code-stats store → @/app/mastra, which this hermetic test must not load).
 vi.mock("@/app/codes/[code]/conversation-stats", () => ({ ConversationStats: conversationStats }));
-// renderResult calls the shared ShareLinkResult; mock it to stay hermetic.
-vi.mock("@/app/codes/share-link-result", () => ({ ShareLinkResult: shareLinkResult }));
 vi.mock("@/app/mastra/quiz-agents", () => ({
   QUIZ_DISCUSSION_INSTRUCTIONS: "quiz-discussion-instructions",
   QUIZ_DISCUSSION_MODEL: "quiz-discussion-model",
@@ -47,21 +41,6 @@ const entry = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-});
-
-describe("quizModule.validateOnCreate", () => {
-  it("delegates to the quiz Layer-2 validator", async () => {
-    quizValidate.mockResolvedValue({
-      ok: true,
-      warnings: [],
-      title: null,
-      description: null,
-      anonymous: true,
-    });
-    const fetcher = vi.fn();
-    await quizModule.validateOnCreate(entry.fileUrl, fetcher);
-    expect(quizValidate).toHaveBeenCalledWith(entry.fileUrl, fetcher);
-  });
 });
 
 describe("quizModule.runtime.buildRequestContext", () => {
@@ -110,11 +89,8 @@ describe("quizModule.renderDetail", () => {
   });
 });
 
-describe("quizModule.renderResult", () => {
-  it("renders the shared share-link result with the share URL", () => {
-    shareLinkResult.mockReturnValue("<share/>");
-    const out = quizModule.renderResult(entry, { shareUrl: "https://x/abc", origin: "https://x" });
-    expect(shareLinkResult).toHaveBeenCalledWith({ shareUrl: "https://x/abc" });
-    expect(out).toBe("<share/>");
+describe("quizModule result", () => {
+  it("uses the registry default (no renderResult override)", () => {
+    expect(quizModule.renderResult).toBeUndefined();
   });
 });

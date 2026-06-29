@@ -1,8 +1,6 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
-import { ShareLinkResult } from "@/app/codes/share-link-result";
 import { QUIZ_DISCUSSION_INSTRUCTIONS, QUIZ_DISCUSSION_MODEL } from "@/app/mastra/quiz-agents";
-import { fileValidators } from "@/lib/file-validators";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import type { Quiz } from "@/lib/quiz-yaml";
 import type { CodeModuleDef } from "./registry";
@@ -24,7 +22,6 @@ function buildDiscussionInstructions(quiz: Quiz): string {
 
 export const quizModule: CodeModuleDef = {
   fileKind: "quiz",
-  validateOnCreate: (fileUrl, fetcher) => fileValidators.quiz.validate(fileUrl, fetcher),
   runtime: {
     agentId: "quizDiscussion",
     async buildRequestContext(entry) {
@@ -39,5 +36,5 @@ export const quizModule: CodeModuleDef = {
     },
   },
   renderDetail: (entry) => ConversationStats({ entry }),
-  renderResult: (_entry, { shareUrl }) => ShareLinkResult({ shareUrl }),
+  // renderResult omitted — defaults to the share link (see `renderCodeResult`).
 };

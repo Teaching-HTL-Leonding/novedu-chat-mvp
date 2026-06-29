@@ -12,7 +12,7 @@ import { recordError } from "@/lib/telemetry";
 // This is a thin, gatekept pass-through: it re-checks the code (existence + window)
 // on EVERY request — the single security boundary, same as every module — loads the
 // teacher's coding YAML, folds the teacher's system prompt into the request (appended
-// to the end of the client's own system message so the teacher has the final word),
+// to the end of the client's last system message so the teacher has the final word),
 // PINS the model, then forwards to SCCH (`${SCCH_BASE_URL}/chat/completions`) and pipes
 // the response stream straight back. No Mastra, no memory, no server-side tool loop:
 // client-side tools and streaming are preserved because the body is forwarded verbatim
@@ -20,9 +20,9 @@ import { recordError } from "@/lib/telemetry";
 
 export const dynamic = "force-dynamic";
 
-// Reject oversized client bodies up front: the body is buffered to parse + re-serialize,
-// so an unbounded one is a memory/OOM vector on this public endpoint. The cap is far
-// above a real request for a 32k-context model, but bounds worst-case memory.
+// Reject oversized client bodies: the body is buffered to parse + re-serialize, so an
+// unbounded one is a memory/OOM vector on this public endpoint. The cap is far above a
+// real request for a 32k-context model, but bounds worst-case memory.
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 
 function errorResponse(
@@ -32,6 +32,61 @@ function errorResponse(
   code: string | null = null,
 ): Response {
   return Response.json(openaiError(message, type, code), { status });
+}
+
+// Reads + parses the JSON body under a running byte cap. The Content-Length check in
+// the handler is only a fast reject for honest clients; THIS is the real bound — a
+// chunked body that omits or understates Content-Length is streamed here and aborted
+// the moment it crosses the cap, so it can never be buffered unbounded into memory.
+async function readBoundedJson(
+  req: Request,
+  maxBytes: number,
+): Promise<
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; status: number; message: string; code: string | null }
+> {
+  const tooLarge = {
+    ok: false as const,
+    status: 413,
+    message: "Request body is too large.",
+    code: "request_too_large",
+  };
+  const notObject = {
+    ok: false as const,
+    status: 400,
+    message: "Request body must be a JSON object.",
+    code: null,
+  };
+
+  if (!req.body) return notObject;
+  const reader = req.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel();
+        return tooLarge;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+  } catch {
+    return notObject;
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return notObject;
+  }
+  if (typeof json !== "object" || json === null || Array.isArray(json)) return notObject;
+  return { ok: true, value: json as Record<string, unknown> };
 }
 
 export async function POST(req: Request): Promise<Response> {
@@ -46,8 +101,9 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  // 1a. Reject an oversized body before any DB work (chunked bodies without a
-  // Content-Length skip this; the parse below still bounds them by failing fast).
+  // 1a. Fast-reject a body whose declared Content-Length already exceeds the cap,
+  // before any DB work. This is only a shortcut for honest clients — a chunked body can
+  // omit Content-Length, so the real bound is the streaming read in step 4.
   const declaredLength = Number(req.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
     return errorResponse(
@@ -88,18 +144,12 @@ export async function POST(req: Request): Promise<Response> {
     return errorResponse(loaded.message, 502, "server_error", null);
   }
 
-  // 4. Read the client body and build the upstream body.
-  let clientBody: Record<string, unknown>;
-  try {
-    const json: unknown = await req.json();
-    if (typeof json !== "object" || json === null || Array.isArray(json)) {
-      throw new Error("body is not a JSON object");
-    }
-    clientBody = json as Record<string, unknown>;
-  } catch {
-    return errorResponse("Request body must be a JSON object.", 400);
+  // 4. Read the client body under a hard byte cap, then build the upstream body.
+  const parsed = await readBoundedJson(req, MAX_BODY_BYTES);
+  if (!parsed.ok) {
+    return errorResponse(parsed.message, parsed.status, "invalid_request_error", parsed.code);
   }
-  const upstreamBody = buildUpstreamChatBody(clientBody, {
+  const upstreamBody = buildUpstreamChatBody(parsed.value, {
     instructions: loaded.coding.instructions,
     model: loaded.coding.model,
   });
