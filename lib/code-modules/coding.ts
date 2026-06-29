@@ -1,6 +1,5 @@
 import { CodingDetail } from "@/app/[code]/_coding/coding-detail";
 import { CodingResult } from "@/app/[code]/_coding/coding-result";
-import { fileValidators } from "@/lib/file-validators";
 import type { CodeModuleDef } from "./registry";
 
 // The coding module: an OpenAI-compatible coding endpoint backed by a model on
@@ -16,7 +15,6 @@ import type { CodeModuleDef } from "./registry";
 // JSX lives in this registry .ts file.
 export const codingModule: CodeModuleDef = {
   fileKind: "coding",
-  validateOnCreate: (fileUrl, fetcher) => fileValidators.coding.validate(fileUrl, fetcher),
   // No `runtime`: the CopilotKit route rejects any module without one.
   renderDetail: (entry) => CodingDetail({ entry }),
   // The create/edit-screen result is the little-coder connection config, not a share

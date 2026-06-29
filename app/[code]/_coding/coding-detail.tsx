@@ -1,7 +1,7 @@
 import { Notice } from "@/components/notice";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import type { CodeEntry } from "@/lib/code-store";
-import { loadCoding } from "@/lib/coding-fetch";
+import { codingConnectionProps, loadCoding } from "@/lib/coding-fetch";
 import styles from "./coding.module.css";
 import { CodingConnection } from "./coding-connection";
 
@@ -15,8 +15,6 @@ import { CodingConnection } from "./coding-connection";
 export async function CodingDetail({ entry }: { entry: CodeEntry }) {
   const loaded = await loadCoding(entry.fileUrl);
   const origin = await resolveAppOriginOr("");
-  const baseUrl = `${origin}/api/coding/v1`;
-  const modelName = loaded.ok ? (loaded.coding.title ?? "Novedu coding") : "Novedu coding";
 
   return (
     <>
@@ -43,12 +41,7 @@ export async function CodingDetail({ entry }: { entry: CodeEntry }) {
 
       <div className={styles.detailSection}>
         <p className={styles.label}>Connection details</p>
-        <CodingConnection
-          baseUrl={baseUrl}
-          apiKey={entry.code}
-          modelId="coding"
-          modelName={modelName}
-        />
+        <CodingConnection {...codingConnectionProps(loaded, origin, entry.code)} />
       </div>
     </>
   );

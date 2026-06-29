@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   requireTeacherUserId: vi.fn(),
-  validateOnCreate: vi.fn(),
+  validateCodeFile: vi.fn(),
   createCode: vi.fn(),
   getCode: vi.fn(),
   updateCode: vi.fn(),
@@ -24,12 +24,10 @@ vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("@/lib/student-mode", () => ({ requireTeacherUserId: mocks.requireTeacherUserId }));
 vi.mock("@/lib/app-hosted-fetcher", () => ({ appHostedFetcher: () => vi.fn() }));
-// Each module reuses its Layer-2 validator via the registry; both point at one mock.
+// Create-time validation is derived from the module's fileKind by the registry's
+// `validateCodeFile`; mock it directly.
 vi.mock("@/lib/code-modules/registry", () => ({
-  codeModules: {
-    tutor: { fileKind: "tutor", validateOnCreate: mocks.validateOnCreate },
-    quiz: { fileKind: "quiz", validateOnCreate: mocks.validateOnCreate },
-  },
+  validateCodeFile: mocks.validateCodeFile,
 }));
 vi.mock("@/lib/code-store", async (importOriginal) => {
   // Keep the REAL validateCodeRequest — the actions' validation behavior is part
@@ -73,7 +71,7 @@ beforeEach(() => {
   // The shared gate yields the teacher's user id directly (no separate session
   // round trip); the action reuses it.
   mocks.requireTeacherUserId.mockResolvedValue({ ok: true, userId: "teacher-sub-1" });
-  mocks.validateOnCreate.mockResolvedValue({
+  mocks.validateCodeFile.mockResolvedValue({
     ok: true,
     warnings: [],
     title: null,
@@ -119,7 +117,7 @@ describe("createCodeAction", () => {
   });
 
   it("freezes the activity's anonymity flag from the validator result", async () => {
-    mocks.validateOnCreate.mockResolvedValue({
+    mocks.validateCodeFile.mockResolvedValue({
       ok: true,
       warnings: [],
       title: null,
@@ -167,7 +165,7 @@ describe("createCodeAction", () => {
   });
 
   it("rejects a file that fails validation, surfacing the full structured error list", async () => {
-    mocks.validateOnCreate.mockResolvedValue({
+    mocks.validateCodeFile.mockResolvedValue({
       ok: false,
       errors: [
         {

@@ -36,6 +36,21 @@ function post(body: unknown, headers: Record<string, string> = {}): Request {
   });
 }
 
+// A streamed (chunked) request body — no Content-Length, so the header check can't see
+// its size. Node requires `duplex: "half"` for a stream body (absent from the DOM types).
+function postStream(
+  stream: ReadableStream<Uint8Array>,
+  headers: Record<string, string> = {},
+): Request {
+  return new Request("http://localhost/api/coding/v1/chat/completions", {
+    method: "POST",
+    headers: { authorization: `Bearer ${CODE}`, ...headers },
+    body: stream,
+    // @ts-expect-error duplex is required by Node/undici for a stream body, not typed in lib.dom.
+    duplex: "half",
+  });
+}
+
 function chatBody() {
   return {
     model: "whatever-the-client-says",
@@ -117,6 +132,21 @@ describe("POST /api/coding/v1/chat/completions — body handling", () => {
     const json = await res.json();
     expect(json.error.code).toBe("request_too_large");
     expect(checkCode).not.toHaveBeenCalled();
+  });
+
+  it("413s an oversized chunked body that omits Content-Length — the streaming read bounds it", async () => {
+    // 3 MiB enqueued with no Content-Length: the header check is blind to it, so the
+    // streaming read in the handler must cancel it and reject, never forwarding upstream.
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < 3; i++) controller.enqueue(new Uint8Array(1024 * 1024));
+        controller.close();
+      },
+    });
+    const res = await POST(postStream(stream));
+    expect(res.status).toBe(413);
+    expect((await res.json()).error.code).toBe("request_too_large");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("502s when the coding YAML cannot be loaded", async () => {

@@ -52,25 +52,26 @@ function appendInstructions(existing: unknown, instructions: string): unknown {
 /**
  * Builds the upstream Chat Completions body from the client's body: PIN the model and
  * fold in the teacher's system prompt. The teacher's instructions are appended to the
- * END of the client's existing system message, so the teacher has the final word and
- * takes precedence over the coding tool's own prompt; if the client sent no system
- * message, a leading one carrying only the teacher's instructions is added. Everything
- * else (messages, tools, tool_choice, temperature, stream, …) passes through verbatim,
- * so client-side tools and streaming are all preserved.
+ * END of the client's LAST system message, so the teacher has the final word: a client
+ * cannot smuggle a later system message after the teacher's to override it. If the
+ * client sent no system message, a leading one carrying only the teacher's instructions
+ * is added. Everything else (messages, tools, tool_choice, temperature, stream, …)
+ * passes through verbatim, so client-side tools and streaming are all preserved.
  */
 export function buildUpstreamChatBody(
   clientBody: Record<string, unknown>,
   opts: { instructions: string; model: string },
 ): Record<string, unknown> {
   const clientMessages = Array.isArray(clientBody.messages) ? clientBody.messages : [];
-  const systemIndex = clientMessages.findIndex((m) => isRecord(m) && m.role === "system");
+  const systemIndex = clientMessages.findLastIndex((m) => isRecord(m) && m.role === "system");
 
   let messages: unknown[];
   if (systemIndex === -1) {
     // No system message from the client — add one carrying just the teacher's prompt.
     messages = [{ role: "system", content: opts.instructions }, ...clientMessages];
   } else {
-    // Append the teacher's prompt to the end of the client's own system message.
+    // Append the teacher's prompt to the end of the client's LAST system message, so no
+    // client-supplied system message can follow (and override) the teacher's.
     const existing = clientMessages[systemIndex] as Record<string, unknown>;
     messages = [...clientMessages];
     messages[systemIndex] = {

@@ -2,6 +2,7 @@
 
 import { CopyIconButton } from "@/components/copy-icon-button";
 import type { CodeModule } from "@/lib/code-modules/types";
+import { CODING_MODEL_ID, codingBaseUrl, DEFAULT_CODING_MODEL_NAME } from "@/lib/coding-connection";
 import { buildLittleCoderConfig } from "@/lib/little-coder-config";
 import styles from "./codes.module.css";
 
@@ -17,10 +18,10 @@ export function CopyCodeButton({ code, module }: { code: string; module: CodeMod
       <CopyIconButton
         text={() =>
           buildLittleCoderConfig({
-            baseUrl: `${window.location.origin}/api/coding/v1`,
+            baseUrl: codingBaseUrl(window.location.origin),
             apiKey: code,
-            modelId: "coding",
-            modelName: "Novedu coding",
+            modelId: CODING_MODEL_ID,
+            modelName: DEFAULT_CODING_MODEL_NAME,
           })
         }
         label="Copy little-coder config"

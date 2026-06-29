@@ -17,8 +17,7 @@ import { parse as parseYamlText } from "yaml";
 
 /** A parsed coding activity. `instructions` and `model` are server-side only. */
 export interface Coding {
-  id: string;
-  name: string;
+  /** Student-facing display name. Optional — the surfaces fall back to a default. */
   title?: string;
   /** The model id that answers on SCCH. SERVER-ONLY — the proxy pins it. */
   model: string;
@@ -30,7 +29,7 @@ export type CodingParseResult = { ok: true; coding: Coding } | { ok: false; mess
 
 function asString(value: unknown): string | undefined {
   if (typeof value === "string") return value.trim() !== "" ? value : undefined;
-  // YAML types unquoted scalars by value, so `id: 1` arrives as a number. Coerce a
+  // YAML types unquoted scalars by value, so `title: 1` arrives as a number. Coerce a
   // finite number / boolean to its string form rather than silently dropping it.
   if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
   if (typeof value === "boolean") return String(value);
@@ -70,8 +69,6 @@ export function parseCoding(content: string): CodingParseResult {
   return {
     ok: true,
     coding: {
-      id: asString(root.id) ?? asString(root.name) ?? "coding",
-      name: asString(root.name) ?? "coding",
       title: asString(root.title),
       model,
       instructions,
