@@ -1,6 +1,7 @@
 "use client";
 
 import { CopyIconButton } from "@/components/copy-icon-button";
+import { buildLittleCoderConfig } from "@/lib/little-coder-config";
 import styles from "./coding.module.css";
 
 // Connection details for an OpenAI-compatible coding agent (e.g. little-coder):
@@ -24,30 +25,7 @@ export function CodingConnection({
   modelName: string;
 }) {
   const modelRef = `novedu/${modelId}`;
-  const modelsJson = JSON.stringify(
-    {
-      providers: {
-        novedu: {
-          api: "openai-completions",
-          baseUrl,
-          apiKey,
-          models: [
-            {
-              id: modelId,
-              name: modelName,
-              reasoning: false,
-              input: ["text"],
-              contextWindow: 32768,
-              maxTokens: 4096,
-              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            },
-          ],
-        },
-      },
-    },
-    null,
-    2,
-  );
+  const modelsJson = buildLittleCoderConfig({ baseUrl, apiKey, modelId, modelName });
   const runCommand = `little-coder --model ${modelRef} -p "Write a Python program that ..."`;
 
   return (
