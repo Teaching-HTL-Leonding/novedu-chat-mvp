@@ -121,6 +121,7 @@ export function EditFileForm({
           resetFeedback();
         }}
         disabled={pending}
+        fill
       />
 
       <div className={styles.actionsBar}>

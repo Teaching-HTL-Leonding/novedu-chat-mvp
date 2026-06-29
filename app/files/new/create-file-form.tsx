@@ -131,6 +131,7 @@ export function CreateFileForm() {
             resetFeedback();
           }}
           disabled={pending}
+          fill
         />
 
         <div className={styles.actionsBar}>
