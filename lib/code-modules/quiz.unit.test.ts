@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const loadQuiz = vi.hoisted(() => vi.fn());
 const quizValidate = vi.hoisted(() => vi.fn());
 const conversationStats = vi.hoisted(() => vi.fn());
+const shareLinkResult = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/quiz-fetch", () => ({ loadQuiz }));
 vi.mock("@/lib/file-validators", () => ({
@@ -17,6 +18,8 @@ vi.mock("@/lib/file-validators", () => ({
 // renderDetail calls the shared ConversationStats; mock it (the real one pulls in
 // the code-stats store → @/app/mastra, which this hermetic test must not load).
 vi.mock("@/app/codes/[code]/conversation-stats", () => ({ ConversationStats: conversationStats }));
+// renderResult calls the shared ShareLinkResult; mock it to stay hermetic.
+vi.mock("@/app/codes/share-link-result", () => ({ ShareLinkResult: shareLinkResult }));
 vi.mock("@/app/mastra/quiz-agents", () => ({
   QUIZ_DISCUSSION_INSTRUCTIONS: "quiz-discussion-instructions",
   QUIZ_DISCUSSION_MODEL: "quiz-discussion-model",
@@ -64,7 +67,7 @@ describe("quizModule.validateOnCreate", () => {
 describe("quizModule.runtime.buildRequestContext", () => {
   it("502s when the quiz YAML cannot be loaded", async () => {
     loadQuiz.mockResolvedValue({ ok: false, message: "quiz unavailable" });
-    expect(await quizModule.runtime.buildRequestContext(entry)).toEqual({
+    expect(await quizModule.runtime?.buildRequestContext(entry)).toEqual({
       ok: false,
       status: 502,
       message: "quiz unavailable",
@@ -76,9 +79,9 @@ describe("quizModule.runtime.buildRequestContext", () => {
       ok: true,
       quiz: { model: "gemma-4", discussionInstructions: "Focus on big-O." },
     });
-    const result = await quizModule.runtime.buildRequestContext(entry);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
+    const result = await quizModule.runtime?.buildRequestContext(entry);
+    expect(result?.ok).toBe(true);
+    if (result?.ok) {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("quiz-discussion-model")).toBe("gemma-4");
       const instr = ctx.get("quiz-discussion-instructions") as string;
@@ -89,9 +92,9 @@ describe("quizModule.runtime.buildRequestContext", () => {
 
   it("uses only the default frame when the quiz omits discussionInstructions", async () => {
     loadQuiz.mockResolvedValue({ ok: true, quiz: { model: "gemma-4" } });
-    const result = await quizModule.runtime.buildRequestContext(entry);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
+    const result = await quizModule.runtime?.buildRequestContext(entry);
+    expect(result?.ok).toBe(true);
+    if (result?.ok) {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("quiz-discussion-instructions")).toContain("single quiz question");
     }
@@ -104,5 +107,14 @@ describe("quizModule.renderDetail", () => {
     const out = quizModule.renderDetail(entry, {});
     expect(conversationStats).toHaveBeenCalledWith({ entry });
     expect(out).toBe("<stats/>");
+  });
+});
+
+describe("quizModule.renderResult", () => {
+  it("renders the shared share-link result with the share URL", () => {
+    shareLinkResult.mockReturnValue("<share/>");
+    const out = quizModule.renderResult(entry, { shareUrl: "https://x/abc", origin: "https://x" });
+    expect(shareLinkResult).toHaveBeenCalledWith({ shareUrl: "https://x/abc" });
+    expect(out).toBe("<share/>");
   });
 });

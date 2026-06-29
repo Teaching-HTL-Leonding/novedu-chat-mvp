@@ -62,6 +62,11 @@
   color: color-mix(in srgb, darkorange 70%, var(--foreground));
 }
 
+.kindCoding {
+  background: color-mix(in srgb, mediumpurple 22%, transparent);
+  color: color-mix(in srgb, mediumpurple 70%, var(--foreground));
+}
+
 /* Square icon button shared by every row action — defined once in the shared
    module so the Files and Tutor-Codes screens can't drift. */
 .iconButton {

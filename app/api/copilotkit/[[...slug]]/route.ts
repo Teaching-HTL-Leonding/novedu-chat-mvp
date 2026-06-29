@@ -224,6 +224,12 @@ async function handler(req: Request): Promise<Response> {
   const { entry } = verification;
   const def = codeModules[entry.module];
 
+  // A module without a CopilotKit runtime (e.g. `coding`, reached only through its
+  // own public OpenAI-compatible route) is never served here.
+  if (!def.runtime) {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
   // AGENT: each module runs exactly one agent; any other id 404s, so the
   // registered-but-internal `quizEvaluator` grader stays unreachable.
   if (runtimeRequest.agentId !== def.runtime.agentId) {

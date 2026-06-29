@@ -1,6 +1,7 @@
 import { Notice } from "@/components/notice";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { resolveAppOriginOr } from "@/lib/app-origin";
+import { codeModules } from "@/lib/code-modules/registry";
 import { getCode } from "@/lib/code-store";
 import pageStyles from "../../../page.module.css";
 import { CodeForm } from "../../code-form";
@@ -38,6 +39,11 @@ export default async function EditCodePage({ params }: { params: Promise<{ code:
   }
 
   const origin = await resolveAppOriginOr("");
+  const shareUrl = origin ? `${origin}/${entry.code}` : `/${entry.code}`;
+  // Per-module result body (the link-based modules show the share link; coding shows
+  // its little-coder config). Rendered server-side and handed to the client form as a
+  // slot, so the client never touches the server-only registry.
+  const resultSlot = await codeModules[entry.module].renderResult(entry, { shareUrl, origin });
 
   return (
     <main className={pageStyles.main}>
@@ -49,7 +55,7 @@ export default async function EditCodePage({ params }: { params: Promise<{ code:
         initialNote={entry.note}
         initialStartSeconds={entry.validFrom ? seconds(entry.validFrom) : undefined}
         initialEndSeconds={entry.validUntil ? seconds(entry.validUntil) : undefined}
-        shareUrl={origin ? `${origin}/${entry.code}` : `/${entry.code}`}
+        resultSlot={resultSlot}
       />
     </main>
   );

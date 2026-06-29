@@ -1,8 +1,7 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { type ReactNode, useActionState, useState } from "react";
 import { BackLink } from "@/components/back-link";
-import { useCopyToClipboard } from "@/components/use-copy-to-clipboard";
 import { ErrorList } from "@/components/validation-result";
 import { type CodeFormState, createCodeAction, updateCodeAction } from "@/lib/code-actions";
 import { CODE_MODULES, type CodeModule, codeModuleLabels } from "@/lib/code-modules/types";
@@ -17,60 +16,6 @@ import styles from "./code-form.module.css";
 
 const INITIAL_STATE: CodeFormState = { status: "idle" };
 
-// A read-only link with its own Copy button and "Copied!" feedback (+ open in a
-// new tab). On a clipboard failure (non-secure context, e.g. plain http on a LAN
-// address) the link is selected so a manual Ctrl/Cmd+C is one keystroke away.
-function CopyableLinkRow({ link, label }: { link: string; label: string }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const { copied, copy } = useCopyToClipboard({
-    onFail: () => {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    },
-  });
-
-  return (
-    <div className={styles.linkRow}>
-      <input
-        ref={inputRef}
-        className={styles.linkInput}
-        readOnly
-        value={link}
-        aria-label={label}
-        onFocus={(event) => event.currentTarget.select()}
-      />
-      <button type="button" className={styles.button} onClick={() => copy(link)}>
-        {copied ? "Copied!" : "Copy"}
-      </button>
-      <a
-        href={link}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`${styles.button} ${styles.openLinkButton}`}
-        aria-label={`Open ${label} in new tab`}
-        title="Open in new tab"
-      >
-        <svg
-          width="1em"
-          height="1em"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          role="img"
-        >
-          <title>Open in new tab</title>
-          <path d="M15 3h6v6" />
-          <path d="M10 14 21 3" />
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-        </svg>
-      </a>
-    </div>
-  );
-}
-
 export interface CodeFormProps {
   mode: "create" | "edit";
   /** Create: preselects the activity. Edit: the row's module (shown read-only). */
@@ -80,17 +25,21 @@ export interface CodeFormProps {
   initialNote?: string;
   initialStartSeconds?: number;
   initialEndSeconds?: number;
-  /** Edit mode only: the code being edited + its shareable URL. */
+  /** Edit mode only: the code being edited. */
   code?: string;
-  shareUrl?: string;
+  /**
+   * Edit mode only: the module's result body (server-rendered), shown above the form —
+   * tutor/quiz/writing render the share link, coding its little-coder connection config.
+   */
+  resultSlot?: ReactNode;
 }
 
 // One form for BOTH creating and editing a code. Validation + storage live in the
 // server actions; this only converts the datetime-local values (local wall-clock)
 // to unix seconds — a conversion that MUST happen in the browser, the only place
 // the teacher's timezone is known. Create picks the activity (`module`) + file and
-// redirects to the new code's edit page on success (which shows the shareable
-// link). Edit changes the note/window only — the module + file URL are frozen
+// redirects to the new code's edit page on success (which shows the module's result
+// body — `resultSlot`). Edit changes the note/window only — the module + file URL are frozen
 // (shown read-only), so there is no YAML re-validation.
 export function CodeForm({
   mode,
@@ -100,7 +49,7 @@ export function CodeForm({
   initialStartSeconds,
   initialEndSeconds,
   code,
-  shareUrl,
+  resultSlot,
 }: CodeFormProps) {
   const isEdit = mode === "edit";
   const action: (state: CodeFormState, formData: FormData) => Promise<CodeFormState> = isEdit
@@ -125,16 +74,7 @@ export function CodeForm({
     <div className={styles.container}>
       <BackLink href="/codes">Back to codes</BackLink>
 
-      {isEdit && shareUrl ? (
-        <section className={styles.linkBox}>
-          <h2 className={styles.linkHeading}>Share link</h2>
-          <p className={styles.muted}>
-            Send this link to your students — the last part of the URL is the code, which they can
-            also type on the start page. It only works within the chosen time window.
-          </p>
-          <CopyableLinkRow link={shareUrl} label="Share link" />
-        </section>
-      ) : null}
+      {isEdit ? resultSlot : null}
 
       <form className={styles.form} action={formAction}>
         <div className={styles.field}>

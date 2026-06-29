@@ -1,0 +1,80 @@
+import { parse as parseYamlText } from "yaml";
+
+// LENIENT runtime parse of a coding YAML — the path the OpenAI-compatible proxy
+// uses to read the activity behind a (verified) code's file_url. Coding activities
+// are stored in `novedu_files` under `kind: "coding"`. This is a small typed read
+// of just the essentials the proxy needs (the teacher's system prompt + the pinned
+// model), with a friendly message when something required is missing.
+//
+// This is NOT an authoring gate: structural validation for coding YAMLs is a
+// placeholder (see lib/coding-validate.ts) and is deliberately separate from this
+// read. A coding activity is ALWAYS anonymous (the API path carries no per-student
+// identity), so there is no `anonymous` flag here.
+//
+// SERVER-SIDE: exposes the server-only `instructions` (the teacher's system prompt)
+// and `model`. Neither must ever reach the browser — the student connection page
+// needs only `title` (the proxy pins the model and ignores the client's).
+
+/** A parsed coding activity. `instructions` and `model` are server-side only. */
+export interface Coding {
+  id: string;
+  name: string;
+  title?: string;
+  /** The model id that answers on SCCH. SERVER-ONLY — the proxy pins it. */
+  model: string;
+  /** The teacher's system prompt, prepended ahead of the client's. SERVER-ONLY. */
+  instructions: string;
+}
+
+export type CodingParseResult = { ok: true; coding: Coding } | { ok: false; message: string };
+
+function asString(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() !== "" ? value : undefined;
+  // YAML types unquoted scalars by value, so `id: 1` arrives as a number. Coerce a
+  // finite number / boolean to its string form rather than silently dropping it.
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
+  if (typeof value === "boolean") return String(value);
+  return undefined;
+}
+
+/**
+ * Parses and lightly validates a coding YAML. Returns a friendly error message
+ * (not structured errors) when an essential field is missing — the proxy and the
+ * student page surface it as a notice.
+ */
+export function parseCoding(content: string): CodingParseResult {
+  let doc: unknown;
+  try {
+    doc = parseYamlText(content);
+  } catch {
+    return {
+      ok: false,
+      message: "This coding activity could not be read — its YAML is not valid.",
+    };
+  }
+  if (typeof doc !== "object" || doc === null || Array.isArray(doc)) {
+    return { ok: false, message: "This coding activity is empty or malformed." };
+  }
+  const root = doc as Record<string, unknown>;
+
+  const model = asString((root.llm as Record<string, unknown> | undefined)?.model);
+  if (!model) {
+    return { ok: false, message: "This coding activity does not specify a model (llm.model)." };
+  }
+
+  const instructions = asString(root.instructions);
+  if (!instructions) {
+    return { ok: false, message: "This coding activity has no instructions for the assistant." };
+  }
+
+  return {
+    ok: true,
+    coding: {
+      id: asString(root.id) ?? asString(root.name) ?? "coding",
+      name: asString(root.name) ?? "coding",
+      title: asString(root.title),
+      model,
+      instructions,
+    },
+  };
+}

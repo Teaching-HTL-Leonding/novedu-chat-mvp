@@ -167,6 +167,21 @@ describe("fileValidators.writing (strict gate — blocks an invalid activity)", 
   });
 });
 
+describe("fileValidators.coding", () => {
+  it("is a placeholder that accepts any file and freezes anonymous:true", async () => {
+    const result = await fileValidators.coding.validate(URL_, fetcher);
+    expect(result).toEqual({
+      ok: true,
+      warnings: [],
+      title: null,
+      description: null,
+      anonymous: true,
+    });
+    // The placeholder does no I/O — no loader is consulted.
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
 describe("readAnonymousFlag (runtime-light, by FileKind)", () => {
   it("quiz → reads the live flag via loadQuiz (definitive)", async () => {
     mocks.loadQuiz.mockResolvedValue({ ok: true, quiz: { anonymous: false } });
@@ -208,6 +223,13 @@ describe("readAnonymousFlag (runtime-light, by FileKind)", () => {
   it("falls back to anonymous:true NON-definitively when the YAML cannot be read", async () => {
     mocks.loadQuiz.mockResolvedValue({ ok: false, message: "gone" });
     expect(await readAnonymousFlag("quiz", URL_)).toEqual({ anonymous: true, definitive: false });
+  });
+
+  it("coding → always anonymous:true definitively, WITHOUT reading the YAML", async () => {
+    expect(await readAnonymousFlag("coding", URL_)).toEqual({ anonymous: true, definitive: true });
+    // Coding is anonymous by construction — no loader is consulted.
+    expect(mocks.loadQuiz).not.toHaveBeenCalled();
+    expect(mocks.loadWriting).not.toHaveBeenCalled();
   });
 
   it("returns the non-definitive default for a kind with no anonymity flag (fragment)", async () => {

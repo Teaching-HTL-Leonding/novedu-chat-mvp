@@ -36,6 +36,7 @@ vi.mock("next/link", () => ({
 }));
 
 import { CodeForm } from "@/app/codes/code-form";
+import { ShareLinkResult } from "@/app/codes/share-link-result";
 
 const FILE_URL = "https://example.com/tutor.yaml";
 const START = "2026-06-10T10:00";
@@ -124,7 +125,7 @@ test("edit: file URL is read-only, fields are pre-filled, and the shareable link
       initialNote="3AHIF exercise"
       initialStartSeconds={datetimeLocalToUnixSeconds(START)}
       initialEndSeconds={datetimeLocalToUnixSeconds(END)}
-      shareUrl={shareUrl}
+      resultSlot={<ShareLinkResult shareUrl={shareUrl} />}
     />,
   );
 
@@ -154,7 +155,6 @@ test("edit: Save submits the window + note to the bound code and shows 'Saved'",
       initialNote="old"
       initialStartSeconds={datetimeLocalToUnixSeconds(START)}
       initialEndSeconds={datetimeLocalToUnixSeconds(END)}
-      shareUrl="http://localhost:3000/a1b2c3d4e5"
     />,
   );
 
@@ -181,7 +181,6 @@ test("edit: renders the server action's error message", async () => {
       initialNote="x"
       initialStartSeconds={datetimeLocalToUnixSeconds(START)}
       initialEndSeconds={datetimeLocalToUnixSeconds(END)}
-      shareUrl="http://localhost:3000/a1b2c3d4e5"
     />,
   );
 

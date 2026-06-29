@@ -12,6 +12,7 @@ const loadWriting = vi.hoisted(() => vi.fn());
 const writingValidate = vi.hoisted(() => vi.fn());
 const writingSaversList = vi.hoisted(() => vi.fn());
 const conversationStats = vi.hoisted(() => vi.fn());
+const shareLinkResult = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/writing-fetch", () => ({ loadWriting }));
 vi.mock("@/lib/file-validators", () => ({
@@ -19,6 +20,7 @@ vi.mock("@/lib/file-validators", () => ({
 }));
 vi.mock("@/app/[code]/_writing/writing-review", () => ({ WritingSaversList: writingSaversList }));
 vi.mock("@/app/codes/[code]/conversation-stats", () => ({ ConversationStats: conversationStats }));
+vi.mock("@/app/codes/share-link-result", () => ({ ShareLinkResult: shareLinkResult }));
 vi.mock("@/app/mastra/writing-agents", () => ({
   WRITING_INSTRUCTIONS: "writing-instructions",
   WRITING_MODEL: "writing-model",
@@ -52,7 +54,7 @@ beforeEach(() => {
 describe("writingModule descriptor", () => {
   it("references the writing file kind", () => {
     expect(writingModule.fileKind).toBe("writing");
-    expect(writingModule.runtime.agentId).toBe("writing");
+    expect(writingModule.runtime?.agentId).toBe("writing");
   });
 });
 
@@ -74,7 +76,7 @@ describe("writingModule.validateOnCreate", () => {
 describe("writingModule.runtime.buildRequestContext", () => {
   it("502s when the writing YAML cannot be loaded", async () => {
     loadWriting.mockResolvedValue({ ok: false, message: "writing unavailable" });
-    expect(await writingModule.runtime.buildRequestContext(entry)).toEqual({
+    expect(await writingModule.runtime?.buildRequestContext(entry)).toEqual({
       ok: false,
       status: 502,
       message: "writing unavailable",
@@ -86,9 +88,9 @@ describe("writingModule.runtime.buildRequestContext", () => {
       ok: true,
       writing: { model: "gemma-4", instructions: "Be a writing coach." },
     });
-    const result = await writingModule.runtime.buildRequestContext(entry);
-    expect(result.ok).toBe(true);
-    if (result.ok) {
+    const result = await writingModule.runtime?.buildRequestContext(entry);
+    expect(result?.ok).toBe(true);
+    if (result?.ok) {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("writing-model")).toBe("gemma-4");
       expect(ctx.get("writing-instructions")).toBe("Be a writing coach.");
@@ -118,5 +120,17 @@ describe("writingModule.renderDetail", () => {
     expect(conversationStats).toHaveBeenCalledWith({ entry: anon });
     expect(writingSaversList).not.toHaveBeenCalled();
     expect(out).toBe("<stats/>");
+  });
+});
+
+describe("writingModule.renderResult", () => {
+  it("renders the shared share-link result with the share URL", () => {
+    shareLinkResult.mockReturnValue("<share/>");
+    const out = writingModule.renderResult(entry, {
+      shareUrl: "https://x/abc",
+      origin: "https://x",
+    });
+    expect(shareLinkResult).toHaveBeenCalledWith({ shareUrl: "https://x/abc" });
+    expect(out).toBe("<share/>");
   });
 });

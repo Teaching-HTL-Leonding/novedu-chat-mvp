@@ -7,6 +7,7 @@ import { recordRecentCode, removeRecentCode } from "@/lib/recent-code-store";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
 import { CodeError } from "../code-error";
 import styles from "../page.module.css";
+import { RenderCoding } from "./render-coding";
 import { RenderQuiz } from "./render-quiz";
 import { RenderTutor } from "./render-tutor";
 import { RenderWriting } from "./render-writing";
@@ -81,6 +82,10 @@ export default async function CodePage({ params }: { params: Promise<{ code: str
       return (
         <RenderWriting entry={entry} code={code} threadId={threadId} threadToken={threadToken} />
       );
+    case "coding":
+      // No thread: the coding module has no in-app chat — this page only shows how
+      // to connect an external OpenAI-compatible coding agent to /api/coding/v1.
+      return <RenderCoding entry={entry} code={code} />;
     default: {
       const exhaustive: never = entry.module;
       return exhaustive;

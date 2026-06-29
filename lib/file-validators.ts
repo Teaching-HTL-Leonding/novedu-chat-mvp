@@ -1,3 +1,4 @@
+import { codingValidator } from "@/lib/coding-validate";
 import type { FileKind } from "@/lib/file-name";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import { loadAndCheckQuiz } from "@/lib/quiz-validate";
@@ -108,11 +109,17 @@ const writingValidator: FileValidator = {
   },
 };
 
+// coding: a PLACEHOLDER authoring gate (structural validation not implemented yet)
+// — it accepts any file and freezes `anonymous: true` (coding is always anonymous).
+// The lenient runtime read the proxy needs lives in lib/coding-yaml.ts. See
+// lib/coding-validate.ts.
+
 export const fileValidators: Record<FileKind, FileValidator> = {
   tutor: tutorValidator,
   fragment: fragmentValidator,
   quiz: quizValidator,
   writing: writingValidator,
+  coding: codingValidator,
 };
 
 // Runtime-light read of just the activity YAML's `anonymous` flag, keyed by
@@ -141,6 +148,10 @@ export async function readAnonymousFlag(
       // own flag, which `parseWriting` already defaults to `false` when absent.
       const loaded = await loadWriting(fileUrl);
       if (loaded.ok) return { anonymous: loaded.writing.anonymous, definitive: true };
+    } else if (kind === "coding") {
+      // Coding is ALWAYS anonymous (the API path carries no per-student identity),
+      // so this is definitive without reading the YAML.
+      return { anonymous: true, definitive: true };
     }
   } catch (error) {
     console.error("file-validators: reading the activity YAML's anonymous flag failed", error);

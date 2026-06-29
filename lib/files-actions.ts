@@ -146,7 +146,10 @@ export async function createFileAction(input: {
   const name = nameValidation.name;
 
   if (!isFileKind(input.kind)) {
-    return { ok: false, message: "Choose whether this is a tutor, fragment or quiz file." };
+    return {
+      ok: false,
+      message: "Choose whether this is a tutor, fragment, quiz, writing or coding file.",
+    };
   }
   if (typeof input.content !== "string" || input.content.trim() === "") {
     return { ok: false, message: "The file is empty — add some YAML before creating it." };
@@ -243,7 +246,10 @@ export async function validateNewFileAction(input: {
   const name = nameValidation.name;
 
   if (!isFileKind(input.kind)) {
-    return { ok: false, message: "Choose whether this is a tutor, fragment or quiz file." };
+    return {
+      ok: false,
+      message: "Choose whether this is a tutor, fragment, quiz, writing or coding file.",
+    };
   }
   if (typeof input.content !== "string" || input.content.trim() === "") {
     return { ok: false, message: "The file is empty — add some YAML before validating." };

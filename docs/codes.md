@@ -19,13 +19,13 @@ A **code** is a `[a-z0-9-]` string (1–32 chars; `generateCode()` mints 10 rand
 | Column | Meaning |
 | --- | --- |
 | `code` (PK) | the code, `varchar(32)` (sized for future teacher-defined memorable codes) |
-| `module` | the dispatch discriminator — `tutor` \| `quiz` \| `writing`, picks the renderer + agent |
+| `module` | the dispatch discriminator — `tutor` \| `quiz` \| `writing` \| `coding`, picks the renderer + agent (the `coding` module has no in-app agent — it is an OpenAI-compatible endpoint; see `docs/coding.md`) |
 | `created_by` | session user id (Entra `oid`) of the creating teacher |
 | `file_url` | public URL of the activity YAML (normalized via `URL.href`) |
 | `valid_from` / `valid_until` | availability window, UTC `datetime2`, **both bounds inclusive**. Each is **nullable** — a null `valid_from` opens the code immediately, a null `valid_until` never expires it (both null = always valid). `checkCode` / `windowStatus` coalesce a null bound to `DISTANT_PAST` / `DISTANT_FUTURE` |
 | `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
 | `origin` | **documentation-only**: where the code was created (DEV vs PROD rows). Lookups never read it — a code created on localhost works in production, since all environments share the database |
-| `anonymous` | the activity YAML's `anonymous` flag (default is module-specific — tutor/quiz `true`, writing `false`), **frozen at create time** — a later YAML edit does NOT update it. Governs whether the stats page shows per-student data |
+| `anonymous` | the activity YAML's `anonymous` flag (default is module-specific — tutor/quiz `true`, writing `false`, coding always `true`), **frozen at create time** — a later YAML edit does NOT update it. Governs whether the stats page shows per-student data |
 | `created_at` | creation time |
 
 Indexes: PK on `code`; `created_by` (the teacher list); `module` (the
@@ -47,7 +47,7 @@ since `app/[code]` catches all non-static top-level paths.
 The subsystem is cleanly split so a new activity (or a pure library kind) slots
 in without touching the core.
 
-**Layer 1 — `FileKind`** (`lib/file-name.ts`): `tutor | fragment | quiz | writing`.
+**Layer 1 — `FileKind`** (`lib/file-name.ts`): `tutor | fragment | quiz | writing | coding`.
 Drives the `/files` editor kind selector and `novedu_files.kind`.
 
 **Layer 2 — the validator registry** (`lib/file-validators.ts`):
@@ -73,13 +73,17 @@ siblings) AND by code-create (fetcher = `appHostedFetcher`; url = the row's
 - `writing` → `loadAndCheckWriting` (`lib/writing-validate.ts`): the same kind of
   strict `WritingYamlSchema` gate, differing only in that writing defaults
   `anonymous: false` — see `docs/writing.md`.
+- `coding` → a **placeholder** validator (`lib/coding-validate.ts`): structural
+  validation is not implemented yet, so it accepts any file and freezes
+  `anonymous: true` (coding is always anonymous). The lenient runtime read is
+  `parseCoding` (`lib/coding-yaml.ts`) — see `docs/coding.md`.
 
 **Layer 3 — the `CodeModule` registry** (`lib/code-modules/`): the registry of
 shareable activities.
 
-- `types.ts` is **client-safe** (`CodeModule = "tutor" | "quiz" | "writing"` +
-  display labels) so client components and the `/codes` module filter can name
-  modules without importing server code.
+- `types.ts` is **client-safe** (`CodeModule = "tutor" | "quiz" | "writing" |
+  "coding"` + display labels) so client components and the `/codes` module filter
+  can name modules without importing server code.
 - `registry.ts` is **server-only** (`codeModules: Record<CodeModule,
   CodeModuleDef>`). Each descriptor carries a `fileKind` (which Layer-2 validator
   to reuse) and only what is genuinely activity-specific:
@@ -87,18 +91,27 @@ shareable activities.
     never redefines validation.
   - `runtime` — `{ agentId, buildRequestContext(entry) }`: which Mastra agent the
     runtime route runs and how its per-request `RequestContext` (system prompt +
-    model) is built.
+    model) is built. **Optional**: `coding` omits it (it has no in-app agent), and
+    the CopilotKit route 404s any module without a `runtime`.
   - `renderDetail(entry, searchParams)` — **the** teacher detail body on
     `/codes/[code]`. Each module owns it entirely; there is no privileged "stats
     shell" a module overrides. tutor/quiz share the `ConversationStats` component by
-    calling it; writing renders its savers list. Descriptors call these server
-    components as **plain functions** (returning `ReactNode`), so no JSX lives in the
-    server-only registry.
-- `tutor.ts`, `quiz.ts`, `writing.ts` are the three descriptors. `writing` is the
-  Markdown-writing-with-AI-feedback module (`docs/writing.md`): its `renderDetail` is
-  the savers-first teacher review (saved text first, chat second), and its agent reads
-  the student's live draft through the read-only `getCurrentText` frontend tool but
-  has no tool to change it.
+    calling it; writing renders its savers list; coding shows its config + connection
+    details. Descriptors call these server components as **plain functions**
+    (returning `ReactNode`), so no JSX lives in the server-only registry.
+  - `renderResult(entry, { shareUrl, origin })` — the create/edit screen's result
+    body (server-rendered on `/codes/edit/[code]`, handed to the client `CodeForm` as
+    a slot). tutor/quiz/writing share **`ShareLinkResult`** (the `/<code>` share link
+    with a copy button); `coding` shows its little-coder connection config instead
+    (`CodingResult` → `CodingConnection`) — a coding code is an API key, not a web
+    link. Same plain-function pattern as `renderDetail`.
+- `tutor.ts`, `quiz.ts`, `writing.ts`, `coding.ts` are the descriptors. `writing` is
+  the Markdown-writing-with-AI-feedback module (`docs/writing.md`): its `renderDetail`
+  is the savers-first teacher review (saved text first, chat second), and its agent
+  reads the student's live draft through the read-only `getCurrentText` frontend tool
+  but has no tool to change it. `coding` is the OpenAI-compatible coding-endpoint
+  module (`docs/coding.md`): it has **no `runtime`** and is reached only through its
+  own public `/api/coding/v1` route, with the code as the bearer API key.
 
 Student **rendering** is also NOT a registry seam: it is a thin `switch (entry.module)`
 in `app/[code]/page.tsx` delegating to each module's own server component
@@ -107,7 +120,7 @@ body IS a registry seam — `renderDetail` above — but descriptors keep JSX ou
 calling components as plain functions.)
 
 **Adding a module** touches a small, fixed set of seams: a descriptor file (with its
-`renderDetail`) + one `codeModules` line, a client label (`lib/code-modules/types.ts`),
+`renderDetail` + `renderResult`) + one `codeModules` line, a client label (`lib/code-modules/types.ts`),
 a student render case (the thin `switch` in `app/[code]/page.tsx`) with its own render
 component + agent, and — for a **new file kind** — that kind's validator and
 `readAnonymousFlag` branch in the FileKind layer (`lib/file-validators.ts`). The
@@ -178,10 +191,11 @@ open-ended code (no start / no end → a null bound). The action (`createCodeAct
 `validateOnCreate` (the Layer-2 validator for its `fileKind`), **freezes**
 `anonymous`/`title` from the result, and inserts the row. **A storage failure is a
 hard error** — without a row there is nothing to hand out. On success the action
-**redirects to `/codes/edit/<code>`**, which shows the shareable URL (copy
-button) — its origin comes from `CODE_ORIGIN` (read first), then
-`TUTOR_CODE_ORIGIN` (fallback), then the request's forwarded/host headers (fine
-for dev); it is display-only.
+**redirects to `/codes/edit/<code>`**, which shows the module's **result body**
+(`renderResult`): tutor/quiz/writing the shareable `/<code>` URL (copy button),
+coding its little-coder connection config. The origin comes from `CODE_ORIGIN` (read
+first), then `TUTOR_CODE_ORIGIN` (fallback), then the request's forwarded/host headers
+(fine for dev); it is display-only.
 
 **Editing** (`/codes/edit/[code]`, the SAME `CodeForm` in `mode="edit"` →
 `updateCodeAction` → `updateCode`) changes only the **note** and the

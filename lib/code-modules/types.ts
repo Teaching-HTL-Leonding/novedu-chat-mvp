@@ -9,7 +9,7 @@
 // descriptor (lib/code-modules/registry.ts) and its own student/agent code.
 
 /** The shareable-activity modules a code can dispatch to. */
-export const CODE_MODULES = ["tutor", "quiz", "writing"] as const;
+export const CODE_MODULES = ["tutor", "quiz", "writing", "coding"] as const;
 
 export type CodeModule = (typeof CODE_MODULES)[number];
 
@@ -40,4 +40,7 @@ export const codeModuleLabels: Record<CodeModule, CodeModuleLabels> = {
   tutor: { badge: "Tutor", countColumn: "Conversations" },
   quiz: { badge: "Quiz", countColumn: "Discussions" },
   writing: { badge: "Writing", countColumn: "Conversations" },
+  // Coding has no in-app conversations and renders its own detail (not
+  // ConversationStats), so `countColumn` is never displayed for it.
+  coding: { badge: "Coding", countColumn: "—" },
 };

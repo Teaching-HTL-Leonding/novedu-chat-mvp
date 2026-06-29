@@ -8,10 +8,16 @@
 /** Allowed file-name shape: letters, digits, underscore, hyphen — no spaces, max 100. */
 export const FILE_NAME_PATTERN = /^[A-Za-z0-9_-]{1,100}$/;
 
-export type FileKind = "tutor" | "fragment" | "quiz" | "writing";
+export type FileKind = "tutor" | "fragment" | "quiz" | "writing" | "coding";
 
 export function isFileKind(value: unknown): value is FileKind {
-  return value === "tutor" || value === "fragment" || value === "quiz" || value === "writing";
+  return (
+    value === "tutor" ||
+    value === "fragment" ||
+    value === "quiz" ||
+    value === "writing" ||
+    value === "coding"
+  );
 }
 
 export type FileNameValidation = { ok: true; name: string } | { ok: false; message: string };
