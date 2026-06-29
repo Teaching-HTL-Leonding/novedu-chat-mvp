@@ -1,5 +1,6 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
+import { ShareLinkResult } from "@/app/codes/share-link-result";
 import { QUIZ_DISCUSSION_INSTRUCTIONS, QUIZ_DISCUSSION_MODEL } from "@/app/mastra/quiz-agents";
 import { fileValidators } from "@/lib/file-validators";
 import { loadQuiz } from "@/lib/quiz-fetch";
@@ -38,4 +39,5 @@ export const quizModule: CodeModuleDef = {
     },
   },
   renderDetail: (entry) => ConversationStats({ entry }),
+  renderResult: (_entry, { shareUrl }) => ShareLinkResult({ shareUrl }),
 };

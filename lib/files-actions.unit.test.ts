@@ -126,7 +126,7 @@ describe("createFileAction", () => {
     const result = await createFileAction({ ...FRAGMENT, kind: "nonsense" });
     expect(result).toMatchObject({
       ok: false,
-      message: expect.stringMatching(/tutor, fragment or quiz/i),
+      message: expect.stringMatching(/tutor, fragment, quiz, writing or coding/i),
     });
     expect(mocks.createFile).not.toHaveBeenCalled();
   });

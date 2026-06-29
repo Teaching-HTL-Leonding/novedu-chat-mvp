@@ -119,6 +119,7 @@ export function CreateFileForm() {
               <option value="fragment">Fragment</option>
               <option value="quiz">Quiz</option>
               <option value="writing">Writing</option>
+              <option value="coding">Coding</option>
             </select>
           </div>
         </div>

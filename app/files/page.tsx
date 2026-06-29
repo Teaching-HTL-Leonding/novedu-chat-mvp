@@ -99,7 +99,9 @@ export default async function FilesPage({
               ? styles.kindTutor
               : row.kind === "quiz"
                 ? styles.kindQuiz
-                : styles.kindFragment
+                : row.kind === "coding"
+                  ? styles.kindCoding
+                  : styles.kindFragment
           }`}
         >
           {row.kind}

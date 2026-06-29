@@ -1,6 +1,7 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { WritingSaversList } from "@/app/[code]/_writing/writing-review";
 import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
+import { ShareLinkResult } from "@/app/codes/share-link-result";
 import { WRITING_INSTRUCTIONS, WRITING_MODEL } from "@/app/mastra/writing-agents";
 import { fileValidators } from "@/lib/file-validators";
 import { loadWriting } from "@/lib/writing-fetch";
@@ -39,4 +40,5 @@ export const writingModule: CodeModuleDef = {
           code: entry.code,
           search: typeof searchParams.q === "string" ? searchParams.q : undefined,
         }),
+  renderResult: (_entry, { shareUrl }) => ShareLinkResult({ shareUrl }),
 };

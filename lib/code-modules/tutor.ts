@@ -1,5 +1,6 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
+import { ShareLinkResult } from "@/app/codes/share-link-result";
 import { fileValidators } from "@/lib/file-validators";
 import type { CodeModuleDef } from "./registry";
 
@@ -21,4 +22,5 @@ export const tutorModule: CodeModuleDef = {
     },
   },
   renderDetail: (entry) => ConversationStats({ entry }),
+  renderResult: (_entry, { shareUrl }) => ShareLinkResult({ shareUrl }),
 };

@@ -214,6 +214,35 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   createdCodeLabel = null;
 });
 
+// CODING CODE — the per-module result seam: creating a CODING code lands on the same
+// edit screen as any other, but its result body is the little-coder connection config
+// (`CodingResult` → `CodingConnection`), NOT the `/<code>` share link — a coding code
+// is an API key, not a web link. The URL field accepts any reachable URL here because
+// coding's authoring validation is a placeholder, and the result display is independent
+// of the YAML's contents.
+test("creating a coding code shows the little-coder config instead of the share link", {
+  tag: ["@live", "@live-db"],
+}, async ({ page }) => {
+  const note = `e2e coding ${Date.now()}`;
+  await page.goto("/codes/new");
+  await page.getByLabel("Activity", { exact: true }).selectOption("coding");
+  await page.getByLabel("Activity YAML URL").fill(VALID_TUTOR_URL);
+  await page.getByLabel(/Note/).fill(note);
+  createdCodeLabel = note;
+  await page.getByRole("button", { name: "Create code" }).click();
+
+  // Lands on the new code's edit screen.
+  await expect(page).toHaveURL(/\/codes\/edit\/[a-z0-9]{10}$/, { timeout: 60_000 });
+
+  // The little-coder connection config is shown (base URL + models.json snippet)…
+  await expect(page.getByRole("button", { name: "Copy base URL" })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByRole("button", { name: "Copy models.json" })).toBeVisible();
+  // …and the share-link box is NOT (coding replaces it, per the user's "instead").
+  await expect(page.getByLabel("Share link", { exact: true })).toHaveCount(0);
+});
+
 // The shared multi-delete layer end-to-end: tick several rows and remove them all
 // in ONE "Delete Selected" action (the same store delete each row's trash button
 // runs). Files only — no LLM — so it runs in CI against the SQL container.
