@@ -1,14 +1,35 @@
 "use client";
 
 import { CopyIconButton } from "@/components/copy-icon-button";
+import type { CodeModule } from "@/lib/code-modules/types";
+import { buildLittleCoderConfig } from "@/lib/little-coder-config";
 import styles from "./codes.module.css";
 
-// Copies the full URL for a code. The absolute URL is built in the browser from
-// window.location.origin (via the getter form) — codes are origin-independent, so
-// the copied link always matches wherever the teacher is currently working. The
-// accessible label stays "Copy link" so it reads clearly (and the e2e finds it by
-// that name).
-export function CopyCodeButton({ code }: { code: string }) {
+// The per-row copy affordance on the /codes list. What it copies depends on the
+// module: a `coding` code is an API key (not a web link), so it copies the
+// ready-to-paste little-coder config (`models.json`) — the same artifact the
+// connection block shows; every other module copies the `/<code>` share link. Both
+// values are built in the browser from window.location.origin (via the getter form),
+// so they always match wherever the teacher is currently working.
+export function CopyCodeButton({ code, module }: { code: string; module: CodeModule }) {
+  if (module === "coding") {
+    return (
+      <CopyIconButton
+        text={() =>
+          buildLittleCoderConfig({
+            baseUrl: `${window.location.origin}/api/coding/v1`,
+            apiKey: code,
+            modelId: "coding",
+            modelName: "Novedu coding",
+          })
+        }
+        label="Copy little-coder config"
+        className={styles.iconButton}
+        promptLabel="Copy the little-coder config:"
+      />
+    );
+  }
+
   return (
     <CopyIconButton
       text={() => `${window.location.origin}/${code}`}

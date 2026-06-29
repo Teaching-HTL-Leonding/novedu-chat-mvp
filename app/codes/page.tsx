@@ -194,7 +194,7 @@ export default async function CodesPage({
               <ExternalLinkIcon />
             </Link>
           ) : null}
-          <CopyCodeButton code={row.code} />
+          <CopyCodeButton code={row.code} module={row.module} />
           <Link
             href={`/codes/edit/${row.code}`}
             className={styles.iconButton}
