@@ -33,12 +33,14 @@ recommended path, not a compromise.
 
 These properties are expected to hold regardless of code changes before adoption:
 
-- **No existing UI component library** (no MUI / Chakra / shadcn / Radix / app
-  Tailwind). Styling is plain **CSS Modules** plus a small set of CSS variables.
-  Nothing has to be removed — Mantine is purely added alongside.
+- **No competing component library** (no MUI / Chakra / Radix). The app styles
+  with **Tailwind CSS v4 + small cva primitives** (`components/ui/`, see
+  `docs/styling.md`); Mantine is added alongside — Tailwind utilities and
+  `.mantine-*` components coexist, and the app's utility classes never target
+  Mantine internals.
 - **Modern Mantine (v7/v8) is static, scoped CSS** — `.mantine-*` classes, native
   CSS variables, PostCSS. It is **not** CSS-in-JS / Emotion anymore. Adding
-  `MantineProvider` does **not** restyle existing CSS-Module components, so the
+  `MantineProvider` does **not** restyle the app's Tailwind-utility markup, so the
   two systems can coexist on the same page indefinitely.
 - **The chat is a self-contained widget.** CopilotChat owns its own styling
   surface and is the *least* affected area (details below).
@@ -54,13 +56,14 @@ This was the main open question and the answer is favorable.
   tokens and `copilotKit*` classes. Theming the chat to *match* a Mantine palette
   is a small task — override a handful of CSS variables on the chat wrapper. **The
   chat internals are not rebuilt with Mantine.**
-- **One real compatibility consideration: CSS `@layer` ordering.** The chat ships
-  **compiled Tailwind v4 with `@layer` directives**, and the global stylesheet
-  already warns that an unlayered CSS reset would wipe CopilotChat's spacing
-  utilities. Mantine also ships global baseline styles — but Mantine supports
-  importing its styles into `@layer mantine`, so layer order can be controlled and
-  the chat's layer kept authoritative inside its container. Get this right once
-  (see "Foundation" below) and it is settled for everything afterward.
+- **One real compatibility consideration: CSS `@layer` ordering — already
+  settled.** The chat ships **compiled Tailwind v4 with `@layer` directives**,
+  and so does the app itself. `app/globals.css` opens with
+  `@layer theme, base, mantine, components, utilities;` — the `mantine` layer is
+  reserved (empty) between the app's base and its component/utility layers, so
+  adopting Mantine is importing `@mantine/core/styles.layer.css` and letting it
+  slot in. The layer discipline (no unlayered app rules) is documented in
+  `docs/styling.md`.
 
 Net: budget an afternoon for layer ordering + token matching for the chat, not a
 rewrite.
@@ -91,10 +94,13 @@ The trap is not the incremental controls; it is leaving foundational work
 half-done. Get these right **once**, up front, because every later increment
 depends on them and retrofitting means revisiting already-migrated components:
 
-1. **`@layer` ordering** — Mantine layer + CopilotKit Tailwind + global styles.
-2. **Theme tokens** — map current colors/fonts into the Mantine theme *early*, so
-   every control added later inherits the right look instead of rendering in
-   default-Mantine styling and creating visual drift.
+1. **`@layer` ordering** — done: the reserved `mantine` layer in
+   `app/globals.css` (see above); verify with the Increment 0 spike.
+2. **Theme tokens** — map the app's `:root` tokens (shadcn-style names:
+   `--background`, `--foreground`, `--destructive`, `--radius`, … in
+   `app/globals.css`) into the Mantine theme *early*, so every control added
+   later inherits the right look instead of rendering in default-Mantine styling
+   and creating visual drift.
 
 ### Suggested increment order
 
@@ -117,12 +123,13 @@ depends on them and retrofitting means revisiting already-migrated components:
   until migration completes. Theming Mantine to match the current look (foundation
   step 2) keeps the gap small. Keep the dual-system phase to **days/weeks, not
   months** — long-lived dual systems calcify into permanent inconsistency.
-- **Test churn.** The repo has component (Vitest) and e2e (Playwright) tests that
-  assert on DOM structure/classes. Mantine changes markup, so selectors break —
-  but incrementally, localized to each PR. Fix selectors as part of each
-  increment. (There is also known CopilotKit test-selector fragility to expect.)
-- **`color-mix()` palette** does not map 1:1 to Mantine's 10-shade scale — expect
-  a manual theme-token mapping pass.
+- **Test churn.** The repo's component (Vitest) and e2e (Playwright) tests select
+  by roles / labels / test ids, so most survive markup changes; still expect
+  localized selector fixes per increment. (There is also known CopilotKit
+  test-selector fragility to expect.)
+- **The `foreground/N` opacity ramp** (the app's derived-tint idiom, see
+  `docs/styling.md`) does not map 1:1 to Mantine's 10-shade scale — expect a
+  manual theme-token mapping pass from the `:root` tokens.
 - **CodeMirror stays** — it is not a Mantine concern; just re-wrap its container.
 - **Not affected (de-risks the whole effort):** Mastra, Drizzle, auth / `proxy.ts`,
   AG-UI route, server actions, validators.

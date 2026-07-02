@@ -1,5 +1,5 @@
-import pageStyles from "@/app/page.module.css";
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { getActiveFile, isFileKind } from "@/lib/file-store";
@@ -27,33 +27,33 @@ export default async function GuiEditFilePage({ params }: { params: Promise<{ na
 
   if (file === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="File temporarily unavailable">
           <p>This file could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
   if (file === null || !isFileKind(file.kind)) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="File not found">
           <p>This file does not exist or has been deleted.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
   const publicUrl = filePublicUrl(await resolveAppOriginOr(""), file.name);
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <StudentFileEditor
         name={file.name}
         kind={file.kind}
         initialContent={file.content}
         publicUrl={publicUrl}
       />
-    </main>
+    </Main>
   );
 }

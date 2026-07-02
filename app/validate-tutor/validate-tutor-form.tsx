@@ -2,10 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { ErrorList, FragmentSummary, WarningList } from "@/components/validation-result";
 import type { BuildResult, FragmentCheckResult } from "@/lib/tutors";
 import { CodeBlock } from "../code-block";
-import styles from "./validate-tutor.module.css";
 
 type Status = "idle" | "loading" | "done";
 type Kind = "tutor" | "fragment";
@@ -71,15 +73,19 @@ export function ValidateTutorForm() {
   }
 
   return (
-    <div className={styles.container}>
-      <div className={styles.kindToggle} role="radiogroup" aria-label="What to validate">
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5">
+      <div
+        className="flex shrink-0 items-center gap-2"
+        role="radiogroup"
+        aria-label="What to validate"
+      >
         {(
           [
             ["tutor", "Tutor"],
             ["fragment", "Fragment library"],
           ] as const
         ).map(([value, label]) => (
-          <label key={value} className={styles.kindOption}>
+          <label key={value} className="inline-flex cursor-pointer items-center gap-1.5 text-sm">
             <input
               type="radio"
               name="kind"
@@ -93,11 +99,11 @@ export function ValidateTutorForm() {
         ))}
       </div>
 
-      <form className={styles.form} onSubmit={onSubmit}>
-        <input
+      <form className="flex shrink-0 items-center gap-2" onSubmit={onSubmit}>
+        <Input
           type="url"
           required
-          className={styles.input}
+          className="min-w-0 flex-1 font-mono"
           placeholder={
             kind === "fragment"
               ? "https://example.com/path/to/fragments.yaml"
@@ -107,27 +113,21 @@ export function ValidateTutorForm() {
           onChange={(event) => setUrl(event.target.value)}
           disabled={status === "loading"}
         />
-        <button
-          type="submit"
-          className={styles.button}
-          disabled={status === "loading" || url.trim() === ""}
-        >
+        <Button type="submit" disabled={status === "loading" || url.trim() === ""}>
           {status === "loading" ? "Validating…" : "Validate"}
-        </button>
+        </Button>
         {/* Opens the read-only student-built GUI for the entered URL. */}
-        <button
-          type="button"
-          className={styles.button}
+        <Button
           disabled={status === "loading" || url.trim() === ""}
           onClick={() => router.push(`/files/gui/view?url=${encodeURIComponent(url)}&kind=${kind}`)}
         >
           View in GUI
-        </button>
+        </Button>
       </form>
 
-      <div className={styles.output}>
-        {status === "loading" ? <p className={styles.muted}>Validating…</p> : null}
-        {requestError ? <p className={styles.requestError}>{requestError}</p> : null}
+      <div className="flex flex-1 flex-col gap-4">
+        {status === "loading" ? <p className="text-foreground/60">Validating…</p> : null}
+        {requestError ? <FieldError>{requestError}</FieldError> : null}
         {outcome ? (
           <>
             {outcome.result.warnings.length > 0 ? (

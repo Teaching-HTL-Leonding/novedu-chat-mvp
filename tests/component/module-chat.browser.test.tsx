@@ -200,3 +200,24 @@ test("renders children as direct members of the provider (no extra wrapper)", as
   const child = screen.getByTestId("slot-child").element();
   expect(child.parentElement).toBe(provider);
 });
+
+test("owns the base chat container and cn-merges className as a delta", async () => {
+  const screen = await render(
+    <ModuleChat
+      agentId={AGENT_ID}
+      threadId={THREAD_ID}
+      headers={RUNTIME_HEADERS}
+      providerKey={PROVIDER_KEY}
+      className="overflow-visible px-3"
+    />,
+  );
+
+  // The fill recipe (min-h-0 flex-1 …) is ModuleChat's own — modules only pass
+  // deltas, and a conflicting caller utility WINS over the base (tailwind-merge).
+  const container = screen.getByTestId("ck-chat").element().parentElement;
+  expect(container?.className).toContain("min-h-0");
+  expect(container?.className).toContain("flex-1");
+  expect(container?.className).toContain("px-3");
+  expect(container?.className).toContain("overflow-visible");
+  expect(container?.className).not.toContain("overflow-hidden");
+});

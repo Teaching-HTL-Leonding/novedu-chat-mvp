@@ -1,8 +1,12 @@
 "use client";
 
 import { CopyIconButton } from "@/components/copy-icon-button";
+import { FieldHint } from "@/components/ui/field";
+import { META_LABEL } from "@/components/ui/meta-label";
 import { buildLittleCoderConfig } from "@/lib/little-coder-config";
-import styles from "./coding.module.css";
+import { CODE_PANEL } from "./code-panel";
+
+const FIELD_CODE = "wrap-anywhere text-sm";
 
 // Connection details for an OpenAI-compatible coding agent (e.g. little-coder):
 // the base URL, the code-as-API-key, the model id, a ready-to-paste
@@ -29,8 +33,8 @@ export function CodingConnection({
   const runCommand = `little-coder --model ${modelRef} -p "Write a Python program that ..."`;
 
   return (
-    <section className={styles.connection}>
-      <p className={styles.intro}>
+    <section className="flex flex-col gap-5">
+      <p className="text-foreground/70">
         Use this with an OpenAI-compatible coding agent such as{" "}
         <a href="https://github.com/itayinbarr/little-coder" target="_blank" rel="noreferrer">
           little-coder
@@ -38,42 +42,38 @@ export function CodingConnection({
         . Point it at the endpoint below and use the code as the API key.
       </p>
 
-      <dl className={styles.fields}>
-        <div className={styles.field}>
-          <dt className={styles.fieldLabel}>Base URL</dt>
-          <dd className={styles.fieldValue}>
-            <code>{baseUrl}</code>
-            <CopyIconButton text={baseUrl} label="Copy base URL" className={styles.iconButton} />
+      <dl className="flex flex-col gap-2">
+        <div className="flex items-center gap-3">
+          <dt className={`w-24 shrink-0 ${META_LABEL}`}>Base URL</dt>
+          <dd className="flex min-w-0 flex-1 items-center gap-1.5">
+            <code className={FIELD_CODE}>{baseUrl}</code>
+            <CopyIconButton text={baseUrl} label="Copy base URL" />
           </dd>
         </div>
-        <div className={styles.field}>
-          <dt className={styles.fieldLabel}>API key</dt>
-          <dd className={styles.fieldValue}>
-            <code>{apiKey}</code>
-            <CopyIconButton text={apiKey} label="Copy API key" className={styles.iconButton} />
+        <div className="flex items-center gap-3">
+          <dt className={`w-24 shrink-0 ${META_LABEL}`}>API key</dt>
+          <dd className="flex min-w-0 flex-1 items-center gap-1.5">
+            <code className={FIELD_CODE}>{apiKey}</code>
+            <CopyIconButton text={apiKey} label="Copy API key" />
           </dd>
         </div>
-        <div className={styles.field}>
-          <dt className={styles.fieldLabel}>Model</dt>
-          <dd className={styles.fieldValue}>
-            <code>{modelRef}</code>
-            <CopyIconButton text={modelRef} label="Copy model" className={styles.iconButton} />
+        <div className="flex items-center gap-3">
+          <dt className={`w-24 shrink-0 ${META_LABEL}`}>Model</dt>
+          <dd className="flex min-w-0 flex-1 items-center gap-1.5">
+            <code className={FIELD_CODE}>{modelRef}</code>
+            <CopyIconButton text={modelRef} label="Copy model" />
           </dd>
         </div>
       </dl>
 
-      <div className={styles.block}>
-        <div className={styles.blockHeader}>
-          <span className={styles.blockTitle}>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-semibold text-sm">
             little-coder <code>models.json</code>
           </span>
-          <CopyIconButton
-            text={modelsJson}
-            label="Copy models.json"
-            className={styles.iconButton}
-          />
+          <CopyIconButton text={modelsJson} label="Copy models.json" />
         </div>
-        <p className={styles.hint}>
+        <FieldHint>
           Save to <code>~/.config/little-coder/models.json</code>. See{" "}
           <a
             href="https://github.com/itayinbarr/little-coder#configuring-models"
@@ -83,18 +83,18 @@ export function CodingConnection({
             configuring models
           </a>{" "}
           for more detail.
-        </p>
-        <pre className={styles.pre}>
+        </FieldHint>
+        <pre className={CODE_PANEL}>
           <code>{modelsJson}</code>
         </pre>
       </div>
 
-      <div className={styles.block}>
-        <div className={styles.blockHeader}>
-          <span className={styles.blockTitle}>Run</span>
-          <CopyIconButton text={runCommand} label="Copy command" className={styles.iconButton} />
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-semibold text-sm">Run</span>
+          <CopyIconButton text={runCommand} label="Copy command" />
         </div>
-        <pre className={styles.pre}>
+        <pre className={CODE_PANEL}>
           <code>{runCommand}</code>
         </pre>
       </div>

@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import styles from "./nav-menu.module.css";
+import { iconButtonVariants } from "@/components/ui/icon-button";
+import { MENU_ITEM, MENU_PANEL } from "@/components/ui/menu";
+import { cn } from "@/lib/utils";
 import { usePopover } from "./use-popover";
 
 const BRAND = "HTBLA Leonding - Novedu";
@@ -67,28 +69,38 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
   const title = heading ? `${BRAND} / ${heading}` : BRAND;
 
   return (
-    <div className={styles.nav} ref={ref}>
+    <div className="relative flex min-w-0 items-center gap-3" ref={ref}>
       <button
         type="button"
-        className={styles.burger}
+        // The icon-button recipe (incl. its focus ring) in the burger's layout:
+        // a column of three bars instead of a centered svg.
+        className={cn(
+          iconButtonVariants(),
+          "flex-col gap-1 border-foreground/15 bg-background p-2",
+        )}
         aria-label="Open navigation menu"
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className={styles.burgerBar} />
-        <span className={styles.burgerBar} />
-        <span className={styles.burgerBar} />
+        <span className="block h-0.5 w-full rounded-full bg-foreground" />
+        <span className="block h-0.5 w-full rounded-full bg-foreground" />
+        <span className="block h-0.5 w-full rounded-full bg-foreground" />
       </button>
-      <span className={styles.title}>{title}</span>
+      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold">
+        {title}
+      </span>
       {open && (
-        <nav className={styles.menu} aria-label="Primary">
-          <ul className={styles.menuList}>
+        <nav className={cn(MENU_PANEL, "left-0 min-w-44")} aria-label="Primary">
+          <ul>
             {items.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`${styles.menuItem} ${item.href === pathname ? styles.active : ""}`}
+                  className={cn(
+                    MENU_ITEM,
+                    item.href === pathname && "bg-foreground/5 font-semibold",
+                  )}
                   onClick={() => setOpen(false)}
                 >
                   {item.label}

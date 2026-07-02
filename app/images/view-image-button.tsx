@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { EyeIcon } from "@/components/icons";
 import { ImageLightbox } from "@/components/image-lightbox";
-import styles from "./images.module.css";
+import { IconButton } from "@/components/ui/icon-button";
 
 // The list row's "View" action: an icon button that opens the image full-window in
 // the SAME <ImageLightbox> the quiz / tutor content images use. `url` is the row's
@@ -21,15 +21,9 @@ export function ViewImageButton({
 
   return (
     <>
-      <button
-        type="button"
-        className={styles.iconButton}
-        onClick={() => setOpen(true)}
-        aria-label={`View image ${name}`}
-        title="View"
-      >
+      <IconButton onClick={() => setOpen(true)} aria-label={`View image ${name}`} title="View">
         <EyeIcon />
-      </button>
+      </IconButton>
       <ImageLightbox
         image={{ url, alt: name, credit: credit ?? undefined }}
         open={open}

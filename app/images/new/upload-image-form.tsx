@@ -3,9 +3,12 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState, useTransition } from "react";
 import { BackLink } from "@/components/back-link";
+import { PageBody } from "@/components/page-main";
+import { Button } from "@/components/ui/button";
+import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { imageMimeFromExtension, isImageMime } from "@/lib/file-name";
 import { confirmImageUpload, requestImageUpload } from "@/lib/images-actions";
-import styles from "../images.module.css";
 
 // The largest image the upload flow accepts (5 MB) — enforced server-side too, but
 // caught here first so a teacher learns before the bytes leave the browser.
@@ -84,26 +87,25 @@ export function UploadImageForm() {
   }
 
   return (
-    <div className={styles.container}>
+    <PageBody>
       <BackLink href="/images">Back to images</BackLink>
-      <p className={styles.hint}>
+      <FieldHint>
         Upload a PNG, JPEG or SVG (max 5 MB). The bytes go straight to storage; reference the image
         by its name from your YAML content.
-      </p>
+      </FieldHint>
 
-      <form className={styles.form} onSubmit={onSubmit}>
-        <div className={styles.fieldRow}>
-          <div className={`${styles.field} ${styles.fieldGrow}`}>
-            <label className={styles.label} htmlFor="image-name">
+      <form className="flex shrink-0 flex-col items-stretch gap-3.5" onSubmit={onSubmit}>
+        <div className="flex flex-wrap items-end gap-3.5">
+          <Field className="grow basis-72">
+            <FieldLabel htmlFor="image-name">
               Name (letters, digits, underscore, hyphen — no spaces)
-            </label>
-            <input
+            </FieldLabel>
+            <Input
               id="image-name"
               required
               maxLength={100}
               pattern="[A-Za-z0-9_-]+"
               autoComplete="off"
-              className={styles.input}
               placeholder="e.g. linked-list-diagram"
               value={name}
               onChange={(event) => {
@@ -112,36 +114,30 @@ export function UploadImageForm() {
               }}
               disabled={uploading}
             />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="image-file">
-              File
-            </label>
-            <input
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="image-file">File</FieldLabel>
+            <Input
               id="image-file"
               ref={fileInputRef}
               type="file"
               required
               accept="image/png,image/jpeg,image/svg+xml"
-              className={styles.input}
               onChange={(event) => {
                 setFileName(event.target.value);
                 setMessage(null);
               }}
               disabled={uploading}
             />
-          </div>
+          </Field>
         </div>
 
-        <div className={`${styles.field} ${styles.fieldGrow}`}>
-          <label className={styles.label} htmlFor="image-credit">
-            Content Credentials (optional)
-          </label>
-          <input
+        <Field className="grow basis-72">
+          <FieldLabel htmlFor="image-credit">Content Credentials (optional)</FieldLabel>
+          <Input
             id="image-credit"
             maxLength={512}
             autoComplete="off"
-            className={styles.input}
             placeholder="e.g. Photo by Jane Doe — CC BY 4.0"
             value={credit}
             onChange={(event) => {
@@ -150,18 +146,18 @@ export function UploadImageForm() {
             }}
             disabled={uploading}
           />
-          <p className={styles.hint}>
+          <FieldHint>
             Shown small below the image — use it to attribute an image you don't own (e.g. CC BY).
-          </p>
-        </div>
+          </FieldHint>
+        </Field>
 
-        <div className={styles.actionsBar}>
-          <button type="submit" className={styles.button} disabled={uploading || !fileName}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" disabled={uploading || !fileName}>
             {uploading ? "Uploading…" : "Upload image"}
-          </button>
-          {message ? <p className={styles.requestError}>{message}</p> : null}
+          </Button>
+          {message ? <FieldError>{message}</FieldError> : null}
         </div>
       </form>
-    </div>
+    </PageBody>
   );
 }

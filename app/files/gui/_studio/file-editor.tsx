@@ -1,7 +1,7 @@
 "use client";
 
 import type { FileKind } from "@/lib/yaml-files";
-import styles from "./studio.module.css";
+import { STUDIO_COLUMN, STUDIO_META_GRID, STUDIO_YAML_PANEL } from "./studio-classes";
 
 // ============================================================================
 // 👩‍💻 STUDENTS START HERE — this component is YOURS to build.
@@ -38,13 +38,13 @@ export function StudentFileEditor({
   publicUrl,
 }: StudentFileEditorProps) {
   return (
-    <div className={styles.placeholder}>
-      <h1 className={styles.heading}>GUI editor — coming soon</h1>
-      <p className={styles.lead}>
+    <div className={STUDIO_COLUMN}>
+      <h1 className="font-semibold text-2xl">GUI editor — coming soon</h1>
+      <p className="text-foreground/60">
         This is the student-built GUI. Start in <code>app/files/gui/_studio/file-editor.tsx</code>{" "}
         and read <code>docs/yaml-gui-student-contribution.md</code>.
       </p>
-      <dl className={styles.props}>
+      <dl className={STUDIO_META_GRID}>
         <dt>name</dt>
         <dd>
           <code>{name}</code>
@@ -58,8 +58,8 @@ export function StudentFileEditor({
           <code>{publicUrl}</code>
         </dd>
       </dl>
-      <p className={styles.lead}>Loaded YAML (what your GUI will parse):</p>
-      <pre className={styles.code}>{initialContent}</pre>
+      <p className="text-foreground/60">Loaded YAML (what your GUI will parse):</p>
+      <pre className={STUDIO_YAML_PANEL}>{initialContent}</pre>
     </div>
   );
 }

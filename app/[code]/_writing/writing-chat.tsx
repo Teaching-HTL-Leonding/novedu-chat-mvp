@@ -5,7 +5,6 @@ import type { RefObject } from "react";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
 import { computeTextStats } from "@/lib/writing-stats";
 import { ModuleChat } from "../../module-chat";
-import styles from "./writing-surface.module.css";
 
 // The writing module's feedback chat: the shared ModuleChat primitive plus the
 // module's one slot — the read-only `getCurrentText` frontend tool.
@@ -71,7 +70,9 @@ export function WritingChat({
       providerKey={code}
       threadId={threadId}
       headers={runtimeHeaders}
-      className={styles.chat}
+      // Deltas only (column flex + horizontal padding so messages + input are
+      // not glued to the pane border) — the fill recipe is ModuleChat's own.
+      className="flex flex-col px-3"
     >
       <GetCurrentTextTool currentTextRef={currentTextRef} />
     </ModuleChat>

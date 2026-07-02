@@ -42,7 +42,6 @@ app/files/gui/
 └─ _studio/                    ← 🟢 YOUR WORKSPACE — everything here is yours.
    ├─ file-editor.tsx          ←   StudentFileEditor (start here)
    ├─ file-viewer.tsx          ←   StudentFileViewer (start here)
-   ├─ studio.module.css        ←   your styles
    └─ …                        ←   add as many components / hooks / helpers as you like
 
 e2e/yaml-gui/                  ← 🟢 your end-to-end (Playwright) tests

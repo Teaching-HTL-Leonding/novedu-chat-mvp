@@ -4,6 +4,10 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { BackLink } from "@/components/back-link";
 import { CopyIconButton } from "@/components/copy-icon-button";
+import { PageBody } from "@/components/page-main";
+import { Button } from "@/components/ui/button";
+import { Field, FieldError, FieldLabel, FieldSuccess } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { ErrorList, WarningList } from "@/components/validation-result";
 import {
   updateFileAction,
@@ -11,7 +15,6 @@ import {
   type ValidationWarning,
   validateExistingFileAction,
 } from "@/lib/yaml-files";
-import styles from "../../files.module.css";
 import { YamlEditor } from "../../yaml-editor";
 
 // Edit form: read-only name/kind + the copyable public URL + the CodeMirror
@@ -83,10 +86,10 @@ export function EditFileForm({
   }
 
   return (
-    <div className={styles.container}>
+    <PageBody>
       <BackLink href="/files">Back to files</BackLink>
 
-      <div className={styles.readonlyMeta}>
+      <div className="flex flex-wrap items-baseline gap-5 text-foreground/70 text-sm [&_code]:font-mono [&_code]:text-foreground">
         <span>
           Name: <code>{name}</code>
         </span>
@@ -95,24 +98,19 @@ export function EditFileForm({
         </span>
       </div>
 
-      <div className={styles.field}>
-        <span className={styles.label}>Public URL (use this in a tutor code)</span>
-        <div className={styles.urlRow}>
-          <input
-            className={styles.urlInput}
+      <Field>
+        <FieldLabel htmlFor="public-file-url">Public URL (use this in a tutor code)</FieldLabel>
+        <div className="flex items-center gap-2">
+          <Input
+            id="public-file-url"
+            className="min-w-0 flex-1 font-mono"
             readOnly
             value={publicUrl}
-            aria-label="Public file URL"
             onFocus={(event) => event.currentTarget.select()}
           />
-          <CopyIconButton
-            text={publicUrl}
-            label="Copy URL"
-            className={styles.iconButton}
-            promptLabel="Copy the file URL:"
-          />
+          <CopyIconButton text={publicUrl} label="Copy URL" promptLabel="Copy the file URL:" />
         </div>
-      </div>
+      </Field>
 
       <YamlEditor
         value={content}
@@ -124,27 +122,22 @@ export function EditFileForm({
         fill
       />
 
-      <div className={styles.actionsBar}>
-        <button
-          type="button"
-          className={styles.uploadButton}
-          onClick={onValidate}
-          disabled={pending}
-        >
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" size="sm" onClick={onValidate} disabled={pending}>
           {validating ? "Validating…" : "Validate"}
-        </button>
-        <button type="button" className={styles.button} onClick={onSave} disabled={pending}>
+        </Button>
+        <Button onClick={onSave} disabled={pending}>
           {saving ? "Saving…" : "Validate & save"}
-        </button>
-        {message ? <p className={styles.requestError}>{message}</p> : null}
-        {saved && !message && !errors ? <span className={styles.saved}>Saved</span> : null}
+        </Button>
+        {message ? <FieldError>{message}</FieldError> : null}
+        {saved && !message && !errors ? <FieldSuccess>Saved</FieldSuccess> : null}
         {passed && !saved && !message && !errors ? (
-          <span className={styles.saved}>Validation passed</span>
+          <FieldSuccess>Validation passed</FieldSuccess>
         ) : null}
       </div>
 
       {errors ? <ErrorList errors={errors} /> : null}
       {passed && warnings && warnings.length > 0 ? <WarningList warnings={warnings} /> : null}
-    </div>
+    </PageBody>
   );
 }

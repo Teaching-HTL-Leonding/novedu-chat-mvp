@@ -22,7 +22,6 @@ vi.mock("@/app/module-chat", () => ({
 }));
 
 import { QuizDiscussion } from "@/app/[code]/_quiz/quiz-discussion";
-import quizStyles from "@/app/[code]/_quiz/quiz-runner.module.css";
 
 const THREAD_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const RUNTIME_HEADERS = { "x-code": "a1b2c3d4e5", "x-thread-token": "deadbeef".repeat(8) };
@@ -75,9 +74,7 @@ test("wraps ModuleChat in its own discussion-body layout container", async () =>
 
   // The modal-body flex wrapper (feedback + chat sharing a column) is
   // QuizDiscussion's own layout, not the primitive's — ModuleChat is layout-
-  // agnostic — so QuizDiscussion wraps it in a div carrying the discussionBody class.
-  const discussionBody = quizStyles.discussionBody;
-  if (!discussionBody) throw new Error("discussionBody CSS module class did not resolve");
+  // agnostic — so QuizDiscussion wraps it in its discussion-body div.
   const wrapper = screen.getByTestId("module-chat").element().parentElement;
-  expect(wrapper?.classList.contains(discussionBody)).toBe(true);
+  expect(wrapper).toBe(screen.getByTestId("discussion-body").element());
 });

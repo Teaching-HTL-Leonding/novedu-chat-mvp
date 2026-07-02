@@ -1,8 +1,9 @@
 "use client";
 
 import { useRef } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCopyToClipboard } from "@/components/use-copy-to-clipboard";
-import styles from "./code-form.module.css";
 
 // A read-only link with its own Copy button and "Copied!" feedback (+ open in a
 // new tab). On a clipboard failure (non-secure context, e.g. plain http on a LAN
@@ -17,23 +18,21 @@ export function CopyableLinkRow({ link, label }: { link: string; label: string }
   });
 
   return (
-    <div className={styles.linkRow}>
-      <input
+    <div className="flex items-center gap-2">
+      <Input
         ref={inputRef}
-        className={styles.linkInput}
+        className="min-w-0 flex-1 font-mono"
         readOnly
         value={link}
         aria-label={label}
         onFocus={(event) => event.currentTarget.select()}
       />
-      <button type="button" className={styles.button} onClick={() => copy(link)}>
-        {copied ? "Copied!" : "Copy"}
-      </button>
+      <Button onClick={() => copy(link)}>{copied ? "Copied!" : "Copy"}</Button>
       <a
         href={link}
         target="_blank"
         rel="noopener noreferrer"
-        className={`${styles.button} ${styles.openLinkButton}`}
+        className={buttonVariants()}
         aria-label={`Open ${label} in new tab`}
         title="Open in new tab"
       >

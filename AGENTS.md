@@ -10,6 +10,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - `CLAUDE.md` is a symlink to **`AGENTS.md`** — edit `AGENTS.md`.
 - Load the **`mastra`** skill before any Mastra work; never rely on cached APIs. Register every agent/tool/workflow/scorer in `app/mastra/index.ts`, and use the `dev`/`build` package scripts, not raw `mastra dev` / `mastra build`.
 - Research the [Drizzle docs](https://orm.drizzle.team/llms.txt) before complex queries, transactions, or migrations.
+- Research current **Tailwind** docs in context7 (`ctx7` CLI) before styling work — v4 is CSS-first and differs from training data.
 
 ## Security & privacy invariants
 
@@ -104,6 +105,15 @@ Read before touching: `app/files/gui/**`, `lib/yaml-files.ts`.
 
 - `app/files/gui/_studio/**` is student-owned; the two `page.tsx` shells (`edit/[...name]`, `view`) are app-owned — they gate (teacher-only), do the server-only load, and pass plain props. The `_studio` underscore keeps it out of routing.
 - The students' only app import is `@/lib/yaml-files` (a convention enforced by review / CODEOWNERS, not lint). They write client-side React only; new server behaviour extends the facade.
+
+### Styling → `docs/styling.md`
+
+Read before touching: `app/globals.css`, `postcss.config.mjs`, `components/ui/**`, `lib/utils.ts`, or any non-trivial `className` work.
+
+- Tailwind CSS v4, CSS-first: all config lives in `app/globals.css` (`:root` tokens + `@theme inline`, shadcn-compatible names; light-only by design — no dark mode). There is no `tailwind.config.js`.
+- **Layer discipline:** app CSS stays inside the declared layers — an unlayered rule beats every layered one and silently breaks CopilotKit's compiled utilities. The one sanctioned unlayered rule (scrollbar-gutter) is documented in `globals.css`; the `mantine` layer is reserved.
+- **Reuse boundary:** a recipe used in ≥2 places lives as a cva primitive in `components/ui/` (or on the owning shared component), consumed via `cn()` (`lib/utils.ts`, className props are cn-merged deltas). One-off chrome is inline utilities. No `@apply`.
+- Markdown always renders through `MarkdownRenderer` (prose); derived tints use the `foreground/N` opacity ramp, not new hex values.
 
 ### Filtered lists → `docs/filtered-lists.md`
 

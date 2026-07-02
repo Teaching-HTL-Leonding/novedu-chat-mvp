@@ -1,7 +1,7 @@
 "use client";
 
 import type { FileKind } from "@/lib/yaml-files";
-import styles from "./studio.module.css";
+import { STUDIO_COLUMN, STUDIO_META_GRID, STUDIO_YAML_PANEL } from "./studio-classes";
 
 // ============================================================================
 // 👩‍💻 STUDENTS START HERE — this component is YOURS to build.
@@ -31,12 +31,12 @@ export function StudentFileViewer({
   loadError,
 }: StudentFileViewerProps) {
   return (
-    <div className={styles.placeholder}>
-      <h1 className={styles.heading}>GUI viewer — coming soon</h1>
-      <p className={styles.lead}>
+    <div className={STUDIO_COLUMN}>
+      <h1 className="font-semibold text-2xl">GUI viewer — coming soon</h1>
+      <p className="text-foreground/60">
         Read-only student GUI. Start in <code>app/files/gui/_studio/file-viewer.tsx</code>.
       </p>
-      <dl className={styles.props}>
+      <dl className={STUDIO_META_GRID}>
         <dt>kind</dt>
         <dd>
           <code>{kind}</code>
@@ -47,11 +47,13 @@ export function StudentFileViewer({
         </dd>
       </dl>
       {loadError ? (
-        <p className={styles.error}>{loadError}</p>
+        <p className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-red-800">
+          {loadError}
+        </p>
       ) : (
         <>
-          <p className={styles.lead}>Loaded YAML (what your GUI will parse):</p>
-          <pre className={styles.code}>{initialContent}</pre>
+          <p className="text-foreground/60">Loaded YAML (what your GUI will parse):</p>
+          <pre className={STUDIO_YAML_PANEL}>{initialContent}</pre>
         </>
       )}
     </div>

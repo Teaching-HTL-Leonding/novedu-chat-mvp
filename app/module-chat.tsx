@@ -4,6 +4,7 @@ import { CopilotChat, CopilotKitProvider } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 import type { ComponentProps, ReactNode } from "react";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
+import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "./markdown-renderer";
 
 // The one live-chat primitive. Every module's chat (tutor / writing / quiz) is
@@ -31,7 +32,11 @@ export type ModuleChatProps = {
    * (a new discussion per question).
    */
   providerKey: string;
-  /** The chat container class (module height/padding deltas; composes the base `.chat`). */
+  /**
+   * Optional module deltas (height/padding), cn-merged onto the base chat
+   * container — the base (fill the available height, never push the page
+   * taller, let CopilotChat own the internal scroll) is built in.
+   */
   className?: string;
   /** Rendered INSIDE the provider, before the chat — frontend tools, feedback headers. */
   children?: ReactNode;
@@ -57,7 +62,10 @@ export function ModuleChat({
   const body = (
     <>
       {children}
-      <div className={className}>
+      {/* Base chat container: fill the available height (min-h-0 against flex
+          parents), never push the page taller, and let CopilotChat (*:h-full)
+          own the internal scroll. */}
+      <div className={cn("min-h-0 flex-1 overflow-hidden *:h-full", className)}>
         {/*
           The server-issued threadId MUST go through CopilotChat's `threadId`
           prop (explicit mode). Pinning it via CopilotChatConfigurationProvider

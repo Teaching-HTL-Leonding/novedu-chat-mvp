@@ -1,22 +1,25 @@
+import type { VariantProps } from "class-variance-authority";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
 import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon } from "@/components/icons";
-import { ListFilterBar } from "@/components/list-filter-bar";
-import listStyles from "@/components/list-page.module.css";
+import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { selectionColumn } from "@/components/selection-column";
+import { Badge, type badgeVariants } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { iconButtonVariants } from "@/components/ui/icon-button";
+import { Input } from "@/components/ui/input";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { isCodeModule } from "@/lib/code-modules/types";
 import { listFiles } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
 import { LocalTime } from "../local-time";
-import pageStyles from "../page.module.css";
-import styles from "./files.module.css";
 
 // One active file as shown in the list (no content). `updatedSeconds` is the
 // active version's write time as unix seconds; `createdBy` is the last writer's
@@ -30,6 +33,16 @@ interface FileRow {
   updatedSeconds: number;
   createdBy: string;
 }
+
+// Kind → badge tone, shared visual language with the codes list (tutor blue,
+// quiz orange, coding purple); fragment/writing fall back to green.
+const KIND_TONES: Record<string, VariantProps<typeof badgeVariants>["tone"]> = {
+  tutor: "blue",
+  quiz: "orange",
+  coding: "purple",
+  fragment: "green",
+  writing: "green",
+};
 
 // Teacher-only: every app-hosted YAML file (active versions only), with a
 // contains-filter over name/title/description and an "Only my files" toggle —
@@ -59,11 +72,11 @@ export default async function FilesPage({
 
   if (entries === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Files temporarily unavailable">
           <p>Your files could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -89,54 +102,39 @@ export default async function FilesPage({
       (row) => row.name,
       (row) => row.name,
     ),
-    { header: "Name", className: styles.nameCell, render: (row) => row.name },
+    { header: "Name", className: "whitespace-nowrap font-mono", render: (row) => row.name },
     {
       header: "Kind",
       render: (row) => (
-        <span
-          className={`${styles.kindBadge} ${
-            row.kind === "tutor"
-              ? styles.kindTutor
-              : row.kind === "quiz"
-                ? styles.kindQuiz
-                : row.kind === "coding"
-                  ? styles.kindCoding
-                  : styles.kindFragment
-          }`}
-        >
+        <Badge caps tone={KIND_TONES[row.kind] ?? "green"}>
           {row.kind}
-        </span>
+        </Badge>
       ),
     },
     {
       header: "Title",
-      className: styles.titleCell,
+      className: "max-w-104 overflow-hidden text-ellipsis whitespace-nowrap",
       render: (row) => <span title={row.description ?? undefined}>{row.title ?? "—"}</span>,
     },
     {
       header: "Last updated",
-      className: listStyles.timeCell,
+      kind: "time",
       render: (row) => <LocalTime seconds={row.updatedSeconds} />,
     },
     {
       header: "Actions",
       srOnlyHeader: true,
-      className: listStyles.actionsCell,
+      kind: "actions",
       render: (row) => {
         const url = fileUrl(row.name);
         return (
           <>
-            <CopyIconButton
-              text={url}
-              label="Copy URL"
-              className={styles.iconButton}
-              promptLabel="Copy the file URL:"
-            />
+            <CopyIconButton text={url} label="Copy URL" promptLabel="Copy the file URL:" />
             <a
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className={styles.iconButton}
+              className={iconButtonVariants()}
               aria-label="Open raw YAML"
               title="Open raw YAML"
             >
@@ -145,7 +143,7 @@ export default async function FilesPage({
             {isCodeModule(row.kind) ? (
               <Link
                 href={`/codes/new?module=${row.kind}&file=${encodeURIComponent(url)}`}
-                className={styles.iconButton}
+                className={iconButtonVariants()}
                 aria-label="Create code"
                 title="Create code"
               >
@@ -154,7 +152,7 @@ export default async function FilesPage({
             ) : null}
             <Link
               href={`/files/edit/${row.name}`}
-              className={styles.iconButton}
+              className={iconButtonVariants()}
               aria-label={`Edit ${row.name}`}
               title="Edit"
             >
@@ -162,7 +160,7 @@ export default async function FilesPage({
             </Link>
             <Link
               href={`/files/gui/edit/${row.name}`}
-              className={styles.iconButton}
+              className={iconButtonVariants()}
               aria-label={`Open ${row.name} in GUI editor`}
               title="Edit in GUI (experimental)"
             >
@@ -175,7 +173,7 @@ export default async function FilesPage({
   ];
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <SelectionProvider allIds={rows.map((row) => row.name)}>
         <DataList
           rows={rows}
@@ -190,10 +188,10 @@ export default async function FilesPage({
           }
           actions={
             <>
-              <Link href="/files/new" className={listStyles.button}>
+              <Link href="/files/new" className={buttonVariants()}>
                 New file
               </Link>
-              <Link href="/images" className={listStyles.button}>
+              <Link href="/images" className={buttonVariants()}>
                 Manage images
               </Link>
               <DeleteSelectedButton action={deleteSelectedFilesAction} itemNoun="file" />
@@ -204,18 +202,15 @@ export default async function FilesPage({
               hasActiveFilter={q !== "" || !onlyMine}
               resetKey={`${q}|${onlyMine ? "1" : "0"}`}
             >
-              <input
+              <Input
                 type="search"
                 name="q"
-                className={listStyles.searchInput}
+                className="w-72"
                 placeholder="Filter by name, title, description…"
                 defaultValue={q}
                 aria-label="Filter files"
               />
-              <label className={listStyles.onlyMine}>
-                <input type="checkbox" name="mine" defaultChecked={onlyMine} />
-                Only my files
-              </label>
+              <FilterCheckbox name="mine" label="Only my files" defaultChecked={onlyMine} />
             </ListFilterBar>
           }
           isFiltered={q !== ""}
@@ -228,6 +223,6 @@ export default async function FilesPage({
           noMatchState="No files match your filter."
         />
       </SelectionProvider>
-    </main>
+    </Main>
   );
 }

@@ -2,8 +2,8 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useTransition } from "react";
-import styles from "./list-page.module.css";
 import { Spinner } from "./spinner";
+import { Button } from "./ui/button";
 
 // The reusable filter bar for "filtered list" pages (see `docs/filtered-lists.md`).
 // It owns ONE thing: turning the filter controls into URL search params on
@@ -62,9 +62,14 @@ export function ListFilterBar({
   }
 
   return (
-    <form key={resetKey} className={styles.filters} onSubmit={apply} aria-busy={isPending}>
+    <form
+      key={resetKey}
+      className="flex flex-wrap items-center gap-3"
+      onSubmit={apply}
+      aria-busy={isPending}
+    >
       {children}
-      <button type="submit" className={styles.applyButton} disabled={isPending}>
+      <Button type="submit" size="sm" disabled={isPending}>
         {isPending ? (
           <>
             <Spinner /> Applying…
@@ -72,17 +77,35 @@ export function ListFilterBar({
         ) : (
           "Apply"
         )}
-      </button>
+      </Button>
       {hasActiveFilter ? (
-        <button
-          type="button"
-          className={styles.clearLink}
+        <Button
+          variant="link"
           disabled={isPending}
           onClick={() => startTransition(() => router.push(pathname))}
         >
           Clear
-        </button>
+        </Button>
       ) : null}
     </form>
+  );
+}
+
+// The shared "Only my …" style checkbox control for the filter bar — one label
+// recipe for every list page (codes, files, images).
+export function FilterCheckbox({
+  name,
+  label,
+  defaultChecked,
+}: {
+  name: string;
+  label: string;
+  defaultChecked?: boolean;
+}) {
+  return (
+    <label className="inline-flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-sm">
+      <input type="checkbox" name={name} defaultChecked={defaultChecked} />
+      {label}
+    </label>
   );
 }

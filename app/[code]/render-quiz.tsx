@@ -1,10 +1,10 @@
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import type { CodeEntry } from "@/lib/code-store";
 import { resolveImageRef } from "@/lib/image-resolve";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import type { ResolvedQuiz, ResolvedQuizQuestion } from "@/lib/quiz-types";
 import { toPublicQuiz } from "@/lib/quiz-yaml";
-import styles from "../page.module.css";
 import { QuizRunner } from "./_quiz/quiz-runner";
 
 // The quiz module's student render: load + leniently parse the quiz YAML from the
@@ -16,11 +16,11 @@ export async function RenderQuiz({ entry, code }: { entry: CodeEntry; code: stri
   const loaded = await loadQuiz(entry.fileUrl);
   if (!loaded.ok) {
     return (
-      <main className={styles.main}>
+      <Main>
         <Notice heading="This quiz cannot be opened">
           <p>{loaded.message}</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -37,8 +37,8 @@ export async function RenderQuiz({ entry, code }: { entry: CodeEntry; code: stri
   const quiz: ResolvedQuiz = { ...publicQuiz, questions };
 
   return (
-    <main className={styles.main}>
+    <Main>
       <QuizRunner code={code} quiz={quiz} />
-    </main>
+    </Main>
   );
 }

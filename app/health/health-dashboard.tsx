@@ -1,9 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CENTERED_CARD, CENTERED_CARD_HEADING, CENTERED_CARD_WRAPPER } from "@/components/notice";
+import { Badge } from "@/components/ui/badge";
 import type { HealthIndicator, HostInfo } from "@/lib/health";
+import { cn } from "@/lib/utils";
 import type { BuildInfo } from "@/lib/version";
-import styles from "./health.module.css";
+
+// The probe rows' shared cell recipes (one dashboard, local constants). The
+// badge pill sits before the detail text; rows collapse to one column below sm.
+const ROW = "grid grid-cols-[11rem_auto] items-baseline gap-x-4 gap-y-1 max-sm:grid-cols-1";
+const TERM = "font-semibold text-sm";
+const VALUE = "wrap-anywhere text-sm leading-normal";
+const PILL = "mr-2 rounded-full px-2 py-0.5 font-bold";
 
 // Client side of the health page. The page shell (including the user/teacher
 // rows, which the server already knows) renders immediately; the four
@@ -40,14 +49,14 @@ function useProbe<T>(probe: string, onError: (message: string) => T): Pending<T>
 
 function StatusValue({ state, testId }: { state: Pending<HealthIndicator>; testId: string }) {
   return (
-    <dd className={styles.value} data-testid={testId}>
+    <dd className={VALUE} data-testid={testId}>
       {state.status === "pending" ? (
-        <span className={`${styles.badge} ${styles.pending}`}>Checking…</span>
+        <Badge className={PILL}>Checking…</Badge>
       ) : (
         <>
-          <span className={`${styles.badge} ${state.value.ok ? styles.ok : styles.failed}`}>
+          <Badge tone={state.value.ok ? "green" : "red"} className={PILL}>
             {state.value.ok ? "OK" : "Failed"}
-          </span>
+          </Badge>
           {state.value.detail}
         </>
       )}
@@ -58,21 +67,21 @@ function StatusValue({ state, testId }: { state: Pending<HealthIndicator>; testI
 function HostValue({ state, testId }: { state: Pending<HostInfo>; testId: string }) {
   if (state.status === "pending") {
     return (
-      <dd className={styles.value} data-testid={testId}>
-        <span className={`${styles.badge} ${styles.pending}`}>Checking…</span>
+      <dd className={VALUE} data-testid={testId}>
+        <Badge className={PILL}>Checking…</Badge>
       </dd>
     );
   }
   const host = state.value;
   if (!host.fqdn) {
     return (
-      <dd className={styles.value} data-testid={testId}>
+      <dd className={VALUE} data-testid={testId}>
         {host.error ?? "Unknown host."}
       </dd>
     );
   }
   return (
-    <dd className={`${styles.value} ${styles.mono}`} data-testid={testId}>
+    <dd className={`${VALUE} font-mono`} data-testid={testId}>
       {host.fqdn} — {host.ips.length > 0 ? host.ips.join(", ") : (host.error ?? "no addresses")}
     </dd>
   );
@@ -95,44 +104,44 @@ export function HealthDashboard({
   const scchHost = useProbe("scch-host", hostError);
 
   return (
-    <section className={styles.container}>
-      <div className={styles.card}>
-        <h1 className={styles.heading}>Health</h1>
-        <dl className={styles.list}>
-          <div className={styles.row}>
-            <dt className={styles.term}>Build version</dt>
-            <dd className={`${styles.value} ${styles.mono}`} data-testid="health-version">
+    <section className={cn(CENTERED_CARD_WRAPPER, "pt-6 pb-12")}>
+      <div className={cn(CENTERED_CARD, "max-w-2xl")}>
+        <h1 className={cn(CENTERED_CARD_HEADING, "mb-4")}>Health</h1>
+        <dl className="flex flex-col gap-3.5">
+          <div className={ROW}>
+            <dt className={TERM}>Build version</dt>
+            <dd className={`${VALUE} font-mono`} data-testid="health-version">
               {build.version}
               {build.gitSha !== "unknown" ? ` (${build.gitSha.slice(0, 7)})` : ""}
               {build.builtAt !== "unknown" ? ` — built ${build.builtAt}` : ""}
             </dd>
           </div>
-          <div className={styles.row}>
-            <dt className={styles.term}>Database connection</dt>
+          <div className={ROW}>
+            <dt className={TERM}>Database connection</dt>
             <StatusValue state={db} testId="health-db" />
           </div>
-          <div className={styles.row}>
-            <dt className={styles.term}>SCCH models</dt>
+          <div className={ROW}>
+            <dt className={TERM}>SCCH models</dt>
             <StatusValue state={scch} testId="health-scch" />
           </div>
-          <div className={styles.row}>
-            <dt className={styles.term}>Signed-in user</dt>
-            <dd className={styles.value} data-testid="health-user">
+          <div className={ROW}>
+            <dt className={TERM}>Signed-in user</dt>
+            <dd className={VALUE} data-testid="health-user">
               {userLabel}
             </dd>
           </div>
-          <div className={styles.row}>
-            <dt className={styles.term}>Teacher</dt>
-            <dd className={styles.value} data-testid="health-teacher">
+          <div className={ROW}>
+            <dt className={TERM}>Teacher</dt>
+            <dd className={VALUE} data-testid="health-teacher">
               {isTeacher ? "Yes" : "No"}
             </dd>
           </div>
-          <div className={styles.row}>
-            <dt className={styles.term}>SQL server host</dt>
+          <div className={ROW}>
+            <dt className={TERM}>SQL server host</dt>
             <HostValue state={sqlHost} testId="health-sql-host" />
           </div>
-          <div className={styles.row}>
-            <dt className={styles.term}>SCCH host</dt>
+          <div className={ROW}>
+            <dt className={TERM}>SCCH host</dt>
             <HostValue state={scchHost} testId="health-scch-host" />
           </div>
         </dl>

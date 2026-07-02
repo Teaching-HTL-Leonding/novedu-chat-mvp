@@ -4,7 +4,6 @@ import { CopyIconButton } from "@/components/copy-icon-button";
 import type { CodeModule } from "@/lib/code-modules/types";
 import { CODING_MODEL_ID, codingBaseUrl, DEFAULT_CODING_MODEL_NAME } from "@/lib/coding-connection";
 import { buildLittleCoderConfig } from "@/lib/little-coder-config";
-import styles from "./codes.module.css";
 
 // The per-row copy affordance on the /codes list. What it copies depends on the
 // module: a `coding` code is an API key (not a web link), so it copies the
@@ -25,7 +24,6 @@ export function CopyCodeButton({ code, module }: { code: string; module: CodeMod
           })
         }
         label="Copy little-coder config"
-        className={styles.iconButton}
         promptLabel="Copy the little-coder config:"
       />
     );
@@ -35,7 +33,6 @@ export function CopyCodeButton({ code, module }: { code: string; module: CodeMod
     <CopyIconButton
       text={() => `${window.location.origin}/${code}`}
       label="Copy link"
-      className={styles.iconButton}
       promptLabel="Copy the chat link:"
     />
   );

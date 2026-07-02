@@ -1,6 +1,6 @@
 import { AccessDenied } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { isEffectiveTeacher } from "@/lib/student-mode";
-import pageStyles from "../page.module.css";
 import { ValidateTutorForm } from "./validate-tutor-form";
 
 // Teacher-only: validating tutor definitions — or a fragment library on its own
@@ -11,14 +11,14 @@ import { ValidateTutorForm } from "./validate-tutor-form";
 export default async function ValidateTutorPage() {
   if (!(await isEffectiveTeacher())) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <AccessDenied />
-      </main>
+      </Main>
     );
   }
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <ValidateTutorForm />
-    </main>
+    </Main>
   );
 }

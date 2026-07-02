@@ -2,11 +2,15 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { DataList, type ListColumn } from "@/components/data-list";
 import { EditIcon, ExternalLinkIcon, StatsIcon } from "@/components/icons";
-import { ListFilterBar } from "@/components/list-filter-bar";
-import listStyles from "@/components/list-page.module.css";
+import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { AccessDenied, Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { selectionColumn } from "@/components/selection-column";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { iconButtonVariants } from "@/components/ui/icon-button";
+import { Input, Select } from "@/components/ui/input";
 import { deleteSelectedCodesAction } from "@/lib/code-actions";
 import {
   CODE_MODULES,
@@ -18,8 +22,6 @@ import { getInteractionCounts } from "@/lib/code-stats-store";
 import { DISTANT_FUTURE, DISTANT_PAST, listCodes } from "@/lib/code-store";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 import { LocalTime } from "../local-time";
-import pageStyles from "../page.module.css";
-import styles from "./codes.module.css";
 import { CopyCodeButton } from "./copy-code-button";
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
@@ -56,8 +58,18 @@ interface CodeRow {
 }
 
 function statusBadge(status: WindowStatus) {
-  if (status === "expired") return <span className={styles.badgeExpired}>expired</span>;
-  if (status === "upcoming") return <span className={styles.badgeUpcoming}>upcoming</span>;
+  if (status === "expired")
+    return (
+      <Badge tone="red" caps className="ml-2 align-middle">
+        expired
+      </Badge>
+    );
+  if (status === "upcoming")
+    return (
+      <Badge tone="blue" caps className="ml-2 align-middle">
+        upcoming
+      </Badge>
+    );
   return null;
 }
 
@@ -80,9 +92,9 @@ export default async function CodesPage({
 }) {
   if (!(await isEffectiveTeacher())) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <AccessDenied />
-      </main>
+      </Main>
     );
   }
 
@@ -102,11 +114,11 @@ export default async function CodesPage({
 
   if (entries === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Codes temporarily unavailable">
           <p>Codes could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -136,13 +148,11 @@ export default async function CodesPage({
     ),
     {
       header: "Module",
-      render: (row) => (
-        <span className={styles.moduleBadge}>{codeModuleLabels[row.module].badge}</span>
-      ),
+      render: (row) => <Badge>{codeModuleLabels[row.module].badge}</Badge>,
     },
     {
       header: "Note",
-      className: styles.noteCell,
+      className: "max-w-96 overflow-hidden text-ellipsis whitespace-nowrap",
       // The tooltip carries the activity YAML URL — the one piece of context that
       // does not fit a column.
       render: (row) => (
@@ -154,29 +164,28 @@ export default async function CodesPage({
     },
     {
       header: "Valid from",
-      className: listStyles.timeCell,
+      kind: "time",
       render: (row) => <LocalTime seconds={row.validFromSeconds} fallback="No start" />,
     },
     {
       header: "Valid until",
-      className: listStyles.timeCell,
+      kind: "time",
       render: (row) => <LocalTime seconds={row.validUntilSeconds} fallback="No end" />,
     },
     {
       header: "Interactions",
-      headerClassName: listStyles.numHeader,
-      className: styles.numCell,
+      kind: "numeric",
       render: (row) => (row.interactionCount === null ? "—" : row.interactionCount),
     },
     {
       header: "Actions",
       srOnlyHeader: true,
-      className: listStyles.actionsCell,
+      kind: "actions",
       render: (row) => (
         <>
           <Link
             href={`/codes/${row.code}`}
-            className={styles.iconButton}
+            className={iconButtonVariants()}
             aria-label="View stats"
             title="View stats"
           >
@@ -185,7 +194,7 @@ export default async function CodesPage({
           {row.status === "active" ? (
             <Link
               href={`/${row.code}`}
-              className={styles.iconButton}
+              className={iconButtonVariants()}
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Open in new tab"
@@ -197,7 +206,7 @@ export default async function CodesPage({
           <CopyCodeButton code={row.code} module={row.module} />
           <Link
             href={`/codes/edit/${row.code}`}
-            className={styles.iconButton}
+            className={iconButtonVariants()}
             aria-label={`Edit ${row.note || row.code}`}
             title="Edit"
           >
@@ -209,7 +218,7 @@ export default async function CodesPage({
   ];
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <SelectionProvider allIds={rows.map((row) => row.code)}>
         <DataList
           rows={rows}
@@ -224,7 +233,7 @@ export default async function CodesPage({
           }
           actions={
             <>
-              <Link href="/codes/new" className={listStyles.button}>
+              <Link href="/codes/new" className={buttonVariants()}>
                 New code
               </Link>
               <DeleteSelectedButton action={deleteSelectedCodesAction} itemNoun="code" />
@@ -235,17 +244,17 @@ export default async function CodesPage({
               hasActiveFilter={q !== "" || !onlyMine || moduleFilter !== undefined}
               resetKey={`${q}|${onlyMine ? "1" : "0"}|${moduleFilter ?? ""}`}
             >
-              <input
+              <Input
                 type="search"
                 name="q"
-                className={listStyles.searchInput}
+                className="w-72"
                 placeholder="Filter by note or code…"
                 defaultValue={q}
                 aria-label="Filter codes"
               />
-              <select
+              <Select
                 name="module"
-                className={listStyles.searchInput}
+                className="w-72"
                 defaultValue={moduleFilter ?? ""}
                 aria-label="Filter by activity"
               >
@@ -255,11 +264,8 @@ export default async function CodesPage({
                     {codeModuleLabels[m].badge}
                   </option>
                 ))}
-              </select>
-              <label className={listStyles.onlyMine}>
-                <input type="checkbox" name="mine" defaultChecked={onlyMine} />
-                Only my codes
-              </label>
+              </Select>
+              <FilterCheckbox name="mine" label="Only my codes" defaultChecked={onlyMine} />
             </ListFilterBar>
           }
           isFiltered={q !== "" || moduleFilter !== undefined}
@@ -272,6 +278,6 @@ export default async function CodesPage({
           noMatchState="No codes match your filter."
         />
       </SelectionProvider>
-    </main>
+    </Main>
   );
 }

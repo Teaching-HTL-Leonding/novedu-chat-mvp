@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { listStudentConversations } from "@/lib/code-stats-store";
 import { getCode } from "@/lib/code-store";
@@ -8,9 +9,7 @@ import { computeTextStats } from "@/lib/writing-stats";
 import { getSubmission, listSavers } from "@/lib/writing-store";
 import { LocalTime } from "../../../../local-time";
 import { MarkdownRenderer } from "../../../../markdown-renderer";
-import pageStyles from "../../../../page.module.css";
 import { StudentConversations } from "./student-conversations";
-import styles from "./student-text.module.css";
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 
@@ -37,37 +36,37 @@ export default async function StudentTextPage({
 
   if (entry === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Text temporarily unavailable">
           <p>This text could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
   // Only a non-anonymous writing code has per-student saved text to read.
   if (entry === null || entry.module !== "writing" || entry.anonymous) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Not found">
           <p>
             No saved student text here. <Link href="/codes">Back to codes</Link>.
           </p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
   const submission = await getSubmission(code, userId);
   if (submission === null) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="No saved text">
           <p>
             This student has not saved any text for this code.{" "}
             <Link href={`/codes/${code}`}>Back to savers</Link>.
           </p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -84,54 +83,57 @@ export default async function StudentTextPage({
   const displayName = (idx >= 0 ? savers[idx]?.displayName : null) ?? userId;
 
   return (
-    <main className={pageStyles.main}>
-      <div className={styles.container}>
+    <Main>
+      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-6">
         <BackLink href={`/codes/${code}`}>Back to savers</BackLink>
 
-        <div className={styles.header}>
-          <span className={styles.student} title={userId}>
+        <div className="mt-3 mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
+          <span className="break-all font-bold font-mono" title={userId}>
             {displayName}
           </span>
-          <span className={styles.meta}>
+          <span className="flex flex-wrap gap-x-4 gap-y-1 text-foreground/70 text-sm">
             <span>
               Saved <LocalTime seconds={seconds(submission.textUpdatedAt)} />
             </span>
             <span>{stats.words} words</span>
             <span>{stats.charactersExcludingWhitespace} characters</span>
           </span>
-          <nav className={styles.nav}>
+          <nav className="ml-auto flex gap-4">
             {prev ? (
               <Link
-                className={styles.navLink}
+                className="font-semibold text-sm hover:underline"
                 href={`/codes/${code}/s/${encodeURIComponent(prev.userId)}`}
               >
                 ← Previous
               </Link>
             ) : (
-              <span className={styles.navDisabled}>← Previous</span>
+              <span className="font-semibold text-foreground/35 text-sm">← Previous</span>
             )}
             {next ? (
               <Link
-                className={styles.navLink}
+                className="font-semibold text-sm hover:underline"
                 href={`/codes/${code}/s/${encodeURIComponent(next.userId)}`}
               >
                 Next →
               </Link>
             ) : (
-              <span className={styles.navDisabled}>Next →</span>
+              <span className="font-semibold text-foreground/35 text-sm">Next →</span>
             )}
           </nav>
         </div>
 
-        <div className={styles.text} data-testid="student-text">
+        <div
+          className="wrap-break-word mb-6 rounded-lg border border-foreground/15 px-5 py-4"
+          data-testid="student-text"
+        >
           <MarkdownRenderer content={submission.text} />
         </div>
 
-        <section className={styles.section}>
-          <h2 className={styles.heading}>Conversations</h2>
+        <section className="mt-6">
+          <h2 className="mb-3 font-bold text-lg">Conversations</h2>
           <StudentConversations code={code} conversations={conversations ?? []} />
         </section>
       </div>
-    </main>
+    </Main>
   );
 }
