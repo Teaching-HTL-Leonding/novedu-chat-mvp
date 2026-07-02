@@ -19,11 +19,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const auth = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
 const recordUserChat = vi.hoisted(() => vi.fn());
+const recordUserMessage = vi.hoisted(() => vi.fn());
+// The RequestContext the route mutates with the usage-attribution keys before
+// building the runtime; a spy `set` lets us assert it, and stands in for the real
+// RequestContext.set().
+const contextSet = vi.hoisted(() => vi.fn());
 const buildRequestContext = vi.hoisted(() =>
   vi.fn(
     async (): Promise<
-      { ok: true; context: object } | { ok: false; status: number; message: string }
-    > => ({ ok: true, context: {} }),
+      | { ok: true; context: { set: (k: string, v: unknown) => void } }
+      | { ok: false; status: number; message: string }
+    > => ({ ok: true, context: { set: contextSet } }),
   ),
 );
 const getLocalAgents = vi.hoisted(() => vi.fn(() => []));
@@ -34,6 +40,7 @@ const endpointFetch = vi.hoisted(() =>
 vi.mock("@/auth", () => ({ auth }));
 vi.mock("@/lib/code-store", () => ({ checkCode }));
 vi.mock("@/lib/user-chat-store", () => ({ recordUserChat }));
+vi.mock("@/lib/usage-store", () => ({ recordUserMessage }));
 // The module registry decides which agent runs per module. Both modules share one
 // buildRequestContext mock so a test can flip it to the error path.
 vi.mock("@/lib/code-modules/registry", () => ({
@@ -66,6 +73,7 @@ import {
   resetThreadTokenSecretForTests,
   signThreadToken,
 } from "@/lib/thread-token";
+import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
 import { GET, POST, trimToNewTurn } from "./route";
 
 const CODE = "a1b2c3d4e5";
@@ -119,7 +127,7 @@ beforeEach(() => {
     ok: true,
     entry: { module: "tutor", fileUrl: "https://example.com/t.yaml" },
   });
-  buildRequestContext.mockResolvedValue({ ok: true, context: {} });
+  buildRequestContext.mockResolvedValue({ ok: true, context: { set: contextSet } });
   getLocalAgents.mockReturnValue([]);
   endpointFetch.mockResolvedValue(new Response("{}", { status: 200 }));
 });
@@ -230,6 +238,11 @@ describe("happy path past the gate (tutor module)", () => {
     const res = await POST(runRequest({ threadId, token: token(threadId) }));
     expect(res.status).toBe(200);
     expect(getLocalAgents).toHaveBeenCalledWith(expect.objectContaining({ resourceId: CODE }));
+    // The three usage-attribution keys are set on the request context for the
+    // observability exporter (usageUserId is set even though tutor defaults anonymous).
+    expect(contextSet).toHaveBeenCalledWith(USAGE_CODE, CODE);
+    expect(contextSet).toHaveBeenCalledWith(USAGE_USER_ID, USER_ID);
+    expect(contextSet).toHaveBeenCalledWith(USAGE_MODULE, "tutor");
   });
 
   it("404s a tutor-module request targeting a non-tutor agent (grader unreachable)", async () => {

@@ -1,10 +1,14 @@
 import { Mastra } from "@mastra/core/mastra";
+import { SamplingStrategyType } from "@mastra/core/observability";
 import { PinoLogger } from "@mastra/loggers";
 import { MSSQLStore } from "@mastra/mssql";
+import { Observability } from "@mastra/observability";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "@/lib/azure-credential";
+import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
 import { quizDiscussionAgent, quizEvaluatorAgent } from "./quiz-agents";
 import { tutorAgent } from "./tutor-agent";
+import { usageExporter } from "./usage-exporter";
 import { writingAgent } from "./writing-agents";
 
 const logger = new PinoLogger({ name: "Mastra", level: "info" });
@@ -61,4 +65,24 @@ export const mastra = new Mastra({
   // connection string. Undefined when no connection string is configured (see above).
   storage: globalForStore.mastraStore,
   logger,
+  // Usage metering: one observability instance whose only exporter meters token
+  // usage + tool calls into our SQL tables (lib/usage-store.ts). `default:
+  // { enabled: false }` keeps Mastra's built-in storage/platform exporters out — we
+  // only want ours. `requestContextKeys` snapshots the three attribution keys the
+  // seams set (the CopilotKit route's `built.context`; the quiz grader's
+  // RequestContext) onto every span for the exporter to read. The auto-applied
+  // SensitiveDataFilter is left on (privacy-safe default); it uses EXACT field-name
+  // matching and only touches attributes/metadata/input/output, so these three keys
+  // survive. See docs/usage-metering.md.
+  observability: new Observability({
+    default: { enabled: false },
+    configs: {
+      usage: {
+        serviceName: "novedu-usage",
+        sampling: { type: SamplingStrategyType.ALWAYS },
+        requestContextKeys: [USAGE_CODE, USAGE_USER_ID, USAGE_MODULE],
+        exporters: [usageExporter],
+      },
+    },
+  }),
 });

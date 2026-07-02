@@ -24,6 +24,7 @@ The highest-cost rules to break. They always apply, regardless of which subsyste
 - The **`coding`** module's **`POST /api/coding/v1/chat/completions`** is the second public, non-Entra route (also in the `proxy.ts` matcher): an external coding agent has no session, so it authenticates with the **code as the bearer API key** (`checkCode` re-verified every request — never a bare lookup). It has **no** in-app chat and **no** `x-thread-token`. It is **always anonymous** (the API path carries no `oid`), and the teacher's system prompt + the SCCH model stay **server-side** (the proxy injects the prompt and pins the model; neither reaches the browser).
 - Image bytes use **passwordless User-Delegation-SAS** (account keys disabled on the storage account); retrieval is unauthenticated-but-time-limited (a short-lived read SAS, no app route serves bytes), and SVG is rendered only via `<img src>` on the blob origin — never inline markup.
 - Telemetry carries **no** message / prompt / PII content.
+- **Usage metering** stores counts against two **independent** hourly buckets — `usage_by_code` (no user) and `usage_by_user` (no code). There is **never** a `(user × code)` row, so metering never links a student to an activity — the anonymity invariant is unchanged even for anonymous codes (whose `oid` the runtime knows; it is only ever stored against an hour bucket). The exporter + store carry **ids + counts only**, never message/prompt content.
 - Fork-PR CI stays **secret-free**; never add `pull_request_target`.
 - Production SQL is **always** passwordless Entra / Managed Identity; SQL user/password is dev/test only.
 
@@ -126,6 +127,12 @@ Read before touching: Mastra storage (`app/mastra/index.ts`), `lib/db/`, migrati
 Read before touching: `instrumentation.ts`, `lib/telemetry.ts`, the `@opentelemetry/*` / `@azure/monitor-opentelemetry` deps, any `recordError` / `emitEvent` call site.
 
 - Telemetry is off unless `APPLICATIONINSIGHTS_CONNECTION_STRING` is set (a secret, never in the repo or CI). Everything goes through the `lib/telemetry.ts` seam; `instrumentation.ts` brings it up before migrations and routes uncaught server errors to `recordError` via `onRequestError`. (No PII — see the security block.)
+
+### Usage metering → `docs/usage-metering.md`
+
+Read before touching: `lib/usage-store.ts`, `app/mastra/usage-exporter.ts`, `lib/usage-context-keys.ts`, the `observability` block in `app/mastra/index.ts`, `novedu_usage_by_code` / `novedu_usage_by_user`, and the capture points in the CopilotKit route / `lib/quiz-actions.ts` / `lib/writing-actions.ts` / the coding proxy.
+
+- Two **independent** hourly aggregate tables written **off the response path** by the never-throwing `lib/usage-store.ts` (increment-UPSERT). No read UI this iteration (query via SQL / Log Analytics); `usage_by_user` is the future per-student-quota substrate (a windowed `SUM`). Token + tool-call capture is a Mastra **`ObservabilityExporter`** (`@mastra/observability`, registered in `app/mastra/index.ts`) reading `MODEL_GENERATION` span `usage` (the `UsageStats` shape: `inputDetails.cacheRead` / `outputTokens`), attributed via three `requestContextKeys` (`usageCode`/`usageUserId`/`usageModule`, `lib/usage-context-keys.ts`) set on the per-request RequestContext at each agent seam; the **coding proxy** (no Mastra) taps its passthrough response for the `usage` chunk (per-code only, no `oid`). `input_tokens_cached` counts prefix-cache hits (SCCH's `prompt_tokens_details.cached_tokens` → Mastra `inputDetails.cacheRead`). Anonymity: see the security block.
 
 ### CI / GitHub Actions security → `docs/ci-security.md`
 

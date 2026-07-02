@@ -1,7 +1,9 @@
 "use server";
 
+import { after } from "next/server";
 import { auth } from "@/auth";
 import { type CodeRejection, checkCode } from "@/lib/code-store";
+import { recordWritingSave } from "@/lib/usage-store";
 import { loadWriting } from "@/lib/writing-fetch";
 import { saveSubmission } from "@/lib/writing-store";
 
@@ -64,6 +66,8 @@ export async function saveWriting(input: SaveWritingInput): Promise<SaveWritingR
 
   try {
     await saveSubmission({ code: entry.code, userId, text });
+    // Count the save off the response path (the store never throws).
+    after(() => recordWritingSave({ code: entry.code, userId }));
     return { ok: true };
   } catch (error) {
     console.error("writing-actions: saving a submission failed", error);
