@@ -2,18 +2,19 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
-import { ListFilterBar } from "@/components/list-filter-bar";
-import listStyles from "@/components/list-page.module.css";
+import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { Notice } from "@/components/notice";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { selectionColumn } from "@/components/selection-column";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { mintReadSas } from "@/lib/image-blob";
 import { listImages } from "@/lib/image-store";
 import { deleteSelectedImagesAction } from "@/lib/images-actions";
 import { LocalTime } from "../local-time";
 import pageStyles from "../page.module.css";
-import styles from "./images.module.css";
 import { ViewImageButton } from "./view-image-button";
 
 // One active image as shown in the list. `viewUrl` is a short-lived read SAS
@@ -107,21 +108,24 @@ export default async function ImagesPage({
       (row) => row.name,
       (row) => row.name,
     ),
-    { header: "Name", className: styles.nameCell, render: (row) => row.name },
+    { header: "Name", className: "whitespace-nowrap font-mono", render: (row) => row.name },
     {
       header: "Mime",
-      render: (row) => <span className={styles.mimeBadge}>{row.mimeType}</span>,
+      render: (row) => <Badge className="font-mono tracking-wide">{row.mimeType}</Badge>,
     },
     {
       header: "Size",
-      className: styles.sizeCell,
+      className: "whitespace-nowrap tabular-nums",
       render: (row) => formatBytes(row.byteSize),
     },
     {
       header: "Credit",
       render: (row) =>
         row.credit ? (
-          <span className={styles.credit} title={row.credit}>
+          <span
+            className="inline-block max-w-64 overflow-hidden text-ellipsis whitespace-nowrap align-bottom text-foreground/70"
+            title={row.credit}
+          >
             {row.credit}
           </span>
         ) : (
@@ -130,22 +134,17 @@ export default async function ImagesPage({
     },
     {
       header: "Last updated",
-      className: listStyles.timeCell,
+      kind: "time",
       render: (row) => <LocalTime seconds={row.updatedSeconds} />,
     },
     {
       header: "Actions",
       srOnlyHeader: true,
-      className: listStyles.actionsCell,
+      kind: "actions",
       render: (row) => (
         <>
           <ViewImageButton name={row.name} url={row.viewUrl} credit={row.credit} />
-          <CopyIconButton
-            text={row.name}
-            label="Copy name"
-            className={styles.iconButton}
-            promptLabel="Copy the image name:"
-          />
+          <CopyIconButton text={row.name} label="Copy name" promptLabel="Copy the image name:" />
         </>
       ),
     },
@@ -166,7 +165,7 @@ export default async function ImagesPage({
           }
           actions={
             <>
-              <Link href="/images/new" className={listStyles.button}>
+              <Link href="/images/new" className={buttonVariants()}>
                 New image
               </Link>
               <DeleteSelectedButton action={deleteSelectedImagesAction} itemNoun="image" />
@@ -177,18 +176,15 @@ export default async function ImagesPage({
               hasActiveFilter={q !== "" || !onlyMine}
               resetKey={`${q}|${onlyMine ? "1" : "0"}`}
             >
-              <input
+              <Input
                 type="search"
                 name="q"
-                className={listStyles.searchInput}
+                className="w-72"
                 placeholder="Filter by name…"
                 defaultValue={q}
                 aria-label="Filter images"
               />
-              <label className={listStyles.onlyMine}>
-                <input type="checkbox" name="mine" defaultChecked={onlyMine} />
-                Only my images
-              </label>
+              <FilterCheckbox name="mine" label="Only my images" defaultChecked={onlyMine} />
             </ListFilterBar>
           }
           isFiltered={q !== ""}

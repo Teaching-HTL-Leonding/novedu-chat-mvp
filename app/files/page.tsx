@@ -3,12 +3,13 @@ import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
 import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon } from "@/components/icons";
-import { ListFilterBar } from "@/components/list-filter-bar";
-import listStyles from "@/components/list-page.module.css";
+import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { Notice } from "@/components/notice";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { selectionColumn } from "@/components/selection-column";
+import { buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { isCodeModule } from "@/lib/code-modules/types";
 import { listFiles } from "@/lib/file-store";
@@ -115,13 +116,13 @@ export default async function FilesPage({
     },
     {
       header: "Last updated",
-      className: listStyles.timeCell,
+      kind: "time",
       render: (row) => <LocalTime seconds={row.updatedSeconds} />,
     },
     {
       header: "Actions",
       srOnlyHeader: true,
-      className: listStyles.actionsCell,
+      kind: "actions",
       render: (row) => {
         const url = fileUrl(row.name);
         return (
@@ -190,10 +191,10 @@ export default async function FilesPage({
           }
           actions={
             <>
-              <Link href="/files/new" className={listStyles.button}>
+              <Link href="/files/new" className={buttonVariants()}>
                 New file
               </Link>
-              <Link href="/images" className={listStyles.button}>
+              <Link href="/images" className={buttonVariants()}>
                 Manage images
               </Link>
               <DeleteSelectedButton action={deleteSelectedFilesAction} itemNoun="file" />
@@ -204,18 +205,15 @@ export default async function FilesPage({
               hasActiveFilter={q !== "" || !onlyMine}
               resetKey={`${q}|${onlyMine ? "1" : "0"}`}
             >
-              <input
+              <Input
                 type="search"
                 name="q"
-                className={listStyles.searchInput}
+                className="w-72"
                 placeholder="Filter by name, title, description…"
                 defaultValue={q}
                 aria-label="Filter files"
               />
-              <label className={listStyles.onlyMine}>
-                <input type="checkbox" name="mine" defaultChecked={onlyMine} />
-                Only my files
-              </label>
+              <FilterCheckbox name="mine" label="Only my files" defaultChecked={onlyMine} />
             </ListFilterBar>
           }
           isFiltered={q !== ""}

@@ -3,8 +3,10 @@
 Teacher-facing list screens (YAML Files at `/files`, Shared Tutor Codes at
 `/codes`, and any future list) share **one** concept so they look and behave
 the same and only have to be improved once. Read this before adding a new list or
-touching `components/data-list.tsx`, `components/list-filter-bar.tsx`,
-`components/list-page.module.css`, or a list page's `searchParams` handling.
+touching `components/data-list.tsx`, `components/list-filter-bar.tsx`, or a list
+page's `searchParams` handling. Styling follows `docs/styling.md` — the list
+chrome (container, toolbar, table) lives INSIDE `DataList`/`ListFilterBar` as
+Tailwind utilities; pages never restate it.
 
 ## The one firm rule: filter in the database, never in memory
 
@@ -21,9 +23,9 @@ a pure server concern later.
 | URL search params | `?q=…&mine=…` (+ future `?page=`) | the filter state, shareable + back-button friendly |
 | Server page | `app/<list>/page.tsx` | `await searchParams`, parse, call the store, build rows + columns, render `DataList` |
 | Store query | `lib/*-store.ts` | the actual SQL filter (see below) |
-| `DataList<T>` | `components/data-list.tsx` (**server**) | column-driven table + empty/no-match + the pagination seam |
-| `ListFilterBar` | `components/list-filter-bar.tsx` (**client**) | the only interactive bit: controls + **Apply** → push a new query string |
-| `list-page.module.css` | shared chrome | container / toolbar / table / search input / buttons — same spot everywhere |
+| `DataList<T>` | `components/data-list.tsx` (**server**) | column-driven table + empty/no-match + the pagination seam; owns ALL table/toolbar chrome, incl. the per-column `kind` recipes |
+| `ListFilterBar` | `components/list-filter-bar.tsx` (**client**) | the only interactive bit: controls + **Apply** → push a new query string; exports `FilterCheckbox` for the "Only my …" toggle |
+| ui primitives | `components/ui/` (`Button`/`buttonVariants`, `Input`, `Badge`, `IconButton`) | the "New …" action, the search input, kind/status chips, row action buttons |
 
 ### Store: dynamic query, the Drizzle way
 
@@ -63,13 +65,11 @@ const rows = await listFiles({ search: q || undefined, createdBy: onlyMine ? use
 return (
   <DataList
     rows={rows} getRowKey={(r) => r.id} columns={columns}
-    actions={<Link href="/files/new" className={listStyles.button}>New file</Link>}
+    actions={<Link href="/files/new" className={buttonVariants()}>New file</Link>}
     filterBar={
       <ListFilterBar hasActiveFilter={q !== "" || !onlyMine}>
-        <input type="search" name="q" defaultValue={q} aria-label="Filter files" placeholder="Filter…" />
-        <label className={listStyles.onlyMine}>
-          <input type="checkbox" name="mine" defaultChecked={onlyMine} /> Only my files
-        </label>
+        <Input type="search" name="q" defaultValue={q} aria-label="Filter files" placeholder="Filter…" className="w-72" />
+        <FilterCheckbox name="mine" label="Only my files" defaultChecked={onlyMine} />
       </ListFilterBar>
     }
     isFiltered={q.trim() !== ""}
@@ -79,11 +79,14 @@ return (
 );
 ```
 
-`columns` are `{ header, render(row), className?, srOnlyHeader? }`. Because `DataList`
-is a **server** component, the `render` functions live in the page and may return
-client leaf components (`LocalTime`, `CopyIconButton`, the row checkbox) — no
-Server→Client function-prop boundary is crossed (that only applies to `"use client"`
-components).
+`columns` are `{ header, render(row), kind?, className?, headerClassName?, srOnlyHeader? }`.
+**`kind` is the column's cell recipe** — `"numeric"` (right-aligned, snug),
+`"time"` (no wrap), `"actions"` (right-aligned icon-button row) — so pages never
+repeat alignment classes; `className`/`headerClassName` are cn-merged deltas for
+genuinely page-specific cells. Because `DataList` is a **server** component, the
+`render` functions live in the page and may return client leaf components
+(`LocalTime`, `CopyIconButton`, the row checkbox) — no Server→Client function-prop
+boundary is crossed (that only applies to `"use client"` components).
 
 ### `ListFilterBar` serialization
 
@@ -104,7 +107,7 @@ and behaves identically and improves once. The pieces:
 | --- | --- | --- |
 | `SelectionProvider` | `components/list-selection.tsx` (**client**) | owns the selected-key `Set` + the in-flight `pending` flag; clears + `router.refresh()`es on a successful delete |
 | `selectionColumn(getRowKey, rowLabel?)` | `components/selection-column.tsx` (**server-safe**) | the leading checkbox column: `SelectAllControls` header (select-all / unselect-all icons) + a per-row `RowSelectCheckbox` |
-| `DeleteSelectedButton` | `components/list-selection.tsx` (**client**) | red, border-only toolbar button; disabled until ≥1 row; confirms with the count, runs the action, shows the shared `Spinner` while pending |
+| `DeleteSelectedButton` | `components/list-selection.tsx` (**client**) | the `destructiveOutline` `Button`; disabled until ≥1 row; confirms with the count, runs the action, shows the shared `Spinner` while pending |
 | per-list bulk action | `lib/*-actions.ts` (`"use server"`) | teacher-gated; calls the store's bulk function; passed to `DeleteSelectedButton` as a prop |
 
 **Delete is bulk-only — one path, no second copy.** "Delete Selected" is the ONLY
@@ -134,7 +137,7 @@ return (
   <SelectionProvider allIds={rows.map((r) => r.name)}>
     <DataList rows={rows} getRowKey={(r) => r.id} columns={columns}
       actions={<>
-        <Link href="/files/new" className={listStyles.button}>New file</Link>
+        <Link href="/files/new" className={buttonVariants()}>New file</Link>
         <DeleteSelectedButton action={deleteSelectedFilesAction} itemNoun="file" />
       </>}
       /* …filterBar / states… */ />
@@ -156,8 +159,10 @@ the wired DB delete is the `@live-db` case in `e2e/file-and-tutor-code-crud.spec
    `<PageLoading label="Loading …" />` (`app/page-loading.tsx`). The page is an
    async server component, so without it the route shows a frozen page during the
    server query instead of a spinner.
-5. Put list-specific cell/badge classes in the page's own `*.module.css`; reuse the
-   shared chrome and `composes:` the shared `iconButton`.
+5. Give each column the right `kind`; page-specific cells (a truncating note, a
+   kind badge) use inline utilities or `<Badge>`/`<IconButton>` in the `render`
+   function — per `docs/styling.md`, a recipe used by ≥2 pages moves into
+   `components/ui/`.
 6. (Optional) Opt into multi-delete: add a bulk store function + a teacher-gated
    server action that reuses the per-item delete helper, wrap the `DataList` in
    `SelectionProvider`, prepend `selectionColumn`, and add `DeleteSelectedButton` to

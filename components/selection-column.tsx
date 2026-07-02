@@ -1,6 +1,5 @@
 import type { ListColumn } from "@/components/data-list";
 import { RowSelectCheckbox, SelectAllControls } from "@/components/list-selection";
-import styles from "./list-selection.module.css";
 
 // Server-safe builder (NOT "use client") for the leading row-selection column, so
 // a list page opts into multi-delete with ONE entry in its `columns` array. Like a
@@ -16,8 +15,8 @@ export function selectionColumn<T>(
 ): ListColumn<T> {
   return {
     header: <SelectAllControls />,
-    headerClassName: styles.selectHeaderCell,
-    className: styles.selectCell,
+    headerClassName: "w-[1%]",
+    className: "w-[1%] whitespace-nowrap text-center",
     render: (row) => <RowSelectCheckbox id={getRowKey(row)} label={rowLabel?.(row)} />,
   };
 }

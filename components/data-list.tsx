@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import styles from "./list-page.module.css";
+import { cn } from "@/lib/utils";
 
 // A column-driven list table for "filtered list" pages (see
 // `docs/filtered-lists.md`). This is a SERVER component: the rows arrive
@@ -9,14 +9,33 @@ import styles from "./list-page.module.css";
 // is crossed — and may return client leaf components (LocalTime, copy/delete
 // buttons), which hydrate normally.
 
+export type ListColumnKind = "numeric" | "time" | "actions";
+
+// Built-in cell recipes so pages don't repeat alignment classes per column:
+// numeric = right-aligned and snug (header right-aligned too), time = no wrap,
+// actions = a right-aligned row of icon buttons in a snug column.
+const HEADER_KIND_CLASSES: Record<ListColumnKind, string> = {
+  numeric: "text-right",
+  time: "",
+  actions: "w-[1%]",
+};
+
+const CELL_KIND_CLASSES: Record<ListColumnKind, string> = {
+  numeric: "w-[1%] whitespace-nowrap text-right",
+  time: "whitespace-nowrap",
+  actions: "flex items-center justify-end gap-2 whitespace-nowrap",
+};
+
 export interface ListColumn<T> {
   /** Header cell content. */
   header: ReactNode;
   /** Body cell content for one row (returns the cell content, not the <td>). */
   render: (row: T) => ReactNode;
-  /** Optional class on the <td>. */
+  /** Built-in cell recipe for the column (alignment, wrapping, width). */
+  kind?: ListColumnKind;
+  /** Optional extra classes on the <td>, cn-merged after the kind recipe. */
   className?: string;
-  /** Optional class on the <th> (defaults to the actions-header width when srOnly). */
+  /** Optional extra classes on the <th>, cn-merged after the kind recipe. */
   headerClassName?: string;
   /** Visually hide the header label (e.g. the trailing Actions column). */
   srOnlyHeader?: boolean;
@@ -52,18 +71,18 @@ export function DataList<T>({
   noMatchState,
 }: DataListProps<T>) {
   return (
-    <div className={styles.container}>
-      {hint ? <p className={styles.hint}>{hint}</p> : null}
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pt-4 pb-6">
+      {hint ? <p className="text-foreground/70 text-sm">{hint}</p> : null}
 
-      <div className={styles.toolbar}>
-        <div className={styles.actions}>{actions}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">{actions}</div>
         {filterBar}
       </div>
 
       {rows.length === 0 ? (
-        <p className={styles.empty}>{isFiltered ? noMatchState : emptyState}</p>
+        <p>{isFiltered ? noMatchState : emptyState}</p>
       ) : (
-        <table className={styles.table}>
+        <table className="w-full border-collapse text-sm">
           <thead>
             <tr>
               {columns.map((column, index) => (
@@ -71,13 +90,15 @@ export function DataList<T>({
                   // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
                   key={index}
                   scope="col"
-                  className={
-                    column.headerClassName ??
-                    (column.srOnlyHeader ? styles.actionsHeader : undefined)
-                  }
+                  className={cn(
+                    "border-foreground/25 border-b-2 px-3 py-2 text-left font-semibold",
+                    column.kind && HEADER_KIND_CLASSES[column.kind],
+                    column.srOnlyHeader && "w-[1%]",
+                    column.headerClassName,
+                  )}
                 >
                   {column.srOnlyHeader ? (
-                    <span className={styles.visuallyHidden}>{column.header}</span>
+                    <span className="sr-only">{column.header}</span>
                   ) : (
                     column.header
                   )}
@@ -89,8 +110,15 @@ export function DataList<T>({
             {rows.map((row) => (
               <tr key={getRowKey(row)}>
                 {columns.map((column, index) => (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
-                  <td key={index} className={column.className}>
+                  <td
+                    // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
+                    key={index}
+                    className={cn(
+                      "border-foreground/15 border-b px-3 py-2 align-middle",
+                      column.kind && CELL_KIND_CLASSES[column.kind],
+                      column.className,
+                    )}
+                  >
                     {column.render(row)}
                   </td>
                 ))}
