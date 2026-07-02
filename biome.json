@@ -22,7 +22,7 @@
       "preset": "recommended",
       "nursery": {
         "useSortedClasses": {
-          "level": "warn",
+          "level": "error",
           "fix": "safe",
           "options": {
             "functions": ["cn", "cva", "clsx"]
