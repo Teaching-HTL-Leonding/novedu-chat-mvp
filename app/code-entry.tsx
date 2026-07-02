@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import styles from "./code-entry.module.css";
-import formStyles from "./validate-tutor/validate-tutor.module.css";
 
 // Accepts a bare code OR a pasted activity URL (`https://host/<code>`) and
 // extracts the code — the last non-empty path segment. Lowercased so a code
@@ -53,8 +55,8 @@ export function CodeEntryForm({ recent }: { recent: { code: string; note: string
           Your teacher gave you a code (or a link containing one). Enter it here to start.
         </p>
         <form className={styles.form} onSubmit={submit}>
-          <input
-            className={`${formStyles.input} ${styles.codeInput}`}
+          <Input
+            className={cn("min-w-0 flex-1 font-mono", styles.codeInput)}
             value={value}
             onChange={(event) => {
               setValue(event.target.value);
@@ -66,12 +68,10 @@ export function CodeEntryForm({ recent }: { recent: { code: string; note: string
             autoCapitalize="none"
             autoCorrect="off"
           />
-          <button type="submit" className={formStyles.button}>
-            Open
-          </button>
+          <Button type="submit">Open</Button>
         </form>
         {formatError ? (
-          <p className={formStyles.requestError}>
+          <p className="text-destructive">
             A code is up to 32 letters/digits/hyphens — check for typos, or paste the full link.
           </p>
         ) : null}

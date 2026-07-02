@@ -4,14 +4,10 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState, useTransition } from "react";
 import { BackLink } from "@/components/back-link";
 import { Button } from "@/components/ui/button";
+import { Field, FieldHint, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { imageMimeFromExtension, isImageMime } from "@/lib/file-name";
 import { confirmImageUpload, requestImageUpload } from "@/lib/images-actions";
-
-// Shared bits of the form's field markup (used by all three fields).
-const FIELD = "flex flex-col gap-1.5";
-const LABEL = "font-semibold text-foreground/70 text-xs";
-const HINT = "text-foreground/70 text-sm";
 
 // The largest image the upload flow accepts (5 MB) — enforced server-side too, but
 // caught here first so a teacher learns before the bytes leave the browser.
@@ -92,17 +88,17 @@ export function UploadImageForm() {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pt-4 pb-6">
       <BackLink href="/images">Back to images</BackLink>
-      <p className={HINT}>
+      <FieldHint>
         Upload a PNG, JPEG or SVG (max 5 MB). The bytes go straight to storage; reference the image
         by its name from your YAML content.
-      </p>
+      </FieldHint>
 
       <form className="flex shrink-0 flex-col items-stretch gap-3.5" onSubmit={onSubmit}>
         <div className="flex flex-wrap items-end gap-3.5">
-          <div className={`${FIELD} grow basis-72`}>
-            <label className={LABEL} htmlFor="image-name">
+          <Field className="grow basis-72">
+            <FieldLabel htmlFor="image-name">
               Name (letters, digits, underscore, hyphen — no spaces)
-            </label>
+            </FieldLabel>
             <Input
               id="image-name"
               required
@@ -117,11 +113,9 @@ export function UploadImageForm() {
               }}
               disabled={uploading}
             />
-          </div>
-          <div className={FIELD}>
-            <label className={LABEL} htmlFor="image-file">
-              File
-            </label>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="image-file">File</FieldLabel>
             <Input
               id="image-file"
               ref={fileInputRef}
@@ -134,13 +128,11 @@ export function UploadImageForm() {
               }}
               disabled={uploading}
             />
-          </div>
+          </Field>
         </div>
 
-        <div className={`${FIELD} grow basis-72`}>
-          <label className={LABEL} htmlFor="image-credit">
-            Content Credentials (optional)
-          </label>
+        <Field className="grow basis-72">
+          <FieldLabel htmlFor="image-credit">Content Credentials (optional)</FieldLabel>
           <Input
             id="image-credit"
             maxLength={512}
@@ -153,10 +145,10 @@ export function UploadImageForm() {
             }}
             disabled={uploading}
           />
-          <p className={HINT}>
+          <FieldHint>
             Shown small below the image — use it to attribute an image you don't own (e.g. CC BY).
-          </p>
-        </div>
+          </FieldHint>
+        </Field>
 
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={uploading || !fileName}>

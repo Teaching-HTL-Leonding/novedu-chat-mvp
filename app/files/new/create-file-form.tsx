@@ -2,6 +2,9 @@
 
 import { type FormEvent, useState, useTransition } from "react";
 import { BackLink } from "@/components/back-link";
+import { Button } from "@/components/ui/button";
+import { Field, FieldHint, FieldLabel } from "@/components/ui/field";
+import { Input, Select } from "@/components/ui/input";
 import { ErrorList, WarningList } from "@/components/validation-result";
 import {
   createFileAction,
@@ -9,7 +12,6 @@ import {
   type ValidationWarning,
   validateNewFileAction,
 } from "@/lib/yaml-files";
-import styles from "../files.module.css";
 import { YamlEditor } from "../yaml-editor";
 
 // Create form: name + kind + the CodeMirror editor (with an upload button). Name,
@@ -72,26 +74,26 @@ export function CreateFileForm() {
   }
 
   return (
-    <div className={styles.container}>
+    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pt-4 pb-6">
       <BackLink href="/files">Back to files</BackLink>
-      <p className={styles.hint}>
+      <FieldHint>
         Create a hosted YAML file. Use <strong>Validate</strong> to check it without saving;{" "}
         <strong>Validate &amp; create</strong> stores it — an invalid tutor or fragment is rejected.
-      </p>
+      </FieldHint>
 
-      <form className={styles.form} onSubmit={onSubmit}>
-        <div className={styles.fieldRow}>
-          <div className={`${styles.field} ${styles.fieldGrow}`}>
-            <label className={styles.label} htmlFor="file-name">
+      <form className="flex min-h-0 flex-1 flex-col items-stretch gap-3.5" onSubmit={onSubmit}>
+        <div className="flex flex-wrap items-end gap-3.5">
+          <Field className="grow basis-72">
+            <FieldLabel htmlFor="file-name">
               Name (letters, digits, underscore, hyphen — no spaces)
-            </label>
-            <input
+            </FieldLabel>
+            <Input
               id="file-name"
               required
               maxLength={100}
               pattern="[A-Za-z0-9_-]+"
               autoComplete="off"
-              className={styles.input}
+              className="font-mono"
               placeholder="e.g. linked-lists-tutor"
               value={name}
               onChange={(event) => {
@@ -100,19 +102,16 @@ export function CreateFileForm() {
               }}
               disabled={pending}
             />
-          </div>
-          <div className={styles.field}>
-            <label className={styles.label} htmlFor="file-kind">
-              Kind
-            </label>
-            <select
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="file-kind">Kind</FieldLabel>
+            <Select
               id="file-kind"
               value={kind}
               onChange={(event) => {
                 setKind(event.target.value);
                 resetFeedback();
               }}
-              className={styles.select}
               disabled={pending}
             >
               <option value="tutor">Tutor</option>
@@ -120,8 +119,8 @@ export function CreateFileForm() {
               <option value="quiz">Quiz</option>
               <option value="writing">Writing</option>
               <option value="coding">Coding</option>
-            </select>
-          </div>
+            </Select>
+          </Field>
         </div>
 
         <YamlEditor
@@ -134,21 +133,16 @@ export function CreateFileForm() {
           fill
         />
 
-        <div className={styles.actionsBar}>
-          <button
-            type="button"
-            className={styles.uploadButton}
-            onClick={onValidate}
-            disabled={pending}
-          >
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" size="sm" onClick={onValidate} disabled={pending}>
             {validating ? "Validating…" : "Validate"}
-          </button>
-          <button type="submit" className={styles.button} disabled={pending}>
+          </Button>
+          <Button type="submit" disabled={pending}>
             {saving ? "Creating…" : "Validate & create"}
-          </button>
-          {message ? <p className={styles.requestError}>{message}</p> : null}
+          </Button>
+          {message ? <p className="text-destructive text-sm">{message}</p> : null}
           {passed && !message && !errors ? (
-            <span className={styles.saved}>Validation passed</span>
+            <span className="text-sm text-success">Validation passed</span>
           ) : null}
         </div>
 

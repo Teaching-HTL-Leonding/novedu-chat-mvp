@@ -4,7 +4,8 @@ import { markdown } from "@codemirror/lang-markdown";
 import { yaml } from "@codemirror/lang-yaml";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { type ChangeEvent, useMemo, useRef } from "react";
-import styles from "./files.module.css";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 // CodeMirror 6 editor (via @uiw/react-codemirror), shared by the `/files` create
 // and edit forms and the writing student surface. Controlled: the parent owns the
@@ -59,28 +60,39 @@ export function YamlEditor({
   }
 
   return (
-    <div className={fill ? `${styles.editorWrap} ${styles.editorWrapFill}` : styles.editorWrap}>
+    <div className={cn("flex flex-col gap-2", fill && "min-h-0 flex-1")}>
       {upload ? (
-        <div className={styles.editorToolbar}>
-          <button
-            type="button"
-            className={styles.uploadButton}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => fileInputRef.current?.click()}
             disabled={disabled}
           >
             Upload file…
-          </button>
+          </Button>
           <input
             ref={fileInputRef}
             type="file"
             accept=".yaml,.yml,.txt,text/yaml,application/yaml,text/plain"
-            className={styles.hiddenFileInput}
+            className="hidden"
             onChange={onUpload}
           />
-          <span className={styles.editorHint}>Uploading replaces the editor contents.</span>
+          <span className="text-foreground/55 text-xs">
+            Uploading replaces the editor contents.
+          </span>
         </div>
       ) : null}
-      <div className={fill ? `${styles.editorBox} ${styles.editorBoxFill}` : styles.editorBox}>
+      {/* Fill mode: each level — wrap, box, the CodeMirror root, and the editor —
+          must fill so the `height: 100%` on `.cm-editor` resolves to the available
+          column height; the `.cm-scroller` inside then scrolls. The parent
+          establishes the height this chain fills. */}
+      <div
+        className={cn(
+          "overflow-hidden rounded-lg border border-foreground/25",
+          fill && "flex min-h-0 flex-1 flex-col *:min-h-0 *:flex-1 [&_.cm-editor]:h-full",
+        )}
+      >
         <CodeMirror
           value={value}
           height={fill ? "100%" : "420px"}

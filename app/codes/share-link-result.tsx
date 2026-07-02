@@ -1,4 +1,3 @@
-import styles from "./code-form.module.css";
 import { CopyableLinkRow } from "./copyable-link-row";
 
 // The shared create/edit-screen result for the link-based modules (tutor, quiz,
@@ -8,9 +7,9 @@ import { CopyableLinkRow } from "./copyable-link-row";
 // registry's `renderResult`, so no JSX lives in the server-only registry.
 export function ShareLinkResult({ shareUrl }: { shareUrl: string }) {
   return (
-    <section className={styles.linkBox}>
-      <h2 className={styles.linkHeading}>Share link</h2>
-      <p className={styles.muted}>
+    <section className="flex flex-col gap-2 self-stretch rounded-xl border border-foreground/15 bg-foreground/5 px-4 py-3.5">
+      <h2 className="font-bold">Share link</h2>
+      <p className="text-foreground/60 text-sm">
         Send this link to your students — the last part of the URL is the code, which they can also
         type on the start page. It only works within the chosen time window.
       </p>

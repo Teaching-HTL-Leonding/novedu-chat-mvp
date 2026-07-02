@@ -1,3 +1,4 @@
+import type { VariantProps } from "class-variance-authority";
 import Link from "next/link";
 import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
@@ -8,7 +9,9 @@ import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selec
 import { Notice } from "@/components/notice";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { selectionColumn } from "@/components/selection-column";
+import { Badge, type badgeVariants } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { iconButtonVariants } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { isCodeModule } from "@/lib/code-modules/types";
@@ -17,7 +20,6 @@ import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
 import { LocalTime } from "../local-time";
 import pageStyles from "../page.module.css";
-import styles from "./files.module.css";
 
 // One active file as shown in the list (no content). `updatedSeconds` is the
 // active version's write time as unix seconds; `createdBy` is the last writer's
@@ -31,6 +33,16 @@ interface FileRow {
   updatedSeconds: number;
   createdBy: string;
 }
+
+// Kind → badge tone, shared visual language with the codes list (tutor blue,
+// quiz orange, coding purple); fragment/writing fall back to green.
+const KIND_TONES: Record<string, VariantProps<typeof badgeVariants>["tone"]> = {
+  tutor: "blue",
+  quiz: "orange",
+  coding: "purple",
+  fragment: "green",
+  writing: "green",
+};
 
 // Teacher-only: every app-hosted YAML file (active versions only), with a
 // contains-filter over name/title/description and an "Only my files" toggle —
@@ -90,28 +102,18 @@ export default async function FilesPage({
       (row) => row.name,
       (row) => row.name,
     ),
-    { header: "Name", className: styles.nameCell, render: (row) => row.name },
+    { header: "Name", className: "whitespace-nowrap font-mono", render: (row) => row.name },
     {
       header: "Kind",
       render: (row) => (
-        <span
-          className={`${styles.kindBadge} ${
-            row.kind === "tutor"
-              ? styles.kindTutor
-              : row.kind === "quiz"
-                ? styles.kindQuiz
-                : row.kind === "coding"
-                  ? styles.kindCoding
-                  : styles.kindFragment
-          }`}
-        >
+        <Badge caps tone={KIND_TONES[row.kind] ?? "green"}>
           {row.kind}
-        </span>
+        </Badge>
       ),
     },
     {
       header: "Title",
-      className: styles.titleCell,
+      className: "max-w-104 overflow-hidden text-ellipsis whitespace-nowrap",
       render: (row) => <span title={row.description ?? undefined}>{row.title ?? "—"}</span>,
     },
     {
@@ -127,17 +129,12 @@ export default async function FilesPage({
         const url = fileUrl(row.name);
         return (
           <>
-            <CopyIconButton
-              text={url}
-              label="Copy URL"
-              className={styles.iconButton}
-              promptLabel="Copy the file URL:"
-            />
+            <CopyIconButton text={url} label="Copy URL" promptLabel="Copy the file URL:" />
             <a
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className={styles.iconButton}
+              className={iconButtonVariants()}
               aria-label="Open raw YAML"
               title="Open raw YAML"
             >
@@ -146,7 +143,7 @@ export default async function FilesPage({
             {isCodeModule(row.kind) ? (
               <Link
                 href={`/codes/new?module=${row.kind}&file=${encodeURIComponent(url)}`}
-                className={styles.iconButton}
+                className={iconButtonVariants()}
                 aria-label="Create code"
                 title="Create code"
               >
@@ -155,7 +152,7 @@ export default async function FilesPage({
             ) : null}
             <Link
               href={`/files/edit/${row.name}`}
-              className={styles.iconButton}
+              className={iconButtonVariants()}
               aria-label={`Edit ${row.name}`}
               title="Edit"
             >
@@ -163,7 +160,7 @@ export default async function FilesPage({
             </Link>
             <Link
               href={`/files/gui/edit/${row.name}`}
-              className={styles.iconButton}
+              className={iconButtonVariants()}
               aria-label={`Open ${row.name} in GUI editor`}
               title="Edit in GUI (experimental)"
             >
