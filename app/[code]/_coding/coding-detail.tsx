@@ -3,7 +3,8 @@ import { META_LABEL } from "@/components/ui/meta-label";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import type { CodeEntry } from "@/lib/code-store";
 import { codingConnectionProps, loadCoding } from "@/lib/coding-fetch";
-import { CODE_PANEL, CodingConnection } from "./coding-connection";
+import { CODE_PANEL } from "./code-panel";
+import { CodingConnection } from "./coding-connection";
 
 // The coding module's teacher detail body on /codes/[code]: the resolved config
 // (pinned model + the server-only system prompt, teacher-only) and the connection

@@ -4,11 +4,7 @@ import { CopyIconButton } from "@/components/copy-icon-button";
 import { FieldHint } from "@/components/ui/field";
 import { META_LABEL } from "@/components/ui/meta-label";
 import { buildLittleCoderConfig } from "@/lib/little-coder-config";
-
-// The coding module's mono code panel, shared with the teacher detail
-// (coding-detail.tsx).
-export const CODE_PANEL =
-  "overflow-x-auto rounded-lg border border-foreground/15 bg-foreground/5 px-3.5 py-3 text-sm leading-normal";
+import { CODE_PANEL } from "./code-panel";
 
 const FIELD_CODE = "wrap-anywhere text-sm";
 

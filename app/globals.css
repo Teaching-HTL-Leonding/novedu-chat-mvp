@@ -7,14 +7,18 @@
    unlayered `* { padding: 0 }` breaks all spacing inside the CopilotKit chat). */
 @layer theme, base, mantine, components, utilities;
 
-@import "tailwindcss";
+/* Sources are ALLOWLISTED (`source(none)` + the explicit `@source` lines below):
+   only code that renders markup may generate utilities. Automatic detection
+   would scan every non-gitignored file — docs, teaching YAML (quizzes/, tutors/,
+   coding/), tests — where a class-shaped string is prose, not a template (a
+   literal `flex-[var(…)]` in a doc once broke the dev CSS parse), and test-only
+   classes would ship in the production stylesheet. */
+@import "tailwindcss" source(none);
 @plugin "@tailwindcss/typography";
 
-/* Markdown files are prose, not templates: a class-shaped string in a docs
-   example must not generate a utility (a literal `flex-[var(…)]` in a doc once
-   broke the dev CSS parse). */
-@source not "../docs";
-@source not "../**/*.md";
+@source "../app";
+@source "../components";
+@source "../lib";
 
 /* Hard-coded light theme — intentionally independent of the system color scheme.
    Plain values live on :root; `@theme inline` below maps them onto Tailwind

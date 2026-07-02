@@ -48,8 +48,10 @@ export function QuizDiscussion({
           // The graded feedback, shown once at the top so the student keeps the
           // verdict's reasoning in view while chatting. Capped so long feedback
           // never crowds out the live chat; scrolls within itself if needed.
-          <div className="max-h-[35%] overflow-y-auto border-foreground/10 border-b px-4 py-3 text-sm leading-relaxed">
-            <MarkdownRenderer content={feedback} />
+          <div className="max-h-[35%] overflow-y-auto border-foreground/10 border-b px-4 py-3">
+            {/* prose-sm, not a text-sm wrapper: prose sets its own font-size on the
+                markdown root, so wrapper sizing never reaches the content. */}
+            <MarkdownRenderer content={feedback} className="prose-sm" />
           </div>
         ) : null}
       </ModuleChat>

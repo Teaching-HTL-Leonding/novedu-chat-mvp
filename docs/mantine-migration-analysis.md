@@ -40,7 +40,7 @@ These properties are expected to hold regardless of code changes before adoption
   Mantine internals.
 - **Modern Mantine (v7/v8) is static, scoped CSS** — `.mantine-*` classes, native
   CSS variables, PostCSS. It is **not** CSS-in-JS / Emotion anymore. Adding
-  `MantineProvider` does **not** restyle existing CSS-Module components, so the
+  `MantineProvider` does **not** restyle the app's Tailwind-utility markup, so the
   two systems can coexist on the same page indefinitely.
 - **The chat is a self-contained widget.** CopilotChat owns its own styling
   surface and is the *least* affected area (details below).

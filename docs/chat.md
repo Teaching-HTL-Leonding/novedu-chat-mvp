@@ -58,7 +58,7 @@ container — the provider emits no DOM, so that wrapper stays the surface's roo
 ```tsx
 // className carries only writing's deltas (column flex + horizontal padding) —
 // the fill recipe is ModuleChat's own.
-<ModuleChat agentId="writing" providerKey={code} threadId={threadId} headers={headers} className={styles.chat}>
+<ModuleChat agentId="writing" providerKey={code} threadId={threadId} headers={headers} className="flex flex-col px-3">
   <GetCurrentTextTool currentTextRef={currentTextRef} />
 </ModuleChat>
 ```
