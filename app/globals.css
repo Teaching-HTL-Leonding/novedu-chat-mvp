@@ -1,55 +1,120 @@
-/* Hard-coded light theme — intentionally independent of the system color scheme. */
+/* Layer order — declared before the Tailwind import so this statement wins.
+   CopilotKit v2's precompiled stylesheet uses the same standard layer names
+   (with `cpk:`-prefixed utilities), so both stylesheets merge into one ordering.
+   `mantine` is reserved (empty today) so Mantine's styles.layer.css can slot in
+   later without reshuffling. Keep app rules inside these layers: an unlayered
+   rule always beats every layered one and silently wipes out utilities (e.g. an
+   unlayered `* { padding: 0 }` breaks all spacing inside the CopilotKit chat). */
+@layer theme, base, mantine, components, utilities;
+
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Hard-coded light theme — intentionally independent of the system color scheme.
+   Plain values live on :root; `@theme inline` below maps them onto Tailwind
+   tokens. Names follow shadcn/ui so its components can drop in later unchanged.
+   Derived tints (borders, muted text, hovers) are expressed at the point of use
+   with opacity modifiers on `foreground` (e.g. `border-foreground/25`) — see
+   docs/styling.md for the ramp. */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --popover: #ffffff;
+  --popover-foreground: #171717;
+  --primary: #171717;
+  --primary-foreground: #ffffff;
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: #171717;
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: #171717;
+  --destructive: #b91c1c;
+  --success: #15803d;
+  --warning: #b45309;
+  --border: oklch(0.87 0 0);
+  --input: oklch(0.87 0 0);
+  --ring: oklch(0.708 0 0);
+  --radius: 0.5rem;
 }
 
-html {
-  height: 100%;
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 }
 
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
+@layer base {
+  html {
+    height: 100%;
+    /* Force the light color scheme so form controls (e.g. the model <select>) and
+       scrollbars don't render in the OS dark palette. */
+    color-scheme: light;
+  }
+
+  html,
+  body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  body {
+    /* 100dvh flex column: nav + status bar sit above a flex-1 main, and
+       full-height surfaces (writing) size against the remaining space. */
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    background: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
 }
 
-body {
-  /* Reset the default UA margin: with `height: 100dvh` an unreset ~8px margin
-     makes the document 100dvh + 16px, forcing a page scrollbar and pushing the
-     full-height writing surface below the fold. */
-  margin: 0;
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/*
- * Only normalize box-sizing globally. Do NOT zero padding/margin here:
- * CopilotKit v2 ships compiled Tailwind v4, whose utilities live in CSS
- * @layer blocks. Unlayered rules always beat layered ones, so an unlayered
- * `* { padding: 0; margin: 0 }` silently wipes out every spacing utility
- * inside the chat UI (e.g. the send button ends up flush against the border).
- * Tailwind's own preflight already resets margins/padding within its layer.
- */
-* {
-  box-sizing: border-box;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-/* Force the light color scheme so form controls (e.g. the model <select>) and
-   scrollbars don't render in the OS dark palette. */
-html {
-  color-scheme: light;
+/* Typography (`prose`) recolor: markdown-rendered content (chat replies,
+   transcripts, student texts) keeps the app foreground instead of the plugin's
+   gray ramp. Same layer as the generated `prose` utility but later in source
+   order, so these declarations win. */
+@layer utilities {
+  .prose {
+    --tw-prose-body: var(--color-foreground);
+    --tw-prose-headings: var(--color-foreground);
+    --tw-prose-lead: var(--color-foreground);
+    --tw-prose-bold: var(--color-foreground);
+    --tw-prose-links: var(--color-foreground);
+    --tw-prose-code: var(--color-foreground);
+    --tw-prose-quotes: var(--color-foreground);
+    --tw-prose-counters: color-mix(in oklab, var(--color-foreground) 70%, transparent);
+    --tw-prose-bullets: color-mix(in oklab, var(--color-foreground) 40%, transparent);
+    --tw-prose-hr: color-mix(in oklab, var(--color-foreground) 15%, transparent);
+    --tw-prose-th-borders: color-mix(in oklab, var(--color-foreground) 25%, transparent);
+    --tw-prose-td-borders: color-mix(in oklab, var(--color-foreground) 15%, transparent);
+  }
 }
 
 /* CopilotKit's message viewport (a use-stick-to-bottom scroller) reserves no
@@ -59,7 +124,9 @@ html {
    `.copilotKitChat` is CopilotKit's semantic hook on the chat root (shared by the
    tutor, writing and quiz chats); the substring match targets its
    `cpk:overflow-y-auto` viewport without relying on the hashed utility class. This
-   only affects scroll containers — `scrollbar-gutter` is a no-op elsewhere. */
+   only affects scroll containers — `scrollbar-gutter` is a no-op elsewhere.
+   Deliberately UNLAYERED (the one sanctioned unlayered rule): it must beat
+   CopilotKit's layered utilities. */
 .copilotKitChat [class*="overflow-y-auto"] {
   scrollbar-gutter: stable;
 }

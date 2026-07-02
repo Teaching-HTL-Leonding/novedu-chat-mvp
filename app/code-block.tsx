@@ -37,7 +37,9 @@ export function CodeBlock({
   const multiline = text.includes("\n");
 
   return (
-    <div className={styles.block}>
+    // `not-prose` exempts the block from the surrounding markdown `prose` styles —
+    // Prism + this chrome own everything inside.
+    <div className={`${styles.block} not-prose`}>
       <div className={styles.header}>
         <span className={styles.lang}>{language}</span>
         <CopyButton text={text} />
