@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   bit,
   datetime2,
   index,
@@ -264,4 +265,62 @@ export const images = mssqlTable(
     // "all active images" for the list page.
     index("ix_novedu_images_valid_until").on(t.validUntil),
   ],
+);
+
+// Usage metering — TWO INDEPENDENT hourly aggregate tables, deliberately NOT a
+// (code × user) cross. `usage_by_code` has no user; `usage_by_user` has no code (and
+// no module), so metering never recreates the user↔code link the anonymity
+// invariant forbids for an anonymous code (docs/codes.md). The runtime knows the
+// oid even for anonymous codes, but here it is only ever stored against an hour
+// bucket, never alongside the code. Written OFF the response path by
+// lib/usage-store.ts via an increment-UPSERT; read via SQL / Log Analytics (there
+// is no in-app read surface this iteration). No foreign keys (same rule as the
+// other novedu_* tables); never garbage-collected.
+//
+// `hour` is the UTC top-of-hour bucket. Token sums are `bigint` (they can grow
+// large across a busy hour); the discrete counts are `int`. `input_tokens_cached`
+// counts prefix-cache hits (SCCH's `prompt_tokens_details.cached_tokens`; see
+// docs/usage-metering.md); `output_tokens` already includes reasoning tokens.
+export const usageByCode = mssqlTable(
+  "novedu_usage_by_code",
+  {
+    code: varchar("code", { length: 32 }).notNull(),
+    hour: datetime2("hour").notNull(),
+    // Denormalized from novedu_codes so admin can group by module without a join.
+    module: varchar("module", { length: 16 }).notNull(),
+    inputTokensNew: bigint("input_tokens_new", { mode: "number" }).notNull().default(0),
+    inputTokensCached: bigint("input_tokens_cached", { mode: "number" }).notNull().default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+    toolCalls: int("tool_calls").notNull().default(0),
+    userMessages: int("user_messages").notNull().default(0),
+    quizAnswers: int("quiz_answers").notNull().default(0),
+    writingSaves: int("writing_saves").notNull().default(0),
+  },
+  (t) => [
+    // Per-code cost-over-time is the PK's natural read; the extra index serves the
+    // admin time-range scan across ALL codes ("cost this week").
+    primaryKey({ columns: [t.code, t.hour] }),
+    index("ix_novedu_usage_by_code_hour").on(t.hour),
+  ],
+);
+
+// Per-user hourly usage — the substrate a future per-student quota will `SUM` over a
+// rolling window. NO `code` and NO `module`: this table must never reveal WHICH
+// activity a student did, only how much they used in an hour. `user_id` is the
+// student's Entra `oid`.
+export const usageByUser = mssqlTable(
+  "novedu_usage_by_user",
+  {
+    userId: nvarchar("user_id", { length: 64 }).notNull(),
+    hour: datetime2("hour").notNull(),
+    inputTokensNew: bigint("input_tokens_new", { mode: "number" }).notNull().default(0),
+    inputTokensCached: bigint("input_tokens_cached", { mode: "number" }).notNull().default(0),
+    outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
+    toolCalls: int("tool_calls").notNull().default(0),
+    userMessages: int("user_messages").notNull().default(0),
+    quizAnswers: int("quiz_answers").notNull().default(0),
+    writingSaves: int("writing_saves").notNull().default(0),
+  },
+  // The PK `(user_id, hour)` doubles as the per-user quota-window range-scan index.
+  (t) => [primaryKey({ columns: [t.userId, t.hour] })],
 );

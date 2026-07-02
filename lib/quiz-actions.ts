@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { RequestContext } from "@mastra/core/request-context";
+import { after } from "next/server";
 import { mastra } from "@/app/mastra";
 import {
   QUIZ_EVAL_INSTRUCTIONS,
@@ -14,6 +15,8 @@ import { loadQuiz } from "@/lib/quiz-fetch";
 import { type QuizVerdict, verdictLabel } from "@/lib/quiz-types";
 import type { Quiz, QuizQuestion } from "@/lib/quiz-yaml";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
+import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
+import { recordQuizAnswer } from "@/lib/usage-store";
 
 // The student-facing quiz server actions. The whole app sits behind the Entra
 // gate, so any caller is authenticated; the quiz CODE (a `novedu_codes` row with
@@ -137,6 +140,11 @@ export async function submitAnswer(
   const requestContext = new RequestContext();
   requestContext.set(QUIZ_EVAL_INSTRUCTIONS, buildGradingPrompt(ctx.question));
   requestContext.set(QUIZ_EVAL_MODEL, ctx.quiz.model);
+  // Attribute the server-only grader's token usage exactly like a runtime-route
+  // agent — the observability exporter reads these off its MODEL_GENERATION span.
+  requestContext.set(USAGE_CODE, ctx.code);
+  requestContext.set(USAGE_USER_ID, ctx.userId);
+  requestContext.set(USAGE_MODULE, "quiz");
 
   try {
     const res = await mastra
@@ -149,6 +157,8 @@ export async function submitAnswer(
     if (!object) {
       return { ok: false, message: "The answer could not be graded right now. Please try again." };
     }
+    // Count the answered question off the response path (the store never throws).
+    after(() => recordQuizAnswer({ code: ctx.code, userId: ctx.userId }));
     return { ok: true, result: object.result, feedback: object.feedback };
   } catch (error) {
     console.error("quiz-actions: grading failed", error);

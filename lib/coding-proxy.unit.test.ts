@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildUpstreamChatBody, openaiError, parseBearerKey } from "@/lib/coding-proxy";
+import {
+  buildUpstreamChatBody,
+  extractCodingUsage,
+  openaiError,
+  parseBearerKey,
+} from "@/lib/coding-proxy";
 
 // The pure helpers behind the OpenAI-compatible coding proxy: bearer-key parsing,
 // the request body transform (system-prompt merge + model pin + verbatim
@@ -110,6 +115,70 @@ describe("buildUpstreamChatBody", () => {
   it("tolerates a missing messages array", () => {
     const out = buildUpstreamChatBody({}, { instructions: "P", model: "m" });
     expect(out.messages).toEqual([{ role: "system", content: "P" }]);
+  });
+
+  it("requests a usage chunk when the client streams (preserving any stream_options)", () => {
+    const out = buildUpstreamChatBody(
+      { messages: [], stream: true, stream_options: { foo: 1 } },
+      { instructions: "P", model: "m" },
+    );
+    expect(out.stream_options).toEqual({ foo: 1, include_usage: true });
+  });
+
+  it("does NOT add stream_options for a non-streamed request", () => {
+    const out = buildUpstreamChatBody({ messages: [] }, { instructions: "P", model: "m" });
+    expect(out.stream_options).toBeUndefined();
+  });
+});
+
+describe("extractCodingUsage", () => {
+  it("reads top-level usage from a non-streamed JSON body", () => {
+    const body = JSON.stringify({
+      choices: [{ message: { content: "hi" } }],
+      usage: { prompt_tokens: 123, completion_tokens: 45 },
+    });
+    expect(extractCodingUsage(body, false)).toEqual({
+      inputTokens: 123,
+      cachedInputTokens: 0,
+      outputTokens: 45,
+    });
+  });
+
+  it("splits out prefix-cache-hit input tokens when the provider reports them", () => {
+    const body = JSON.stringify({
+      usage: {
+        prompt_tokens: 925,
+        completion_tokens: 5,
+        prompt_tokens_details: { cached_tokens: 896 },
+      },
+    });
+    expect(extractCodingUsage(body, false)).toEqual({
+      inputTokens: 925,
+      cachedInputTokens: 896,
+      outputTokens: 5,
+    });
+  });
+
+  it("finds the final usage chunk in an SSE stream (include_usage tail)", () => {
+    const sse = [
+      'data: {"choices":[{"delta":{"content":"he"}}]}',
+      'data: {"choices":[{"delta":{"content":"llo"}}]}',
+      'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":7}}',
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    expect(extractCodingUsage(sse, true)).toEqual({
+      inputTokens: 10,
+      cachedInputTokens: 0,
+      outputTokens: 7,
+    });
+  });
+
+  it("returns null when no usage is present (and ignores [DONE])", () => {
+    const sse = ['data: {"choices":[{"delta":{"content":"x"}}]}', "data: [DONE]", ""].join("\n");
+    expect(extractCodingUsage(sse, true)).toBeNull();
+    expect(extractCodingUsage(JSON.stringify({ choices: [] }), false)).toBeNull();
+    expect(extractCodingUsage("not json", false)).toBeNull();
   });
 });
 

@@ -14,11 +14,16 @@ const auth = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
 const loadWriting = vi.hoisted(() => vi.fn());
 const saveSubmission = vi.hoisted(() => vi.fn());
+const recordWritingSave = vi.hoisted(() => vi.fn());
 
 vi.mock("@/auth", () => ({ auth }));
 vi.mock("@/lib/code-store", () => ({ checkCode }));
 vi.mock("@/lib/writing-fetch", () => ({ loadWriting }));
 vi.mock("@/lib/writing-store", () => ({ saveSubmission }));
+// after() runs the metering write off the response path; run it inline so the test
+// can assert the counter fired.
+vi.mock("next/server", () => ({ after: (fn: () => unknown) => fn() }));
+vi.mock("@/lib/usage-store", () => ({ recordWritingSave }));
 
 import { saveWriting } from "@/lib/writing-actions";
 
@@ -52,6 +57,7 @@ describe("saveWriting — the anonymous rejection (defense in depth)", () => {
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.message).toMatch(/does not save/i);
     expect(saveSubmission).not.toHaveBeenCalled();
+    expect(recordWritingSave).not.toHaveBeenCalled();
   });
 
   it("saves for an attributed (anonymous:false) activity, keyed by the session oid + trimmed text", async () => {
@@ -62,6 +68,8 @@ describe("saveWriting — the anonymous rejection (defense in depth)", () => {
       userId: USER_ID,
       text: "my draft",
     });
+    // The save is metered off the response path.
+    expect(recordWritingSave).toHaveBeenCalledWith({ code: CODE, userId: USER_ID });
   });
 });
 

@@ -7,6 +7,8 @@ import { codeModules } from "@/lib/code-modules/registry";
 import { type CodeRejection, checkCode } from "@/lib/code-store";
 import { RUNTIME_CODE_HEADER, RUNTIME_THREAD_TOKEN_HEADER } from "@/lib/runtime-headers";
 import { getThreadTokenSecret, verifyThreadToken } from "@/lib/thread-token";
+import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
+import { recordUserMessage } from "@/lib/usage-store";
 import { recordUserChat } from "@/lib/user-chat-store";
 
 // Human-readable rejection texts: a 403 can surface mid-session in the chat's
@@ -249,6 +251,14 @@ async function handler(req: Request): Promise<Response> {
     return Response.json({ error: built.message }, { status: built.status });
   }
 
+  // Usage attribution: the observability exporter (app/mastra/usage-exporter.ts)
+  // reads these three keys off every span. `usageUserId` is set for ALL codes,
+  // including anonymous ones — it is only ever stored against an hour bucket in
+  // `usage_by_user`, never linked to the code (see lib/usage-store.ts).
+  built.context.set(USAGE_CODE, code);
+  built.context.set(USAGE_USER_ID, userId);
+  built.context.set(USAGE_MODULE, entry.module);
+
   const runtime = new CopilotRuntime({
     agents: MastraAgent.getLocalAgents({
       mastra,
@@ -271,6 +281,9 @@ async function handler(req: Request): Promise<Response> {
   if (runtimeRequest.kind === "run" && res.ok) {
     const verifiedThreadId = ownership.threadId;
     after(() => recordUserChat(code, verifiedThreadId, userId, entry.fileUrl, def.fileKind));
+    // One user message per run (a run is one user turn). Off the response path,
+    // next to the attribution write; the store never throws.
+    after(() => recordUserMessage({ code, module: entry.module, userId }));
   }
 
   return res;

@@ -1,8 +1,14 @@
 import { checkCode } from "@/lib/code-store";
 import { loadCoding } from "@/lib/coding-fetch";
-import { buildUpstreamChatBody, openaiError, parseBearerKey } from "@/lib/coding-proxy";
+import {
+  buildUpstreamChatBody,
+  extractCodingUsage,
+  openaiError,
+  parseBearerKey,
+} from "@/lib/coding-proxy";
 import { scchAuthHeader, scchChatCompletionsUrl } from "@/lib/scch-endpoint";
 import { recordError } from "@/lib/telemetry";
+import { recordLlmUsage } from "@/lib/usage-store";
 
 // PUBLIC, NON-ENTRA route (excluded from the proxy.ts gate, like /api/files): the
 // OpenAI-compatible Chat Completions endpoint for the "coding" module. An external
@@ -24,6 +30,47 @@ export const dynamic = "force-dynamic";
 // unbounded one is a memory/OOM vector on this public endpoint. The cap is far above a
 // real request for a 32k-context model, but bounds worst-case memory.
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
+
+// The usage-tap accumulates decoded response text only to find the trailing `usage`.
+// For SSE that chunk is at the very end, so a bounded tail suffices; keeping the last
+// slice caps memory on a pathological upstream while still catching the usage line.
+const MAX_TAP_CHARS = 64 * 1024;
+
+// Reads the upstream response copy to completion (off the client path), extracts the
+// final token usage, and meters it against the CODE only (this path has no oid, so it
+// never touches usage_by_user). Best-effort: never throws into the request.
+async function tapCodingUsage(
+  stream: ReadableStream<Uint8Array>,
+  isStream: boolean,
+  code: string,
+): Promise<void> {
+  try {
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) text += decoder.decode(value, { stream: true });
+      // SSE usage sits at the end → keep only a tail. A non-streamed body is a single
+      // small JSON object, so it is not trimmed (trimming would break the parse).
+      if (isStream && text.length > MAX_TAP_CHARS) text = text.slice(-MAX_TAP_CHARS);
+    }
+    text += decoder.decode();
+    const usage = extractCodingUsage(text, isStream);
+    if (!usage) return;
+    await recordLlmUsage({
+      code,
+      module: "coding",
+      inputNew: Math.max(0, usage.inputTokens - usage.cachedInputTokens),
+      inputCached: usage.cachedInputTokens,
+      output: usage.outputTokens,
+      toolCalls: 0,
+    });
+  } catch (error) {
+    recordError(error, { route: "coding-proxy", stage: "usage-tap" });
+  }
+}
 
 function errorResponse(
   message: string,
@@ -194,5 +241,15 @@ export async function POST(req: Request): Promise<Response> {
   if (contentType) headers.set("Content-Type", contentType);
   headers.set("Cache-Control", "no-store");
   headers.set("X-Accel-Buffering", "no");
+
+  // 8. Meter token usage WITHOUT altering the passthrough: tee the body, forward one
+  // branch to the client byte-for-byte, and read the other in the background to
+  // extract the final `usage`. Coding usage is per-CODE only (no oid on this path).
+  if (upstream.body) {
+    const [toClient, toTap] = upstream.body.tee();
+    const isStream = (contentType ?? "").includes("text/event-stream");
+    void tapCodingUsage(toTap, isStream, entry.code);
+    return new Response(toClient, { status: upstream.status, headers });
+  }
   return new Response(upstream.body, { status: upstream.status, headers });
 }
