@@ -7,7 +7,7 @@ Research current Tailwind docs in context7 (`ctx7` CLI) before styling work — 
 ## Stack
 
 - **Tailwind v4, CSS-first.** There is no `tailwind.config.js`. The entire configuration lives in `app/globals.css`: a leading `@layer` order statement, `@import "tailwindcss"`, `@plugin "@tailwindcss/typography"`, the token block, and a handful of `@layer base` rules. The build hook is `postcss.config.mjs` (`@tailwindcss/postcss`), picked up by Turbopack for `dev`, `build`, and the Vitest browser project alike.
-- Source detection is automatic (every non-gitignored file is scanned), with one carve-out: `@source not` excludes `docs/` and all `*.md` files, so class-shaped strings in doc examples never generate utilities.
+- Sources are **allowlisted**: `@import "tailwindcss" source(none)` plus explicit `@source` lines for `app/`, `components/`, and `lib/`. Only code that renders markup generates utilities — docs, teaching YAML (`quizzes/`, `tutors/`, `coding/`), and tests are never scanned, so a class-shaped string there can't generate (or break) CSS, and test-only classes can't ship in the production stylesheet.
 - `class-variance-authority` (variants), `clsx` + `tailwind-merge` (via `cn()`) are the only styling runtime deps.
 
 ## Tokens
@@ -32,7 +32,8 @@ Plain values live on `:root`, mapped onto Tailwind tokens via `@theme inline` �
 
 The core rule: **formatting for a repeated construct is written once.**
 
-- Reusable primitives live in `components/ui/` as cva components (`Button`, `IconButton`, `Input`, `Badge`, …). A primitive owns its full recipe; variants (`variant`, `size`) are cva options, not copy-pasted class strings.
+- Reusable primitives live in `components/ui/` as cva components (`Button`, `IconButton`, `Input`, `Badge`, `Field`/`FieldLabel`/`FieldError`/`FieldSuccess`, …). A primitive owns its full recipe; variants (`variant`, `size`) are cva options, not copy-pasted class strings.
+- A recipe with **behavior** is a component, not a class string: `DialogShell` (`components/ui/dialog-shell.tsx`) owns every modal's open/close/Escape/backdrop contract and its flex-column shell; `PageBody` (`components/page-main.tsx`) owns the page gutter + scroll rhythm. Pure-look recipes shared across a couple of surfaces ship as exported class constants composed via `cn()` deltas (`DIALOG_BODY`, `META_LABEL`, `MENU_PANEL`/`MENU_ITEM`, the `CENTERED_CARD*` trio on `Notice`).
 - **≥2 uses ⇒ promote.** If the same visual recipe appears in two places, it becomes a primitive, a cva variant, or a prop of the owning shared component (`DataList` owns table chrome, `ModuleChat` owns the chat container, `MarkdownRenderer` owns prose). Duplicated class soup across pages is a review-blocker.
 - One-off chrome (the nav bar, the health grid, a page's unique layout) is styled inline with utilities in its single component — no indirection for things that exist once.
 - `@apply` is not used; reuse happens in components, not CSS.

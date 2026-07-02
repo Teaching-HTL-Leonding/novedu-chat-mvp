@@ -23,7 +23,8 @@ a pure server concern later.
 | URL search params | `?q=…&mine=…` (+ future `?page=`) | the filter state, shareable + back-button friendly |
 | Server page | `app/<list>/page.tsx` | `await searchParams`, parse, call the store, build rows + columns, render `DataList` |
 | Store query | `lib/*-store.ts` | the actual SQL filter (see below) |
-| `DataList<T>` | `components/data-list.tsx` (**server**) | column-driven table + empty/no-match + the pagination seam; owns ALL table/toolbar chrome, incl. the per-column `kind` recipes |
+| `DataList<T>` | `components/data-list.tsx` (**server**) | the full list page body: `PageBody` shell + toolbar + empty/no-match + the pagination seam around a `ListTable` |
+| `ListTable<T>` | `components/data-list.tsx` (**server**) | the bare column-driven table; owns ALL table chrome incl. the per-column `kind` recipes — embedded tables (the per-code `ConversationStats`) render through it directly |
 | `ListFilterBar` | `components/list-filter-bar.tsx` (**client**) | the only interactive bit: controls + **Apply** → push a new query string; exports `FilterCheckbox` for the "Only my …" toggle |
 | ui primitives | `components/ui/` (`Button`/`buttonVariants`, `Input`, `Badge`, `IconButton`) | the "New …" action, the search input, kind/status chips, row action buttons |
 
