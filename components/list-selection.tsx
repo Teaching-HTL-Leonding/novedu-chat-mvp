@@ -13,6 +13,7 @@ import {
 import { CheckSquareIcon, SquareIcon, TrashIcon } from "@/components/icons";
 import { Spinner } from "@/components/spinner";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field";
 
 // The SHARED multi-delete layer for "filtered list" pages (see
 // docs/filtered-lists.md). A list opts in by wrapping its <DataList> in
@@ -20,8 +21,8 @@ import { Button } from "@/components/ui/button";
 // selection column (`selectionColumn`, in the server-safe sibling module), and
 // dropping a <DeleteSelectedButton> in the toolbar next to "New …". The provider
 // owns the selected-id set + the in-flight `pending` flag; the button runs a
-// per-list server action over the selected ids in ONE call — the action reuses
-// the exact same store logic as the per-row trash button, so behaviour can't drift.
+// per-list server action over the selected ids in ONE call — the action loops the
+// store's per-item delete helper, so it is the single delete path (see AGENTS.md).
 //
 // The selection "id" is whatever the delete action expects (a file NAME, a tutor
 // CODE) — not necessarily the DataList React key. The provider's `allIds` and the
@@ -60,8 +61,9 @@ export function SelectionProvider({ allIds, children }: { allIds: string[]; chil
   // A stable signature of the visible set, so the prune effect only runs when the
   // rows actually change (each render passes a fresh `allIds` array). The join uses
   // a NUL separator (not a space) so the signature can't collide for two different
-  // id sets regardless of what a future list's selection keys contain — keep it NUL.
-  const allKey = allIds.join(" ");
+  // id sets regardless of what a future list's selection keys contain — keep it NUL
+  // (written as the unicode escape, so the source file stays plain text in git).
+  const allKey = allIds.join("\u0000");
 
   // Drop selections that left the visible set (a filter was applied, or rows were
   // deleted) so the count and the delete payload never carry hidden rows.
@@ -126,7 +128,7 @@ export function RowSelectCheckbox({ id, label }: { id: string; label?: string })
 // The bare square icon buttons in the selection header — deliberately smaller
 // and borderless (they sit inside a table header, not a toolbar).
 const SELECT_ICON_BUTTON =
-  "inline-flex size-6 cursor-pointer items-center justify-center rounded-md text-foreground/65 hover:bg-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-4";
+  "inline-flex size-6 cursor-pointer items-center justify-center rounded-md text-foreground/65 not-disabled:hover:bg-foreground/10 not-disabled:hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4";
 
 /** The header cell's select-all / unselect-all icon buttons. */
 export function SelectAllControls() {
@@ -177,8 +179,7 @@ export function DeleteSelectedButton({
     if (selectedCount === 0) return;
     const noun = selectedCount === 1 ? itemNoun : `${itemNoun}s`;
     const confirmed = window.confirm(
-      `Delete ${selectedCount} ${noun}?\n\n` +
-        "This runs the same permanent delete as each row's trash button and cannot be undone.",
+      `Delete ${selectedCount} ${noun}?\n\nThis permanently deletes them and cannot be undone.`,
     );
     if (!confirmed) return;
     setError(null);
@@ -212,11 +213,7 @@ export function DeleteSelectedButton({
           </>
         )}
       </Button>
-      {error ? (
-        <span role="alert" className="text-destructive text-sm">
-          {error}
-        </span>
-      ) : null}
+      {error ? <FieldError>{error}</FieldError> : null}
     </>
   );
 }

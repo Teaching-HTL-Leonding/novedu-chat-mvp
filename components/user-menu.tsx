@@ -1,12 +1,13 @@
 "use client";
 
+import { MENU_ITEM, MENU_PANEL } from "@/components/ui/menu";
 import { signOutAction } from "@/lib/auth-actions";
 import { enterStudentModeAction, exitStudentModeAction } from "@/lib/student-mode-actions";
+import { cn } from "@/lib/utils";
 import { usePopover } from "./use-popover";
 
-// The popover menu action row (one per form item).
-const MENU_ACTION =
-  "block w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm hover:bg-foreground/5";
+// The shared menu row as a full-width, left-aligned form button.
+const MENU_ACTION = cn(MENU_ITEM, "w-full text-left");
 
 type StatusBarUser = {
   name?: string | null;
@@ -106,10 +107,7 @@ export function UserMenu({
         )}
       </button>
       {open && (
-        <div
-          className="absolute top-full right-0 z-50 mt-1.5 min-w-40 rounded-lg border border-foreground/15 bg-background p-1 shadow-lg"
-          role="menu"
-        >
+        <div className={cn(MENU_PANEL, "right-0 min-w-40")} role="menu">
           {user.isTeacher && (
             // NOTE: no onClick-close here — unmounting the form before React
             // processes the submission would cancel the action. The route

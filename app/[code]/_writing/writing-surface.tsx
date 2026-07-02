@@ -2,7 +2,8 @@
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { DIALOG_BODY, DIALOG_HEADER, DIALOG_SHELL } from "@/components/ui/dialog-shell";
+import { DIALOG_BODY, DialogShell } from "@/components/ui/dialog-shell";
+import { FieldError } from "@/components/ui/field";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
 import { cn } from "@/lib/utils";
 import { saveWriting } from "@/lib/writing-actions";
@@ -47,8 +48,8 @@ const SIDE_BY_SIDE_QUERY = "(min-width: 48rem)";
 const PANE_BASE = "flex min-w-0 flex-col max-md:min-h-[60vh] max-md:flex-none";
 
 // A modal lightbox shared by the formatted-draft preview and the full-prompt
-// view. Drives the native <dialog> from React state (showModal/close) and closes
-// on Escape (the dialog's onClose), the Close button, or a backdrop click.
+// view: the shared DialogShell (which owns open/close/Escape/backdrop) plus a
+// scrolling body.
 function Lightbox({
   open,
   heading,
@@ -60,35 +61,10 @@ function Lightbox({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    else if (!open && dialog.open) dialog.close();
-  }, [open]);
-
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click-to-dismiss is mouse-only; the native <dialog> already closes on Escape (onClose), and the Close button covers keyboard users.
-    <dialog
-      ref={dialogRef}
-      className={DIALOG_SHELL}
-      onClose={onClose}
-      // Clicking the backdrop (the dialog element itself, not its content) closes it.
-      onClick={(event) => {
-        if (event.target === dialogRef.current) onClose();
-      }}
-    >
-      <div className="flex h-full flex-col">
-        <div className={DIALOG_HEADER}>
-          <h3 className="font-semibold text-base">{heading}</h3>
-          <Button variant="outline" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-        <div className={DIALOG_BODY}>{children}</div>
-      </div>
-    </dialog>
+    <DialogShell open={open} onClose={onClose} title={heading}>
+      <div className={DIALOG_BODY}>{children}</div>
+    </DialogShell>
   );
 }
 
@@ -269,11 +245,7 @@ export function WritingSurface({
               )}
             </div>
           ) : null}
-          {saveError ? (
-            <p className="text-destructive text-sm" role="alert">
-              {saveError}
-            </p>
-          ) : null}
+          {saveError ? <FieldError>{saveError}</FieldError> : null}
           {/* The editor fills the remaining column height (YamlEditor in `fill` mode). */}
           <div className="flex min-h-0 flex-1 flex-col">
             <YamlEditor value={buffer} onChange={onEdit} language="markdown" upload={false} fill />

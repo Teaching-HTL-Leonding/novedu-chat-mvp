@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CENTERED_CARD, CENTERED_CARD_HEADING, CENTERED_CARD_WRAPPER } from "@/components/notice";
 import { Badge } from "@/components/ui/badge";
 import type { HealthIndicator, HostInfo } from "@/lib/health";
+import { cn } from "@/lib/utils";
 import type { BuildInfo } from "@/lib/version";
 
 // The probe rows' shared cell recipes (one dashboard, local constants). The
@@ -102,9 +104,9 @@ export function HealthDashboard({
   const scchHost = useProbe("scch-host", hostError);
 
   return (
-    <section className="flex flex-1 items-start justify-center px-5 pt-6 pb-12">
-      <div className="w-full max-w-2xl rounded-xl border border-foreground/15 bg-foreground/5 px-7 py-6">
-        <h1 className="mb-4 font-bold text-lg">Health</h1>
+    <section className={cn(CENTERED_CARD_WRAPPER, "pt-6 pb-12")}>
+      <div className={cn(CENTERED_CARD, "max-w-2xl")}>
+        <h1 className={cn(CENTERED_CARD_HEADING, "mb-4")}>Health</h1>
         <dl className="flex flex-col gap-3.5">
           <div className={ROW}>
             <dt className={TERM}>Build version</dt>

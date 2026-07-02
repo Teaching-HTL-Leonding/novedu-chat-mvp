@@ -3,8 +3,9 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState, useTransition } from "react";
 import { BackLink } from "@/components/back-link";
+import { PageBody } from "@/components/page-main";
 import { Button } from "@/components/ui/button";
-import { Field, FieldHint, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { imageMimeFromExtension, isImageMime } from "@/lib/file-name";
 import { confirmImageUpload, requestImageUpload } from "@/lib/images-actions";
@@ -86,7 +87,7 @@ export function UploadImageForm() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pt-4 pb-6">
+    <PageBody>
       <BackLink href="/images">Back to images</BackLink>
       <FieldHint>
         Upload a PNG, JPEG or SVG (max 5 MB). The bytes go straight to storage; reference the image
@@ -154,9 +155,9 @@ export function UploadImageForm() {
           <Button type="submit" disabled={uploading || !fileName}>
             {uploading ? "Uploading…" : "Upload image"}
           </Button>
-          {message ? <p className="text-destructive text-sm">{message}</p> : null}
+          {message ? <FieldError>{message}</FieldError> : null}
         </div>
       </form>
-    </div>
+    </PageBody>
   );
 }

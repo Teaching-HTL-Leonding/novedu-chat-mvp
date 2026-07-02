@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import { CENTERED_CARD, CENTERED_CARD_HEADING, CENTERED_CARD_WRAPPER } from "@/components/notice";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 // Accepts a bare code OR a pasted activity URL (`https://host/<code>`) and
@@ -46,9 +48,9 @@ export function CodeEntryForm({ recent }: { recent: { code: string; note: string
   }
 
   return (
-    <div className="flex flex-1 items-start justify-center px-5 py-12">
-      <section className="w-full max-w-xl rounded-xl border border-foreground/15 bg-foreground/5 px-7 py-6">
-        <h1 className="mb-3 font-bold text-lg">Enter your code</h1>
+    <div className={CENTERED_CARD_WRAPPER}>
+      <section className={CENTERED_CARD}>
+        <h1 className={CENTERED_CARD_HEADING}>Enter your code</h1>
         <p className="mb-4 text-foreground/70">
           Your teacher gave you a code (or a link containing one). Enter it here to start.
         </p>
@@ -69,9 +71,9 @@ export function CodeEntryForm({ recent }: { recent: { code: string; note: string
           <Button type="submit">Open</Button>
         </form>
         {formatError ? (
-          <p className="text-destructive">
+          <FieldError>
             A code is up to 32 letters/digits/hyphens — check for typos, or paste the full link.
-          </p>
+          </FieldError>
         ) : null}
 
         {recent.length > 0 ? (

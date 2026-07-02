@@ -1,13 +1,12 @@
 "use client";
 
 import type { Message } from "@ag-ui/core";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Notice } from "@/components/notice";
 import { Spinner } from "@/components/spinner";
-import { DIALOG_BODY, DIALOG_HEADER, DIALOG_SHELL } from "@/components/ui/dialog-shell";
+import { DIALOG_BODY, DialogShell } from "@/components/ui/dialog-shell";
 import { loadConversationTranscript } from "@/lib/code-stats-actions";
 import type { StudentConversation } from "@/lib/code-stats-store";
-import { cn } from "@/lib/utils";
 import { LocalTime } from "../../../../local-time";
 import { ConversationView } from "../../c/[threadId]/conversation-view";
 
@@ -32,13 +31,13 @@ export function StudentConversations({
   code: string;
   conversations: StudentConversation[];
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
   // Cache fetched transcripts by threadId so reopening one does not refetch.
   const [cache, setCache] = useState<Record<string, Message[]>>({});
   const [state, setState] = useState<TranscriptState>({ status: "idle" });
 
-  async function open(threadId: string) {
-    dialogRef.current?.showModal();
+  async function openTranscript(threadId: string) {
+    setOpen(true);
 
     const cached = cache[threadId];
     if (cached) {
@@ -70,7 +69,7 @@ export function StudentConversations({
               className="flex w-full cursor-pointer items-center gap-4 rounded-lg border border-foreground/15 bg-background px-3.5 py-2.5 text-left text-sm hover:bg-foreground/5"
               data-testid="conversation-open"
               onClick={() => {
-                void open(conversation.threadId);
+                void openTranscript(conversation.threadId);
               }}
             >
               <span className="whitespace-nowrap font-semibold">
@@ -85,23 +84,19 @@ export function StudentConversations({
         ))}
       </ul>
 
-      <dialog
-        ref={dialogRef}
-        className={cn(DIALOG_SHELL, "h-auto max-h-[85vh] w-[min(56rem,92vw)]")}
-        onClose={() => setState({ status: "idle" })}
+      {/* h-auto: the dialog hugs short transcripts; when the 85vh cap kicks in,
+          the shell's flex column makes the body (flex-1) scroll — no hardcoded
+          header-height math. */}
+      <DialogShell
+        open={open}
+        onClose={() => {
+          setOpen(false);
+          setState({ status: "idle" });
+        }}
+        title="Conversation"
+        className="h-auto max-h-[85vh] w-[min(56rem,92vw)]"
       >
-        <div className={DIALOG_HEADER}>
-          <span className="font-bold">Conversation</span>
-          <button
-            type="button"
-            className="cursor-pointer rounded-md px-2 py-1 hover:bg-foreground/10"
-            aria-label="Close"
-            onClick={() => dialogRef.current?.close()}
-          >
-            ✕
-          </button>
-        </div>
-        <div className={cn(DIALOG_BODY, "max-h-[calc(85vh-3.5rem)]")}>
+        <div className={DIALOG_BODY}>
           {state.status === "loading" ? (
             <p className="flex items-center gap-2 text-foreground/70">
               <Spinner /> Loading conversation…
@@ -118,7 +113,7 @@ export function StudentConversations({
             )
           ) : null}
         </div>
-      </dialog>
+      </DialogShell>
     </>
   );
 }

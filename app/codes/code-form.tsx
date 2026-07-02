@@ -3,7 +3,7 @@
 import { type ReactNode, useActionState, useState } from "react";
 import { BackLink } from "@/components/back-link";
 import { Button } from "@/components/ui/button";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel, FieldSuccess } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
 import { ErrorList } from "@/components/validation-result";
 import { type CodeFormState, createCodeAction, updateCodeAction } from "@/lib/code-actions";
@@ -257,15 +257,13 @@ export function CodeForm({
           <Button type="submit" disabled={pending}>
             {pending ? (isEdit ? "Saving…" : "Creating…") : isEdit ? "Save changes" : "Create code"}
           </Button>
-          {isEdit && state.status === "saved" ? (
-            <span className="text-sm text-success">Saved</span>
-          ) : null}
+          {isEdit && state.status === "saved" ? <FieldSuccess>Saved</FieldSuccess> : null}
         </div>
       </form>
 
       <div className="flex shrink-0 flex-col gap-4">
         {state.status === "error" && "message" in state ? (
-          <p className="text-destructive">{state.message}</p>
+          <FieldError>{state.message}</FieldError>
         ) : null}
         {state.status === "error" && "errors" in state ? <ErrorList errors={state.errors} /> : null}
       </div>

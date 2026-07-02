@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { BackLink } from "@/components/back-link";
 import { CopyIconButton } from "@/components/copy-icon-button";
+import { PageBody } from "@/components/page-main";
 import { Button } from "@/components/ui/button";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldLabel, FieldSuccess } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ErrorList, WarningList } from "@/components/validation-result";
 import {
@@ -85,7 +86,7 @@ export function EditFileForm({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pt-4 pb-6">
+    <PageBody>
       <BackLink href="/files">Back to files</BackLink>
 
       <div className="flex flex-wrap items-baseline gap-5 text-foreground/70 text-sm [&_code]:font-mono [&_code]:text-foreground">
@@ -128,15 +129,15 @@ export function EditFileForm({
         <Button onClick={onSave} disabled={pending}>
           {saving ? "Saving…" : "Validate & save"}
         </Button>
-        {message ? <p className="text-destructive text-sm">{message}</p> : null}
-        {saved && !message && !errors ? <span className="text-sm text-success">Saved</span> : null}
+        {message ? <FieldError>{message}</FieldError> : null}
+        {saved && !message && !errors ? <FieldSuccess>Saved</FieldSuccess> : null}
         {passed && !saved && !message && !errors ? (
-          <span className="text-sm text-success">Validation passed</span>
+          <FieldSuccess>Validation passed</FieldSuccess>
         ) : null}
       </div>
 
       {errors ? <ErrorList errors={errors} /> : null}
       {passed && warnings && warnings.length > 0 ? <WarningList warnings={warnings} /> : null}
-    </div>
+    </PageBody>
   );
 }

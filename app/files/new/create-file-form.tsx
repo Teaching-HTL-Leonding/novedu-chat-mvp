@@ -2,8 +2,9 @@
 
 import { type FormEvent, useState, useTransition } from "react";
 import { BackLink } from "@/components/back-link";
+import { PageBody } from "@/components/page-main";
 import { Button } from "@/components/ui/button";
-import { Field, FieldHint, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldHint, FieldLabel, FieldSuccess } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
 import { ErrorList, WarningList } from "@/components/validation-result";
 import {
@@ -74,7 +75,7 @@ export function CreateFileForm() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pt-4 pb-6">
+    <PageBody>
       <BackLink href="/files">Back to files</BackLink>
       <FieldHint>
         Create a hosted YAML file. Use <strong>Validate</strong> to check it without saving;{" "}
@@ -140,15 +141,13 @@ export function CreateFileForm() {
           <Button type="submit" disabled={pending}>
             {saving ? "Creating…" : "Validate & create"}
           </Button>
-          {message ? <p className="text-destructive text-sm">{message}</p> : null}
-          {passed && !message && !errors ? (
-            <span className="text-sm text-success">Validation passed</span>
-          ) : null}
+          {message ? <FieldError>{message}</FieldError> : null}
+          {passed && !message && !errors ? <FieldSuccess>Validation passed</FieldSuccess> : null}
         </div>
 
         {errors ? <ErrorList errors={errors} /> : null}
         {passed && warnings && warnings.length > 0 ? <WarningList warnings={warnings} /> : null}
       </form>
-    </div>
+    </PageBody>
   );
 }

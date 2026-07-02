@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { iconButtonVariants } from "@/components/ui/icon-button";
+import { MENU_ITEM, MENU_PANEL } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
 import { usePopover } from "./use-popover";
 
@@ -70,7 +72,12 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
     <div className="relative flex min-w-0 items-center gap-3" ref={ref}>
       <button
         type="button"
-        className="inline-flex size-9 shrink-0 cursor-pointer flex-col justify-center gap-1 rounded-lg border border-foreground/15 bg-background p-2 hover:bg-foreground/5"
+        // The icon-button recipe (incl. its focus ring) in the burger's layout:
+        // a column of three bars instead of a centered svg.
+        className={cn(
+          iconButtonVariants(),
+          "flex-col gap-1 border-foreground/15 bg-background p-2",
+        )}
         aria-label="Open navigation menu"
         aria-haspopup="true"
         aria-expanded={open}
@@ -84,17 +91,14 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
         {title}
       </span>
       {open && (
-        <nav
-          className="absolute top-full left-0 z-50 mt-1.5 min-w-44 rounded-lg border border-foreground/15 bg-background p-1 shadow-lg"
-          aria-label="Primary"
-        >
+        <nav className={cn(MENU_PANEL, "left-0 min-w-44")} aria-label="Primary">
           <ul>
             {items.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}
                   className={cn(
-                    "block cursor-pointer rounded-md px-3 py-2 text-sm hover:bg-foreground/5",
+                    MENU_ITEM,
                     item.href === pathname && "bg-foreground/5 font-semibold",
                   )}
                   onClick={() => setOpen(false)}

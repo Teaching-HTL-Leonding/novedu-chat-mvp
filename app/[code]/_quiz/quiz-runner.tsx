@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { ContentImage } from "@/components/content-image";
 import { Button } from "@/components/ui/button";
-import { DIALOG_HEADER, DIALOG_SHELL } from "@/components/ui/dialog-shell";
+import { DialogShell } from "@/components/ui/dialog-shell";
+import { FieldError } from "@/components/ui/field";
 import { startDiscussion, submitAnswer } from "@/lib/quiz-actions";
 import {
   type QuizVerdict,
@@ -77,17 +78,10 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
     feedback: string;
   } | null>(null);
   const [openingDiscussion, setOpeningDiscussion] = useState(false);
-  // The discussion lives in a modal <dialog> overlaying the page. `discussionOpen`
-  // drives showModal()/close() via the effect below; closing keeps the thread so
-  // the student can reopen it ("Continue discussion") until they move on.
+  // The discussion lives in a modal DialogShell overlaying the page; closing
+  // keeps the thread so the student can reopen it ("Continue discussion")
+  // until they move on.
   const [discussionOpen, setDiscussionOpen] = useState(false);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    if (discussionOpen && !dialog.open) dialog.showModal();
-    else if (!discussionOpen && dialog.open) dialog.close();
-  }, [discussionOpen]);
 
   if (!ready) {
     return (
@@ -147,8 +141,7 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
   }
 
   function reset() {
-    // Close the modal before unmounting it, then drop the thread for this question.
-    dialogRef.current?.close();
+    // Drop the thread for this question (DialogShell closes itself on unmount).
     setDiscussionOpen(false);
     setDiscussion(null);
     setVerdict(null);
@@ -244,33 +237,20 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
         </>
       )}
 
-      {error ? <p className="text-destructive text-sm">{error}</p> : null}
+      {error ? <FieldError>{error}</FieldError> : null}
 
       {discussion ? (
-        // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click-to-dismiss is mouse-only; the native <dialog> already closes on Escape (onClose), and a Close button covers keyboard users.
-        <dialog
-          ref={dialogRef}
-          className={DIALOG_SHELL}
+        <DialogShell
+          open={discussionOpen}
           onClose={() => setDiscussionOpen(false)}
-          // Clicking the backdrop (the dialog element itself, not its content) closes it.
-          onClick={(event) => {
-            if (event.target === dialogRef.current) setDiscussionOpen(false);
-          }}
+          title="Discuss this question"
         >
-          <div className="flex h-full flex-col">
-            <div className={DIALOG_HEADER}>
-              <h3 className="font-semibold text-base">Discuss this question</h3>
-              <Button variant="outline" onClick={() => setDiscussionOpen(false)}>
-                Close
-              </Button>
-            </div>
-            <QuizDiscussion
-              threadId={discussion.threadId}
-              headers={buildRuntimeHeaders(code, discussion.threadToken)}
-              feedback={discussion.feedback}
-            />
-          </div>
-        </dialog>
+          <QuizDiscussion
+            threadId={discussion.threadId}
+            headers={buildRuntimeHeaders(code, discussion.threadToken)}
+            feedback={discussion.feedback}
+          />
+        </DialogShell>
       ) : null}
     </div>
   );

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ErrorList, FragmentSummary, WarningList } from "@/components/validation-result";
 import type { BuildResult, FragmentCheckResult } from "@/lib/tutors";
@@ -126,7 +127,7 @@ export function ValidateTutorForm() {
 
       <div className="flex flex-1 flex-col gap-4">
         {status === "loading" ? <p className="text-foreground/60">Validating…</p> : null}
-        {requestError ? <p className="text-destructive">{requestError}</p> : null}
+        {requestError ? <FieldError>{requestError}</FieldError> : null}
         {outcome ? (
           <>
             {outcome.result.warnings.length > 0 ? (

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { PageBody } from "@/components/page-main";
 import { cn } from "@/lib/utils";
 
 // A column-driven list table for "filtered list" pages (see
@@ -8,14 +9,17 @@ import { cn } from "@/lib/utils";
 // `render` functions stay server-side here — no Server→Client function boundary
 // is crossed — and may return client leaf components (LocalTime, copy/delete
 // buttons), which hydrate normally.
+//
+// The table itself is the standalone <ListTable> (used directly by embedded
+// tables like the per-code ConversationStats); <DataList> wraps it in the
+// PageBody shell with the toolbar and empty states for full list pages.
 
 export type ListColumnKind = "numeric" | "time" | "actions";
 
-// The table chrome, exported for the one non-DataList table (the per-code
-// ConversationStats detail) so both tables share a single recipe.
-export const TABLE_CLASSES = "w-full border-collapse text-sm";
-export const TH_CLASSES = "border-foreground/25 border-b-2 px-3 py-2 text-left font-semibold";
-export const TD_CLASSES = "border-foreground/15 border-b px-3 py-2 align-middle";
+// The table chrome — private: every table renders through <ListTable>.
+const TABLE_CLASSES = "w-full border-collapse text-sm";
+const TH_CLASSES = "border-foreground/25 border-b-2 px-3 py-2 text-left font-semibold";
+const TD_CLASSES = "border-foreground/15 border-b px-3 py-2 align-middle";
 
 // Built-in cell recipes so pages don't repeat alignment classes per column:
 // numeric = right-aligned and snug (header right-aligned too), time = no wrap,
@@ -65,6 +69,62 @@ export interface DataListProps<T> {
   noMatchState: ReactNode;
 }
 
+/** The bare table — column recipes included, no page shell or toolbar. */
+export function ListTable<T>({
+  rows,
+  getRowKey,
+  columns,
+}: {
+  rows: T[];
+  getRowKey: (row: T) => string;
+  columns: ListColumn<T>[];
+}) {
+  // Cell classes vary only by COLUMN, so merge them once per column here
+  // instead of once per cell inside the row loop.
+  const headerClasses = columns.map((column) =>
+    cn(
+      TH_CLASSES,
+      column.kind && HEADER_KIND_CLASSES[column.kind],
+      column.srOnlyHeader && "w-[1%]",
+      column.headerClassName,
+    ),
+  );
+  const cellClasses = columns.map((column) =>
+    cn(TD_CLASSES, column.kind && CELL_KIND_CLASSES[column.kind], column.className),
+  );
+
+  return (
+    <table className={TABLE_CLASSES}>
+      <thead>
+        <tr>
+          {columns.map((column, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
+            <th key={index} scope="col" className={headerClasses[index]}>
+              {column.srOnlyHeader ? (
+                <span className="sr-only">{column.header}</span>
+              ) : (
+                column.header
+              )}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={getRowKey(row)}>
+            {columns.map((column, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
+              <td key={index} className={cellClasses[index]}>
+                {column.render(row)}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function DataList<T>({
   rows,
   getRowKey,
@@ -77,7 +137,7 @@ export function DataList<T>({
   noMatchState,
 }: DataListProps<T>) {
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pt-4 pb-6">
+    <PageBody>
       {hint ? <p className="text-foreground/70 text-sm">{hint}</p> : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -88,55 +148,12 @@ export function DataList<T>({
       {rows.length === 0 ? (
         <p>{isFiltered ? noMatchState : emptyState}</p>
       ) : (
-        <table className={TABLE_CLASSES}>
-          <thead>
-            <tr>
-              {columns.map((column, index) => (
-                <th
-                  // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
-                  key={index}
-                  scope="col"
-                  className={cn(
-                    TH_CLASSES,
-                    column.kind && HEADER_KIND_CLASSES[column.kind],
-                    column.srOnlyHeader && "w-[1%]",
-                    column.headerClassName,
-                  )}
-                >
-                  {column.srOnlyHeader ? (
-                    <span className="sr-only">{column.header}</span>
-                  ) : (
-                    column.header
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={getRowKey(row)}>
-                {columns.map((column, index) => (
-                  <td
-                    // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
-                    key={index}
-                    className={cn(
-                      TD_CLASSES,
-                      column.kind && CELL_KIND_CLASSES[column.kind],
-                      column.className,
-                    )}
-                  >
-                    {column.render(row)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ListTable rows={rows} getRowKey={getRowKey} columns={columns} />
       )}
 
       {/* PAGINATION SEAM: a future server-rendered pager (prev/next <Link>s that
           set ?page=) goes here — one place, applies to every list. See
           docs/filtered-lists.md. */}
-    </div>
+    </PageBody>
   );
 }
