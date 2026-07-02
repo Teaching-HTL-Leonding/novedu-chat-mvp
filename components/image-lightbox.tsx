@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { ResolvedImage } from "@/lib/image-ref";
-import styles from "./image-lightbox.module.css";
+import { Button } from "./ui/button";
 
 // The shared image lightbox: a native <dialog> that shows one image full-window.
 // `open` drives showModal()/close(); the dialog also closes on Escape, the Close
@@ -36,7 +36,9 @@ export function ImageLightbox({
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click-to-dismiss is mouse-only; the native <dialog> already closes on Escape (onClose/onCancel), and the Close button covers keyboard users.
     <dialog
       ref={dialogRef}
-      className={styles.dialog}
+      // m-auto restores the UA's margin:auto top-layer centering that preflight
+      // resets — every native <dialog> in the app needs it.
+      className="m-auto max-h-[88vh] max-w-[92vw] overflow-hidden rounded-xl border border-foreground/15 bg-background text-foreground backdrop:bg-foreground/45"
       onClose={onClose}
       onCancel={onClose}
       // Clicking the backdrop (the dialog element itself, not its content) closes it.
@@ -44,19 +46,28 @@ export function ImageLightbox({
         if (event.target === dialogRef.current) onClose();
       }}
     >
-      <div className={styles.dialogInner}>
-        <div className={styles.dialogHeader}>
-          <button type="button" className={styles.closeButton} onClick={onClose}>
+      <div className="flex flex-col">
+        <div className="flex items-center justify-end border-foreground/15 border-b p-2">
+          <Button variant="outline" size="sm" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
         {failed ? (
-          <p className={styles.note}>Image could not be loaded</p>
+          <p className="px-10 py-8 text-foreground/55 text-sm">Image could not be loaded</p>
         ) : (
           // biome-ignore lint/performance/noImgElement: hosted images are arbitrary external blobs (incl. SVG), not bundled assets — next/image's optimizer/loader doesn't apply.
-          <img className={styles.full} src={image.url} alt={alt} onError={() => setFailed(true)} />
+          <img
+            className="block max-h-[88vh] max-w-[92vw] object-contain"
+            src={image.url}
+            alt={alt}
+            onError={() => setFailed(true)}
+          />
         )}
-        {image.credit ? <p className={styles.dialogCredit}>{image.credit}</p> : null}
+        {image.credit ? (
+          <p className="wrap-anywhere px-2.5 pt-1.5 pb-2.5 text-center text-foreground/60 text-xs">
+            {image.credit}
+          </p>
+        ) : null}
       </div>
     </dialog>
   );

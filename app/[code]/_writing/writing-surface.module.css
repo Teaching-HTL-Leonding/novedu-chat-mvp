@@ -192,11 +192,10 @@
 
 /* The chat fills its column and lets CopilotChat own the internal layout: the
    message list scrolls while the input stays pinned to the bottom. The
-   min-height/overflow + the `> *` height rule come from the composed base; here
-   we add only a touch of horizontal padding so messages + input are not glued to
-   the border. */
+   min-height/overflow fill behavior is ModuleChat's built-in base; here we add
+   only a touch of horizontal padding so messages + input are not glued to the
+   border. */
 .chat {
-  composes: chat from "../../module-chat.module.css";
   display: flex;
   flex-direction: column;
   padding: 0 0.75rem;
@@ -204,6 +203,8 @@
 
 /* The lightboxes (formatted preview + full prompt) — mirror the quiz dialog. */
 .dialog {
+  /* Center in the top layer: Tailwind preflight zeroes the UA dialog margin. */
+  margin: auto;
   width: min(48rem, 92vw);
   height: 80vh;
   max-width: 92vw;

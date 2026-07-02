@@ -2,11 +2,11 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { auth } from "@/auth";
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { checkCode } from "@/lib/code-store";
 import { recordRecentCode, removeRecentCode } from "@/lib/recent-code-store";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
 import { CodeError } from "../code-error";
-import styles from "../page.module.css";
 import { RenderCoding } from "./render-coding";
 import { RenderQuiz } from "./render-quiz";
 import { RenderTutor } from "./render-tutor";
@@ -39,9 +39,9 @@ export default async function CodePage({ params }: { params: Promise<{ code: str
       after(() => removeRecentCode(userId, code));
     }
     return (
-      <main className={styles.main}>
+      <Main>
         <CodeError verification={verification} />
-      </main>
+      </Main>
     );
   }
   const { entry } = verification;
@@ -51,11 +51,11 @@ export default async function CodePage({ params }: { params: Promise<{ code: str
   // (proxy.ts) guarantees a session, so this only catches a stale cookie shape.
   if (!userId) {
     return (
-      <main className={styles.main}>
+      <Main>
         <Notice heading="Session problem">
           <p>Your session is missing required user information. Sign out and sign in again.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
   // Remember the successful open as a shortcut on the entry page.

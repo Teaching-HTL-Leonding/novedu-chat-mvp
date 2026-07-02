@@ -3,7 +3,6 @@
 import { CopilotChat } from "@copilotkit/react-core/v2";
 import { type ComponentProps, type HTMLAttributes, useMemo } from "react";
 import type { ExampleQuestion } from "@/lib/tutors";
-import styles from "../page.module.css";
 
 // The tutor welcome screen, isolated from the rest of the chat wiring. It is a
 // `chatView` override (the slot ModuleChat forwards to CopilotChat) that re-shows
@@ -43,16 +42,18 @@ export function useTutorWelcomeView({
       const WelcomeWithDescription = (props: HTMLAttributes<HTMLDivElement>) => (
         <div {...props}>
           <CopilotChat.View.WelcomeMessage />
-          {description ? <p className={styles.welcomeDescription}>{description}</p> : null}
+          {description ? (
+            <p className="mx-auto mt-3 max-w-xl text-center text-foreground/65">{description}</p>
+          ) : null}
           {exampleQuestions.length > 0 ? (
-            <ul className={styles.exampleQuestions}>
+            <ul className="mx-auto mt-4 flex max-w-xl flex-wrap justify-center gap-1.5">
               {exampleQuestions.map((q) => (
                 // Titles alone are not guaranteed unique; the question text is
                 // part of the key. The list is static, so content keys are safe.
                 <li key={`${q.title}\n${q.question}`}>
                   <button
                     type="button"
-                    className={styles.exampleQuestion}
+                    className="cursor-pointer rounded-lg border border-foreground/15 px-3.5 py-1.5 text-foreground/70 text-sm transition-colors hover:bg-foreground/5 hover:text-foreground"
                     title={q.question}
                     onClick={() => onInputChange?.(q.question)}
                   >

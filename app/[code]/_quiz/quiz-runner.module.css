@@ -156,6 +156,8 @@
 
 /* The discussion modal — overlays the whole window (native <dialog> top layer). */
 .dialog {
+  /* Center in the top layer: Tailwind preflight zeroes the UA dialog margin. */
+  margin: auto;
   width: min(48rem, 92vw);
   height: 80vh;
   max-width: 92vw;

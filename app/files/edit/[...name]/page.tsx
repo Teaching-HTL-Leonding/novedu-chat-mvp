@@ -1,9 +1,9 @@
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { getActiveFile } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
-import pageStyles from "../../../page.module.css";
 import { EditFileForm } from "./edit-file-form";
 
 // Teacher-only: edit (save a new version of) or delete a hosted file. Keyed by
@@ -20,33 +20,33 @@ export default async function EditFilePage({ params }: { params: Promise<{ name:
 
   if (file === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="File temporarily unavailable">
           <p>This file could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
   if (file === null) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="File not found">
           <p>This file does not exist or has been deleted.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
   const publicUrl = filePublicUrl(await resolveAppOriginOr(""), file.name);
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <EditFileForm
         name={file.name}
         kind={file.kind}
         initialContent={file.content}
         publicUrl={publicUrl}
       />
-    </main>
+    </Main>
   );
 }

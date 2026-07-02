@@ -1,5 +1,5 @@
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
-import pageStyles from "../../page.module.css";
 import { UploadImageForm } from "./upload-image-form";
 
 // Teacher-only: upload a new app-hosted image. The server actions enforce the rule
@@ -9,8 +9,8 @@ export default async function NewImagePage() {
   if (denied) return denied;
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <UploadImageForm />
-    </main>
+    </Main>
   );
 }

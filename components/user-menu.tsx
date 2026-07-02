@@ -3,7 +3,10 @@
 import { signOutAction } from "@/lib/auth-actions";
 import { enterStudentModeAction, exitStudentModeAction } from "@/lib/student-mode-actions";
 import { usePopover } from "./use-popover";
-import styles from "./user-menu.module.css";
+
+// The popover menu action row (one per form item).
+const MENU_ACTION =
+  "block w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm hover:bg-foreground/5";
 
 type StatusBarUser = {
   name?: string | null;
@@ -36,25 +39,33 @@ export function UserMenu({
   const name = user.name?.trim() || "Signed in";
 
   return (
-    <div className={styles.user} ref={ref}>
+    <div className="relative flex items-center" ref={ref}>
       {studentMode && (
-        <form action={exitStudentModeAction} className={styles.studentMode}>
-          <span className={styles.studentModeLabel}>Student mode</span>
-          <button type="submit" className={styles.studentModeExit}>
+        <form
+          action={exitStudentModeAction}
+          className="mr-2.5 inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 py-0.5 pr-1 pl-3"
+        >
+          <span className="whitespace-nowrap font-semibold text-amber-800 text-xs">
+            Student mode
+          </span>
+          <button
+            type="submit"
+            className="cursor-pointer rounded-full border border-amber-200 bg-background px-2.5 py-0.5 font-semibold text-amber-800 text-xs hover:bg-amber-100"
+          >
             Exit
           </button>
         </form>
       )}
       <button
         type="button"
-        className={styles.trigger}
+        className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-foreground/15 bg-background py-1 pr-1.5 pl-2.5 hover:bg-foreground/5"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         {user.isTeacher && (
           <span
-            className={styles.teacher}
+            className="inline-flex cursor-help items-center text-foreground/70"
             role="img"
             title="Teacher — may perform teacher-only operations"
             aria-label="Teacher"
@@ -71,32 +82,46 @@ export function UserMenu({
             </svg>
           </span>
         )}
-        <span className={styles.name}>{name}</span>
+        <span className="max-w-56 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-sm">
+          {name}
+        </span>
         {user.image ? (
           // Avatar URLs are external (Entra/Graph); a plain <img> avoids
           // configuring next/image remote patterns for a tiny 28px avatar.
           // biome-ignore lint/performance/noImgElement: external avatar, not worth next/image config
-          <img className={styles.avatar} src={user.image} alt="" width={28} height={28} />
+          <img
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground/65 object-cover"
+            src={user.image}
+            alt=""
+            width={28}
+            height={28}
+          />
         ) : (
-          <span className={styles.avatar} aria-hidden="true">
+          <span
+            className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground/65 font-semibold text-background text-xs"
+            aria-hidden="true"
+          >
             {initials(name)}
           </span>
         )}
       </button>
       {open && (
-        <div className={styles.menu} role="menu">
+        <div
+          className="absolute top-full right-0 z-50 mt-1.5 min-w-40 rounded-lg border border-foreground/15 bg-background p-1 shadow-lg"
+          role="menu"
+        >
           {user.isTeacher && (
             // NOTE: no onClick-close here — unmounting the form before React
             // processes the submission would cancel the action. The route
             // refresh after the action re-renders the bar without this item.
             <form action={enterStudentModeAction}>
-              <button type="submit" role="menuitem" className={styles.menuAction}>
+              <button type="submit" role="menuitem" className={MENU_ACTION}>
                 View as student
               </button>
             </form>
           )}
           <form action={signOutAction}>
-            <button type="submit" role="menuitem" className={styles.menuAction}>
+            <button type="submit" role="menuitem" className={MENU_ACTION}>
               Sign out
             </button>
           </form>

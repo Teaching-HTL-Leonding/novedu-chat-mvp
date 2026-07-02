@@ -1,9 +1,9 @@
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { ErrorList, WarningList } from "@/components/validation-result";
 import type { CodeEntry } from "@/lib/code-store";
 import { buildRuntimeHeaders } from "@/lib/runtime-headers";
 import { defaultFetcher, loadAndBuildTutorPrompt, sampleExampleQuestions } from "@/lib/tutors";
-import styles from "../page.module.css";
 import { TutorChat } from "../tutor-chat";
 
 // The tutor module's student render: load + build the tutor prompt from the
@@ -24,23 +24,23 @@ export async function RenderTutor({
   const result = await loadAndBuildTutorPrompt(entry.fileUrl, defaultFetcher);
   if (!result.ok) {
     return (
-      <main className={styles.main}>
+      <Main>
         <Notice heading="This tutor cannot be loaded">
           <p>
             The tutor behind this code failed validation. Ask your teacher to check the tutor
             definition.
           </p>
         </Notice>
-        <div className={styles.validationErrors}>
+        <div className="shrink-0 overflow-y-auto px-5 pb-5">
           {result.warnings.length > 0 ? <WarningList warnings={result.warnings} /> : null}
           <ErrorList errors={result.errors} />
         </div>
-      </main>
+      </Main>
     );
   }
 
   return (
-    <main className={styles.main}>
+    <Main>
       <TutorChat
         code={code}
         threadId={threadId}
@@ -55,6 +55,6 @@ export async function RenderTutor({
         description={result.description}
         exampleQuestions={sampleExampleQuestions(result.exampleQuestions)}
       />
-    </main>
+    </Main>
   );
 }

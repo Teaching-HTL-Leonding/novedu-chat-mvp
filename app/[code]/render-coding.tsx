@@ -1,7 +1,7 @@
+import { Main } from "@/components/page-main";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import type { CodeEntry } from "@/lib/code-store";
 import { codingConnectionProps, loadCoding } from "@/lib/coding-fetch";
-import styles from "../page.module.css";
 import connStyles from "./_coding/coding.module.css";
 import { CodingConnection } from "./_coding/coding-connection";
 
@@ -17,11 +17,11 @@ export async function RenderCoding({ entry, code }: { entry: CodeEntry; code: st
   const title = loaded.ok ? loaded.coding.title : undefined;
 
   return (
-    <main className={styles.main}>
+    <Main>
       <section className={connStyles.page}>
         <h1 className={connStyles.title}>{title ?? "Coding endpoint"}</h1>
         <CodingConnection {...codingConnectionProps(loaded, origin, code)} />
       </section>
-    </main>
+    </Main>
   );
 }

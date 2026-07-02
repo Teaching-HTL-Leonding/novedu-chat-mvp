@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import pageStyles from "@/app/page.module.css";
 import { AccessDenied } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 
 // Page-level teacher gate, shared by every teacher-only page. Returns a rendered
@@ -15,8 +15,8 @@ import { isEffectiveTeacher } from "@/lib/student-mode";
 export async function requireTeacherPage(): Promise<ReactNode | null> {
   if (await isEffectiveTeacher()) return null;
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <AccessDenied />
-    </main>
+    </Main>
   );
 }

@@ -1,11 +1,11 @@
 import { auth } from "@/auth";
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import type { CodeEntry } from "@/lib/code-store";
 import { buildRuntimeHeaders } from "@/lib/runtime-headers";
 import { loadWriting } from "@/lib/writing-fetch";
 import { getSubmission } from "@/lib/writing-store";
 import { toPublicWriting } from "@/lib/writing-yaml";
-import styles from "../page.module.css";
 import { WritingSurface } from "./_writing/writing-surface";
 
 // The writing module's student render: load + leniently parse the writing YAML
@@ -30,11 +30,11 @@ export async function RenderWriting({
   const loaded = await loadWriting(entry.fileUrl);
   if (!loaded.ok) {
     return (
-      <main className={styles.main}>
+      <Main>
         <Notice heading="This writing activity cannot be opened">
           <p>{loaded.message}</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -53,7 +53,7 @@ export async function RenderWriting({
   }
 
   return (
-    <main className={styles.main}>
+    <Main>
       <WritingSurface
         code={code}
         threadId={threadId}
@@ -64,6 +64,6 @@ export async function RenderWriting({
         anonymous={anonymous}
         initialText={initialText}
       />
-    </main>
+    </Main>
   );
 }

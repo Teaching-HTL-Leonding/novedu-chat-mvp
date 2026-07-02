@@ -5,6 +5,7 @@ import { DataList, type ListColumn } from "@/components/data-list";
 import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { selectionColumn } from "@/components/selection-column";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,6 @@ import { mintReadSas } from "@/lib/image-blob";
 import { listImages } from "@/lib/image-store";
 import { deleteSelectedImagesAction } from "@/lib/images-actions";
 import { LocalTime } from "../local-time";
-import pageStyles from "../page.module.css";
 import { ViewImageButton } from "./view-image-button";
 
 // One active image as shown in the list. `viewUrl` is a short-lived read SAS
@@ -73,11 +73,11 @@ export default async function ImagesPage({
 
   if (entries === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Images temporarily unavailable">
           <p>Your images could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -151,7 +151,7 @@ export default async function ImagesPage({
   ];
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <SelectionProvider allIds={rows.map((row) => row.name)}>
         <DataList
           rows={rows}
@@ -197,6 +197,6 @@ export default async function ImagesPage({
           noMatchState="No images match your filter."
         />
       </SelectionProvider>
-    </main>
+    </Main>
   );
 }

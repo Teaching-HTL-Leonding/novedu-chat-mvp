@@ -41,6 +41,8 @@
 }
 
 .dialog {
+  /* Center in the top layer: Tailwind preflight zeroes the UA dialog margin. */
+  margin: auto;
   width: min(56rem, 92vw);
   max-height: 85vh;
   padding: 0;

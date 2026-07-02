@@ -7,6 +7,7 @@ import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon } from "@/components/
 import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { selectionColumn } from "@/components/selection-column";
 import { Badge, type badgeVariants } from "@/components/ui/badge";
@@ -19,7 +20,6 @@ import { listFiles } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
 import { LocalTime } from "../local-time";
-import pageStyles from "../page.module.css";
 
 // One active file as shown in the list (no content). `updatedSeconds` is the
 // active version's write time as unix seconds; `createdBy` is the last writer's
@@ -72,11 +72,11 @@ export default async function FilesPage({
 
   if (entries === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Files temporarily unavailable">
           <p>Your files could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -173,7 +173,7 @@ export default async function FilesPage({
   ];
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <SelectionProvider allIds={rows.map((row) => row.name)}>
         <DataList
           rows={rows}
@@ -223,6 +223,6 @@ export default async function FilesPage({
           noMatchState="No files match your filter."
         />
       </SelectionProvider>
-    </main>
+    </Main>
   );
 }

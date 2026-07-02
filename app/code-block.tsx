@@ -4,7 +4,7 @@ import type { ComponentProps } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { useCopyToClipboard } from "@/components/use-copy-to-clipboard";
-import styles from "./code-block.module.css";
+import { cn } from "@/lib/utils";
 
 // Renders a fenced code block: a header (language label + copy button) above a
 // syntax-highlighted body with soft-wrapped long lines, plus line numbers for
@@ -38,10 +38,13 @@ export function CodeBlock({
 
   return (
     // `not-prose` exempts the block from the surrounding markdown `prose` styles —
-    // Prism + this chrome own everything inside.
-    <div className={`${styles.block} not-prose`}>
-      <div className={styles.header}>
-        <span className={styles.lang}>{language}</span>
+    // Prism + this chrome own everything inside. The fixed grays pair with the
+    // hard-coded oneLight syntax theme (light-only by design).
+    <div className="not-prose my-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
+      <div className="flex items-center justify-between border-gray-200 border-b bg-gray-100 py-1.5 pr-2 pl-3">
+        <span className="font-mono font-semibold text-gray-600 text-xs tracking-wide">
+          {language}
+        </span>
         <CopyButton text={text} />
       </div>
       <SyntaxHighlighter
@@ -72,7 +75,10 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       type="button"
-      className={`${styles.copy} ${copied ? styles.copied : ""}`}
+      className={cn(
+        "inline-flex cursor-pointer items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-0.5 font-semibold text-gray-600 text-xs transition-colors hover:bg-gray-100 hover:text-gray-900",
+        copied && "border-success text-success",
+      )}
       onClick={() => copy(text)}
       aria-label="Copy code to clipboard"
     >

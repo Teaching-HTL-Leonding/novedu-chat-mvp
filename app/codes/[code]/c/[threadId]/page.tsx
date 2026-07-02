@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { getConversationMessages } from "@/lib/code-stats-store";
 import { getCode } from "@/lib/code-store";
-import pageStyles from "../../../../page.module.css";
 import styles from "./conversation.module.css";
 import { ConversationView } from "./conversation-view";
 
@@ -27,22 +27,22 @@ export default async function ConversationPage({
 
   if (entry === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Conversation temporarily unavailable">
           <p>This conversation could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
   if (entry === null) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Conversation not found">
           <p>
             This code does not exist. <Link href="/codes">Back to codes</Link>.
           </p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -50,7 +50,7 @@ export default async function ConversationPage({
   const backHref = `/codes/${entry.code}`;
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <div className={styles.container}>
         <BackLink href={backHref}>Back to stats</BackLink>
         {/* Title is in the status bar ("Conversation"); this is just context. */}
@@ -66,6 +66,6 @@ export default async function ConversationPage({
           <ConversationView messages={messages} />
         )}
       </div>
-    </main>
+    </Main>
   );
 }

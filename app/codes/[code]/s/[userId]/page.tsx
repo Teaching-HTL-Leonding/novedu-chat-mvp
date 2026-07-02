@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { listStudentConversations } from "@/lib/code-stats-store";
 import { getCode } from "@/lib/code-store";
@@ -8,7 +9,6 @@ import { computeTextStats } from "@/lib/writing-stats";
 import { getSubmission, listSavers } from "@/lib/writing-store";
 import { LocalTime } from "../../../../local-time";
 import { MarkdownRenderer } from "../../../../markdown-renderer";
-import pageStyles from "../../../../page.module.css";
 import { StudentConversations } from "./student-conversations";
 import styles from "./student-text.module.css";
 
@@ -37,37 +37,37 @@ export default async function StudentTextPage({
 
   if (entry === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Text temporarily unavailable">
           <p>This text could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
   // Only a non-anonymous writing code has per-student saved text to read.
   if (entry === null || entry.module !== "writing" || entry.anonymous) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Not found">
           <p>
             No saved student text here. <Link href="/codes">Back to codes</Link>.
           </p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
   const submission = await getSubmission(code, userId);
   if (submission === null) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="No saved text">
           <p>
             This student has not saved any text for this code.{" "}
             <Link href={`/codes/${code}`}>Back to savers</Link>.
           </p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -84,7 +84,7 @@ export default async function StudentTextPage({
   const displayName = (idx >= 0 ? savers[idx]?.displayName : null) ?? userId;
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <div className={styles.container}>
         <BackLink href={`/codes/${code}`}>Back to savers</BackLink>
 
@@ -132,6 +132,6 @@ export default async function StudentTextPage({
           <StudentConversations code={code} conversations={conversations ?? []} />
         </section>
       </div>
-    </main>
+    </Main>
   );
 }

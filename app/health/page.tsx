@@ -1,8 +1,8 @@
 import { auth } from "@/auth";
 import { AccessDenied } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { getTeacherView } from "@/lib/student-mode";
 import { getBuildInfo } from "@/lib/version";
-import pageStyles from "../page.module.css";
 import { HealthDashboard } from "./health-dashboard";
 
 // Teacher-only diagnostics. This server component only gates access and
@@ -16,9 +16,9 @@ export default async function HealthPage() {
   const { realTeacher, effectiveTeacher } = await getTeacherView();
   if (!effectiveTeacher) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <AccessDenied />
-      </main>
+      </Main>
     );
   }
 
@@ -30,8 +30,8 @@ export default async function HealthPage() {
     : "Not signed in";
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <HealthDashboard userLabel={userLabel} isTeacher={realTeacher} build={getBuildInfo()} />
-    </main>
+    </Main>
   );
 }

@@ -5,6 +5,7 @@ import { EditIcon, ExternalLinkIcon, StatsIcon } from "@/components/icons";
 import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { AccessDenied, Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { selectionColumn } from "@/components/selection-column";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -21,7 +22,6 @@ import { getInteractionCounts } from "@/lib/code-stats-store";
 import { DISTANT_FUTURE, DISTANT_PAST, listCodes } from "@/lib/code-store";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 import { LocalTime } from "../local-time";
-import pageStyles from "../page.module.css";
 import { CopyCodeButton } from "./copy-code-button";
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
@@ -92,9 +92,9 @@ export default async function CodesPage({
 }) {
   if (!(await isEffectiveTeacher())) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <AccessDenied />
-      </main>
+      </Main>
     );
   }
 
@@ -114,11 +114,11 @@ export default async function CodesPage({
 
   if (entries === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Codes temporarily unavailable">
           <p>Codes could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -218,7 +218,7 @@ export default async function CodesPage({
   ];
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <SelectionProvider allIds={rows.map((row) => row.code)}>
         <DataList
           rows={rows}
@@ -278,6 +278,6 @@ export default async function CodesPage({
           noMatchState="No codes match your filter."
         />
       </SelectionProvider>
-    </main>
+    </Main>
   );
 }

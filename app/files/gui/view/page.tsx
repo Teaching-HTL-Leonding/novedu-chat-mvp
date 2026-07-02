@@ -1,4 +1,4 @@
-import pageStyles from "@/app/page.module.css";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { type FileKind, loadYamlFromUrlAction } from "@/lib/yaml-files";
 import { StudentFileViewer } from "../_studio/file-viewer";
@@ -35,13 +35,13 @@ export default async function GuiViewFilePage({
   }
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <StudentFileViewer
         url={url}
         kind={kind}
         initialContent={initialContent}
         loadError={loadError}
       />
-    </main>
+    </Main>
   );
 }

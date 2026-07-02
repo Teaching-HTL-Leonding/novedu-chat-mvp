@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import styles from "./nav-menu.module.css";
+import { cn } from "@/lib/utils";
 import { usePopover } from "./use-popover";
 
 const BRAND = "HTBLA Leonding - Novedu";
@@ -67,28 +67,36 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
   const title = heading ? `${BRAND} / ${heading}` : BRAND;
 
   return (
-    <div className={styles.nav} ref={ref}>
+    <div className="relative flex min-w-0 items-center gap-3" ref={ref}>
       <button
         type="button"
-        className={styles.burger}
+        className="inline-flex size-9 shrink-0 cursor-pointer flex-col justify-center gap-1 rounded-lg border border-foreground/15 bg-background p-2 hover:bg-foreground/5"
         aria-label="Open navigation menu"
         aria-haspopup="true"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <span className={styles.burgerBar} />
-        <span className={styles.burgerBar} />
-        <span className={styles.burgerBar} />
+        <span className="block h-0.5 w-full rounded-full bg-foreground" />
+        <span className="block h-0.5 w-full rounded-full bg-foreground" />
+        <span className="block h-0.5 w-full rounded-full bg-foreground" />
       </button>
-      <span className={styles.title}>{title}</span>
+      <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-semibold">
+        {title}
+      </span>
       {open && (
-        <nav className={styles.menu} aria-label="Primary">
-          <ul className={styles.menuList}>
+        <nav
+          className="absolute top-full left-0 z-50 mt-1.5 min-w-44 rounded-lg border border-foreground/15 bg-background p-1 shadow-lg"
+          aria-label="Primary"
+        >
+          <ul>
             {items.map((item) => (
               <li key={item.href}>
                 <Link
                   href={item.href}
-                  className={`${styles.menuItem} ${item.href === pathname ? styles.active : ""}`}
+                  className={cn(
+                    "block cursor-pointer rounded-md px-3 py-2 text-sm hover:bg-foreground/5",
+                    item.href === pathname && "bg-foreground/5 font-semibold",
+                  )}
                   onClick={() => setOpen(false)}
                 >
                   {item.label}

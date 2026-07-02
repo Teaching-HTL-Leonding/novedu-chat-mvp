@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import styles from "./code-entry.module.css";
 
 // Accepts a bare code OR a pasted activity URL (`https://host/<code>`) and
 // extracts the code — the last non-empty path segment. Lowercased so a code
@@ -48,15 +46,15 @@ export function CodeEntryForm({ recent }: { recent: { code: string; note: string
   }
 
   return (
-    <div className={styles.container}>
-      <section className={styles.card}>
-        <h1 className={styles.heading}>Enter your code</h1>
-        <p className={styles.hint}>
+    <div className="flex flex-1 items-start justify-center px-5 py-12">
+      <section className="w-full max-w-xl rounded-xl border border-foreground/15 bg-foreground/5 px-7 py-6">
+        <h1 className="mb-3 font-bold text-lg">Enter your code</h1>
+        <p className="mb-4 text-foreground/70">
           Your teacher gave you a code (or a link containing one). Enter it here to start.
         </p>
-        <form className={styles.form} onSubmit={submit}>
+        <form className="flex gap-2" onSubmit={submit}>
           <Input
-            className={cn("min-w-0 flex-1 font-mono", styles.codeInput)}
+            className="min-w-0 flex-1 font-mono tracking-wider"
             value={value}
             onChange={(event) => {
               setValue(event.target.value);
@@ -77,12 +75,18 @@ export function CodeEntryForm({ recent }: { recent: { code: string; note: string
         ) : null}
 
         {recent.length > 0 ? (
-          <div className={styles.recent}>
-            <h2 className={styles.recentHeading}>Recently used</h2>
-            <ul className={styles.recentList}>
+          <div className="mt-6 border-foreground/15 border-t pt-4">
+            <h2 className="mb-2 font-semibold text-foreground/60 text-sm uppercase tracking-wide">
+              Recently used
+            </h2>
+            <ul className="flex flex-col gap-1">
               {recent.map((item) => (
                 <li key={item.code}>
-                  <Link href={`/${item.code}`} className={styles.recentLink} title={item.code}>
+                  <Link
+                    href={`/${item.code}`}
+                    className="block overflow-hidden text-ellipsis whitespace-nowrap rounded-lg px-2.5 py-2 hover:bg-foreground/5"
+                    title={item.code}
+                  >
                     {item.note || item.code}
                   </Link>
                 </li>

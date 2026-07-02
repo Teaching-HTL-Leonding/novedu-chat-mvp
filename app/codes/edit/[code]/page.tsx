@@ -1,9 +1,9 @@
 import { Notice } from "@/components/notice";
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { renderCodeResult } from "@/lib/code-modules/registry";
 import { getCode } from "@/lib/code-store";
-import pageStyles from "../../../page.module.css";
 import { CodeForm } from "../../code-form";
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
@@ -21,20 +21,20 @@ export default async function EditCodePage({ params }: { params: Promise<{ code:
 
   if (entry === undefined) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Code temporarily unavailable">
           <p>This code could not be loaded right now. Try again in a moment.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
   if (entry === null) {
     return (
-      <main className={pageStyles.main}>
+      <Main>
         <Notice heading="Code not found">
           <p>This code does not exist or has been deleted.</p>
         </Notice>
-      </main>
+      </Main>
     );
   }
 
@@ -46,7 +46,7 @@ export default async function EditCodePage({ params }: { params: Promise<{ code:
   const resultSlot = await renderCodeResult(entry, { shareUrl, origin });
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <CodeForm
         mode="edit"
         code={entry.code}
@@ -57,6 +57,6 @@ export default async function EditCodePage({ params }: { params: Promise<{ code:
         initialEndSeconds={entry.validUntil ? seconds(entry.validUntil) : undefined}
         resultSlot={resultSlot}
       />
-    </main>
+    </Main>
   );
 }

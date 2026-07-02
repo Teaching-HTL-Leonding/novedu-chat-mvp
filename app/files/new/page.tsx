@@ -1,5 +1,5 @@
+import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
-import pageStyles from "../../page.module.css";
 import { CreateFileForm } from "./create-file-form";
 
 // Teacher-only: create a new app-hosted YAML file. The server action enforces the
@@ -9,8 +9,8 @@ export default async function NewFilePage() {
   if (denied) return denied;
 
   return (
-    <main className={pageStyles.main}>
+    <Main>
       <CreateFileForm />
-    </main>
+    </Main>
   );
 }

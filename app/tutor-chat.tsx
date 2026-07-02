@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { WarningList } from "@/components/validation-result";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
 import type { ExampleQuestion, ValidationWarning } from "@/lib/tutors";
 import { useTutorWelcomeView } from "./_tutor/welcome-view";
 import { CodeBlock } from "./code-block";
 import { ModuleChat } from "./module-chat";
-import moduleChatStyles from "./module-chat.module.css";
-import styles from "./page.module.css";
 
 // The tutor module's chat surface. The shared CopilotKit wiring (provider,
 // CopilotChat, the threadId explicit-mode decision, the markdown renderer) lives
@@ -66,30 +65,34 @@ export function TutorChat({
 
   return (
     <>
-      <div className={styles.tutorBar}>
-        <span className={styles.tutorUrl} title={tutorUrl}>
+      <div className="flex shrink-0 items-center gap-3 px-5 pb-2">
+        <span
+          className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-foreground/60 text-xs"
+          title={tutorUrl}
+        >
           {tutorUrl}
         </span>
       </div>
 
-      <details className={styles.details}>
-        <summary className={styles.detailsSummary}>System prompt &amp; warnings</summary>
-        <div className={styles.detailsBody}>
+      <details className="shrink-0 px-5 pb-2">
+        <summary className="cursor-pointer font-semibold text-foreground/70 text-sm">
+          System prompt &amp; warnings
+        </summary>
+        <div className="flex max-h-[40vh] flex-col gap-3 overflow-y-auto pt-2">
           {warnings.length > 0 ? <WarningList warnings={warnings} /> : null}
           <CodeBlock className="language-markdown">{prompt}</CodeBlock>
         </div>
       </details>
 
       {uploadError ? (
-        <div className={styles.uploadError} role="alert">
-          <span>{uploadError}</span>
-          <button
-            type="button"
-            className={styles.uploadErrorDismiss}
-            onClick={() => setUploadError(null)}
-          >
+        <div
+          className="mx-5 mb-2 flex shrink-0 items-center gap-3 rounded-lg border border-destructive/45 bg-destructive/10 px-3 py-2 text-sm"
+          role="alert"
+        >
+          <span className="wrap-anywhere min-w-0 flex-1">{uploadError}</span>
+          <Button variant="outline" size="sm" onClick={() => setUploadError(null)}>
             Dismiss
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -98,8 +101,7 @@ export function TutorChat({
         providerKey={code}
         threadId={threadId}
         headers={runtimeHeaders}
-        // Tutor needs no height/padding delta: the base container matches it.
-        className={moduleChatStyles.chat}
+        // Tutor needs no height/padding delta: ModuleChat's base container matches it.
         labels={title ? { welcomeMessageText: title } : undefined}
         chatView={chatView}
         attachments={

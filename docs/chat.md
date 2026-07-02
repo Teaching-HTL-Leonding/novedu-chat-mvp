@@ -29,8 +29,10 @@ CopilotKit wiring so each module supplies only what is unique to it. It owns:
 - the **markdown renderer** — `messageView={{ assistantMessage: { markdownRenderer:
   MarkdownRenderer } }}` (`MarkdownRenderer` from `./markdown-renderer`), so every
   module's assistant messages render math and code the same way;
-- the **base chat container** — a `<div>` whose `className` is the (required)
-  `className` prop, holding `CopilotChat`.
+- the **base chat container** — a `<div>` holding `CopilotChat`, with the fill
+  recipe built in (`min-h-0 flex-1 overflow-hidden *:h-full`: fill the available
+  height, never push the page taller, let CopilotChat own the internal scroll);
+  the optional `className` prop is a cn-merged delta on top.
 
 Modules supply the rest through props/slots:
 
@@ -40,7 +42,7 @@ Modules supply the rest through props/slots:
 | `threadId` | `string` | the server-minted Mastra thread id (pinned in explicit mode) |
 | `headers` | `RuntimeHeaders` | the `x-code` + `x-thread-token` pair (below) |
 | `providerKey` | `string` | the provider remount boundary — code (tutor/writing) or threadId (quiz) |
-| `className` | `string` | the chat-container class (module height/padding deltas) |
+| `className` | `string?` | optional height/padding deltas, cn-merged onto the built-in chat container |
 | `children` | `ReactNode?` | rendered INSIDE the provider, before the chat — frontend tools, feedback headers |
 | `labels` | passthrough | welcome-greeting override (tutor) |
 | `chatView` | passthrough | welcome-screen view override (tutor) |
@@ -54,6 +56,8 @@ them out together (e.g. quiz's discussion body) wraps `<ModuleChat>` in its own
 container — the provider emits no DOM, so that wrapper stays the surface's root.
 
 ```tsx
+// className carries only writing's deltas (column flex + horizontal padding) —
+// the fill recipe is ModuleChat's own.
 <ModuleChat agentId="writing" providerKey={code} threadId={threadId} headers={headers} className={styles.chat}>
   <GetCurrentTextTool currentTextRef={currentTextRef} />
 </ModuleChat>
@@ -156,10 +160,11 @@ agent-less surface. It stays separate on purpose.
 ## Adding a 4th module's chat
 
 The chat itself is a one-liner — render `<ModuleChat agentId="…" providerKey={…}
-threadId={…} headers={…} className={…} />` from the module's render component,
-adding `children` only if the module needs a slot inside the provider (a frontend
-tool, a header). Everything else (provider, headers, the threadId decision, the
-markdown renderer, the base container) comes for free.
+threadId={…} headers={…} />` from the module's render component, adding
+`children` only if the module needs a slot inside the provider (a frontend tool,
+a header) and `className` only for module-specific deltas. Everything else
+(provider, headers, the threadId decision, the markdown renderer, the base
+container) comes for free.
 
 Wiring the new module into the rest of the app — the descriptor, the registry
 line, the label, the render case, the validator/`readAnonymousFlag` branch, the
