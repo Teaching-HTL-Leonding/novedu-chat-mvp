@@ -216,12 +216,16 @@ the page does not):
   default expanded) and a **resize handle** (dragging it shifts the editor/chat
   width split, clamped 25–75%). The bar stays put when collapsed, showing ‹ to
   reopen. Resize is a mouse-only enhancement for the side-by-side layout.
-- **Responsive** — at/above `48rem` the columns sit side by side with the divider.
-  Below it they **stack** vertically, each with a min height, and the divider is
-  **removed** (no collapse, no resize) — the chat is always shown, so a chat
-  collapsed on a wide screen is never stranded after shrinking to a narrow one. The
-  JS (`matchMedia`) and the CSS share the `48rem` breakpoint. The surface keeps a
-  horizontal gutter at every width so it is never flush with the window edges.
+- **Responsive** — at/above Tailwind's `md` breakpoint (`48rem`) the columns sit
+  side by side with the divider. Below it they **stack** vertically (`max-md:`
+  pane utilities: fixed min heights, divider hidden — no collapse, no resize) —
+  the chat is always shown, so a chat collapsed on a wide screen is never
+  stranded after shrinking to a narrow one. The JS (`SIDE_BY_SIDE_QUERY`
+  `matchMedia`) and the `max-md:`/`md:` utilities share that `48rem` value —
+  change one, change both. The runtime width split flows through the
+  `--editor-grow`/`--chat-grow` CSS variables (set in a `style` prop, consumed by
+  the panes' static arbitrary-value flex utilities). The surface keeps a horizontal gutter at
+  every width so it is never flush with the window edges.
 
 Behaviour:
 

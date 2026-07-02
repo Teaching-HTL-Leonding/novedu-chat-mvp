@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { DataList, type ListColumn } from "@/components/data-list";
 import { ListFilterBar } from "@/components/list-filter-bar";
+import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listSavers, type Saver } from "@/lib/writing-store";
 import { LocalTime } from "../../local-time";
-import styles from "./writing-review.module.css";
 
 // The Writing module's teacher review: a list of the students who SAVED text for
 // this code (newest save first), each row carrying a "View" link to that student's
@@ -34,7 +34,7 @@ export async function WritingSaversList({ code, search }: { code: string; search
   const columns: ListColumn<Saver>[] = [
     {
       header: "Student",
-      className: styles.student,
+      className: "max-w-96 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs",
       render: (row) => <span title={row.userId}>{row.displayName ?? row.userId}</span>,
     },
     {
@@ -54,7 +54,7 @@ export async function WritingSaversList({ code, search }: { code: string; search
       render: (row) => (
         <Link
           href={`/codes/${code}/s/${encodeURIComponent(row.userId)}`}
-          className={styles.viewLink}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
           data-testid="saver-link"
         >
           View

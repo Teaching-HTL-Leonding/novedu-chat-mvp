@@ -10,6 +10,12 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
+/* Markdown files are prose, not templates: a class-shaped string in a docs
+   example must not generate a utility (a literal `flex-[var(…)]` in a doc once
+   broke the dev CSS parse). */
+@source not "../docs";
+@source not "../**/*.md";
+
 /* Hard-coded light theme — intentionally independent of the system color scheme.
    Plain values live on :root; `@theme inline` below maps them onto Tailwind
    tokens. Names follow shadcn/ui so its components can drop in later unchanged.

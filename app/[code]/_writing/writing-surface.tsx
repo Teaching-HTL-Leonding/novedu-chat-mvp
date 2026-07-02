@@ -1,13 +1,14 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
+import { cn } from "@/lib/utils";
 import { saveWriting } from "@/lib/writing-actions";
 import type { WritingPublic } from "@/lib/writing-types";
 import { YamlEditor } from "../../files/yaml-editor";
 import { MarkdownRenderer } from "../../markdown-renderer";
 import { WritingChat } from "./writing-chat";
-import styles from "./writing-surface.module.css";
 
 // The student-facing writing surface: a split screen filling the viewport, with
 // the Markdown editor on the left and a collapsible feedback chat on the right.
@@ -33,9 +34,16 @@ const MIN_EDITOR_FRACTION = 0.25;
 const MAX_EDITOR_FRACTION = 0.75;
 // At/above this the editor and chat sit side by side with the divider (toggle +
 // drag-resize). Below it they stack vertically, each with a min height, and the
-// divider is gone — no collapse, no resize. Must match the CSS breakpoint
-// (`max-width: 47.99rem` there, complementary to this `min-width: 48rem`).
+// divider is gone — no collapse, no resize. The value is Tailwind's `md`
+// breakpoint (48rem), shared with the `max-md:` pane utilities below — change
+// one, change both.
 const SIDE_BY_SIDE_QUERY = "(min-width: 48rem)";
+
+// Both columns fill the side-by-side split via the runtime-computed
+// --editor-grow / --chat-grow CSS variables (set in a style prop by the
+// drag-resize); the class strings stay static so the scanner sees them. Stacked
+// (max-md) drops the split for fixed min-height rows.
+const PANE_BASE = "flex min-w-0 flex-col max-md:min-h-[60vh] max-md:flex-none";
 
 // A modal lightbox shared by the formatted-draft preview and the full-prompt
 // view. Drives the native <dialog> from React state (showModal/close) and closes
@@ -63,21 +71,23 @@ function Lightbox({
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click-to-dismiss is mouse-only; the native <dialog> already closes on Escape (onClose), and the Close button covers keyboard users.
     <dialog
       ref={dialogRef}
-      className={styles.dialog}
+      // m-auto: center in the top layer — Tailwind preflight zeroes the UA dialog
+      // margin. The quiz discussion dialog mirrors this exact recipe.
+      className="m-auto h-[80vh] w-[min(48rem,92vw)] max-w-[92vw] overflow-hidden rounded-xl border border-foreground/15 bg-background p-0 text-foreground backdrop:bg-foreground/45"
       onClose={onClose}
       // Clicking the backdrop (the dialog element itself, not its content) closes it.
       onClick={(event) => {
         if (event.target === dialogRef.current) onClose();
       }}
     >
-      <div className={styles.dialogInner}>
-        <div className={styles.dialogHeader}>
-          <h3 className={styles.dialogHeading}>{heading}</h3>
-          <button type="button" className={styles.secondaryButton} onClick={onClose}>
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between gap-4 border-foreground/15 border-b px-4 py-3">
+          <h3 className="font-semibold text-base">{heading}</h3>
+          <Button variant="outline" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </div>
-        <div className={styles.dialogBody}>{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
       </div>
     </dialog>
   );
@@ -119,7 +129,7 @@ export function WritingSurface({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [descriptionOpen, setDescriptionOpen] = useState(false);
 
-  // Side-by-side vs stacked layout (tracks the CSS breakpoint). Below it the
+  // Side-by-side vs stacked layout (tracks the `md` breakpoint). Below it the
   // divider is gone, so the chat must always render — otherwise a chat collapsed
   // on a wide screen would be stranded after shrinking to a narrow one, with no
   // toggle to bring it back.
@@ -207,10 +217,13 @@ export function WritingSurface({
     !!writing.description && writing.description.length > DESCRIPTION_PREVIEW_CHARS;
 
   return (
-    <div className={styles.surface}>
+    // px-5: a horizontal gutter at every width — once the viewport is narrower
+    // than the page max-width the auto margins give no inset, so without this the
+    // columns would sit flush against the window edges.
+    <div className="flex min-h-0 w-full flex-1 flex-col px-5">
       <div
         ref={splitRef}
-        className={`${styles.split} ${chatOpen ? "" : styles.chatCollapsed}`}
+        className="flex min-h-0 flex-1 items-stretch max-md:flex-col"
         // The editor/chat width split; ignored by the stacked (narrow) layout.
         // Scaled to whole numbers summing to 100 so that when one column is
         // collapsed the other still has flex-grow >= 1 and fills ALL the freed
@@ -222,39 +235,31 @@ export function WritingSurface({
           } as React.CSSProperties
         }
       >
-        <section className={styles.editorPane}>
-          <div className={styles.editorToolbar}>
-            {writing.title ? <h1 className={styles.title}>{writing.title}</h1> : null}
-            <div className={styles.editorActions}>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => setPreviewOpen(true)}
-              >
+        <section className={cn(PANE_BASE, "flex-[var(--editor-grow,1)_1_0] gap-3")}>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            {writing.title ? <h1 className="font-semibold text-xl">{writing.title}</h1> : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" onClick={() => setPreviewOpen(true)}>
                 Read formatted
-              </button>
+              </Button>
               {!anonymous ? (
-                <button
-                  type="button"
-                  className={styles.button}
-                  onClick={onSave}
-                  disabled={saving || !dirty}
-                >
+                <Button onClick={onSave} disabled={saving || !dirty}>
                   {saving ? "Saving…" : dirty ? "Save" : "Saved"}
-                </button>
+                </Button>
               ) : null}
             </div>
           </div>
           {writing.description ? (
-            <div className={styles.description}>
+            <div>
               {longDescription ? (
                 <>
                   <MarkdownRenderer
                     content={`${writing.description.slice(0, DESCRIPTION_PREVIEW_CHARS).trimEnd()}…`}
                   />
+                  {/* An inline "more" link inside the flowing prompt text, not a button block. */}
                   <button
                     type="button"
-                    className={styles.moreLink}
+                    className="cursor-pointer font-semibold underline"
                     onClick={() => setDescriptionOpen(true)}
                   >
                     more
@@ -266,11 +271,12 @@ export function WritingSurface({
             </div>
           ) : null}
           {saveError ? (
-            <p className={styles.error} role="alert">
+            <p className="text-destructive text-sm" role="alert">
               {saveError}
             </p>
           ) : null}
-          <div className={styles.editorHost}>
+          {/* The editor fills the remaining column height (YamlEditor in `fill` mode). */}
+          <div className="flex min-h-0 flex-1 flex-col">
             <YamlEditor value={buffer} onChange={onEdit} language="markdown" upload={false} fill />
           </div>
         </section>
@@ -279,12 +285,20 @@ export function WritingSurface({
             It stays visible when the chat is collapsed (then showing ‹ to reopen).
             The drag is a mouse-only enhancement; the nested button is the
             accessible control, so the bar carries no role of its own. Only in the
-            side-by-side layout — stacked has no collapse/resize. */}
+            side-by-side layout — stacked has no collapse/resize (max-md:hidden
+            covers pre-hydration and no-JS, where the JS below still renders it).
+            The before: hairline runs down the middle, behind the toggle. */}
         {sideBySide ? (
-          <div className={styles.divider} onPointerDown={onResizePointerDown}>
+          <div
+            className={cn(
+              "relative flex w-5 flex-none touch-none items-center justify-center before:absolute before:inset-y-0 before:w-px before:bg-foreground/15 max-md:hidden",
+              chatOpen ? "cursor-col-resize" : "cursor-default",
+            )}
+            onPointerDown={onResizePointerDown}
+          >
             <button
               type="button"
-              className={styles.dividerToggle}
+              className="relative z-1 flex h-11 w-6 cursor-pointer items-center justify-center rounded-lg border border-foreground/25 bg-background text-foreground text-lg leading-none hover:bg-foreground/5"
               // Toggling must not also start a resize drag.
               onPointerDown={(event) => event.stopPropagation()}
               onClick={() => setChatOpen((open) => !open)}
@@ -298,7 +312,12 @@ export function WritingSurface({
 
         {/* Stacked layout always shows the chat (no toggle to reopen it). */}
         {!sideBySide || chatOpen ? (
-          <aside className={styles.chatPane}>
+          <aside
+            className={cn(
+              PANE_BASE,
+              "flex-[var(--chat-grow,1)_1_0] overflow-hidden rounded-xl border border-foreground/15",
+            )}
+          >
             <WritingChat
               code={code}
               threadId={threadId}

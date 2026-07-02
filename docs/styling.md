@@ -7,7 +7,7 @@ Research current Tailwind docs in context7 (`ctx7` CLI) before styling work — 
 ## Stack
 
 - **Tailwind v4, CSS-first.** There is no `tailwind.config.js`. The entire configuration lives in `app/globals.css`: a leading `@layer` order statement, `@import "tailwindcss"`, `@plugin "@tailwindcss/typography"`, the token block, and a handful of `@layer base` rules. The build hook is `postcss.config.mjs` (`@tailwindcss/postcss`), picked up by Turbopack for `dev`, `build`, and the Vitest browser project alike.
-- Source detection is automatic (every non-gitignored file is scanned); no `@source` directives are needed.
+- Source detection is automatic (every non-gitignored file is scanned), with one carve-out: `@source not` excludes `docs/` and all `*.md` files, so class-shaped strings in doc examples never generate utilities.
 - `class-variance-authority` (variants), `clsx` + `tailwind-merge` (via `cn()`) are the only styling runtime deps.
 
 ## Tokens
@@ -61,7 +61,7 @@ The core rule: **formatting for a repeated construct is written once.**
 
 - Tailwind defaults only; mobile-first (`md:`), exact complements via `max-md:`.
 - **`md` (48rem) is shared state with JS**: the writing surface's `SIDE_BY_SIDE_QUERY` matchMedia uses the same 48rem — change one, change both (see `docs/writing.md`).
-- Runtime-computed values flow through CSS variables set in a `style` prop and consumed by static arbitrary-value utilities (e.g. the writing split panes: `style={{ "--editor-grow": … }}` + `flex-[var(--editor-grow,1)_1_0%]`). Class strings stay static so the scanner sees them.
+- Runtime-computed values flow through CSS variables set in a `style` prop and consumed by static arbitrary-value utilities (e.g. the writing split panes: `style={{ "--editor-grow": … }}` + `flex-[var(--editor-grow,1)_1_0]`). Class strings stay static so the scanner sees them (markdown is excluded from scanning — see Stack).
 - Values snap to Tailwind's default scale; an arbitrary value is acceptable only where a real constraint demands it, with a comment saying which.
 
 ## Lint and formatting
