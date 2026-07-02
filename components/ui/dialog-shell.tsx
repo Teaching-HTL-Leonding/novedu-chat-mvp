@@ -39,16 +39,15 @@ export function DialogShell({
   children: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  // No unmount cleanup, deliberately: the browser drops an unmounted open
+  // dialog from the top layer by itself, and a cleanup close() would fire a
+  // REAL close event during StrictMode's simulated mount cycle — a dialog
+  // that mounts already open would tell its parent to close it again.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) dialog.showModal();
     else if (!open && dialog.open) dialog.close();
-    // Close before unmount too, so a consumer may conditionally render the
-    // shell without closing it first (the close event still reaches onClose).
-    return () => {
-      if (dialog.open) dialog.close();
-    };
   }, [open]);
 
   return (

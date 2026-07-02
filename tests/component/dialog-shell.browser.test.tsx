@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { StrictMode, useState } from "react";
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-react";
 import { DIALOG_BODY, DialogShell } from "@/components/ui/dialog-shell";
@@ -28,6 +28,22 @@ test("a closed dialog is not visible and takes no layout space", async () => {
   // The load-bearing assertion: closed ⇒ UA display:none must survive the shell
   // classes (i.e. the computed display is none, not flex).
   expect(window.getComputedStyle(dialog as HTMLDialogElement).display).toBe("none");
+});
+
+test("a dialog that MOUNTS already open stays open under StrictMode", async () => {
+  // The quiz discussion conditionally renders its shell with open=true from
+  // the first render. StrictMode's simulated mount runs effect → cleanup →
+  // effect; a cleanup that close()s fires a real close event and flips the
+  // parent's state — the dialog would open and instantly close.
+  const screen = await render(
+    <StrictMode>
+      <Harness initiallyOpen={true} />
+    </StrictMode>,
+  );
+
+  const dialog = screen.container.querySelector("dialog") as HTMLDialogElement;
+  await expect.element(screen.getByText("dialog content")).toBeVisible();
+  expect(dialog.open).toBe(true);
 });
 
 test("open shows the modal with title, body, and Close; Close hides it again", async () => {
