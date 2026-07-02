@@ -4,11 +4,12 @@ import type { Message } from "@ag-ui/core";
 import { useRef, useState } from "react";
 import { Notice } from "@/components/notice";
 import { Spinner } from "@/components/spinner";
+import { DIALOG_BODY, DIALOG_HEADER, DIALOG_SHELL } from "@/components/ui/dialog-shell";
 import { loadConversationTranscript } from "@/lib/code-stats-actions";
 import type { StudentConversation } from "@/lib/code-stats-store";
+import { cn } from "@/lib/utils";
 import { LocalTime } from "../../../../local-time";
 import { ConversationView } from "../../c/[threadId]/conversation-view";
-import styles from "./student-conversations.module.css";
 
 // The student page's conversation list + lightbox. The conversation METADATA is
 // server-loaded (passed in); a transcript is fetched only when the teacher opens
@@ -56,26 +57,26 @@ export function StudentConversations({
   }
 
   if (conversations.length === 0) {
-    return <p className={styles.empty}>No conversations yet.</p>;
+    return <p className="text-foreground/70">No conversations yet.</p>;
   }
 
   return (
     <>
-      <ul className={styles.list}>
+      <ul className="flex flex-col gap-2">
         {conversations.map((conversation) => (
           <li key={conversation.threadId}>
             <button
               type="button"
-              className={styles.item}
+              className="flex w-full cursor-pointer items-center gap-4 rounded-lg border border-foreground/15 bg-background px-3.5 py-2.5 text-left text-sm hover:bg-foreground/5"
               data-testid="conversation-open"
               onClick={() => {
                 void open(conversation.threadId);
               }}
             >
-              <span className={styles.itemTime}>
+              <span className="whitespace-nowrap font-semibold">
                 <LocalTime seconds={seconds(conversation.lastAt)} />
               </span>
-              <span className={styles.itemCount}>
+              <span className="text-foreground/65">
                 {conversation.userMessageCount}{" "}
                 {conversation.userMessageCount === 1 ? "message" : "messages"}
               </span>
@@ -86,23 +87,23 @@ export function StudentConversations({
 
       <dialog
         ref={dialogRef}
-        className={styles.dialog}
+        className={cn(DIALOG_SHELL, "h-auto max-h-[85vh] w-[min(56rem,92vw)]")}
         onClose={() => setState({ status: "idle" })}
       >
-        <div className={styles.dialogHeader}>
-          <span className={styles.dialogTitle}>Conversation</span>
+        <div className={DIALOG_HEADER}>
+          <span className="font-bold">Conversation</span>
           <button
             type="button"
-            className={styles.closeButton}
+            className="cursor-pointer rounded-md px-2 py-1 hover:bg-foreground/10"
             aria-label="Close"
             onClick={() => dialogRef.current?.close()}
           >
             ✕
           </button>
         </div>
-        <div className={styles.dialogBody}>
+        <div className={cn(DIALOG_BODY, "max-h-[calc(85vh-3.5rem)]")}>
           {state.status === "loading" ? (
-            <p className={styles.loading}>
+            <p className="flex items-center gap-2 text-foreground/70">
               <Spinner /> Loading conversation…
             </p>
           ) : state.status === "error" ? (
@@ -111,7 +112,7 @@ export function StudentConversations({
             </Notice>
           ) : state.status === "ready" ? (
             state.messages.length === 0 ? (
-              <p className={styles.loading}>This conversation has no messages.</p>
+              <p className="text-foreground/70">This conversation has no messages.</p>
             ) : (
               <ConversationView messages={state.messages} />
             )

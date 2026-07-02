@@ -2,7 +2,6 @@ import { Main } from "@/components/page-main";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import type { CodeEntry } from "@/lib/code-store";
 import { codingConnectionProps, loadCoding } from "@/lib/coding-fetch";
-import connStyles from "./_coding/coding.module.css";
 import { CodingConnection } from "./_coding/coding-connection";
 
 // The coding module's STUDENT render: a connection page. There is no in-app chat —
@@ -18,8 +17,8 @@ export async function RenderCoding({ entry, code }: { entry: CodeEntry; code: st
 
   return (
     <Main>
-      <section className={connStyles.page}>
-        <h1 className={connStyles.title}>{title ?? "Coding endpoint"}</h1>
+      <section className="mx-auto w-full max-w-3xl px-5 pt-6 pb-8">
+        <h1 className="mb-3 font-bold text-2xl">{title ?? "Coding endpoint"}</h1>
         <CodingConnection {...codingConnectionProps(loaded, origin, code)} />
       </section>
     </Main>

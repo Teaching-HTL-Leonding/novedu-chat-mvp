@@ -8,7 +8,6 @@ import {
 } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 import { MarkdownRenderer } from "../../../../markdown-renderer";
-import styles from "./conversation.module.css";
 
 // Read-only transcript. It renders the SAME message components the live chat
 // uses (CopilotChatUserMessage / CopilotChatAssistantMessage — the exact ones
@@ -25,7 +24,9 @@ import styles from "./conversation.module.css";
 export function ConversationView({ messages }: { messages: Message[] }) {
   return (
     <CopilotKitProvider runtimeUrl="/api/copilotkit">
-      <div className={styles.messages}>
+      {/* The CopilotKit message components paint the bubbles; this stacks them
+          with chat-like spacing in a framed, scrollable, width-capped column. */}
+      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col gap-4 overflow-y-auto rounded-lg border border-foreground/15 p-4">
         {messages.map((message) =>
           message.role === "assistant" ? (
             <CopilotChatAssistantMessage

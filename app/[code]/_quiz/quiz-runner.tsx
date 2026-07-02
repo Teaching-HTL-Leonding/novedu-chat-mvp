@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ContentImage } from "@/components/content-image";
+import { Button } from "@/components/ui/button";
+import { DIALOG_HEADER, DIALOG_SHELL } from "@/components/ui/dialog-shell";
 import { startDiscussion, submitAnswer } from "@/lib/quiz-actions";
 import {
   type QuizVerdict,
@@ -10,9 +12,27 @@ import {
   verdictLabel,
 } from "@/lib/quiz-types";
 import { buildRuntimeHeaders } from "@/lib/runtime-headers";
+import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "../../markdown-renderer";
 import { QuizDiscussion } from "./quiz-discussion";
-import styles from "./quiz-runner.module.css";
+
+// The quiz page column: centered, capped width, with a horizontal gutter at
+// every width so it is never flush with the window edges.
+const RUNNER = "mx-auto flex w-full max-w-4xl flex-col gap-4 px-5";
+const PROGRESS = "text-foreground/55 text-sm";
+const CARD = "rounded-xl border border-foreground/15 bg-background px-5 py-4";
+const LABEL = "mb-1.5 block font-semibold text-sm";
+const ACTIONS = "flex flex-wrap items-center gap-2";
+
+// Verdict accent: the card/tile sets a local --verdict var per result;
+// descendants (left border, heading, summary number, tile top border) consume
+// it, so each verdict color lives in one place. (Named --verdict, not --accent:
+// the global shadcn token block defines --accent.)
+const VERDICT_VARS: Record<QuizVerdict, string> = {
+  correct: "[--verdict:var(--color-success)]",
+  partial: "[--verdict:var(--color-warning)]",
+  incorrect: "[--verdict:var(--color-destructive)]",
+};
 
 // The student-facing quiz runner. Walks the (optionally shuffled) questions one
 // at a time: render the markdown question, take a free-text answer, grade it via
@@ -71,8 +91,8 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
 
   if (!ready) {
     return (
-      <div className={styles.runner}>
-        <p className={styles.progress}>Preparing quiz…</p>
+      <div className={RUNNER}>
+        <p className={PROGRESS}>Preparing quiz…</p>
       </div>
     );
   }
@@ -143,132 +163,106 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
   }
 
   return (
-    <div className={styles.runner}>
+    <div className={RUNNER}>
       {quiz.title || quiz.description ? (
         <header>
-          {quiz.title ? <h1>{quiz.title}</h1> : null}
-          {quiz.description ? (
-            <div className={styles.questionBody}>
-              <MarkdownRenderer content={quiz.description} />
-            </div>
-          ) : null}
+          {quiz.title ? <h1 className="font-bold text-2xl">{quiz.title}</h1> : null}
+          {quiz.description ? <MarkdownRenderer content={quiz.description} /> : null}
         </header>
       ) : null}
 
-      <p className={styles.progress}>
+      <p className={PROGRESS}>
         Question {index + 1} of {total}
       </p>
 
-      <section className={styles.card}>
-        {current.title ? <h2 className={styles.questionTitle}>{current.title}</h2> : null}
+      <section className={CARD}>
+        {current.title ? <h2 className="mb-2 font-semibold text-lg">{current.title}</h2> : null}
         {current.image ? <ContentImage image={current.image} /> : null}
-        <div className={styles.questionBody}>
-          <MarkdownRenderer content={current.question} />
-        </div>
+        <MarkdownRenderer content={current.question} />
       </section>
 
       {!verdict ? (
-        <section className={styles.card}>
-          <label className={styles.label} htmlFor="quiz-answer">
+        <section className={CARD}>
+          <label className={LABEL} htmlFor="quiz-answer">
             Your answer
           </label>
           <textarea
             id="quiz-answer"
-            className={styles.answerArea}
+            className="mb-3 min-h-28 w-full resize-y rounded-lg border border-foreground/25 bg-background px-3 py-2.5 text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-1"
             value={answer}
             onChange={(event) => setAnswer(event.target.value)}
             disabled={grading}
             placeholder="Type your answer…"
           />
-          <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.button}
+          <div className={ACTIONS}>
+            <Button
               onClick={() => handleSubmit(current)}
               disabled={grading || answer.trim() === ""}
             >
               {grading ? "Checking…" : "Submit answer"}
-            </button>
-            <button
-              type="button"
-              className={styles.secondaryButton}
-              onClick={() => setFinished(true)}
-              disabled={grading}
-            >
+            </Button>
+            <Button variant="outline" onClick={() => setFinished(true)} disabled={grading}>
               Finish
-            </button>
+            </Button>
           </div>
         </section>
       ) : (
         <>
-          <section className={styles.card}>
-            <span className={styles.label}>Your answer</span>
-            <p className={styles.submittedAnswer}>{answer}</p>
+          <section className={CARD}>
+            <span className={LABEL}>Your answer</span>
+            <p className="whitespace-pre-wrap leading-relaxed">{answer}</p>
           </section>
-          <section className={`${styles.card} ${styles.verdictCard} ${styles[verdict.result]}`}>
-            <h3 className={styles.verdictHeading}>{verdictLabel(verdict.result)}</h3>
-            <div className={styles.feedback}>
-              <MarkdownRenderer content={verdict.feedback} />
-            </div>
+          <section
+            className={cn(CARD, "border-l-(--verdict) border-l-4", VERDICT_VARS[verdict.result])}
+          >
+            <h3 className="mb-2 font-bold text-(--verdict) text-base capitalize">
+              {verdictLabel(verdict.result)}
+            </h3>
+            <MarkdownRenderer content={verdict.feedback} />
           </section>
-          <div className={styles.actions}>
+          <div className={ACTIONS}>
             {!discussion ? (
-              <button
-                type="button"
-                className={styles.secondaryButton}
+              <Button
+                variant="outline"
                 onClick={() => handleOpenDiscussion(current)}
                 disabled={openingDiscussion}
               >
                 {openingDiscussion ? "Opening…" : "Chat about this"}
-              </button>
+              </Button>
             ) : (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => setDiscussionOpen(true)}
-              >
+              <Button variant="outline" onClick={() => setDiscussionOpen(true)}>
                 Continue discussion
-              </button>
+              </Button>
             )}
-            <button type="button" className={styles.button} onClick={goNext}>
-              {isLast ? "Finish" : "Next question"}
-            </button>
+            <Button onClick={goNext}>{isLast ? "Finish" : "Next question"}</Button>
             {!isLast ? (
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => setFinished(true)}
-              >
+              <Button variant="outline" onClick={() => setFinished(true)}>
                 Finish now
-              </button>
+              </Button>
             ) : null}
           </div>
         </>
       )}
 
-      {error ? <p className={styles.error}>{error}</p> : null}
+      {error ? <p className="text-destructive text-sm">{error}</p> : null}
 
       {discussion ? (
         // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click-to-dismiss is mouse-only; the native <dialog> already closes on Escape (onClose), and a Close button covers keyboard users.
         <dialog
           ref={dialogRef}
-          className={styles.dialog}
+          className={DIALOG_SHELL}
           onClose={() => setDiscussionOpen(false)}
           // Clicking the backdrop (the dialog element itself, not its content) closes it.
           onClick={(event) => {
             if (event.target === dialogRef.current) setDiscussionOpen(false);
           }}
         >
-          <div className={styles.dialogInner}>
-            <div className={styles.dialogHeader}>
-              <h3 className={styles.discussionHeading}>Discuss this question</h3>
-              <button
-                type="button"
-                className={styles.secondaryButton}
-                onClick={() => setDiscussionOpen(false)}
-              >
+          <div className="flex h-full flex-col">
+            <div className={DIALOG_HEADER}>
+              <h3 className="font-semibold text-base">Discuss this question</h3>
+              <Button variant="outline" onClick={() => setDiscussionOpen(false)}>
                 Close
-              </button>
+              </Button>
             </div>
             <QuizDiscussion
               threadId={discussion.threadId}
@@ -292,30 +286,43 @@ function Summary({
   total: number;
 }) {
   return (
-    <div className={styles.runner}>
-      <div className={styles.summary}>
-        <h1>Quiz summary</h1>
-        <p className={styles.progress}>
+    <div className={RUNNER}>
+      <div className="flex flex-col gap-3">
+        <h1 className="font-bold text-2xl">Quiz summary</h1>
+        <p className={PROGRESS}>
           You answered {answered} of {total} question{total === 1 ? "" : "s"}.
         </p>
-        <div className={styles.summaryCounts}>
-          <div className={`${styles.summaryStat} ${styles.correct}`}>
-            <span className={styles.summaryNumber}>{counts.correct}</span>
-            <span className={styles.summaryLabel}>correct</span>
-          </div>
-          <div className={`${styles.summaryStat} ${styles.partial}`}>
-            <span className={styles.summaryNumber}>{counts.partial}</span>
-            <span className={styles.summaryLabel}>partly correct</span>
-          </div>
-          <div className={`${styles.summaryStat} ${styles.incorrect}`}>
-            <span className={styles.summaryNumber}>{counts.incorrect}</span>
-            <span className={styles.summaryLabel}>wrong</span>
-          </div>
+        <div className="flex flex-wrap gap-4">
+          <SummaryStat verdict="correct" count={counts.correct} label="correct" />
+          <SummaryStat verdict="partial" count={counts.partial} label="partly correct" />
+          <SummaryStat verdict="incorrect" count={counts.incorrect} label="wrong" />
         </div>
-        <p className={styles.progress}>
+        <p className={PROGRESS}>
           Reload the page to take the quiz again. Your answers are not stored.
         </p>
       </div>
+    </div>
+  );
+}
+
+function SummaryStat({
+  verdict,
+  count,
+  label,
+}: {
+  verdict: QuizVerdict;
+  count: number;
+  label: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "grow basis-32 rounded-xl border border-foreground/15 border-t-(--verdict) border-t-[3px] p-4 text-center",
+        VERDICT_VARS[verdict],
+      )}
+    >
+      <span className="block font-bold text-(--verdict) text-3xl">{count}</span>
+      <span className="text-foreground/55 text-sm">{label}</span>
     </div>
   );
 }

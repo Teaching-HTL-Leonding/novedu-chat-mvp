@@ -11,6 +11,12 @@ import { cn } from "@/lib/utils";
 
 export type ListColumnKind = "numeric" | "time" | "actions";
 
+// The table chrome, exported for the one non-DataList table (the per-code
+// ConversationStats detail) so both tables share a single recipe.
+export const TABLE_CLASSES = "w-full border-collapse text-sm";
+export const TH_CLASSES = "border-foreground/25 border-b-2 px-3 py-2 text-left font-semibold";
+export const TD_CLASSES = "border-foreground/15 border-b px-3 py-2 align-middle";
+
 // Built-in cell recipes so pages don't repeat alignment classes per column:
 // numeric = right-aligned and snug (header right-aligned too), time = no wrap,
 // actions = a right-aligned row of icon buttons in a snug column.
@@ -82,7 +88,7 @@ export function DataList<T>({
       {rows.length === 0 ? (
         <p>{isFiltered ? noMatchState : emptyState}</p>
       ) : (
-        <table className="w-full border-collapse text-sm">
+        <table className={TABLE_CLASSES}>
           <thead>
             <tr>
               {columns.map((column, index) => (
@@ -91,7 +97,7 @@ export function DataList<T>({
                   key={index}
                   scope="col"
                   className={cn(
-                    "border-foreground/25 border-b-2 px-3 py-2 text-left font-semibold",
+                    TH_CLASSES,
                     column.kind && HEADER_KIND_CLASSES[column.kind],
                     column.srOnlyHeader && "w-[1%]",
                     column.headerClassName,
@@ -114,7 +120,7 @@ export function DataList<T>({
                     // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
                     key={index}
                     className={cn(
-                      "border-foreground/15 border-b px-3 py-2 align-middle",
+                      TD_CLASSES,
                       column.kind && CELL_KIND_CLASSES[column.kind],
                       column.className,
                     )}

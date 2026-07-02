@@ -1,9 +1,9 @@
 import { Notice } from "@/components/notice";
+import { META_LABEL } from "@/components/ui/meta-label";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import type { CodeEntry } from "@/lib/code-store";
 import { codingConnectionProps, loadCoding } from "@/lib/coding-fetch";
-import styles from "./coding.module.css";
-import { CodingConnection } from "./coding-connection";
+import { CODE_PANEL, CodingConnection } from "./coding-connection";
 
 // The coding module's teacher detail body on /codes/[code]: the resolved config
 // (pinned model + the server-only system prompt, teacher-only) and the connection
@@ -20,27 +20,31 @@ export async function CodingDetail({ entry }: { entry: CodeEntry }) {
     <>
       {loaded.ok ? (
         <>
-          <div className={styles.detailSection}>
-            <p className={styles.label}>Model (pinned)</p>
+          <div className="mb-6">
+            <p className={`mb-1.5 ${META_LABEL}`}>Model (pinned)</p>
             <p>
               <code>{loaded.coding.model}</code>
             </p>
           </div>
-          <div className={styles.detailSection}>
-            <p className={styles.label}>System prompt</p>
-            <pre className={styles.systemPrompt}>{loaded.coding.instructions}</pre>
+          <div className="mb-6">
+            <p className={`mb-1.5 ${META_LABEL}`}>System prompt</p>
+            <pre
+              className={`${CODE_PANEL} wrap-anywhere max-h-72 overflow-auto whitespace-pre-wrap`}
+            >
+              {loaded.coding.instructions}
+            </pre>
           </div>
         </>
       ) : (
-        <div className={styles.detailSection}>
+        <div className="mb-6">
           <Notice heading="This coding activity could not be loaded">
             <p>{loaded.message}</p>
           </Notice>
         </div>
       )}
 
-      <div className={styles.detailSection}>
-        <p className={styles.label}>Connection details</p>
+      <div className="mb-6">
+        <p className={`mb-1.5 ${META_LABEL}`}>Connection details</p>
         <CodingConnection {...codingConnectionProps(loaded, origin, entry.code)} />
       </div>
     </>

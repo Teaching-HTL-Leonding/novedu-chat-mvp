@@ -5,7 +5,6 @@ import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { codeModules } from "@/lib/code-modules/registry";
 import { getCode } from "@/lib/code-store";
-import styles from "./stats.module.css";
 
 // Teacher-only detail page for ONE code — a thin dispatcher. It gates (any
 // effective teacher may view any code; finer-grained RBAC is planned), loads the
@@ -51,14 +50,16 @@ export default async function CodeStatsPage({
 
   return (
     <Main>
-      <div className={styles.container}>
+      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-6">
         <BackLink href="/codes">Back to codes</BackLink>
 
         {/* The page title lives in the status bar ("Code Stats"); this is just
             context — which code this detail belongs to. */}
-        <p className={styles.subhead} title={entry.fileUrl}>
+        <p className="mb-5 text-foreground/70 text-sm" title={entry.fileUrl}>
           {entry.note ? `${entry.note} · ` : null}
-          <code className={styles.code}>{entry.code}</code>
+          <code className="rounded-sm bg-foreground/10 px-1.5 py-px text-[0.85em]">
+            {entry.code}
+          </code>
         </p>
 
         {body}

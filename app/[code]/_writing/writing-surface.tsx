@@ -2,6 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { DIALOG_BODY, DIALOG_HEADER, DIALOG_SHELL } from "@/components/ui/dialog-shell";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
 import { cn } from "@/lib/utils";
 import { saveWriting } from "@/lib/writing-actions";
@@ -71,9 +72,7 @@ function Lightbox({
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop click-to-dismiss is mouse-only; the native <dialog> already closes on Escape (onClose), and the Close button covers keyboard users.
     <dialog
       ref={dialogRef}
-      // m-auto: center in the top layer — Tailwind preflight zeroes the UA dialog
-      // margin. The quiz discussion dialog mirrors this exact recipe.
-      className="m-auto h-[80vh] w-[min(48rem,92vw)] max-w-[92vw] overflow-hidden rounded-xl border border-foreground/15 bg-background p-0 text-foreground backdrop:bg-foreground/45"
+      className={DIALOG_SHELL}
       onClose={onClose}
       // Clicking the backdrop (the dialog element itself, not its content) closes it.
       onClick={(event) => {
@@ -81,13 +80,13 @@ function Lightbox({
       }}
     >
       <div className="flex h-full flex-col">
-        <div className="flex items-center justify-between gap-4 border-foreground/15 border-b px-4 py-3">
+        <div className={DIALOG_HEADER}>
           <h3 className="font-semibold text-base">{heading}</h3>
           <Button variant="outline" onClick={onClose}>
             Close
           </Button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+        <div className={DIALOG_BODY}>{children}</div>
       </div>
     </dialog>
   );

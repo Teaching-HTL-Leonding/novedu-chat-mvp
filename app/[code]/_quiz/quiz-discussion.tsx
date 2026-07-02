@@ -3,7 +3,6 @@
 import { ModuleChat } from "@/app/module-chat";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
 import { MarkdownRenderer } from "../../markdown-renderer";
-import styles from "./quiz-runner.module.css";
 
 // The opt-in per-question discussion chat, mounted in a modal dialog over the
 // quiz page. The thread was already minted + seeded server-side by
@@ -35,16 +34,21 @@ export function QuizDiscussion({
   // primitive. The provider it wraps emits no DOM, so this div stays the surface's
   // root either way.
   return (
-    <div className={styles.discussionBody}>
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="discussion-body">
       <ModuleChat
         agentId="quizDiscussion"
         providerKey={threadId}
         threadId={threadId}
         headers={headers}
-        className={styles.liveChat}
+        // Deltas only — the fill recipe is ModuleChat's own. The padding keeps
+        // the composer off the dialog edges.
+        className="px-4 pb-3"
       >
         {feedback ? (
-          <div className={styles.discussionFeedback}>
+          // The graded feedback, shown once at the top so the student keeps the
+          // verdict's reasoning in view while chatting. Capped so long feedback
+          // never crowds out the live chat; scrolls within itself if needed.
+          <div className="max-h-[35%] overflow-y-auto border-foreground/10 border-b px-4 py-3 text-sm leading-relaxed">
             <MarkdownRenderer content={feedback} />
           </div>
         ) : null}

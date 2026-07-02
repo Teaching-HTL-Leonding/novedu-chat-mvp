@@ -5,7 +5,6 @@ import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { getConversationMessages } from "@/lib/code-stats-store";
 import { getCode } from "@/lib/code-store";
-import styles from "./conversation.module.css";
 import { ConversationView } from "./conversation-view";
 
 // Teacher-only, READ-ONLY view of one conversation held under a code. Any
@@ -51,17 +50,19 @@ export default async function ConversationPage({
 
   return (
     <Main>
-      <div className={styles.container}>
+      <div className="flex min-h-0 flex-1 flex-col px-5 pt-4 pb-6">
         <BackLink href={backHref}>Back to stats</BackLink>
         {/* Title is in the status bar ("Conversation"); this is just context. */}
-        <p className={styles.subhead}>{entry.note || entry.code} · read-only transcript</p>
+        <p className="mb-4 text-foreground/70 text-sm">
+          {entry.note || entry.code} · read-only transcript
+        </p>
 
         {messages === undefined ? (
           <Notice heading="Conversation temporarily unavailable">
             <p>The messages could not be loaded right now. Try again in a moment.</p>
           </Notice>
         ) : messages.length === 0 ? (
-          <p className={styles.empty}>This conversation has no messages.</p>
+          <p className="text-foreground/70">This conversation has no messages.</p>
         ) : (
           <ConversationView messages={messages} />
         )}
