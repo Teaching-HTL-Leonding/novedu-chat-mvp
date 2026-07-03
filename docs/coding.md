@@ -13,7 +13,7 @@ Read it before touching the coding libs (`lib/coding-*.ts`, `lib/scch-endpoint.t
 the public route (`app/api/coding/**`), the student surface
 (`app/[code]/render-coding.tsx`, `app/[code]/_coding/**`), the descriptor
 (`lib/code-modules/coding.ts`), the `api/coding` matcher in `proxy.ts`, or the
-sample (`coding/beginner-typescript.yaml`).
+samples (`coding/*.yaml`).
 
 ## What it is, and what it is NOT
 
