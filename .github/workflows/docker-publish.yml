@@ -3,12 +3,16 @@ name: Build and publish Docker image
 on:
   push:
     branches: [main]
-    # A doc-only push doesn't change the image — skip the build/publish/deploy
-    # entirely. Mixed pushes (code + docs) still publish. Manual runs
-    # (workflow_dispatch) always build regardless of what changed.
+    # A doc-only or sample-spec push doesn't change the image — skip the
+    # build/publish/deploy entirely. Mixed pushes (code + docs) still publish.
+    # Manual runs (workflow_dispatch) always build regardless of what changed.
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      - 'coding/**'
+      - 'quizzes/**'
+      - 'tutors/**'
+      - 'writings/**'
   workflow_dispatch:
 
 concurrency:
