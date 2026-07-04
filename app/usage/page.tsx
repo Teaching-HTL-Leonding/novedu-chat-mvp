@@ -1,0 +1,51 @@
+import { Suspense } from "react";
+import { Main, PageBody } from "@/components/page-main";
+import { requireTeacherPage } from "@/components/require-teacher-page";
+import { parseRange } from "@/lib/usage-range";
+import { BreakdownSection } from "./breakdown-section";
+import { BreakdownSkeleton, ChartSkeleton, KpiSkeleton } from "./chart-skeleton";
+import { KpiSection } from "./kpi-section";
+import { RangeTabs } from "./range-tabs";
+import { TokenSection } from "./token-section";
+
+// Teacher-only usage dashboard (docs/dashboard.md). The shell + range tabs render
+// immediately; each data section is its own async server component behind a
+// Suspense boundary, so they stream in independently (a slow query never blocks the
+// others). The Suspense boundaries are keyed by range so switching the filter shows
+// the skeletons again while the new window streams. "Effective" teacher: a teacher
+// in student mode is denied like a student. All windows/labels are UTC.
+export const dynamic = "force-dynamic";
+
+export default async function UsagePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string | string[] }>;
+}) {
+  const denied = await requireTeacherPage();
+  if (denied) return denied;
+
+  const range = parseRange((await searchParams).range);
+  // One snapshot shared by every section, so the KPI, chart, and pies all describe
+  // the same window.
+  const now = new Date();
+
+  return (
+    <Main>
+      <PageBody className="dashboard-scroll gap-6">
+        <RangeTabs />
+        <Suspense key={`kpi-${range}`} fallback={<KpiSkeleton />}>
+          <KpiSection range={range} now={now} />
+        </Suspense>
+        <Suspense
+          key={`tokens-${range}`}
+          fallback={<ChartSkeleton title="Token usage over time" />}
+        >
+          <TokenSection range={range} now={now} />
+        </Suspense>
+        <Suspense key={`breakdown-${range}`} fallback={<BreakdownSkeleton />}>
+          <BreakdownSection range={range} now={now} />
+        </Suspense>
+      </PageBody>
+    </Main>
+  );
+}

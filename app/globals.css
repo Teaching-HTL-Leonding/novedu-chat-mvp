@@ -48,6 +48,25 @@
   --input: oklch(0.87 0 0);
   --ring: oklch(0.708 0 0);
   --radius: 0.5rem;
+
+  /* Data-viz categorical palette (dataviz skill, validated with
+     scripts/validate_palette.js for the light surface — worst adjacent CVD ΔE
+     24.2, well clear of the ≥12 target). Slots 1–8 are the validated hue order;
+     slot 9 is an extended step used only as the code pie's 9th slice, and
+     `--chart-other` is the muted "Other" gray. shadcn's chart components read
+     `--chart-*`, so these drop in unchanged when shadcn lands. Light-only, like
+     the rest of the theme; charts read these tokens (never a bare hex in a
+     component — see docs/styling.md). */
+  --chart-1: #2a78d6;
+  --chart-2: #1baf7a;
+  --chart-3: #eda100;
+  --chart-4: #008300;
+  --chart-5: #4a3aa7;
+  --chart-6: #e34948;
+  --chart-7: #e87ba4;
+  --chart-8: #eb6834;
+  --chart-9: #7a5c3e;
+  --chart-other: #898781;
 }
 
 @theme inline {
@@ -73,6 +92,16 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
+  --color-chart-9: var(--chart-9);
+  --color-chart-other: var(--chart-other);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -111,6 +140,26 @@
    gray ramp. Same layer as the generated `prose` utility but later in source
    order, so these declarations win. */
 @layer utilities {
+  /* The usage dashboard overflows the viewport, but macOS overlay scrollbars stay
+     hidden until you actually scroll — which reads as "cropped, no scrollbar". Show
+     a slim, persistent scrollbar on the dashboard's scroll area so it is clearly
+     scrollable. Scoped to this class so the chat + other pages are untouched. */
+  .dashboard-scroll {
+    scrollbar-gutter: stable;
+  }
+  .dashboard-scroll::-webkit-scrollbar {
+    width: 10px;
+  }
+  .dashboard-scroll::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--color-foreground) 25%, transparent);
+    border: 3px solid var(--color-background);
+    border-radius: 9999px;
+    background-clip: padding-box;
+  }
+  .dashboard-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
   .prose {
     --tw-prose-body: var(--color-foreground);
     --tw-prose-headings: var(--color-foreground);
