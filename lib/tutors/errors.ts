@@ -24,11 +24,13 @@ export type ErrorCode =
   // variable the fragment never declares. Surfaced by the standalone fragment
   // check and by thorough tutor validation (whole-library check).
   | "FRAGMENT_TEMPLATE_ERROR"
-  // The quiz / writing YAML does not match its schema (a missing/misspelled field,
-  // a wrong type, no `llm.model`, no questions / no instructions). The quiz/writing
-  // validators are strict authoring gates, exactly like the tutor/fragment ones.
+  // The quiz / writing / coding YAML does not match its schema (a missing/misspelled
+  // field, a wrong type, no `llm.model`, no questions / no instructions). The
+  // quiz/writing/coding validators are strict authoring gates, exactly like the
+  // tutor/fragment ones.
   | "QUIZ_SCHEMA_ERROR"
   | "WRITING_SCHEMA_ERROR"
+  | "CODING_SCHEMA_ERROR"
   // The same quiz question `id` is declared on more than one question (per-question
   // stats key must be unique).
   | "DUPLICATE_QUIZ_QUESTION_ID";

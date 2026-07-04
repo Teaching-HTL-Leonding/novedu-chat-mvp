@@ -9,6 +9,7 @@ import { runValidate } from "./validate";
 const tutorsDir = fileURLToPath(new URL("../../../tutors/", import.meta.url));
 const quizzesDir = fileURLToPath(new URL("../../../quizzes/", import.meta.url));
 const writingsDir = fileURLToPath(new URL("../../../writings/", import.meta.url));
+const codingDir = fileURLToPath(new URL("../../../coding/", import.meta.url));
 
 describe("runValidate — tutors (local files)", () => {
   it("accepts a valid tutor and reports its model", async () => {
@@ -112,6 +113,37 @@ describe("runValidate — writing activities (local files)", () => {
     expect(outcome.result.ok).toBe(false);
     if (!outcome.result.ok) {
       expect(outcome.result.errors[0]?.code).toBe("WRITING_SCHEMA_ERROR");
+    }
+  });
+});
+
+describe("runValidate — coding activities (local files)", () => {
+  it("accepts a valid coding activity and reports its model", async () => {
+    const outcome = await runValidate(`${codingDir}beginner-typescript.yaml`, "coding");
+
+    expect(outcome.kind).toBe("coding");
+    expect(outcome.result.ok).toBe(true);
+    if (outcome.kind === "coding" && outcome.result.ok) {
+      expect(outcome.result.model).toBeTruthy();
+      expect(outcome.result.codingId).toBe("beginner-typescript");
+    }
+  });
+
+  it("rejects the committed broken coding activity with a CODING_SCHEMA_ERROR", async () => {
+    const outcome = await runValidate(`${codingDir}broken-coding.yaml`, "coding");
+
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors[0]?.code).toBe("CODING_SCHEMA_ERROR");
+    }
+  });
+
+  it("reports a missing file as a FETCH_FAILED error (no throw)", async () => {
+    const outcome = await runValidate(`${codingDir}does-not-exist.yaml`, "coding");
+
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors[0]?.code).toBe("FETCH_FAILED");
     }
   });
 });

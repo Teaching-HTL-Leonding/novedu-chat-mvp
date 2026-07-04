@@ -40,6 +40,7 @@ nothing is tracked or stored per student.
 A minimal coding activity, `my-coding.yaml`:
 
 ```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/coding/coding-yaml.schema.json
 id: my-coding
 name: "Beginner TypeScript Coding Buddy"
 title: "TypeScript Coding Buddy (Beginners)"
@@ -58,16 +59,44 @@ instructions: |
   Teach in small steps and explain WHY.
 ```
 
+The first line is the editor schema hint — see [Editor support](#3-editor-support).
+
 This repository ships a complete example you can copy from:
 [`beginner-typescript.yaml`](./beginner-typescript.yaml).
 
 ---
 
-## 3. Coding file reference
+## 3. Editor support
+
+This folder includes a JSON Schema for coding YAML files: `coding-yaml.schema.json`.
+
+Editors that use the YAML Language Server, including VS Code with YAML support, can
+pick up the schema from a modeline comment at the top of a coding file:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/coding/coding-yaml.schema.json
+```
+
+The sample files in this folder use this **full raw GitHub URL** so that validation,
+completion, and hover help work in your editor **whether or not** the schema file
+happens to sit next to the YAML you are editing. (If your file _is_ next to the
+schema, the relative path `./coding-yaml.schema.json` works too.)
+
+In VS Code, install the Red Hat YAML extension to get this schema support:
+<https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml>.
+
+The line is a comment, not a YAML field. The app ignores it, but the editor can use
+it for validation and completion. (The schema is for editor hints; the app validates
+with its own checks — see [Validating your activity](#7-validating-your-activity).)
+
+---
+
+## 4. Coding file reference
 
 A coding file has these fields. All are required unless marked optional.
 
 ```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/coding/coding-yaml.schema.json
 id: my-coding # short machine name
 name: "My Coding Buddy" # optional: human-readable label
 title: "Coding Buddy" # optional: label shown to the student on the /<code> page
@@ -103,18 +132,20 @@ language, a subset of features, a teaching style). See
 [`beginner-typescript.yaml`](./beginner-typescript.yaml) for a thorough example.
 
 > There is **no** `anonymous` field — coding activities are always anonymous — and
-> **no** `placeholder` field (that one is for the writing editor).
+> **no** `placeholder` or `description` field (those are for other modules). The
+> validator **rejects** them, so you cannot set them by mistake.
 
 ---
 
-## 4. Hosting your activity
+## 5. Hosting your activity
 
 The server fetches your activity over the internet, so it must be at a **public
 `http(s)` URL**.
 
 The easiest option is to **host it in the app itself** — no GitHub needed. On the
 **YAML Files** page (`/files`) create a file of kind **Coding**; it is served at
-`https://<origin>/api/files/<name>` and drops straight into a code.
+`https://<origin>/api/files/<name>` and drops straight into a code. The file is
+**validated when you save it**.
 
 Alternatively, put the `.yaml` in a public GitHub repo and use its **raw** URL
 (commit and push first — the server reads the published version, not your local
@@ -122,13 +153,13 @@ copy).
 
 ---
 
-## 5. Creating the code
+## 6. Creating the code
 
 Mint a code like any other activity — there is nothing coding-specific in the form:
 
 1. Go to **Codes → New**.
 2. **Activity:** choose **Coding**.
-3. **File URL:** the URL of the coding YAML from step 4.
+3. **File URL:** the URL of the coding YAML from step 5.
 4. **Available from / until:** set a window, or leave **both blank** for an
    open-ended code (no start = active immediately; no end = never expires).
 5. **Create code.**
@@ -139,7 +170,42 @@ code, or the `/<code>` link — which shows the student the exact connection set
 
 ---
 
-## 6. Using the code with little-coder
+## 7. Validating your activity
+
+Validation runs the same structural checks the app enforces, so a broken activity is
+caught **before** a student opens it — an invalid file cannot be saved or turned into
+a code.
+
+In the app, open **YAML Files** (`/files`), create or edit your activity (kind
+**Coding**), and press:
+
+- **Validate** — checks the YAML **without** saving, or
+- **Validate & save** — checks again and stores a new version; an invalid save is
+  rejected with the specific errors.
+
+From the terminal or CI, use the CLI:
+
+```bash
+novedu-cli validate ./coding/my-coding.yaml --kind coding
+```
+
+The validator checks, in order:
+
+1. The file is valid YAML.
+2. The activity has the correct structure — no missing or misspelled fields, an
+   `llm.model`, and a non-empty `instructions` block.
+
+### Common problems and how to fix them
+
+| Reported problem      | What it means                                                  | How to fix                                    |
+| --------------------- | -------------------------------------------------------------- | --------------------------------------------- |
+| `YAML_PARSE_ERROR`    | The file isn't valid YAML.                                     | Check indentation and quotes.                 |
+| `CODING_SCHEMA_ERROR` | A field is missing, has the wrong type, or is misspelled (the detail lines name the field). A missing `instructions` or `llm.model` is the usual cause. An unsupported field (e.g. `anonymous`, `description`, `placeholder`) is also rejected. | Compare against this guide; fix the named field. |
+| `FETCH_FAILED`        | The URL couldn't be loaded.                                    | Check the URL is public and pushed.           |
+
+---
+
+## 8. Using the code with little-coder
 
 [little-coder](https://github.com/itayinbarr/little-coder) is a coding agent built on
 `pi`. It is config-driven, so you point it at the endpoint with a small JSON file.
@@ -202,24 +268,16 @@ works).
 
 ---
 
-## 7. Validating your activity
-
-Structural validation for coding files is **not implemented yet** — a coding file is
-**not** schema-checked when you save or create a code (unlike tutor, quiz, and
-writing files, which are strictly validated). Take care to get the structure right
-yourself: the endpoint needs a non-empty **`instructions`** and an **`llm.model`**,
-or it returns an error to the coding agent at runtime instead of failing early.
-
----
-
-## 8. Checklist before you publish
+## 9. Checklist before you publish
 
 - [ ] The activity has an `id`, an `llm.model` (a real SCCH model id), and a
       non-empty `instructions`.
 - [ ] `instructions` constrains the assistant to what your class has learned
       (language, feature subset, teaching style).
+- [ ] You validated the activity and it passes (in `/files` or with the CLI).
 - [ ] The file is **public** and, if on GitHub, **pushed**.
 - [ ] You created a **Coding** code pointing at the file, with the window you want
       (blank = open-ended).
 - [ ] You handed students the code (or the `/<code>` link) so they can configure
       little-coder.
+```

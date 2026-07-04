@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   loadAndCheckQuiz: vi.fn(),
   loadWriting: vi.fn(),
   loadAndCheckWriting: vi.fn(),
+  loadAndCheckCoding: vi.fn(),
 }));
 
 vi.mock("@/lib/tutors", () => ({
@@ -24,6 +25,7 @@ vi.mock("@/lib/quiz-fetch", () => ({ loadQuiz: mocks.loadQuiz }));
 vi.mock("@/lib/quiz-validate", () => ({ loadAndCheckQuiz: mocks.loadAndCheckQuiz }));
 vi.mock("@/lib/writing-fetch", () => ({ loadWriting: mocks.loadWriting }));
 vi.mock("@/lib/writing-validate", () => ({ loadAndCheckWriting: mocks.loadAndCheckWriting }));
+vi.mock("@/lib/coding-validate", () => ({ loadAndCheckCoding: mocks.loadAndCheckCoding }));
 
 import { fileValidators, readAnonymousFlag } from "@/lib/file-validators";
 
@@ -168,17 +170,40 @@ describe("fileValidators.writing (strict gate — blocks an invalid activity)", 
 });
 
 describe("fileValidators.coding", () => {
-  it("is a placeholder that accepts any file and freezes anonymous:true", async () => {
+  it("validates via loadAndCheckCoding and FREEZES anonymous:true (coding is always anonymous)", async () => {
+    mocks.loadAndCheckCoding.mockResolvedValue({ ok: true, warnings: ["w"], title: "T" });
     const result = await fileValidators.coding.validate(URL_, fetcher);
+    expect(mocks.loadAndCheckCoding).toHaveBeenCalledWith(URL_, fetcher);
     expect(result).toEqual({
       ok: true,
-      warnings: [],
+      warnings: ["w"],
+      title: "T",
+      description: null,
+      // Frozen regardless of the file — the API path carries no per-student identity.
+      anonymous: true,
+    });
+  });
+
+  it("carries no description and defaults title to null", async () => {
+    mocks.loadAndCheckCoding.mockResolvedValue({ ok: true, warnings: [], title: null });
+    expect(await fileValidators.coding.validate(URL_, fetcher)).toMatchObject({
+      ok: true,
       title: null,
       description: null,
       anonymous: true,
     });
-    // The placeholder does no I/O — no loader is consulted.
-    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the structured errors on a failed check (BLOCKS the save)", async () => {
+    mocks.loadAndCheckCoding.mockResolvedValue({
+      ok: false,
+      errors: [{ code: "CODING_SCHEMA_ERROR", message: "m" }],
+      warnings: [],
+    });
+    expect(await fileValidators.coding.validate(URL_, fetcher)).toEqual({
+      ok: false,
+      errors: [{ code: "CODING_SCHEMA_ERROR", message: "m" }],
+    });
   });
 });
 

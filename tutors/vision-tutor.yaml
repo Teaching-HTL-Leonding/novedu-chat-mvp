@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 id: vision-math-tutor
 name: "Vision Math Tutor"
 description: "A tutor with image input enabled — students can attach photos (e.g. of their homework). Used in the documentation and end-to-end tests."

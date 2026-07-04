@@ -86,17 +86,20 @@ Editors that use the YAML Language Server, including VS Code with YAML support,
 can pick up the schema from a modeline comment at the top of a quiz file:
 
 ```yaml
-# yaml-language-server: $schema=./quiz-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/quizzes/quiz-yaml.schema.json
 ```
+
+The sample files in this folder use this **full raw GitHub URL** so that validation,
+completion, and hover help work in your editor **whether or not** the schema file
+happens to sit next to the YAML you are editing. (If your file _is_ next to the
+schema, the relative path `./quiz-yaml.schema.json` works too.)
 
 In VS Code, install the Red Hat YAML extension to get this schema support:
 <https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml>.
 
 The line is a comment, not a YAML field. The app ignores it, but the editor can
-use it for validation, completion, and hover help. Use a relative path when the
-schema file sits next to the YAML file, or the published raw GitHub URL when
-editing a file elsewhere. (The schema is for editor hints; the app validates with
-its own checks — see [Validating your quiz](#7-validating-your-quiz).)
+use it for validation, completion, and hover help. (The schema is for editor hints;
+the app validates with its own checks — see [Validating your quiz](#7-validating-your-quiz).)
 
 ---
 

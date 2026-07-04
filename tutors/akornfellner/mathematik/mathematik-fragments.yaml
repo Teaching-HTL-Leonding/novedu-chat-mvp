@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 # Fragment-Bibliothek für Mathematik-Tutoren.
 #
 # Migriert aus der unabhängig entwickelten "prompt-database" (Autor: a.kornfellner):

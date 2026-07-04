@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 id: text-only-math-tutor
 name: "Text-Only Math Tutor"
 description: "A tutor that explicitly opts out of image attachments (e.g. for models without vision support). Used in the documentation and end-to-end tests."

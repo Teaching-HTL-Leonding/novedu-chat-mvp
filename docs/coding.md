@@ -66,15 +66,23 @@ instructions: |
 ```
 
 - **`parseCoding`** (`lib/coding-yaml.ts`) is the lenient runtime read: it requires
-  only `llm.model` + `instructions` and returns `{ id, name, title?, model,
-  instructions }`. `model` and `instructions` are **server-only**.
-- **Validation is a placeholder** (`lib/coding-validate.ts`): structural authoring
-  validation is **not implemented yet**, so `codingValidator.validate` accepts any
-  file and freezes `anonymous: true`. (When real validation lands, replace that one
-  block; the rest of the wiring is unaffected.)
+  only `llm.model` + `instructions` and returns `{ title?, model, instructions }`.
+  `model` and `instructions` are **server-only**.
+- **Authoring validation** is the strict `CodingYamlSchema` gate
+  (`lib/coding-schema.ts` is the source of truth) run by `loadAndCheckCoding`
+  (`lib/coding-validate.ts`): bad YAML, a missing/misspelled field, no `llm.model`, or
+  no `instructions` returns `ok: false` with a `CODING_SCHEMA_ERROR` and **blocks the
+  save**, exactly like tutor/quiz/writing. The schema is `strictObject`, so it also
+  rejects fields coding does not have — including `anonymous` (coding is always
+  anonymous), `description`, and `placeholder`. The seam (`lib/file-validators.ts`)
+  freezes `anonymous: true` onto the row regardless. `coding/coding-yaml.schema.json`
+  is the hand-maintained JSON-Schema mirror for editor IntelliSense (a modeline
+  points each coding YAML at its raw GitHub URL).
 - `coding/beginner-typescript.yaml` is the shipped sample: a buddy constrained to a
   beginner's knowledge (primitive types only, no OOP/classes, `if` + basic loops, no
-  arrow functions, full type annotations). A unit test parses it so it never drifts.
+  arrow functions, full type annotations). A unit test parses it so it never drifts;
+  `coding/broken-coding.yaml` is the committed invalid fixture the validation tests
+  reject.
 
 ## The proxy route
 
@@ -150,10 +158,12 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
 ## Testing
 
 - Hermetic unit tests: `parseCoding` (incl. the shipped sample) `lib/coding-yaml.unit.test.ts`;
-  the pure proxy helpers (`buildUpstreamChatBody`, `parseBearerKey`, `openaiError`)
-  `lib/coding-proxy.unit.test.ts`; the descriptor + the placeholder validator + the
-  `readAnonymousFlag` branch (`lib/code-modules/coding.unit.test.ts`,
-  `lib/file-validators.unit.test.ts`).
+  the strict authoring validator (schema errors, the always-anonymous mapping)
+  `lib/coding-validate.unit.test.ts`; the pure proxy helpers (`buildUpstreamChatBody`,
+  `parseBearerKey`, `openaiError`) `lib/coding-proxy.unit.test.ts`; the descriptor + the
+  validator seam + the `readAnonymousFlag` branch (`lib/code-modules/coding.unit.test.ts`,
+  `lib/file-validators.unit.test.ts`). The `@novedu/cli validate --kind coding` path is
+  covered in `cli/src/commands/validate.unit.test.ts`.
 - HTTP-level **integration test** of the endpoint
   (`app/api/coding/v1/chat/completions/route.unit.test.ts`, node env): drives the
   real `POST` with `Request`s and a mocked SCCH `fetch` — auth/window gating,
@@ -168,4 +178,3 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   SCCH models and honor the client's `model` when allowed, exposing the list.
 - **Per-key rate limiting** (`429`) to shield the SCCH GPU from a leaked key.
 - **Usage metrics** (request count / token usage) on the teacher detail page.
-- **Real authoring validation** to replace the placeholder gate.

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 id: programming-linked-lists-de
 name: "Tutor für verkettete Listen"
 title: "Dein Tutor für verkettete Listen"

@@ -6,10 +6,10 @@ import { parse as parseYamlText } from "yaml";
 // of just the essentials the proxy needs (the teacher's system prompt + the pinned
 // model), with a friendly message when something required is missing.
 //
-// This is NOT an authoring gate: structural validation for coding YAMLs is a
-// placeholder (see lib/coding-validate.ts) and is deliberately separate from this
-// read. A coding activity is ALWAYS anonymous (the API path carries no per-student
-// identity), so there is no `anonymous` flag here.
+// This is NOT the authoring gate: the strict authoring validation for coding YAMLs
+// lives in lib/coding-validate.ts (CodingYamlSchema) and is deliberately separate
+// from this lenient read. A coding activity is ALWAYS anonymous (the API path
+// carries no per-student identity), so there is no `anonymous` flag here.
 //
 // SERVER-SIDE: exposes the server-only `instructions` (the teacher's system prompt)
 // and `model`. Neither must ever reach the browser — the student connection page
