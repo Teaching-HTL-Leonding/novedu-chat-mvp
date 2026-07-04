@@ -29,6 +29,7 @@ const NAV_ITEMS = [
   },
   { href: "/files", label: "YAML Files", heading: "YAML Files", teacherOnly: true },
   { href: "/images", label: "Images", heading: "Images", teacherOnly: true },
+  { href: "/usage", label: "Usage", heading: "Usage Dashboard", teacherOnly: true },
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
 ] as const;
 

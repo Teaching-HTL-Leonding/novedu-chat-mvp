@@ -2,24 +2,13 @@ import Link from "next/link";
 import { type ListColumn, ListTable } from "@/components/data-list";
 import { Notice } from "@/components/notice";
 import { buttonVariants } from "@/components/ui/button";
-import { META_LABEL } from "@/components/ui/meta-label";
+import { StatTile } from "@/components/ui/stat-tile";
 import { codeModuleLabels } from "@/lib/code-modules/types";
 import { getCodeStats, type Interaction } from "@/lib/code-stats-store";
 import type { CodeEntry } from "@/lib/code-store";
-import { cn } from "@/lib/utils";
 import { LocalTime } from "../../local-time";
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
-
-// One summary tile (count label + big number) in the header <dl>.
-function StatTile({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="min-w-32 rounded-lg border border-foreground/15 px-4 py-3">
-      <dt className={cn("mb-1", META_LABEL)}>{label}</dt>
-      <dd className="font-bold text-2xl leading-none">{value}</dd>
-    </div>
-  );
-}
 
 // The shared per-code detail body for modules whose review centres on the chat: a
 // summary (interaction count, and student count when attributed) plus a table of

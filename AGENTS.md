@@ -11,6 +11,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Load the **`mastra`** skill before any Mastra work; never rely on cached APIs. Register every agent/tool/workflow/scorer in `app/mastra/index.ts`, and use the `dev`/`build` package scripts, not raw `mastra dev` / `mastra build`.
 - Research the [Drizzle docs](https://orm.drizzle.team/llms.txt) before complex queries, transactions, or migrations.
 - Research current **Tailwind** docs in context7 (`ctx7` CLI) before styling work — v4 is CSS-first and differs from training data.
+- Research current **Recharts** docs in context7 (`/recharts/recharts`) before charting / usage-dashboard work.
 
 ## Security & privacy invariants
 
@@ -142,7 +143,14 @@ Read before touching: `instrumentation.ts`, `lib/telemetry.ts`, the `@openteleme
 
 Read before touching: `lib/usage-store.ts`, `app/mastra/usage-exporter.ts`, `lib/usage-context-keys.ts`, the `observability` block in `app/mastra/index.ts`, `novedu_usage_by_code` / `novedu_usage_by_user`, and the capture points in the CopilotKit route / `lib/quiz-actions.ts` / `lib/writing-actions.ts` / the coding proxy.
 
-- Two **independent** hourly aggregate tables written **off the response path** by the never-throwing `lib/usage-store.ts` (increment-UPSERT). No read UI this iteration (query via SQL / Log Analytics); `usage_by_user` is the future per-student-quota substrate (a windowed `SUM`). Token + tool-call capture is a Mastra **`ObservabilityExporter`** (`@mastra/observability`, registered in `app/mastra/index.ts`) reading `MODEL_GENERATION` span `usage` (the `UsageStats` shape: `inputDetails.cacheRead` / `outputTokens`), attributed via three `requestContextKeys` (`usageCode`/`usageUserId`/`usageModule`, `lib/usage-context-keys.ts`) set on the per-request RequestContext at each agent seam; the **coding proxy** (no Mastra) taps its passthrough response for the `usage` chunk (per-code only, no `oid`). `input_tokens_cached` counts prefix-cache hits (SCCH's `prompt_tokens_details.cached_tokens` → Mastra `inputDetails.cacheRead`). Anonymity: see the security block.
+- Two **independent** hourly aggregate tables written **off the response path** by the never-throwing `lib/usage-store.ts` (increment-UPSERT). The teacher **usage dashboard** reads `usage_by_code` (`docs/dashboard.md`); `usage_by_user` is the future per-student-quota substrate (a windowed `SUM`). Token + tool-call capture is a Mastra **`ObservabilityExporter`** (`@mastra/observability`, registered in `app/mastra/index.ts`) reading `MODEL_GENERATION` span `usage` (the `UsageStats` shape: `inputDetails.cacheRead` / `outputTokens`), attributed via three `requestContextKeys` (`usageCode`/`usageUserId`/`usageModule`, `lib/usage-context-keys.ts`) set on the per-request RequestContext at each agent seam; the **coding proxy** (no Mastra) taps its passthrough response for the `usage` chunk (per-code only, no `oid`). `input_tokens_cached` counts prefix-cache hits (SCCH's `prompt_tokens_details.cached_tokens` → Mastra `inputDetails.cacheRead`). Anonymity: see the security block.
+
+### Usage dashboard → `docs/dashboard.md`
+
+Read before touching: `app/usage/**`, `lib/usage-stats-store.ts`, `lib/usage-range.ts`, the `--chart-*` tokens in `app/globals.css`, the `/usage` nav entry in `components/nav-menu.tsx`.
+
+- The teacher-only read surface at `/usage` over `novedu_usage_by_code`: a stacked token-over-time **bar chart** + data table, two **pies** (per module, per code top-9 + Other), and two windowed **KPIs** (chats, quiz answers graded). One **time filter** (`24h/7d/30d/365d`, all **UTC**) governs every panel including the KPIs.
+- **Server-first** — no `/api/usage/*` route (the page's `isEffectiveTeacher()` is the whole gate): each section is an async server component reading `lib/usage-stats-store.ts` (raw by-value `sql`, **one query per chart/KPI**, never-throws) and passing props to thin **Recharts** client children; `<Suspense>` streaming keyed by `?range=` gives the instant shell + per-panel skeletons. `lib/usage-range.ts` is the pure UTC windowing/bucketing core. The **bar chart is reusable** for future single-code stats pages (`getTokenTimeSeries({ code })`). Chart colors are `--chart-*` tokens (shadcn-ready, docs/styling.md); anonymity is unchanged (the tables carry no user↔code link).
 
 ### CI / GitHub Actions security → `docs/ci-security.md`
 
