@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/coding/coding-yaml.schema.json",
+  "title": "Coding Activity YAML",
+  "description": "Schema for a coding activity: an OpenAI-compatible coding endpoint an external coding agent (e.g. little-coder) points at. Kept in sync by hand with the Zod schema in lib/coding-schema.ts, which is the source of truth for validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "llm", "instructions"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short machine-readable activity id, e.g. beginner-typescript."
+    },
+    "name": {
+      "type": "string",
+      "description": "Optional human-readable label (not shown to the student)."
+    },
+    "title": {
+      "type": "string",
+      "description": "Optional label shown to the student on the /<code> connection page."
+    },
+    "llm": {
+      "$ref": "#/$defs/llm"
+    },
+    "instructions": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The assistant's system prompt. SERVER-ONLY: never sent to the browser or the coding agent, and appended AFTER the coding tool's own prompt (so the teacher has the final word). Constrain the assistant to what your class has learned."
+    }
+  },
+  "$defs": {
+    "llm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The SCCH model that answers. SERVER-ONLY and PINNED: the proxy always uses this model and ignores whatever model the coding agent sends."
+        }
+      }
+    }
+  }
+}

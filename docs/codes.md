@@ -73,10 +73,12 @@ siblings) AND by code-create (fetcher = `appHostedFetcher`; url = the row's
 - `writing` → `loadAndCheckWriting` (`lib/writing-validate.ts`): the same kind of
   strict `WritingYamlSchema` gate, differing only in that writing defaults
   `anonymous: false` — see `docs/writing.md`.
-- `coding` → a **placeholder** validator (`lib/coding-validate.ts`): structural
-  validation is not implemented yet, so it accepts any file and freezes
-  `anonymous: true` (coding is always anonymous). The lenient runtime read is
-  `parseCoding` (`lib/coding-yaml.ts`) — see `docs/coding.md`.
+- `coding` → `loadAndCheckCoding` (`lib/coding-validate.ts`): the same kind of strict
+  `CodingYamlSchema` gate (bad YAML, missing field, no `llm.model`, no `instructions`
+  → blocks the save), differing only in that it carries **no** anonymity flag — coding
+  is always anonymous, so the seam freezes `anonymous: true` (the schema has no
+  `anonymous` field to read). The lenient runtime read is `parseCoding`
+  (`lib/coding-yaml.ts`) — see `docs/coding.md`.
 
 **Layer 3 — the `CodeModule` registry** (`lib/code-modules/`): the registry of
 shareable activities.

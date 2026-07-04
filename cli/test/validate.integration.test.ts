@@ -13,6 +13,7 @@ const cli = fileURLToPath(new URL("../dist/main.js", import.meta.url));
 const tutorsDir = fileURLToPath(new URL("../../tutors/", import.meta.url));
 const quizzesDir = fileURLToPath(new URL("../../quizzes/", import.meta.url));
 const writingsDir = fileURLToPath(new URL("../../writings/", import.meta.url));
+const codingDir = fileURLToPath(new URL("../../coding/", import.meta.url));
 
 const RAW_BASE =
   "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors";
@@ -131,6 +132,30 @@ describe("novedu-cli validate — local files", () => {
 
     expect(code).toBe(1);
     expect(stdout).toContain("WRITING_SCHEMA_ERROR");
+  });
+
+  it("exits 0 for a valid coding activity with --kind coding", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${codingDir}beginner-typescript.yaml`,
+      "--kind",
+      "coding",
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("Valid coding activity");
+  });
+
+  it("exits 1 with CODING_SCHEMA_ERROR for the committed broken coding activity", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${codingDir}broken-coding.yaml`,
+      "--kind",
+      "coding",
+    ]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain("CODING_SCHEMA_ERROR");
   });
 
   it("rejects an invalid --kind", async () => {

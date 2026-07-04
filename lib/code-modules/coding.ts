@@ -7,9 +7,9 @@ import type { CodeModuleDef } from "./registry";
 // NO CopilotKit runtime — students reach it only through the public /api/coding/v1
 // route, using the CODE as the bearer API key (see
 // app/api/coding/v1/chat/completions/route.ts). It is always anonymous (no
-// per-student identity on the API path), and authoring validation is a placeholder
-// for now (lib/coding-validate.ts). The teacher detail shows the resolved config
-// plus the connection details to hand out — there are no conversations to review.
+// per-student identity on the API path); authoring validation is the strict schema
+// gate in lib/coding-validate.ts. The teacher detail shows the resolved config plus
+// the connection details to hand out — there are no conversations to review.
 //
 // SERVER-ONLY. Calls the CodingDetail server component as a plain function so no
 // JSX lives in this registry .ts file.

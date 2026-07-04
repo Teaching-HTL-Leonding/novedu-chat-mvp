@@ -163,16 +163,20 @@ Editors that use the YAML Language Server, including VS Code with YAML support,
 can pick up the schema from a modeline comment at the top of a YAML file:
 
 ```yaml
-# yaml-language-server: $schema=./tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 ```
+
+The **same** schema covers both tutor files and fragment-library files, so use this
+line on either. The sample files in this folder use this **full raw GitHub URL** so
+that validation, completion, and hover help work in your editor **whether or not**
+the schema file happens to sit next to the YAML you are editing. (If your file _is_
+next to the schema, the relative path `./tutor-yaml.schema.json` works too.)
 
 In VS Code, install the Red Hat YAML extension to get this schema support:
 <https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml>.
 
 The line is a comment, not a YAML field. The tutor app ignores it, but the editor
-can use it for validation, completion, and hover help. Use a relative path when
-the schema file sits next to the YAML file, or use the published raw GitHub URL
-when editing a file outside this folder.
+can use it for validation, completion, and hover help.
 
 ---
 

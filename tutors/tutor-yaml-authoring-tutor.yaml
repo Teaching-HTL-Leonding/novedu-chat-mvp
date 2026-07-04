@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=./tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 id: tutor-yaml-authoring
 name: "Tutor YAML Authoring Coach"
 description: "Helps teachers write valid tutor definition YAML files and reusable fragment libraries."

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 # An intentionally broken fragment LIBRARY: it passes schema validation, but one
 # fragment's `content` template references a variable its `input_schema` never
 # declares. Used by the validator tests to exercise FRAGMENT_TEMPLATE_ERROR —

@@ -1,4 +1,4 @@
-import { codingValidator } from "@/lib/coding-validate";
+import { loadAndCheckCoding } from "@/lib/coding-validate";
 import type { FileKind } from "@/lib/file-name";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import { loadAndCheckQuiz } from "@/lib/quiz-validate";
@@ -109,10 +109,25 @@ const writingValidator: FileValidator = {
   },
 };
 
-// coding: a PLACEHOLDER authoring gate (structural validation not implemented yet)
-// — it accepts any file and freezes `anonymous: true` (coding is always anonymous).
-// The lenient runtime read the proxy needs lives in lib/coding-yaml.ts. See
-// lib/coding-validate.ts.
+// coding: a strict authoring gate exactly like quiz/writing (bad YAML, missing
+// field, no `llm.model`, no instructions → ok:false, BLOCKS the save). Coding is
+// ALWAYS anonymous — the OpenAI-compatible API path carries no per-student identity
+// — so the seam FREEZES `anonymous: true` regardless of the file (the schema has no
+// `anonymous` field to read). Coding carries no denormalized description. The
+// lenient runtime read the proxy needs lives in lib/coding-yaml.ts.
+const codingValidator: FileValidator = {
+  async validate(url, fetcher) {
+    const result = await loadAndCheckCoding(url, fetcher);
+    if (!result.ok) return { ok: false, errors: result.errors };
+    return {
+      ok: true,
+      warnings: result.warnings,
+      title: result.title,
+      description: null,
+      anonymous: true,
+    };
+  },
+};
 
 export const fileValidators: Record<FileKind, FileValidator> = {
   tutor: tutorValidator,

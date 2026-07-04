@@ -1,3 +1,4 @@
+import type { CodingCheckResult } from "@/lib/coding-validate";
 import type { QuizCheckResult } from "@/lib/quiz-validate";
 import {
   type BuildResult,
@@ -163,6 +164,26 @@ export function formatWritingResult(result: WritingCheckResult, source: string):
   lines.push(`  id: ${result.writingId}`);
   lines.push(`  model: ${result.model}`);
   lines.push(`  anonymous: ${result.anonymous}`);
+  if (result.warnings.length) {
+    lines.push("");
+    lines.push(yellow(`${result.warnings.length} warning(s):`));
+    lines.push(...renderWarnings(result.warnings));
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Renderer for a coding-activity check (`--kind coding`). Coding is ALWAYS anonymous
+ * (the API path carries no per-student identity), so — unlike quiz/writing — that is
+ * shown as a fixed note, not a per-file value.
+ */
+export function formatCodingResult(result: CodingCheckResult, source: string): string {
+  if (!result.ok) return renderFailureAndWarnings(result, "coding activity", source);
+
+  const lines = [green(`✔ Valid coding activity`) + dim(` — ${source}`)];
+  lines.push(`  id: ${result.codingId}`);
+  lines.push(`  model: ${result.model}`);
+  lines.push(`  anonymous: true ${dim("(always — the API path carries no identity)")}`);
   if (result.warnings.length) {
     lines.push("");
     lines.push(yellow(`${result.warnings.length} warning(s):`));

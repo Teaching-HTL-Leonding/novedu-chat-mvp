@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { unixSecondsToDatetimeLocal } from "../lib/datetime-local";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { VALID_TUTOR_URL } from "./code.utils";
+import { VALID_CODING_URL, VALID_TUTOR_URL } from "./code.utils";
 
 // @live end-to-end CRUD over BOTH a hosted YAML file and a tutor link ("tutor
 // code"), as a teacher, against the real database (the dev server authenticates
@@ -217,16 +217,16 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
 // CODING CODE — the per-module result seam: creating a CODING code lands on the same
 // edit screen as any other, but its result body is the little-coder connection config
 // (`CodingResult` → `CodingConnection`), NOT the `/<code>` share link — a coding code
-// is an API key, not a web link. The URL field accepts any reachable URL here because
-// coding's authoring validation is a placeholder, and the result display is independent
-// of the YAML's contents.
+// is an API key, not a web link. The URL must point at a VALID coding YAML: coding now
+// has a strict authoring gate, so a non-coding file (e.g. a tutor URL) would be rejected
+// with a CODING_SCHEMA_ERROR before the code is created.
 test("creating a coding code shows the little-coder config instead of the share link", {
   tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   const note = `e2e coding ${Date.now()}`;
   await page.goto("/codes/new");
   await page.getByLabel("Activity", { exact: true }).selectOption("coding");
-  await page.getByLabel("Activity YAML URL").fill(VALID_TUTOR_URL);
+  await page.getByLabel("Activity YAML URL").fill(VALID_CODING_URL);
   await page.getByLabel(/Note/).fill(note);
   createdCodeLabel = note;
   await page.getByRole("button", { name: "Create code" }).click();

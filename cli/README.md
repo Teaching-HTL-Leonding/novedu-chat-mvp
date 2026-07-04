@@ -1,13 +1,14 @@
 # @novedu/cli
 
 Command-line companion for the Novedu chat app (installed command: `novedu-cli`).
-Today it validates **tutor YAML** definitions and **fragment libraries**; more
-commands will follow. Validating a tutor also fully validates every fragment
-library it references; pass `--kind fragment` to validate a fragment library on
-its own.
+Today it validates every activity YAML the app accepts — **tutors**, **fragment
+libraries**, **quizzes**, **writing activities**, and **coding activities**; more
+commands will follow. Validating a tutor also fully validates every fragment library
+it references; pass `--kind` to validate any other kind on its own.
 
-It reuses the app's exact validation pipeline (`lib/tutors`), so a tutor that
-passes here is the same tutor the app would accept — no separate, drifting rules.
+It reuses the app's exact validation pipeline (`lib/tutors`, `lib/quiz-validate`,
+`lib/writing-validate`, `lib/coding-validate`), so an activity that passes here is
+the same one the app would accept — no separate, drifting rules.
 
 ## Usage
 
@@ -21,13 +22,19 @@ npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding
 # Validate a fragment library on its own
 npx @novedu/cli validate ./tutors/simple-fragments.yaml --kind fragment
 
+# Validate a quiz, a writing activity, or a coding activity
+npx @novedu/cli validate ./quizzes/sample-quiz.yaml --kind quiz
+npx @novedu/cli validate ./writings/human-animal-short-story.yaml --kind writing
+npx @novedu/cli validate ./coding/beginner-typescript.yaml --kind coding
+
 # Machine-readable output (the raw validation result)
 npx @novedu/cli validate ./tutors/simple-tutor.yaml --json
 ```
 
-`--kind` defaults to `tutor`; it is caller-declared, not auto-detected.
+`--kind` accepts `tutor` (default), `fragment`, `quiz`, `writing`, or `coding`; it
+is caller-declared, not auto-detected.
 
-Exit code is `0` when the tutor is valid and `1` when it has errors, so it works
+Exit code is `0` when the activity is valid and `1` when it has errors, so it works
 as a pre-commit / CI gate.
 
 ## Development

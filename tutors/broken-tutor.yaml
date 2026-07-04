@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 id: broken-sample-tutor
 name: "Broken Sample Tutor"
 description: "An intentionally invalid tutor that demonstrates the validator's consistency errors (docs + tests)."

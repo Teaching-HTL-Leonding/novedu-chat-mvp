@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/writings/writing-yaml.schema.json
 # Sample writing activity — "A Human and an Animal".
 #
 # A writing activity is authored in YAML, just like a tutor or a quiz, and is

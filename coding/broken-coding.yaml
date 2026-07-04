@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/coding/coding-yaml.schema.json
+# INTENTIONALLY BROKEN coding activity — committed for manual testing of validation.
+#
+# This file misspells `instructions` as `instructons`, so it is MISSING the required
+# system prompt and carries an UNRECOGNIZED key. Validating it — in the app's YAML
+# Files page, or with
+# `novedu-cli validate coding/broken-coding.yaml --kind coding` — reports a
+# CODING_SCHEMA_ERROR and refuses to save. Fix the typo (`instructons` →
+# `instructions`) to make it valid.
+id: broken-coding
+name: "Broken Coding — for testing"
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+instructons: |
+  You are a friendly coding buddy for a beginner. Keep every explanation and every
+  line of code within what the student has learned.

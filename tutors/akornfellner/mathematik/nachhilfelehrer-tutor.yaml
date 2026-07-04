@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 # Migriert aus prompt-database/mathematik/rollen/nachhilfelehrer.md (a.kornfellner).
 # Der Lernstoff (vormals {{STOFF}}) steckt in der Variable `stoff` des Fragments
 # `stoff_kontext` — pro Thema/Schularbeit hier austauschen.

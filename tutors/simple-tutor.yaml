@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/tutor-yaml.schema.json
 id: simple-math-tutor
 name: "Simple Math Tutor"
 description: "A minimal, valid example tutor used in the documentation and end-to-end tests."
