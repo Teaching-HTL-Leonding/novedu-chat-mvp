@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json",
+  "title": "Quiz YAML",
+  "description": "Schema for an LLM-graded, open-ended quiz definition. Kept in sync by hand with the Zod schema in lib/quiz-schema.ts, which is the source of truth for validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "llm", "questions"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short machine-readable quiz id, e.g. countries-basics. Used as the per-quiz identity."
+    },
+    "name": {
+      "type": "string",
+      "description": "Optional human-readable quiz title (used as a label)."
+    },
+    "title": {
+      "type": "string",
+      "description": "Optional greeting shown to students on the welcome screen instead of the default message."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional description shown to students below the welcome greeting (Markdown)."
+    },
+    "anonymous": {
+      "type": "boolean",
+      "default": true,
+      "description": "Quizzes are anonymous by default: answers are recorded for aggregate stats but not linked to a student. Set to false to attribute each attempt to the signed-in student."
+    },
+    "shuffle": {
+      "type": "boolean",
+      "default": true,
+      "description": "Present questions in a random order per attempt. Set to false to keep the authored order."
+    },
+    "llm": {
+      "$ref": "#/$defs/llm"
+    },
+    "discussion": {
+      "$ref": "#/$defs/discussion"
+    },
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "description": "The quiz questions. Each is open-ended and graded by the LLM via its evaluation prompt.",
+      "items": {
+        "$ref": "#/$defs/question"
+      }
+    }
+  },
+  "$defs": {
+    "llm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The model that grades answers and drives the per-question discussion chat."
+        }
+      }
+    },
+    "discussion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instructions"],
+      "properties": {
+        "instructions": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional guidance appended to the per-question follow-up discussion chat's system prompt."
+        }
+      }
+    },
+    "question": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "question", "evaluation"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable question id, unique within the quiz (the per-question stats key)."
+        },
+        "title": {
+          "type": "string",
+          "description": "Optional short label for the stats table and progress display."
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The Markdown shown to the student."
+        },
+        "evaluation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The grading prompt. SERVER-ONLY: never sent to the browser, so it may embed the expected answer and the grading rubric."
+        },
+        "image": {
+          "$ref": "#/$defs/image"
+        }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["src"],
+      "properties": {
+        "hosted": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, src is an app-hosted image NAME resolved server-side; otherwise src is an absolute URL or a path relative to the quiz's own URL."
+        },
+        "src": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The hosted image name (when hosted) or the image URL / relative path."
+        },
+        "alt": {
+          "type": "string",
+          "description": "Accessible description shown if the image cannot be loaded."
+        },
+        "credit": {
+          "type": "string",
+          "description": "Optional attribution (\"Content Credentials\") shown small below the image."
+        }
+      }
+    }
+  }
+}

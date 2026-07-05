@@ -13,12 +13,12 @@ import { mintTutorCode } from "./code.utils";
 // What's left here genuinely needs the SCCH vision model + Azure SQL.
 //
 // The tutor fixtures are served from a LOCAL http server (the repo's own
-// `tutors/` directory) instead of GitHub raw `main` like the other specs:
+// `activities/tutors/` directory) instead of GitHub raw `main` like the other specs:
 // vision-tutor.yaml is introduced on this branch, so it isn't on `main` yet —
 // and serving locally keeps this spec independent of GitHub anyway. The Next
 // dev server fetches tutor URLs server-side, so 127.0.0.1 resolves fine.
 
-const TUTORS_DIR = path.join(process.cwd(), "tutors");
+const TUTORS_DIR = path.join(process.cwd(), "activities", "tutors");
 const RED_PNG = path.join(process.cwd(), "e2e", "fixtures", "red.png");
 
 let server: http.Server;
@@ -26,7 +26,7 @@ let tutorsBaseUrl: string;
 
 test.beforeAll(async () => {
   server = http.createServer(async (req, res) => {
-    // Serve only flat files out of tutors/ — basename() forecloses traversal.
+    // Serve only flat files out of activities/tutors/ — basename() forecloses traversal.
     const name = path.basename(new URL(req.url ?? "/", "http://localhost").pathname);
     try {
       const body = await readFile(path.join(TUTORS_DIR, name));

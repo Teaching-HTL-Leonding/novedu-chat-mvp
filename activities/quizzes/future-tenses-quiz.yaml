@@ -1,0 +1,314 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
+# Future Tenses self-assessment — converted from the "Future Tenses Tutor".
+#
+# The original tutor walked a student through 13 sentences, asking for the
+# future-tense FORM and WHY. That maps directly onto a quiz: one open-ended
+# question per sentence, graded by the LLM against the answer key embedded in
+# each question's `evaluation` prompt.
+#
+# IMPORTANT: the grader only ever sees ONE question's `evaluation` at a time
+# (never any global instructions), so the answer key, the accepted equivalent
+# form labels, and the grading rubric are repeated in every question.
+
+id: english-future-tenses
+name: "Future Tenses — Self Assessment"
+title: "Future Tenses – check what you know"
+description: |
+  A short self-assessment on the English **future tenses**. For each sentence,
+  name the future-tense **form** (present simple, present progressive, going-to
+  future, or will future) and explain **why** it is used.
+
+  Answer in your own words — there are no multiple-choice options. You get instant
+  feedback, and you can stop at any time to see your summary.
+
+# Self-assessment, not graded work → anonymous (answers are not linked to a student).
+anonymous: true
+
+# Keep the authored order — the sentences build on each other like in the tutor.
+shuffle: false
+
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+
+discussion:
+  instructions: |
+    You are a friendly, encouraging English teacher helping a German-speaking
+    school student understand THIS future-tenses question. The conversation
+    already contains the sentence, the student's answer, and the verdict with
+    feedback — use that context.
+
+    Reply in English by default; if the student writes in German or is clearly
+    struggling, you may add a brief German explanation, then continue in English.
+    Give small hints before full explanations, keep it concise and supportive,
+    and keep the content appropriate for school students. Stay on this question.
+
+questions:
+  - id: q01-technology
+    title: "Future technology"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "Technology will become even more advanced in the future."
+    evaluation: |
+      Correct answer:
+      - Form: **will future**
+      - Why: a prediction / assumption about the future.
+
+      Accept these as the same form label: "will future", "future with will",
+      "future simple (will)".
+
+      Grade the student's answer:
+      - `correct`   — names the will future AND gives a reason meaning "prediction/assumption" (any wording).
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q02-sue-fitness
+    title: "Sue's fitness routine"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "Sue is going to start a new fitness routine next week."
+    evaluation: |
+      Correct answer:
+      - Form: **going-to future**
+      - Why: a plan / intention.
+
+      Accept these as the same form label: "going-to future", "going to".
+
+      Grade the student's answer:
+      - `correct`   — names the going-to future AND gives a reason meaning "plan/intention".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q03-break
+    title: "Taking a break"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "I'm tired — I will take a short break."
+    evaluation: |
+      Correct answer:
+      - Form: **will future**
+      - Why: a spontaneous decision (decided at the moment of speaking).
+
+      Accept these as the same form label: "will future", "future with will",
+      "future simple (will)".
+
+      Grade the student's answer:
+      - `correct`   — names the will future AND gives a reason meaning "spontaneous decision".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q04-supermarket
+    title: "Supermarket opening"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "The supermarket opens at 7 tomorrow morning."
+    evaluation: |
+      Correct answer:
+      - Form: **present simple**
+      - Why: a fixed schedule / timetable.
+
+      Accept these as the same form label: "present simple", "simple present",
+      "present tense simple".
+
+      Grade the student's answer:
+      - `correct`   — names the present simple AND gives a reason meaning "fixed schedule/timetable".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q05-dentist
+    title: "Dentist appointment"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "I am seeing the dentist tomorrow in the afternoon."
+    evaluation: |
+      Correct answer:
+      - Form: **present progressive (present continuous)**
+      - Why: a fixed arrangement / fixed appointment.
+
+      Accept these as the same form label: "present progressive", "present
+      continuous", "present -ing".
+
+      Grade the student's answer:
+      - `correct`   — names the present progressive/continuous AND gives a reason meaning "fixed arrangement/appointment".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q06-andrew-french
+    title: "Andrew & French"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "Andrew is going to learn French this year."
+    evaluation: |
+      Correct answer:
+      - Form: **going-to future**
+      - Why: a plan / intention.
+
+      Accept these as the same form label: "going-to future", "going to".
+
+      Grade the student's answer:
+      - `correct`   — names the going-to future AND gives a reason meaning "plan/intention".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q07-rain-weekend
+    title: "Rain this weekend"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "I think it will rain this weekend."
+    evaluation: |
+      Correct answer:
+      - Form: **will future**
+      - Why: a prediction / assumption (signalled by "I think").
+
+      Accept these as the same form label: "will future", "future with will",
+      "future simple (will)".
+
+      Grade the student's answer:
+      - `correct`   — names the will future AND gives a reason meaning "prediction/assumption" (the "I think" signal counts).
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q08-friends-tonight
+    title: "Friends tonight"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "I am meeting my friends tonight."
+    evaluation: |
+      Correct answer:
+      - Form: **present progressive (present continuous)**
+      - Why: a fixed arrangement / fixed appointment.
+
+      Accept these as the same form label: "present progressive", "present
+      continuous", "present -ing".
+
+      Grade the student's answer:
+      - `correct`   — names the present progressive/continuous AND gives a reason meaning "fixed arrangement/appointment".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q09-if-rains
+    title: "If it rains"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "If it rains tomorrow, we will go to the movies."
+    evaluation: |
+      Correct answer:
+      - Form: **will future**
+      - Why: a type 1 conditional / if-clause type 1 (will in the main clause).
+
+      Accept these as the same form label: "will future", "future with will",
+      "future simple (will)".
+
+      Grade the student's answer:
+      - `correct`   — names the will future AND gives a reason meaning "type 1 conditional / if-clause with will in the main clause".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q10-team-win
+    title: "Hoping to win"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "We hope the team will win the match."
+    evaluation: |
+      Correct answer:
+      - Form: **will future**
+      - Why: expressing a hope.
+
+      Accept these as the same form label: "will future", "future with will",
+      "future simple (will)".
+
+      Grade the student's answer:
+      - `correct`   — names the will future AND gives a reason meaning "expressing a hope".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q11-help-math
+    title: "Asking for help"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "I don't understand that Math equation. Will you help me, please?"
+    evaluation: |
+      Correct answer:
+      - Form: **will future**
+      - Why: a polite question / request.
+
+      Accept these as the same form label: "will future", "future with will",
+      "future simple (will)".
+
+      Grade the student's answer:
+      - `correct`   — names the will future AND gives a reason meaning "polite question/request".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q12-black-clouds
+    title: "Black clouds"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > "Look at those black clouds! It is going to rain soon."
+    evaluation: |
+      Correct answer:
+      - Form: **going-to future**
+      - Why: a prediction based on present evidence (we can see the clouds now).
+
+      Accept these as the same form label: "going-to future", "going to".
+
+      Grade the student's answer:
+      - `correct`   — names the going-to future AND gives a reason meaning "prediction based on present evidence/what we can see now".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.
+
+  - id: q13-restaurant
+    title: "Ordering food"
+    question: |
+      Name the **future-tense form** in this sentence and explain **why** it is used:
+
+      > In the restaurant: "I will take the fried chicken with the mixed salad."
+    evaluation: |
+      Correct answer:
+      - Form: **will future**
+      - Why: a spontaneous decision (decided at the moment of ordering).
+
+      Accept these as the same form label: "will future", "future with will",
+      "future simple (will)".
+
+      Grade the student's answer:
+      - `correct`   — names the will future AND gives a reason meaning "spontaneous decision".
+      - `partial`   — right form but the reason is missing, vague or wrong; OR the right reason but a wrong/missing form label.
+      - `incorrect` — a wrong form with no valid reasoning.
+
+      In the feedback, confirm or gently correct, state the form + reason, and stay short and encouraging.

@@ -1,0 +1,289 @@
+# Writing Quiz Files
+
+This folder contains **quiz definitions** — the YAML files that describe an
+LLM-graded, open-ended quiz. This guide explains the format so that teachers can
+write their own quizzes without touching any code.
+
+You do not need to be a programmer. If you can edit a structured text file and
+follow the examples below, you can build a quiz.
+
+---
+
+## 1. The idea in one minute
+
+A quiz is a list of **open-ended questions**. There are deliberately no
+multiple-choice options: the student answers in their own words, and the **LLM
+grades each answer** against a private grading prompt you write.
+
+For every question you write two things the student never sees together:
+
+- a **question** — the Markdown shown to the student, and
+- an **evaluation** — a server-only grading prompt that embeds the expected
+  answer and the rubric.
+
+The model returns a structured verdict — **correct**, **partial**, or
+**incorrect** — plus written feedback the student sees immediately. After seeing
+the feedback the student can open a short **discussion chat** about that question.
+
+```
+quiz file (your questions)
+┌─────────────────────────────────────────────┐
+│ question  → shown to the student            │
+│ evaluation → SERVER-ONLY grading prompt     │  ──▶  LLM grades the answer
+│              (expected answer + rubric)     │       → correct | partial | incorrect
+└─────────────────────────────────────────────┘       → feedback (+ optional discussion)
+```
+
+Because grading is just another prompt, a question can ask for reasoning, an
+explanation, or a short calculation — anything the model can judge from your
+rubric.
+
+---
+
+## 2. Quick start — a complete minimal example
+
+A tiny quiz, `my-quiz.yaml`:
+
+```yaml
+id: capitals-basics
+name: "Capital Cities — Basics"
+title: "Capitals Quiz"
+description: "A short quiz on capital cities. Answer in your own words."
+anonymous: false # record which student each attempt belongs to
+shuffle: true # random question order per attempt
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+questions:
+  - id: capital-australia
+    title: "Capital of Australia"
+    question: |
+      What is the **capital city of Australia**?
+    evaluation: |
+      The correct answer is **Canberra**.
+
+      Grade as:
+      - `correct`   — names Canberra (any reasonable spelling).
+      - `partial`   — mentions Canberra among other guesses, or describes it.
+      - `incorrect` — names Sydney, Melbourne, or any other city.
+```
+
+This repository ships three complete examples you can copy from:
+
+- [`sample-quiz.yaml`](./sample-quiz.yaml) — a five-question geography quiz with a
+  discussion prompt.
+- [`future-tenses-quiz.yaml`](./future-tenses-quiz.yaml) — a longer, anonymous
+  self-assessment.
+- [`sample-image-quiz.yaml`](./sample-image-quiz.yaml) — a quiz with a content
+  **image** on a question.
+
+---
+
+## 3. Editor support
+
+This folder includes a JSON Schema for quiz YAML files: `quiz-yaml.schema.json`.
+
+Editors that use the YAML Language Server, including VS Code with YAML support,
+can pick up the schema from a modeline comment at the top of a quiz file:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
+```
+
+The sample files in this folder use this **full raw GitHub URL** so that validation,
+completion, and hover help work in your editor **whether or not** the schema file
+happens to sit next to the YAML you are editing. (If your file _is_ next to the
+schema, the relative path `./quiz-yaml.schema.json` works too.)
+
+In VS Code, install the Red Hat YAML extension to get this schema support:
+<https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml>.
+
+The line is a comment, not a YAML field. The app ignores it, but the editor can
+use it for validation, completion, and hover help. (The schema is for editor hints;
+the app validates with its own checks — see [Validating your quiz](#7-validating-your-quiz).)
+
+---
+
+## 4. Quiz file reference
+
+A quiz file has these fields. All of them are required unless marked optional.
+
+```yaml
+id: my-quiz # short machine name, e.g. capitals-basics
+name: "My Quiz" # optional: human-readable label
+title: "Welcome!" # optional: greeting students see on the welcome screen
+description: "What this quiz covers." # optional: shown below the greeting
+anonymous: false # optional: omit for default true; false attributes each attempt
+shuffle: true # optional: omit for default true; false keeps the authored order
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model grades + discusses
+discussion: # optional: guidance for the per-question follow-up chat
+  instructions: |
+    ...
+questions: # at least one; each is graded by the LLM
+  - id: ...
+    question: |
+      ...
+    evaluation: |
+      ...
+```
+
+### `id`
+
+Required. A short machine-readable identifier for the quiz.
+
+### `title` and `description`
+
+Both optional. Students see them on the welcome screen before the first question:
+`title` replaces the default greeting (omit it to keep the default), and
+`description` appears below it as Markdown. Write the `description` for your
+students.
+
+### `anonymous`
+
+Optional, **default `true`**. By default a quiz is anonymous: answers are recorded
+for aggregate statistics but **not** linked to a student. Set `anonymous: false`
+to attribute each attempt to the signed-in student (e.g. for graded work). The
+flag is **frozen** onto the quiz code when the code is created — editing the YAML
+later does not change a live code.
+
+### `shuffle`
+
+Optional, **default `true`**. When true, questions are presented in a random order
+per attempt. Set `shuffle: false` to keep the authored order (useful when later
+questions build on earlier ones).
+
+### `llm.model`
+
+Required. The model that **grades** the answers and **drives** the per-question
+discussion chat. Same id space as a tutor's `llm.model`.
+
+### `discussion.instructions`
+
+Optional. Guidance appended to the system prompt of the follow-up **discussion
+chat** a student can open on any question after seeing their feedback. The app
+already gives the assistant full context (the question, the expected answer, the
+student's answer, and the verdict), so this is only extra steering. Omit it to use
+a sensible default.
+
+---
+
+## 5. Questions and grading
+
+`questions` is a list with **at least one** entry. Each question:
+
+| Field         | Required | What it is                                                                       |
+| ------------- | -------- | -------------------------------------------------------------------------------- |
+| `id`          | yes      | Stable id, **unique** within the quiz — the per-question stats key.               |
+| `title`       | no       | Short label for the stats table and progress display.                            |
+| `question`    | yes      | The **Markdown** shown to the student (math via `$…$` and code fences render).    |
+| `evaluation`  | yes      | The **grading prompt**. SERVER-ONLY — never sent to the browser.                  |
+| `image`       | no       | An optional content image shown above the question (see below).                  |
+
+The `evaluation` is the heart of a question. Because it never reaches the browser,
+it can freely state the expected answer and the criteria for each verdict. Write
+it as a short rubric, for example:
+
+```yaml
+evaluation: |
+  The correct answer is **Canberra**.
+
+  Grade as:
+  - `correct`   — names Canberra (any reasonable spelling).
+  - `partial`   — unsure but mentions Canberra, or describes it without naming it.
+  - `incorrect` — names Sydney, Melbourne, or any other city.
+
+  In the feedback, confirm or gently correct the student.
+```
+
+The model returns one of the three verdicts — **correct**, **partial**,
+**incorrect** — and the feedback text the student sees. The verdicts you name in
+the rubric are what the model maps an answer onto, so name all three.
+
+### Content images
+
+A question may carry an optional `image`, rendered above its Markdown:
+
+```yaml
+image:
+  hosted: true # look the image up by NAME in the app's image store (server-side)
+  src: sample-compass-rose # the hosted name (when hosted) or a URL / relative path
+  alt: A compass rose showing the four cardinal directions. # accessible description
+  credit: Compass rose — CC BY 4.0 # optional attribution shown below the image
+```
+
+Omit `hosted` (or set it `false`) to use an absolute `http(s)` URL or a path
+relative to the quiz's own URL as `src`. The image carries no secret, so it
+crosses to the browser (unlike `evaluation`).
+
+---
+
+## 6. Hosting your quiz
+
+The server fetches your quiz over the internet, so it must be at a **public
+`http(s)` URL**.
+
+The easiest option is GitHub:
+
+1. Put your `.yaml` file in a public repository.
+2. Use the **raw** URL of the file, for example:
+   `https://raw.githubusercontent.com/<org>/<repo>/refs/heads/main/activities/quizzes/my-quiz.yaml`
+3. **Commit and push** before validating or creating a code — the server reads the
+   published version, not your local copy.
+
+Alternatively, **host the quiz in the app itself** — no GitHub needed. On the
+**YAML Files** page (`/files`) a teacher can create, edit and version a quiz file
+(kind **Quiz**); it is served at `https://<origin>/api/files/<name>` and drops
+straight into a quiz code. The file is **validated when you save it**.
+
+A quiz is shared like any activity: mint a **code** pointing at the quiz URL and
+hand the `/<code>` link to students.
+
+---
+
+## 7. Validating your quiz
+
+Validation runs the same structural checks the app enforces, so a broken quiz is
+caught **before** a student opens it — an invalid quiz cannot be saved or turned
+into a code.
+
+In the app, open **YAML Files** (`/files`), create or edit your quiz (kind
+**Quiz**), and press:
+
+- **Validate** — checks the YAML **without** saving, or
+- **Validate & save** — checks again and stores a new version; an invalid save is
+  rejected with the specific errors.
+
+From the terminal or CI, use the CLI:
+
+```bash
+novedu-cli validate ./quizzes/my-quiz.yaml --kind quiz
+```
+
+The validator checks, in order:
+
+1. The file is valid YAML.
+2. The quiz has the correct structure — no missing or misspelled fields, an
+   `llm.model`, and at least one question (each with an `id`, a `question`, and an
+   `evaluation`).
+3. Every question `id` is unique.
+
+### Common problems and how to fix them
+
+| Reported problem            | What it means                                                  | How to fix                                    |
+| --------------------------- | -------------------------------------------------------------- | --------------------------------------------- |
+| `YAML_PARSE_ERROR`          | The file isn't valid YAML.                                     | Check indentation and quotes.                 |
+| `QUIZ_SCHEMA_ERROR`         | A field is missing, has the wrong type, or is misspelled (the detail lines name the field). | Compare against this guide; fix the named field. A numeric-looking `id` must be **quoted**. |
+| `DUPLICATE_QUIZ_QUESTION_ID`| Two questions share an `id`.                                   | Give each question a distinct `id`.           |
+| `FETCH_FAILED`              | The URL couldn't be loaded.                                    | Check the URL is public and pushed.           |
+
+---
+
+## 8. Checklist before you publish
+
+- [ ] The quiz has an `id`, an `llm.model`, and **at least one** question.
+- [ ] Every question has an `id`, a `question`, and an `evaluation`.
+- [ ] Every question `id` is **unique**.
+- [ ] Numeric-looking ids are **quoted** (e.g. `id: "1"`).
+- [ ] `anonymous` is set the way you want — default `true` (not attributed).
+- [ ] The file is **public** and **pushed** (if hosted on GitHub).
+- [ ] You validated the quiz and it passes.

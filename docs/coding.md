@@ -13,7 +13,7 @@ Read it before touching the coding libs (`lib/coding-*.ts`, `lib/scch-endpoint.t
 the public route (`app/api/coding/**`), the student surface
 (`app/[code]/render-coding.tsx`, `app/[code]/_coding/**`), the descriptor
 (`lib/code-modules/coding.ts`), the `api/coding` matcher in `proxy.ts`, or the
-samples (`coding/*.yaml`).
+samples (`activities/coding/*.yaml`).
 
 ## What it is, and what it is NOT
 
@@ -75,13 +75,13 @@ instructions: |
   save**, exactly like tutor/quiz/writing. The schema is `strictObject`, so it also
   rejects fields coding does not have — including `anonymous` (coding is always
   anonymous), `description`, and `placeholder`. The seam (`lib/file-validators.ts`)
-  freezes `anonymous: true` onto the row regardless. `coding/coding-yaml.schema.json`
+  freezes `anonymous: true` onto the row regardless. `activities/coding/coding-yaml.schema.json`
   is the hand-maintained JSON-Schema mirror for editor IntelliSense (a modeline
   points each coding YAML at its raw GitHub URL).
-- `coding/beginner-typescript.yaml` is the shipped sample: a buddy constrained to a
+- `activities/coding/beginner-typescript.yaml` is the shipped sample: a buddy constrained to a
   beginner's knowledge (primitive types only, no OOP/classes, `if` + basic loops, no
   arrow functions, full type annotations). A unit test parses it so it never drifts;
-  `coding/broken-coding.yaml` is the committed invalid fixture the validation tests
+  `activities/coding/broken-coding.yaml` is the committed invalid fixture the validation tests
   reject.
 
 ## The proxy route

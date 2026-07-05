@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+id: broken-sample-tutor
+name: "Broken Sample Tutor"
+description: "An intentionally invalid tutor that demonstrates the validator's consistency errors (docs + tests)."
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+prompt:
+  fragment_files:
+    - id: broken_fragments
+      url: "broken-fragments.yaml"
+
+  fragments:
+    # ERROR 1 — the `persona` fragment requires a `subject` variable, but none is
+    # supplied → MISSING_REQUIRED_VARIABLE.
+    - file: broken_fragments
+      id: persona
+      variables: {}
+
+    # ERROR 2 — there is no `summary` fragment in broken-fragments.yaml →
+    # FRAGMENT_NOT_FOUND.
+    - file: broken_fragments
+      id: summary
+
+  tutor_instructions: |
+    This tutor is intentionally broken so the validator has something to report.

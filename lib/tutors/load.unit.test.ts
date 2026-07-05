@@ -190,9 +190,9 @@ describe("resolveFragmentUrl", () => {
 
   it("resolves ./ and ../ segments", () => {
     expect(resolveFragmentUrl("./general-fragments.yaml", TUTOR_URL)).toBe(GENERAL_URL);
-    // TUTOR_URL lives in `.../main/tutors/`; `../` steps up to `.../main/`.
+    // TUTOR_URL lives in `.../main/activities/tutors/`; `../` steps up to `.../main/activities/`.
     expect(resolveFragmentUrl("../other/x.yaml", TUTOR_URL)).toBe(
-      "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/other/x.yaml",
+      "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/other/x.yaml",
     );
   });
 

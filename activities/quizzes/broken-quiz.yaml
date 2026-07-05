@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
+# INTENTIONALLY BROKEN quiz — committed for manual testing of validation.
+#
+# The second question misspells `evaluation` as `evaluaton`, so that question is
+# MISSING its required grading prompt and carries an UNRECOGNIZED key. Validating
+# this file — in the app's YAML Files page, or with
+# `novedu-cli validate quizzes/broken-quiz.yaml --kind quiz` — reports a
+# QUIZ_SCHEMA_ERROR and refuses to save. Fix the typo (`evaluaton` → `evaluation`)
+# to make it valid.
+id: broken-quiz
+name: "Broken Quiz — for testing"
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+questions:
+  - id: ok-question
+    question: |
+      What is **2 + 2**?
+    evaluation: |
+      The answer is 4. Grade `correct` for 4, otherwise `incorrect`.
+  - id: typo-question
+    question: |
+      What is the **capital of France**?
+    evaluaton: |
+      The answer is Paris. (This key is misspelled — should be `evaluation`.)

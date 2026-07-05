@@ -109,15 +109,15 @@ export function registerValidate(program: Command): void {
       `
 Examples:
   # Validate a tutor (also strict-renders every fragment in every referenced library)
-  $ novedu-cli validate ./tutors/my-tutor.yaml
+  $ novedu-cli validate ./activities/tutors/my-tutor.yaml
 
   # Validate a fragment library on its own
-  $ novedu-cli validate ./tutors/my-fragments.yaml --kind fragment
+  $ novedu-cli validate ./activities/tutors/my-fragments.yaml --kind fragment
 
   # Validate a quiz, a writing activity, or a coding activity
-  $ novedu-cli validate ./quizzes/my-quiz.yaml --kind quiz
-  $ novedu-cli validate ./writings/my-writing.yaml --kind writing
-  $ novedu-cli validate ./coding/my-coding.yaml --kind coding
+  $ novedu-cli validate ./activities/quizzes/my-quiz.yaml --kind quiz
+  $ novedu-cli validate ./activities/writings/my-writing.yaml --kind writing
+  $ novedu-cli validate ./activities/coding/my-coding.yaml --kind coding
 
   # Machine-readable output for CI
   $ novedu-cli validate https://example.com/tutor.yaml --json`,

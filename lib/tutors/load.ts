@@ -21,7 +21,7 @@ import { type FragmentFile, FragmentFileSchema, type Tutor, TutorSchema } from "
  * Resolve a fragment-file reference to an absolute URL. An absolute http(s) ref is used
  * as-is; anything else is treated as relative to the tutor URL — standard URL resolution
  * drops the tutor's filename and appends the relative path (so `general-fragments.yaml`
- * next to `.../tutors/linked-list-tutor.yaml` becomes `.../tutors/general-fragments.yaml`,
+ * next to `.../activities/tutors/linked-list-tutor.yaml` becomes `.../activities/tutors/general-fragments.yaml`,
  * and `./` / `../` segments work too). Throws if a relative ref is unparseable; the schema
  * already guarantees the only inputs here are http(s) URLs or relative paths.
  */

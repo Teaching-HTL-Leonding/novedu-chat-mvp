@@ -88,14 +88,14 @@ You know React. Here is the Next.js-specific vocabulary for this task — that's
 
 The authoritative schema is Zod, in **`lib/tutors/schemas.ts`** (read it — it is the
 source of truth). A machine-readable JSON Schema is in
-**`tutors/tutor-yaml.schema.json`**. Example files to open and learn from:
+**`activities/tutors/tutor-yaml.schema.json`**. Example files to open and learn from:
 
 | File | What it is |
 | --- | --- |
-| `tutors/simple-tutor.yaml` | minimal valid tutor |
-| `tutors/simple-fragments.yaml` | minimal valid fragment library |
-| `tutors/linked-list-tutor.yaml` | a realistic tutor referencing several fragments |
-| `tutors/general-fragments.yaml` | a larger fragment library |
+| `activities/tutors/simple-tutor.yaml` | minimal valid tutor |
+| `activities/tutors/simple-fragments.yaml` | minimal valid fragment library |
+| `activities/tutors/linked-list-tutor.yaml` | a realistic tutor referencing several fragments |
+| `activities/tutors/general-fragments.yaml` | a larger fragment library |
 
 ### Tutor file (shape)
 

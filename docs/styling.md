@@ -7,7 +7,7 @@ Research current Tailwind docs in context7 (`ctx7` CLI) before styling work — 
 ## Stack
 
 - **Tailwind v4, CSS-first.** There is no `tailwind.config.js`. The entire configuration lives in `app/globals.css`: a leading `@layer` order statement, `@import "tailwindcss"`, `@plugin "@tailwindcss/typography"`, the token block, and a handful of `@layer base` rules. The build hook is `postcss.config.mjs` (`@tailwindcss/postcss`), picked up by Turbopack for `dev`, `build`, and the Vitest browser project alike.
-- Sources are **allowlisted**: `@import "tailwindcss" source(none)` plus explicit `@source` lines for `app/`, `components/`, and `lib/`. Only code that renders markup generates utilities — docs, teaching YAML (`quizzes/`, `tutors/`, `coding/`), and tests are never scanned, so a class-shaped string there can't generate (or break) CSS, and test-only classes can't ship in the production stylesheet.
+- Sources are **allowlisted**: `@import "tailwindcss" source(none)` plus explicit `@source` lines for `app/`, `components/`, and `lib/`. Only code that renders markup generates utilities — docs, teaching YAML (`activities/`), and tests are never scanned, so a class-shaped string there can't generate (or break) CSS, and test-only classes can't ship in the production stylesheet.
 - `class-variance-authority` (variants), `clsx` + `tailwind-merge` (via `cn()`) are the only styling runtime deps.
 
 ## Tokens

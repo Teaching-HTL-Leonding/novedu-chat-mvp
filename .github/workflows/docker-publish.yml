@@ -9,10 +9,7 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - 'coding/**'
-      - 'quizzes/**'
-      - 'tutors/**'
-      - 'writings/**'
+      - 'activities/**'
   workflow_dispatch:
 
 concurrency:
