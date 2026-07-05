@@ -9,8 +9,8 @@
 
 /* Sources are ALLOWLISTED (`source(none)` + the explicit `@source` lines below):
    only code that renders markup may generate utilities. Automatic detection
-   would scan every non-gitignored file — docs, teaching YAML (quizzes/, tutors/,
-   coding/), tests — where a class-shaped string is prose, not a template (a
+   would scan every non-gitignored file — docs, teaching YAML (activities/),
+   tests — where a class-shaped string is prose, not a template (a
    literal `flex-[var(…)]` in a doc once broke the dev CSS parse), and test-only
    classes would ship in the production stylesheet. */
 @import "tailwindcss" source(none);

@@ -1,4 +1,4 @@
-// Shared test fixtures: the REAL tutor + fragment files from `tutors/`, plus a
+// Shared test fixtures: the REAL tutor + fragment files from `activities/tutors/`, plus a
 // fake Fetcher that serves them offline. Not a test file (doesn't match the
 // `*.unit.test` glob), so it is never executed on its own.
 
@@ -8,14 +8,14 @@ import type { Fetcher, FetchResponse } from "./fetcher";
 import { parseYaml, validate } from "./parse";
 import { type FragmentFile, FragmentFileSchema, type Tutor, TutorSchema } from "./schemas";
 
-const TUTORS_DIR = join(process.cwd(), "tutors");
+const TUTORS_DIR = join(process.cwd(), "activities", "tutors");
 
 export function readFixture(name: string): string {
   return readFileSync(join(TUTORS_DIR, name), "utf8");
 }
 
 const RAW =
-  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors";
+  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors";
 export const TUTOR_URL = `${RAW}/linked-list-tutor.yaml`;
 export const GENERAL_URL = `${RAW}/general-fragments.yaml`;
 export const LINKED_URL = `${RAW}/linked-list-fragments.yaml`;

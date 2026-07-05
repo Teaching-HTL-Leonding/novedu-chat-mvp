@@ -4,12 +4,13 @@ import { describe, expect, it } from "vitest";
 import { runValidate } from "./validate";
 
 // In-process, no network: drive the real validate handler (real loader + real
-// file fetcher) over the committed fixtures in `tutors/` / `quizzes/` / `writings/`.
+// file fetcher) over the committed fixtures in
+// `activities/tutors/` / `activities/quizzes/` / `activities/writings/`.
 // Runs in CI.
-const tutorsDir = fileURLToPath(new URL("../../../tutors/", import.meta.url));
-const quizzesDir = fileURLToPath(new URL("../../../quizzes/", import.meta.url));
-const writingsDir = fileURLToPath(new URL("../../../writings/", import.meta.url));
-const codingDir = fileURLToPath(new URL("../../../coding/", import.meta.url));
+const tutorsDir = fileURLToPath(new URL("../../../activities/tutors/", import.meta.url));
+const quizzesDir = fileURLToPath(new URL("../../../activities/quizzes/", import.meta.url));
+const writingsDir = fileURLToPath(new URL("../../../activities/writings/", import.meta.url));
+const codingDir = fileURLToPath(new URL("../../../activities/coding/", import.meta.url));
 
 describe("runValidate — tutors (local files)", () => {
   it("accepts a valid tutor and reports its model", async () => {

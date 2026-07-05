@@ -71,7 +71,7 @@ jobs:
       # Smoke-test the freshly built binary against a known-good in-repo tutor
       # (local file, no network) before publishing it.
       - name: Smoke-test built binary
-        run: node cli/dist/main.js validate tutors/simple-tutor.yaml
+        run: node cli/dist/main.js validate activities/tutors/simple-tutor.yaml
 
       # No NODE_AUTH_TOKEN: OIDC Trusted Publishing supplies credentials.
       # --provenance attaches a signed build-provenance statement (free with

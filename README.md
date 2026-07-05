@@ -13,7 +13,7 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 | Area | Description |
 | --- | --- |
 | **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the tutor-code entry page; `app/[code]/page.tsx` checks the code and renders `TutorChat`. Teachers create, list, and edit codes under `/tutor-codes` (new at `/tutor-codes/new`, edit at `/tutor-codes/edit/<code>`), and author **app-hosted YAML files** under `/files` (create at `/files/new`, edit at `/files/edit/<name>`), each served publicly at `/api/files/<name>` for use in a tutor code — see [`docs/files.md`](docs/files.md). Both lists filter in the DB — see [`docs/filtered-lists.md`](docs/filtered-lists.md). |
-| **Tutor core** (`lib/tutors/`) | Framework-agnostic pipeline: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. Returns a structured `BuildResult` (never throws). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the tutor YAML, and fragment inputs may declare **defaults**. See [`tutors/README.md`](tutors/README.md) for the authoring guide. |
+| **Tutor core** (`lib/tutors/`) | Framework-agnostic pipeline: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. Returns a structured `BuildResult` (never throws). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the tutor YAML, and fragment inputs may declare **defaults**. See [`activities/tutors/README.md`](activities/tutors/README.md) for the authoring guide. |
 | **Mastra agents** (`app/mastra/`) | The `tutor` agent resolves its instructions + model per request from the tutor URL and persists each conversation via Mastra `Memory`. Agents are registered in `app/mastra/index.ts`. Memory/storage is **Azure SQL** via `@mastra/mssql`, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. |
 | **Model endpoint** (`app/mastra/scch.ts`) | A self-hosted, OpenAI-compatible vLLM GPU server ("SCCH"). The tutor's `llm.model` resolves against this endpoint; the API key stays server-side. |
@@ -150,7 +150,7 @@ npm run dev
 ```
 
 Then open **http://localhost:3000**, sign in with Microsoft Entra ID, paste a tutor YAML URL
-(see `tutors/` for samples), and start chatting.
+(see `activities/tutors/` for samples), and start chatting.
 
 ### Production build
 
@@ -181,8 +181,8 @@ npm run start
 
 ## Tutors
 
-The `tutors/` directory contains sample tutor and fragment YAML files, and
-[`tutors/README.md`](tutors/README.md) documents the full authoring format — fragments,
+The `activities/tutors/` directory contains sample tutor and fragment YAML files, and
+[`activities/tutors/README.md`](activities/tutors/README.md) documents the full authoring format — fragments,
 priorities, `input_schema`, variable binding, relative fragment URLs, and optional inputs
 with defaults.
 

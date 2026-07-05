@@ -46,9 +46,12 @@ describe("parseCoding", () => {
     if (!result.ok) expect(typeof result.message).toBe("string");
   });
 
-  it("parses the shipped sample (coding/beginner-typescript.yaml)", () => {
+  it("parses the shipped sample (activities/coding/beginner-typescript.yaml)", () => {
     // Vitest runs from the repo root, so the sample is addressable from cwd.
-    const sample = readFileSync(join(process.cwd(), "coding/beginner-typescript.yaml"), "utf8");
+    const sample = readFileSync(
+      join(process.cwd(), "activities/coding/beginner-typescript.yaml"),
+      "utf8",
+    );
     const result = parseCoding(sample);
     expect(result.ok).toBe(true);
     if (!result.ok) return;

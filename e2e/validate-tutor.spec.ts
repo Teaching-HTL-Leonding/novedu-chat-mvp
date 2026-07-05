@@ -5,7 +5,7 @@ import { BROKEN_TUTOR_URL, VALID_TUTOR_URL } from "./code.utils";
 // These tests exercise the full stack: the page POSTs a public URL to
 // /api/validate-tutor, which fetches the stable sample tutors from GitHub,
 // validates + assembles them, and returns the result. The sample files under
-// tutors/ are kept stable on `main` precisely so these URLs stay valid.
+// activities/tutors/ are kept stable on `main` precisely so these URLs stay valid.
 //
 // Validate Tutor is teacher-only now, so this spec runs with the minted teacher
 // session (the student-side denial is covered by permissions.spec.ts).

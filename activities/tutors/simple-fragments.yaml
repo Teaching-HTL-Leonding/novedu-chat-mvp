@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+id: simple-fragments
+fragments:
+  - id: persona
+    version: 1
+    priority: 100
+
+    input_schema:
+      type: object
+      required:
+        - subject
+      properties:
+        subject:
+          type: string
+        # Optional: a tutor may omit `greeting`, in which case this default is used.
+        greeting:
+          type: string
+          default: "Hi there!"
+
+    content: |
+      {{greeting}}
+
+      You are a friendly, encouraging tutor for {{subject}}.
+
+      Explain ideas simply and check the student's understanding with short questions.
+
+  - id: ground_rules
+    version: 1
+    priority: 200
+
+    input_schema:
+      type: object
+      required:
+        - rules
+      properties:
+        rules:
+          type: array
+          items:
+            type: string
+
+    content: |
+      Follow these ground rules:
+      {{#each rules}}
+      - {{this}}
+      {{/each}}

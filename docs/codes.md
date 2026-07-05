@@ -352,14 +352,14 @@ row of `kind: "quiz"`. Teachers author the quiz YAML on `/files/new` (kind
 shortcut). Students reach it at `/<code>` like any other activity; the runner +
 in-page discussion live in `app/[code]/_quiz/`.
 
-- **Quiz YAML** (`quizzes/sample-quiz.yaml`, parsed leniently by `parseQuiz` in
+- **Quiz YAML** (`activities/quizzes/sample-quiz.yaml`, parsed leniently by `parseQuiz` in
   `lib/quiz-yaml.ts`): `id`, `name`, optional `title`/`description` (student
   welcome), `anonymous` (default `true`), `shuffle` (default `true`), `llm.model`
   (grades AND drives the discussion), optional `discussion.instructions`, and
   `questions[]` each with `id`, optional `title`, `question` (markdown), an
   optional content `image` (below), and `evaluation` (the SERVER-ONLY grading
   prompt).
-- **An optional question `image`** (`quizzes/sample-image-quiz.yaml`) is an
+- **An optional question `image`** (`activities/quizzes/sample-image-quiz.yaml`) is an
   `ImageRef` from the **image subsystem** (`docs/images.md`) — it carries no
   secret (unlike `evaluation`), so it survives `toPublicQuiz` and is resolved
   server-side (`resolveImageRef`) to a `ResolvedImage` rendered above the question

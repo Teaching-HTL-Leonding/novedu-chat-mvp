@@ -7,7 +7,7 @@ import { VALID_CODING_URL, VALID_TUTOR_URL } from "./code.utils";
 // code"), as a teacher, against the real database (the dev server authenticates
 // with the local `az login` identity). Writes real rows, so it is excluded from
 // CI like the other live specs. The tutor link shares the canonical simple
-// tutor YAML (VALID_TUTOR_URL → .../tutors/simple-tutor.yaml). Covers the
+// tutor YAML (VALID_TUTOR_URL → .../activities/tutors/simple-tutor.yaml). Covers the
 // DB-side filtering (Apply → ?q=) on both list pages.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });

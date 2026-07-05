@@ -41,7 +41,7 @@ instructions: |
 // instructions) — used by the full round-trip test exactly as a teacher would: a
 // code pointed straight at a remote YAML URL, no local file to author.
 const REMOTE_WRITING_URL =
-  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/writings/human-animal-short-story.yaml";
+  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/writings/human-animal-short-story.yaml";
 
 async function setCodeMirrorContent(page: Page, text: string): Promise<void> {
   const content = page.locator(".cm-content");

@@ -56,8 +56,9 @@ The command differs depending on **where you are**. Decide first:
 
 **Inside the app repo** — the working directory is the chat-prototype /
 `novedu-chat-mvp` repository (tell-tale signs: the root `package.json` has
-`"name": "chat-prototype"` and a `cli/` workspace; the fixtures live in `tutors/`,
-`quizzes/`, `writings/`, `coding/`). Run it straight from source, no build or install
+`"name": "chat-prototype"` and a `cli/` workspace; the fixtures live under
+`activities/` — `activities/tutors/`, `activities/quizzes/`, `activities/writings/`,
+`activities/coding/`). Run it straight from source, no build or install
 needed:
 
 ```bash
@@ -91,7 +92,7 @@ unsure, a quick check for a root `package.json` named `chat-prototype` settles i
 validate <pathOrUrl> [--kind tutor|fragment|quiz|writing|coding] [--json]
 ```
 
-- **`<pathOrUrl>`** — either a **local file path** (e.g. `./tutors/my-tutor.yaml`)
+- **`<pathOrUrl>`** — either a **local file path** (e.g. `./activities/tutors/my-tutor.yaml`)
   or a public **http(s) URL** (e.g. a raw GitHub link to an activity YAML).
 - **`--kind`** — what the file is: `tutor` (the default), `fragment`, `quiz`,
   `writing`, or `coding`. The CLI does **not** auto-detect; pass the right `--kind`
@@ -143,41 +144,41 @@ and touches no protected resource.
 Inside the repo, a known-good tutor fixture:
 
 ```bash
-npm run cli -- validate tutors/simple-tutor.yaml
-# ✔ Valid tutor — tutors/simple-tutor.yaml   (exit 0)
+npm run cli -- validate activities/tutors/simple-tutor.yaml
+# ✔ Valid tutor — activities/tutors/simple-tutor.yaml   (exit 0)
 ```
 
 Inside the repo, a broken tutor — exit 1, with actionable codes:
 
 ```bash
-npm run cli -- validate tutors/broken-tutor.yaml
+npm run cli -- validate activities/tutors/broken-tutor.yaml
 # ✘ Invalid tutor … MISSING_REQUIRED_VARIABLE / FRAGMENT_NOT_FOUND   (exit 1)
 ```
 
 Inside the repo, validating a fragment library on its own:
 
 ```bash
-npm run cli -- validate tutors/simple-fragments.yaml --kind fragment
-# ✔ Valid fragment file — tutors/simple-fragments.yaml   (exit 0)
+npm run cli -- validate activities/tutors/simple-fragments.yaml --kind fragment
+# ✔ Valid fragment file — activities/tutors/simple-fragments.yaml   (exit 0)
 ```
 
 Inside the repo, validating a quiz, a writing activity, and a coding activity:
 
 ```bash
-npm run cli -- validate quizzes/sample-quiz.yaml --kind quiz
-# ✔ Valid quiz — quizzes/sample-quiz.yaml   (exit 0)
+npm run cli -- validate activities/quizzes/sample-quiz.yaml --kind quiz
+# ✔ Valid quiz — activities/quizzes/sample-quiz.yaml   (exit 0)
 
-npm run cli -- validate writings/human-animal-short-story.yaml --kind writing
+npm run cli -- validate activities/writings/human-animal-short-story.yaml --kind writing
 # ✔ Valid writing activity — …   (exit 0)
 
-npm run cli -- validate coding/beginner-typescript.yaml --kind coding
+npm run cli -- validate activities/coding/beginner-typescript.yaml --kind coding
 # ✔ Valid coding activity — …   (exit 0)
 ```
 
 Outside the repo, validating a published tutor by URL:
 
 ```bash
-npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/simple-tutor.yaml
+npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/simple-tutor.yaml
 ```
 
 Machine-readable output for scripting/CI:

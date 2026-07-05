@@ -16,12 +16,12 @@ import { buildMssqlConnectionConfig } from "../lib/azure-credential";
 
 export const RAW_REPO =
   "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main";
-export const RAW_TUTORS = `${RAW_REPO}/tutors`;
+export const RAW_TUTORS = `${RAW_REPO}/activities/tutors`;
 export const VALID_TUTOR_URL = `${RAW_TUTORS}/simple-tutor.yaml`;
 export const BROKEN_TUTOR_URL = `${RAW_TUTORS}/broken-tutor.yaml`;
 // A valid CODING activity URL — coding now has a strict authoring gate, so a coding
 // code must point at a real coding YAML (a tutor URL would fail CODING_SCHEMA_ERROR).
-export const VALID_CODING_URL = `${RAW_REPO}/coding/beginner-typescript.yaml`;
+export const VALID_CODING_URL = `${RAW_REPO}/activities/coding/beginner-typescript.yaml`;
 
 // Rows minted here are attributed to a recognizable fake teacher, so they are
 // easy to tell apart (and clean up) in the table. There is no automatic GC, so a

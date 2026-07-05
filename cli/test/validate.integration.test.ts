@@ -10,13 +10,13 @@ import { describe, expect, it } from "vitest";
 // Run via `npm run test:cli` — it builds the CLI first, so `dist/main.js` exists.
 
 const cli = fileURLToPath(new URL("../dist/main.js", import.meta.url));
-const tutorsDir = fileURLToPath(new URL("../../tutors/", import.meta.url));
-const quizzesDir = fileURLToPath(new URL("../../quizzes/", import.meta.url));
-const writingsDir = fileURLToPath(new URL("../../writings/", import.meta.url));
-const codingDir = fileURLToPath(new URL("../../coding/", import.meta.url));
+const tutorsDir = fileURLToPath(new URL("../../activities/tutors/", import.meta.url));
+const quizzesDir = fileURLToPath(new URL("../../activities/quizzes/", import.meta.url));
+const writingsDir = fileURLToPath(new URL("../../activities/writings/", import.meta.url));
+const codingDir = fileURLToPath(new URL("../../activities/coding/", import.meta.url));
 
 const RAW_BASE =
-  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors";
+  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors";
 
 interface Run {
   code: number;

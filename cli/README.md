@@ -14,21 +14,21 @@ the same one the app would accept — no separate, drifting rules.
 
 ```bash
 # Validate a local file (relative fragment_files resolve from the same folder)
-npx @novedu/cli validate ./tutors/simple-tutor.yaml
+npx @novedu/cli validate ./activities/tutors/simple-tutor.yaml
 
 # Validate a published tutor by URL
-npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/tutors/simple-tutor.yaml
+npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/simple-tutor.yaml
 
 # Validate a fragment library on its own
-npx @novedu/cli validate ./tutors/simple-fragments.yaml --kind fragment
+npx @novedu/cli validate ./activities/tutors/simple-fragments.yaml --kind fragment
 
 # Validate a quiz, a writing activity, or a coding activity
-npx @novedu/cli validate ./quizzes/sample-quiz.yaml --kind quiz
-npx @novedu/cli validate ./writings/human-animal-short-story.yaml --kind writing
-npx @novedu/cli validate ./coding/beginner-typescript.yaml --kind coding
+npx @novedu/cli validate ./activities/quizzes/sample-quiz.yaml --kind quiz
+npx @novedu/cli validate ./activities/writings/human-animal-short-story.yaml --kind writing
+npx @novedu/cli validate ./activities/coding/beginner-typescript.yaml --kind coding
 
 # Machine-readable output (the raw validation result)
-npx @novedu/cli validate ./tutors/simple-tutor.yaml --json
+npx @novedu/cli validate ./activities/tutors/simple-tutor.yaml --json
 ```
 
 `--kind` accepts `tutor` (default), `fragment`, `quiz`, `writing`, or `coding`; it
@@ -42,7 +42,7 @@ as a pre-commit / CI gate.
 The CLI lives in the app repo as an npm workspace.
 
 ```bash
-npm run cli -- validate ./tutors/simple-tutor.yaml   # run from source via tsx
+npm run cli -- validate ./activities/tutors/simple-tutor.yaml   # run from source via tsx
 npm run cli:build                                    # bundle to cli/dist via tsdown
 npm run test:cli                                     # build + integration tests (local & live URLs)
 ```

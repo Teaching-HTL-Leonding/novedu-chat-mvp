@@ -61,7 +61,7 @@ publishing breaks.
 2. **guards that the tag matches `cli/package.json` version** — a `cli-v0.2.0`
    tag against a `0.1.0` package fails fast,
 3. `npm ci` → `npm run cli:build` → smoke-tests the built binary against
-   `tutors/simple-tutor.yaml`,
+   `activities/tutors/simple-tutor.yaml`,
 4. `npm publish -w @novedu/cli --provenance --access public` (auth via OIDC).
 
 To cut a release:
