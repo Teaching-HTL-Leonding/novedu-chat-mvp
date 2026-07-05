@@ -11,6 +11,7 @@
 // never SAVES a structurally broken quiz.
 
 import { z } from "zod";
+import { providerSchema } from "@/lib/llm/provider";
 
 /** An optional content image attached to a question (carries no secret). */
 const ImageRefSchema = z.strictObject({
@@ -44,7 +45,9 @@ export const QuizYamlSchema = z.strictObject({
   anonymous: z.boolean().optional(),
   // Random question order per attempt, default true.
   shuffle: z.boolean().optional(),
-  llm: z.strictObject({ model: z.string().min(1) }),
+  // `provider` selects which LLM endpoint serves `model` (default SCCH); the one
+  // model grades answers AND drives the discussion chat.
+  llm: z.strictObject({ model: z.string().min(1), provider: providerSchema }),
   // Optional guidance for the per-question follow-up discussion chat.
   discussion: z.strictObject({ instructions: z.string().min(1) }).optional(),
   questions: z.array(QuizQuestionSchema).min(1),

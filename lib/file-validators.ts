@@ -1,5 +1,7 @@
 import { loadAndCheckCoding } from "@/lib/coding-validate";
 import type { FileKind } from "@/lib/file-name";
+import { providerUnavailableReason } from "@/lib/llm/availability";
+import type { LlmProvider } from "@/lib/llm/provider";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import { loadAndCheckQuiz } from "@/lib/quiz-validate";
 import {
@@ -45,6 +47,15 @@ export interface FileValidator {
   validate(url: string, fetcher: Fetcher): Promise<FileValidationResult>;
 }
 
+// APP-ONLY availability gate on top of the (CLI-shared, env-free) loadAndCheck*
+// core: a structurally valid YAML naming a provider THIS server cannot serve
+// (e.g. `Azure Foundry` without AZURE_FOUNDRY_ENDPOINT) must fail at save/create
+// time, not mid-chat. `null` means the provider is usable.
+function providerGate(provider: LlmProvider): FileValidationResult | null {
+  const reason = providerUnavailableReason(provider);
+  return reason ? { ok: false, errors: [{ code: "PROVIDER_UNAVAILABLE", message: reason }] } : null;
+}
+
 // tutor: the THOROUGH authoring gate (every fragment in every referenced library
 // is strict-rendered), matching share/create time and the validate page. The
 // build result already surfaces title/description/anonymous.
@@ -52,6 +63,8 @@ const tutorValidator: FileValidator = {
   async validate(url, fetcher) {
     const result = await loadAndBuildTutorPrompt(url, fetcher, { validateLibraries: true });
     if (!result.ok) return { ok: false, errors: result.errors };
+    const gated = providerGate(result.provider);
+    if (gated) return gated;
     return {
       ok: true,
       warnings: result.warnings,
@@ -82,6 +95,8 @@ const quizValidator: FileValidator = {
   async validate(url, fetcher) {
     const result = await loadAndCheckQuiz(url, fetcher);
     if (!result.ok) return { ok: false, errors: result.errors };
+    const gated = providerGate(result.provider);
+    if (gated) return gated;
     return {
       ok: true,
       warnings: result.warnings,
@@ -99,6 +114,8 @@ const writingValidator: FileValidator = {
   async validate(url, fetcher) {
     const result = await loadAndCheckWriting(url, fetcher);
     if (!result.ok) return { ok: false, errors: result.errors };
+    const gated = providerGate(result.provider);
+    if (gated) return gated;
     return {
       ok: true,
       warnings: result.warnings,
@@ -119,6 +136,8 @@ const codingValidator: FileValidator = {
   async validate(url, fetcher) {
     const result = await loadAndCheckCoding(url, fetcher);
     if (!result.ok) return { ok: false, errors: result.errors };
+    const gated = providerGate(result.provider);
+    if (gated) return gated;
     return {
       ok: true,
       warnings: result.warnings,

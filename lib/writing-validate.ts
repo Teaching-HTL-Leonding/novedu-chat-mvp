@@ -17,6 +17,7 @@ import {
   type ValidationWarning,
   validate,
 } from "@/lib/tutors";
+import type { LlmProvider } from "./llm/provider";
 import { type WritingYaml, WritingYamlSchema } from "./writing-schema";
 
 /**
@@ -29,6 +30,8 @@ export type WritingCheckResult =
       ok: true;
       writingId: string;
       model: string;
+      /** The LLM provider serving `model` (`llm.provider`, default SCCH). */
+      provider: LlmProvider;
       /** Privacy flag, default `false` (attributed) — the writing divergence. */
       anonymous: boolean;
       title: string | null;
@@ -53,6 +56,7 @@ export function checkWritingValue(parsed: unknown, url?: string): WritingCheckRe
     ok: true,
     writingId: writing.id,
     model: writing.llm.model,
+    provider: writing.llm.provider,
     anonymous: writing.anonymous ?? DEFAULT_ANONYMOUS,
     title: writing.title ?? null,
     warnings: [],

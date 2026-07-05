@@ -70,6 +70,38 @@ describe("mapSpanToUsage — MODEL_GENERATION tokens", () => {
   });
 });
 
+describe("mapSpanToUsage — provider/model attribution (span attributes)", () => {
+  const genWith = (attributes: Record<string, unknown>) =>
+    span({ attributes: { usage: { inputTokens: 5, outputTokens: 2 }, ...attributes } });
+
+  it("maps the named ai-sdk provider ids to the app-level labels", () => {
+    expect(
+      mapSpanToUsage(genWith({ provider: "scch.chat", model: "RedHatAI/gemma-4-31B" })),
+    ).toMatchObject({ provider: "SCCH", model: "RedHatAI/gemma-4-31B" });
+    expect(
+      mapSpanToUsage(genWith({ provider: "azure-foundry.chat", model: "gpt-5.4-mini" })),
+    ).toMatchObject({ provider: "Azure Foundry", model: "gpt-5.4-mini" });
+  });
+
+  it("passes an unmapped provider id through raw (a naming regression stays visible)", () => {
+    expect(mapSpanToUsage(genWith({ provider: "openai.chat", model: "m" }))).toMatchObject({
+      provider: "openai.chat",
+    });
+  });
+
+  it("leaves provider/model undefined when the span lacks them", () => {
+    const mapped = mapSpanToUsage(genWith({}));
+    expect(mapped?.provider).toBeUndefined();
+    expect(mapped?.model).toBeUndefined();
+  });
+
+  it("carries no provider/model on tool-call spans (nothing to COALESCE-fill)", () => {
+    const mapped = mapSpanToUsage(span({ type: SpanType.TOOL_CALL }));
+    expect(mapped?.provider).toBeUndefined();
+    expect(mapped?.model).toBeUndefined();
+  });
+});
+
 describe("mapSpanToUsage — attribution", () => {
   it("reads the keys from metadata when requestContext lacks them", () => {
     const mapped = mapSpanToUsage(

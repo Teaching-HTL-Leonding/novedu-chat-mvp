@@ -1,4 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
+import { SCCH_PROVIDER_NAME } from "@/lib/llm/provider";
 import { scchAuthHeader, scchModelsUrl } from "@/lib/scch-endpoint";
 
 // Our self-hosted vLLM GPU server exposes an OpenAI-compatible API.
@@ -11,9 +12,14 @@ const API_KEY = process.env.SCCH_API_KEY;
 
 // `.chat()` pins the Chat Completions API. The default `provider(id)` in
 // @ai-sdk/openai v2 targets the newer Responses API, which vLLM does not serve.
-// Exported so the tutor agent can resolve a tutor YAML's `llm.model` against the
-// same self-hosted endpoint (the API key never leaves the server).
-export const scchProvider = createOpenAI({ baseURL: BASE_URL, apiKey: API_KEY });
+// Exported so `lib/llm/model.ts` can resolve an activity's `llm.model` against
+// this self-hosted endpoint (the API key never leaves the server). The `name` is
+// the metering contract — see lib/llm/provider.ts.
+export const scchProvider = createOpenAI({
+  name: SCCH_PROVIDER_NAME,
+  baseURL: BASE_URL,
+  apiKey: API_KEY,
+});
 
 // The endpoint also hosts embedding / speech / audio models that can't drive a
 // chat. Keep them out of the chat model dropdown.

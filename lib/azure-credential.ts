@@ -34,6 +34,18 @@ export function buildDataStoreCredential(): TokenCredential {
   );
 }
 
+// The ONE way this app authenticates against Azure Cognitive Services — today the
+// Azure Foundry (Azure OpenAI) endpoint used by `lib/llm/foundry-endpoint.ts`. Same
+// explicit chain as the data-store credential (and the same reason to avoid
+// `DefaultAzureCredential` — see above), but WITHOUT the `STORAGE_TENANT_ID` pin:
+// the Foundry resource lives in the `az login` identity's ambient tenant, not the
+// data-store tenant.
+//
+// SERVER-ONLY: handles Azure credentials. Never import from client components.
+export function buildCognitiveServicesCredential(): TokenCredential {
+  return new ChainedTokenCredential(new AzureCliCredential({}), new ManagedIdentityCredential());
+}
+
 // Parses `MSSQL_CONNECTION_STRING` into a node-mssql config and picks the auth
 // mode — the ONE place that decides how the app authenticates against its SQL
 // Azure database, so the Mastra store, the Drizzle pool, and the e2e helper can

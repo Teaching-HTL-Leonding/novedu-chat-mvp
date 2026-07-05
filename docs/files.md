@@ -92,7 +92,10 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
 The thin auth + policy shell. **Every** action gates with **`requireTeacherUserId()`**
 (an *effective* teacher — student mode is denied — plus the session `oid`); never
 `session.user.isTeacher`. Validation is **coupled to saving by design** — an invalid
-file is never persisted.
+file is never persisted. The validators also gate on **provider availability**: a
+structurally valid activity naming an LLM provider this server has not configured
+(e.g. `Azure Foundry` without `AZURE_FOUNDRY_ENDPOINT`) fails with a
+`PROVIDER_UNAVAILABLE` error instead of erroring later mid-chat (`docs/ai-models.md`).
 
 - `createFileAction` → validate name + kind + YAML, store, then `redirect("/files/edit/<name>")`.
 - `updateFileAction(name, content)` → re-validate against the **stored** kind, store a new version.

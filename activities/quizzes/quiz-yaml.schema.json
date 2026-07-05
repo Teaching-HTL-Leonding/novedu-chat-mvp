@@ -59,6 +59,11 @@
           "type": "string",
           "minLength": 1,
           "description": "The model that grades answers and drives the per-question discussion chat."
+        },
+        "provider": {
+          "enum": ["SCCH", "Azure Foundry"],
+          "default": "SCCH",
+          "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name."
         }
       }
     },

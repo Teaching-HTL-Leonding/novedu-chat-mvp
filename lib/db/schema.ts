@@ -288,6 +288,14 @@ export const usageByCode = mssqlTable(
     hour: datetime2("hour").notNull(),
     // Denormalized from novedu_codes so admin can group by module without a join.
     module: varchar("module", { length: 16 }).notNull(),
+    // Denormalized from the activity YAML (docs/usage-metering.md): which LLM
+    // provider + model consumed the bucket's tokens. Nullable — only the LLM
+    // recorder knows them; a counter recorder that creates the bucket first leaves
+    // them NULL and recordLlmUsage COALESCE-fills on its increment. `model` is the
+    // raw id (SCCH ids and Foundry deployment names are disjoint). NULL model on
+    // pre-metering rows means "unknown".
+    provider: varchar("provider", { length: 32 }),
+    model: nvarchar("model", { length: 256 }),
     inputTokensNew: bigint("input_tokens_new", { mode: "number" }).notNull().default(0),
     inputTokensCached: bigint("input_tokens_cached", { mode: "number" }).notNull().default(0),
     outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),

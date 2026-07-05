@@ -1,4 +1,11 @@
-import { checkDb, checkScch, resolveScchHost, resolveSqlHost } from "@/lib/health";
+import {
+  checkDb,
+  checkFoundry,
+  checkScch,
+  resolveFoundryHost,
+  resolveScchHost,
+  resolveSqlHost,
+} from "@/lib/health";
 import { requireEffectiveTeacher } from "@/lib/student-mode";
 
 // Teacher-only probe endpoint for the /health dashboard. Each probe is fetched
@@ -11,8 +18,10 @@ export const dynamic = "force-dynamic";
 const PROBES = {
   db: checkDb,
   scch: checkScch,
+  foundry: checkFoundry,
   "sql-host": resolveSqlHost,
   "scch-host": resolveScchHost,
+  "foundry-host": resolveFoundryHost,
 } as const;
 
 export async function GET(req: Request) {

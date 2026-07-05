@@ -9,7 +9,7 @@ that subsystem exposes (`docs/codes.md`) — the generic flow (code store, creat
 list, edit, bulk-delete, the availability window) is untouched. The always-on
 invariants are summarized in `AGENTS.md`; this file has the full mechanics.
 
-Read it before touching the coding libs (`lib/coding-*.ts`, `lib/scch-endpoint.ts`),
+Read it before touching the coding libs (`lib/coding-*.ts`, `lib/llm/endpoint.ts`),
 the public route (`app/api/coding/**`), the student surface
 (`app/[code]/render-coding.tsx`, `app/[code]/_coding/**`), the descriptor
 (`lib/code-modules/coding.ts`), the `api/coding` matcher in `proxy.ts`, or the
@@ -24,13 +24,18 @@ samples (`activities/coding/*.yaml`).
 - Unlike tutor/quiz/writing it has **no in-app chat**: there is no CopilotKit
   runtime agent and no Mastra memory. The `/<code>` web page is just a **connection
   page** showing how to point a tool at the endpoint.
-- It is a **thin pass-through proxy**, not an agent. The SCCH upstream
-  (`SCCH_BASE_URL`, already including `/v1`) is itself OpenAI-compatible; the route
-  gatekeeps, injects the teacher's system prompt, pins the model, and **pipes the
-  response stream back unparsed**. Because the body is forwarded verbatim and the
-  response is never re-serialized, **client-side tool calling and streaming work
-  unchanged** (the coding agent runs its own file-edit / run-code tools and just
-  exchanges `tool_calls` / `tool` messages through the relay).
+- It is a **thin pass-through proxy**, not an agent. Both upstreams (SCCH and Azure
+  Foundry, selected by the YAML's `llm.provider` — docs/ai-models.md) are
+  OpenAI-compatible; the route gatekeeps, injects the teacher's system prompt, pins
+  the model, lets the provider's `adaptBody` hook adjust the **parameter dialect**
+  (Azure Foundry renames `max_tokens` → `max_completion_tokens` and drops
+  `temperature`/`top_p`, which its gpt-5.x reasoning deployments reject; SCCH is the
+  identity — the hook lives in `lib/llm/endpoint.ts`, so the route stays
+  provider-blind), and **pipes the response stream back unparsed**. Because the rest
+  of the body is forwarded verbatim and the response is never re-serialized,
+  **client-side tool calling and streaming work unchanged** (the coding agent runs
+  its own file-edit / run-code tools and just exchanges `tool_calls` / `tool`
+  messages through the relay).
 
 ## Access & anonymity (the security model)
 
@@ -45,10 +50,10 @@ samples (`activities/coding/*.yaml`).
 - It is **always anonymous**: the API path carries no `oid`, so there is no
   attribution, no `novedu_user_chats` row, and no per-student review. `readAnonymousFlag("coding")` returns `{ anonymous: true, definitive: true }` and the
   validator freezes `anonymous: true` onto the row.
-- The teacher's **system prompt and the real SCCH model stay server-side** — the
-  proxy injects the prompt and pins the model; neither is sent to the browser. The
-  connection page deliberately advertises only a generic model id (the proxy ignores
-  whatever model the client sends).
+- The teacher's **system prompt and the real pinned model stay server-side** — the
+  proxy injects the prompt and pins the model; neither is sent to the browser (nor
+  is the provider). The connection page deliberately advertises only a generic
+  model id (the proxy ignores whatever model the client sends).
 
 ## The coding YAML
 
@@ -59,15 +64,17 @@ id: beginner-typescript
 name: "Beginner TypeScript Coding Buddy"
 title: "TypeScript Coding Buddy (Beginners)"   # optional — shown on the connection page
 llm:
-  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic   # the single pinned SCCH model
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic   # the single pinned model
+  # provider: Azure Foundry                    # optional; missing ⇒ SCCH
 instructions: |
   <the teacher's system prompt — appended after the coding tool's own system prompt
    so it has the final word>
 ```
 
 - **`parseCoding`** (`lib/coding-yaml.ts`) is the lenient runtime read: it requires
-  only `llm.model` + `instructions` and returns `{ title?, model, instructions }`.
-  `model` and `instructions` are **server-only**.
+  only `llm.model` + `instructions` and returns `{ title?, model, provider, instructions }`
+  (`provider` defaults to SCCH when missing; a present-but-invalid value is
+  rejected). `model`, `provider` and `instructions` are **server-only**.
 - **Authoring validation** is the strict `CodingYamlSchema` gate
   (`lib/coding-schema.ts` is the source of truth) run by `loadAndCheckCoding`
   (`lib/coding-validate.ts`): bad YAML, a missing/misspelled field, no `llm.model`, or
@@ -95,19 +102,24 @@ instructions: |
    a non-`coding` module → `401`.
 3. `loadCoding(entry.fileUrl)` (`lib/coding-fetch.ts`, via the shared
    `appHostedFetcher`) → `502` on failure.
-4. `buildUpstreamChatBody` (`lib/coding-proxy.ts`) **appends** the teacher's
+4. `resolveChatEndpoint(loaded.coding.provider)` resolves the upstream and **starts**
+   the `authHeader()` acquisition (the SCCH key, or a bounded Entra token for Foundry
+   — docs/ai-models.md) so the token round trip overlaps the body read; a missing env
+   var or a failed acquisition is a distinct `500` (a real misconfiguration) rather
+   than a misleading `502`. `lib/llm/endpoint.ts` is side-effect-free — it does
+   **not** import `app/mastra/scch.ts`, whose top-level model fetch must not run on
+   this lean public path.
+5. `buildUpstreamChatBody` (`lib/coding-proxy.ts`) **appends** the teacher's
    `instructions` to the **end** of the client's own system message (so the teacher
    has the final word; if the client sent no system message, a leading one carrying
    only the teacher's prompt is added) and **pins** `model`; everything else
-   (`messages`, `tools`, `tool_choice`, `temperature`, `stream`, …) passes through
-   verbatim.
-5. `fetch(`${SCCH_CHAT_URL}`, …)` with the SCCH key, passing `signal: req.signal` so a
-   client disconnect cancels the upstream generation. The URL/auth header are resolved
-   **before** the fetch try, so a missing `SCCH_*` env is a distinct `500` (a real
-   misconfiguration) rather than a misleading `502`; the SCCH access lives in
-   `lib/scch-endpoint.ts` — side-effect-free; it does **not** import `app/mastra/scch.ts`,
-   whose top-level model fetch must not run on this lean public path.
-6. `return new Response(upstream.body, …)` — copies the upstream `content-type` so
+   (`messages`, `tools`, `tool_choice`, `stream`, …) passes through verbatim. The
+   endpoint's `adaptBody` hook then adjusts the provider's parameter dialect (see
+   above) — it never touches `stream`/`stream_options`, which carry the usage tap's
+   `include_usage`.
+6. `fetch` to the resolved URL with the awaited auth header, passing
+   `signal: req.signal` so a client disconnect cancels the upstream generation.
+7. `return new Response(upstream.body, …)` — copies the upstream `content-type` so
    streamed `text/event-stream` and non-streamed JSON both pass through; the SSE body
    is piped back **unparsed**. Upstream error statuses/bodies pass through as-is.
 

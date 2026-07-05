@@ -1,6 +1,7 @@
 import { auth } from "@/auth";
 import { AccessDenied } from "@/components/notice";
 import { Main } from "@/components/page-main";
+import { foundryConfigured } from "@/lib/llm/foundry-endpoint";
 import { getTeacherView } from "@/lib/student-mode";
 import { getBuildInfo } from "@/lib/version";
 import { HealthDashboard } from "./health-dashboard";
@@ -31,7 +32,12 @@ export default async function HealthPage() {
 
   return (
     <Main>
-      <HealthDashboard userLabel={userLabel} isTeacher={realTeacher} build={getBuildInfo()} />
+      <HealthDashboard
+        userLabel={userLabel}
+        isTeacher={realTeacher}
+        build={getBuildInfo()}
+        foundryConfigured={foundryConfigured()}
+      />
     </Main>
   );
 }

@@ -15,12 +15,17 @@ const VALUE = "wrap-anywhere text-sm leading-normal";
 const PILL = "mr-2 rounded-full px-2 py-0.5 font-bold";
 
 // Client side of the health page. The page shell (including the user/teacher
-// rows, which the server already knows) renders immediately; the four
-// connectivity probes are fetched from /api/health in parallel and each row
-// flips from "Checking…" to its result the moment its own response lands — a
-// timing-out dependency never delays the others.
+// rows, which the server already knows) renders immediately; the connectivity
+// probes are fetched from /api/health in parallel and each row flips from
+// "Checking…" to its result the moment its own response lands — a timing-out
+// dependency never delays the others. The Azure Foundry rows exist only when the
+// server says the provider is configured (an SCCH-only deployment shows no red
+// Foundry indicator); mounting them is what starts their probes.
 
 type Pending<T> = { status: "pending" } | { status: "done"; value: T };
+
+const indicatorError = (message: string): HealthIndicator => ({ ok: false, detail: message });
+const hostError = (message: string): HostInfo => ({ fqdn: null, ips: [], error: message });
 
 function useProbe<T>(probe: string, onError: (message: string) => T): Pending<T> {
   const [state, setState] = useState<Pending<T>>({ status: "pending" });
@@ -87,17 +92,39 @@ function HostValue({ state, testId }: { state: Pending<HostInfo>; testId: string
   );
 }
 
+// Rendered only when Foundry is configured; its own component so the probe hooks
+// run only in that case.
+function FoundryStatusRow() {
+  const foundry = useProbe("foundry", indicatorError);
+  return (
+    <div className={ROW}>
+      <dt className={TERM}>Azure Foundry models</dt>
+      <StatusValue state={foundry} testId="health-foundry" />
+    </div>
+  );
+}
+
+function FoundryHostRow() {
+  const foundryHost = useProbe("foundry-host", hostError);
+  return (
+    <div className={ROW}>
+      <dt className={TERM}>Foundry host</dt>
+      <HostValue state={foundryHost} testId="health-foundry-host" />
+    </div>
+  );
+}
+
 export function HealthDashboard({
   userLabel,
   isTeacher,
   build,
+  foundryConfigured,
 }: {
   userLabel: string;
   isTeacher: boolean;
   build: BuildInfo;
+  foundryConfigured: boolean;
 }) {
-  const indicatorError = (message: string): HealthIndicator => ({ ok: false, detail: message });
-  const hostError = (message: string): HostInfo => ({ fqdn: null, ips: [], error: message });
   const db = useProbe("db", indicatorError);
   const scch = useProbe("scch", indicatorError);
   const sqlHost = useProbe("sql-host", hostError);
@@ -124,6 +151,7 @@ export function HealthDashboard({
             <dt className={TERM}>SCCH models</dt>
             <StatusValue state={scch} testId="health-scch" />
           </div>
+          {foundryConfigured && <FoundryStatusRow />}
           <div className={ROW}>
             <dt className={TERM}>Signed-in user</dt>
             <dd className={VALUE} data-testid="health-user">
@@ -144,6 +172,7 @@ export function HealthDashboard({
             <dt className={TERM}>SCCH host</dt>
             <HostValue state={scchHost} testId="health-scch-host" />
           </div>
+          {foundryConfigured && <FoundryHostRow />}
         </dl>
       </div>
     </section>

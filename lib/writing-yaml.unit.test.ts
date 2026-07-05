@@ -65,6 +65,29 @@ instructions: Give feedback.
     expect(result.writing.anonymous).toBe(false);
   });
 
+  it("defaults a missing llm.provider to SCCH and carries an explicit one", () => {
+    const defaulted = parseWriting(VALID);
+    expect(defaulted.ok && defaulted.writing.provider).toBe("SCCH");
+    const foundry = parseWriting(`
+llm:
+  model: gpt-5.4-mini
+  provider: Azure Foundry
+instructions: Give feedback.
+`);
+    expect(foundry.ok && foundry.writing.provider).toBe("Azure Foundry");
+  });
+
+  it("rejects an unsupported llm.provider instead of silently using SCCH", () => {
+    const result = parseWriting(`
+llm:
+  model: m
+  provider: OpenAI
+instructions: Give feedback.
+`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain("llm.provider");
+  });
+
   it("honours an explicit anonymous: true", () => {
     const result = parseWriting(`
 anonymous: true
@@ -114,6 +137,7 @@ describe("toPublicWriting", () => {
       name: "x",
       anonymous: false,
       model: "m",
+      provider: "SCCH",
       instructions: "secret system prompt",
     };
     const pub = toPublicWriting(writing);

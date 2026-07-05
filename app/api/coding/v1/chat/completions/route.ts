@@ -6,7 +6,7 @@ import {
   openaiError,
   parseBearerKey,
 } from "@/lib/coding-proxy";
-import { scchAuthHeader, scchChatCompletionsUrl } from "@/lib/scch-endpoint";
+import { type ChatEndpoint, resolveChatEndpoint } from "@/lib/llm/endpoint";
 import { recordError } from "@/lib/telemetry";
 import { recordLlmUsage } from "@/lib/usage-store";
 
@@ -19,10 +19,11 @@ import { recordLlmUsage } from "@/lib/usage-store";
 // on EVERY request — the single security boundary, same as every module — loads the
 // teacher's coding YAML, folds the teacher's system prompt into the request (appended
 // to the end of the client's last system message so the teacher has the final word),
-// PINS the model, then forwards to SCCH (`${SCCH_BASE_URL}/chat/completions`) and pipes
-// the response stream straight back. No Mastra, no memory, no server-side tool loop:
-// client-side tools and streaming are preserved because the body is forwarded verbatim
-// and the response is never parsed.
+// PINS the model, then forwards to the activity's provider endpoint (SCCH or Azure
+// Foundry, resolved by the side-effect-free `resolveChatEndpoint` — this route never
+// learns which) and pipes the response stream straight back. No Mastra, no memory, no
+// server-side tool loop: client-side tools and streaming are preserved because the
+// body is forwarded verbatim and the response is never parsed.
 
 export const dynamic = "force-dynamic";
 
@@ -38,11 +39,13 @@ const MAX_TAP_CHARS = 64 * 1024;
 
 // Reads the upstream response copy to completion (off the client path), extracts the
 // final token usage, and meters it against the CODE only (this path has no oid, so it
-// never touches usage_by_user). Best-effort: never throws into the request.
+// never touches usage_by_user), attributed to the activity's provider + pinned model.
+// Best-effort: never throws into the request.
 async function tapCodingUsage(
   stream: ReadableStream<Uint8Array>,
   isStream: boolean,
   code: string,
+  llm: { provider: string; model: string },
 ): Promise<void> {
   try {
     const reader = stream.getReader();
@@ -62,6 +65,8 @@ async function tapCodingUsage(
     await recordLlmUsage({
       code,
       module: "coding",
+      provider: llm.provider,
+      model: llm.model,
       inputNew: Math.max(0, usage.inputTokens - usage.cachedInputTokens),
       inputCached: usage.cachedInputTokens,
       output: usage.outputTokens,
@@ -191,36 +196,53 @@ export async function POST(req: Request): Promise<Response> {
     return errorResponse(loaded.message, 502, "server_error", null);
   }
 
-  // 4. Read the client body under a hard byte cap, then build the upstream body.
-  const parsed = await readBoundedJson(req, MAX_BODY_BYTES);
-  if (!parsed.ok) {
-    return errorResponse(parsed.message, parsed.status, "invalid_request_error", parsed.code);
-  }
-  const upstreamBody = buildUpstreamChatBody(parsed.value, {
-    instructions: loaded.coding.instructions,
-    model: loaded.coding.model,
-  });
-
-  // 5. Resolve SCCH config up front, OUTSIDE the fetch try — a missing env var is a
-  // server misconfiguration (distinct 500), not a "bad gateway".
-  let scchUrl: string;
-  let scchAuth: string;
+  // 4. Resolve the provider endpoint up front, OUTSIDE the fetch try — a missing env
+  // var or a failed Entra token acquisition (Foundry) is a server misconfiguration
+  // (distinct 500), not a "bad gateway". The token acquisition STARTS here so the
+  // Entra round trip overlaps the client-body read; the guard branch keeps an early
+  // 400/413 return from surfacing it as an unhandled rejection — the real handling
+  // is the await in step 6.
+  let endpoint: ChatEndpoint;
+  let authPromise: Promise<string>;
   try {
-    scchUrl = scchChatCompletionsUrl();
-    scchAuth = scchAuthHeader();
+    endpoint = resolveChatEndpoint(loaded.coding.provider);
+    authPromise = endpoint.authHeader();
+    authPromise.catch(() => {});
   } catch (error) {
     recordError(error, { route: "coding-proxy", stage: "config" });
     return errorResponse("Service temporarily unavailable.", 500, "server_error", null);
   }
 
-  // 6. Forward to SCCH. Pass the request's abort signal so a client disconnect cancels
+  // 5. Read the client body under a hard byte cap, then build the upstream body and
+  // let the provider adapt its parameter dialect (e.g. Foundry's max_completion_tokens).
+  const parsed = await readBoundedJson(req, MAX_BODY_BYTES);
+  if (!parsed.ok) {
+    return errorResponse(parsed.message, parsed.status, "invalid_request_error", parsed.code);
+  }
+  const upstreamBody = endpoint.adaptBody(
+    buildUpstreamChatBody(parsed.value, {
+      instructions: loaded.coding.instructions,
+      model: loaded.coding.model,
+    }),
+  );
+
+  // 6. Await the (already in-flight) auth header.
+  let upstreamAuth: string;
+  try {
+    upstreamAuth = await authPromise;
+  } catch (error) {
+    recordError(error, { route: "coding-proxy", stage: "config" });
+    return errorResponse("Service temporarily unavailable.", 500, "server_error", null);
+  }
+
+  // 7. Forward upstream. Pass the request's abort signal so a client disconnect cancels
   // the upstream generation instead of leaving the shared GPU running for nobody.
   let upstream: Response;
   try {
-    upstream = await fetch(scchUrl, {
+    upstream = await fetch(endpoint.url, {
       method: "POST",
       headers: {
-        Authorization: scchAuth,
+        Authorization: upstreamAuth,
         "Content-Type": "application/json",
       },
       body: JSON.stringify(upstreamBody),
@@ -234,7 +256,7 @@ export async function POST(req: Request): Promise<Response> {
     return errorResponse("The upstream model is unreachable.", 502, "server_error", null);
   }
 
-  // 7. Pipe the response (streamed or not) straight back, untouched. Copy the
+  // 8. Pipe the response (streamed or not) straight back, untouched. Copy the
   // upstream content-type so `text/event-stream` and JSON both pass through.
   const headers = new Headers();
   const contentType = upstream.headers.get("content-type");
@@ -242,13 +264,16 @@ export async function POST(req: Request): Promise<Response> {
   headers.set("Cache-Control", "no-store");
   headers.set("X-Accel-Buffering", "no");
 
-  // 8. Meter token usage WITHOUT altering the passthrough: tee the body, forward one
+  // 9. Meter token usage WITHOUT altering the passthrough: tee the body, forward one
   // branch to the client byte-for-byte, and read the other in the background to
   // extract the final `usage`. Coding usage is per-CODE only (no oid on this path).
   if (upstream.body) {
     const [toClient, toTap] = upstream.body.tee();
     const isStream = (contentType ?? "").includes("text/event-stream");
-    void tapCodingUsage(toTap, isStream, entry.code);
+    void tapCodingUsage(toTap, isStream, entry.code, {
+      provider: loaded.coding.provider,
+      model: loaded.coding.model,
+    });
     return new Response(toClient, { status: upstream.status, headers });
   }
   return new Response(upstream.body, { status: upstream.status, headers });

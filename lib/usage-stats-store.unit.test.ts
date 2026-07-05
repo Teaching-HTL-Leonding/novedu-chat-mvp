@@ -21,7 +21,12 @@ const fake = vi.hoisted(() => {
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
 import { OTHER_KEY, resolveRange } from "@/lib/usage-range";
-import { getDashboardKpis, getTokenTimeSeries, getUsageBreakdown } from "@/lib/usage-stats-store";
+import {
+  getDashboardKpis,
+  getTokensByModel,
+  getTokenTimeSeries,
+  getUsageBreakdown,
+} from "@/lib/usage-stats-store";
 
 const NOW = new Date("2026-07-04T14:30:00Z");
 
@@ -122,6 +127,36 @@ describe("getUsageBreakdown", () => {
   it("returns undefined instead of throwing when the query fails", async () => {
     fake.state.executeError = new Error("connection lost");
     await expect(getUsageBreakdown({ range: "7d", now: NOW })).resolves.toBeUndefined();
+  });
+});
+
+describe("getTokensByModel", () => {
+  it("labels rows by model, renders NULL as (unknown), drops zero totals, folds top 9", async () => {
+    fake.state.recordset = [
+      { model: "gpt-5.4-mini", total: "500" },
+      { model: null, total: 200 },
+      { model: "idle-model", total: 0 },
+    ];
+    const slices = await getTokensByModel({ range: "7d", now: NOW });
+    expect(slices).toEqual([
+      { key: "gpt-5.4-mini", label: "gpt-5.4-mini", total: 500 },
+      { key: "(unknown)", label: "(unknown)", total: 200 },
+    ]);
+  });
+
+  it("folds models beyond the top 9 into Other", async () => {
+    fake.state.recordset = Array.from({ length: 11 }, (_, i) => ({
+      model: `m${i}`,
+      total: 100 - i,
+    }));
+    const slices = await getTokensByModel({ range: "30d", now: NOW });
+    expect(slices).toHaveLength(10);
+    expect(slices?.at(-1)).toMatchObject({ key: OTHER_KEY, total: 91 + 90 });
+  });
+
+  it("returns undefined instead of throwing when the query fails", async () => {
+    fake.state.executeError = new Error("connection lost");
+    await expect(getTokensByModel({ range: "7d", now: NOW })).resolves.toBeUndefined();
   });
 });
 

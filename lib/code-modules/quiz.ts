@@ -1,6 +1,11 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
-import { QUIZ_DISCUSSION_INSTRUCTIONS, QUIZ_DISCUSSION_MODEL } from "@/app/mastra/quiz-agents";
+import {
+  QUIZ_DISCUSSION_INSTRUCTIONS,
+  QUIZ_DISCUSSION_MODEL,
+  QUIZ_DISCUSSION_PROVIDER,
+} from "@/app/mastra/quiz-agents";
+import { providerUnavailableReason } from "@/lib/llm/availability";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import type { Quiz } from "@/lib/quiz-yaml";
 import type { CodeModuleDef } from "./registry";
@@ -25,13 +30,18 @@ export const quizModule: CodeModuleDef = {
   runtime: {
     agentId: "quizDiscussion",
     async buildRequestContext(entry) {
-      // The quiz YAML supplies the discussion system prompt + model (re-loaded
-      // server-side, never trusted from the client).
+      // The quiz YAML supplies the discussion system prompt + provider/model
+      // (re-loaded server-side, never trusted from the client).
       const loaded = await loadQuiz(entry.fileUrl);
       if (!loaded.ok) return { ok: false, status: 502, message: loaded.message };
+      // The authoring gate blocks saving such a file, but externally hosted YAML
+      // (or an env change) can still name a provider this server cannot serve.
+      const unavailable = providerUnavailableReason(loaded.quiz.provider);
+      if (unavailable) return { ok: false, status: 502, message: unavailable };
       const context = new RequestContext();
       context.set(QUIZ_DISCUSSION_INSTRUCTIONS, buildDiscussionInstructions(loaded.quiz));
       context.set(QUIZ_DISCUSSION_MODEL, loaded.quiz.model);
+      context.set(QUIZ_DISCUSSION_PROVIDER, loaded.quiz.provider);
       return { ok: true, context };
     },
   },

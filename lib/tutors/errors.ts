@@ -33,7 +33,12 @@ export type ErrorCode =
   | "CODING_SCHEMA_ERROR"
   // The same quiz question `id` is declared on more than one question (per-question
   // stats key must be unique).
-  | "DUPLICATE_QUIZ_QUESTION_ID";
+  | "DUPLICATE_QUIZ_QUESTION_ID"
+  // App-only: the YAML names an LLM provider this server does not have configured
+  // (e.g. `Azure Foundry` without AZURE_FOUNDRY_ENDPOINT). Emitted by the app's
+  // authoring gate (lib/file-validators.ts), never by the CLI-bundled loadAndCheck*
+  // core — CLI validation stays environment-independent.
+  | "PROVIDER_UNAVAILABLE";
 
 /** Non-fatal smells: the prompt still builds, but something is worth flagging. */
 export type WarningCode =
@@ -81,6 +86,12 @@ export type BuildResult =
       ok: true;
       prompt: string;
       model: string;
+      /**
+       * The LLM provider serving `model` (tutor `llm.provider`, default "SCCH").
+       * Mirrors `LlmProvider` in `lib/llm/provider.ts` (kept inline so this module
+       * stays import-free) — update both together.
+       */
+      provider: "SCCH" | "Azure Foundry";
       /** Whether students may attach images in the chat (tutor `llm.imageInput`, default true). */
       imageInput: boolean;
       /**

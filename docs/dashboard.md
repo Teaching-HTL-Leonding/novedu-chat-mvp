@@ -13,8 +13,11 @@ the `--chart-*` tokens in `app/globals.css`, and the `/usage` entry in
 
 - A **stacked bar chart** of token usage over time — cached input, new input, output
   — with a **data table** of the same buckets beneath it.
-- Two **donut pies**: total tokens per **module** (tutor/quiz/writing/coding) and per
-  **code** (top 9 + "Other").
+- Three **donut pies**: total tokens per **module** (tutor/quiz/writing/coding), per
+  **code** (top 9 + "Other"), and per **model** (top 9 + "Other"; a NULL model —
+  metered before models were recorded — shows as "(unknown)"). Model ids are
+  provider-specific (SCCH ids vs. Foundry deployment names, docs/ai-models.md), so
+  the model pie doubles as the paid-Foundry vs. free-SCCH cost split.
 - Two **KPIs**: **Chats** (distinct Mastra threads with a user message) and **Quiz
   answers graded** (`SUM(quiz_answers)`).
 
@@ -55,9 +58,13 @@ crosses the wire, and **read once where the shape allows**:
   start [AND code = @code]`, zero-filled. Feeds the **bar chart AND the table**.
   `code?` is the **reuse seam** for single-code stats pages; omitted, it sums across
   all codes.
-- `getUsageBreakdown({ range, now })` — one `(code, module)` scan feeds **both pies**
-  (summed by module, folded top-9-by-code + Other). Code slices are labelled with the
-  teacher's own **note**, never a student.
+- `getUsageBreakdown({ range, now })` — one `(code, module)` scan feeds the module
+  and code pies (summed by module, folded top-9-by-code + Other). Code slices are
+  labelled with the teacher's own **note**, never a student.
+- `getTokensByModel({ range, now })` — one `GROUP BY model` scan for the model pie
+  (label = the raw model id, NULL → "(unknown)", folded top 9 + Other). A
+  tokens-by-**provider** two-slice variant is the same query grouped on the
+  `provider` column, if ever preferred.
 - `getDashboardKpis({ range, now })` — one round trip, two windowed subselects, feeds
   **both KPI tiles**.
 

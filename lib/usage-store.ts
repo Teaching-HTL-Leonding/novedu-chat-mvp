@@ -51,6 +51,16 @@ export function hourBucket(d: Date): Date {
   );
 }
 
+/**
+ * Which LLM served the bucket's tokens — known only to `recordLlmUsage` (the
+ * counter recorders pass nothing). Values are truncated to their column widths so
+ * an oversized id can never fail (and thus drop) a whole increment.
+ */
+interface LlmAttribution {
+  provider?: string;
+  model?: string;
+}
+
 // Increment-UPSERT: INSERT the bucket with the deltas as its initial values; on a
 // duplicate key (the bucket exists, or a concurrent writer just created it)
 // increment each column in place. Same INSERT-first / catch-UPDATE idiom as
@@ -59,13 +69,29 @@ export function hourBucket(d: Date): Date {
 // UPDATE-first form would avoid the per-hit exception once the bucket exists, but
 // the proven idiom is preferred here; contention on one hourly bucket is negligible
 // at classroom scale.
-async function bumpByCode(code: string, hour: Date, module: string, d: UsageDeltas): Promise<void> {
+//
+// `provider`/`model` are NOT increments: the INSERT sets them when known, and the
+// UPDATE only COALESCE-fills a NULL (a user-message counter usually creates the
+// bucket BEFORE the generation finishes, so insert-only would leave them NULL).
+// First writer WITH the knowledge wins; the rare bucket straddling a republished
+// YAML keeps its first-seen value — negligible for a cost aggregate.
+async function bumpByCode(
+  code: string,
+  hour: Date,
+  module: string,
+  d: UsageDeltas,
+  attr?: LlmAttribution,
+): Promise<void> {
   const db = getDb();
+  const provider = attr?.provider?.slice(0, 32);
+  const model = attr?.model?.slice(0, 256);
   try {
     await db.insert(usageByCode).values({
       code,
       hour,
       module,
+      provider,
+      model,
       inputTokensNew: d.inputTokensNew ?? 0,
       inputTokensCached: d.inputTokensCached ?? 0,
       outputTokens: d.outputTokens ?? 0,
@@ -86,6 +112,10 @@ async function bumpByCode(code: string, hour: Date, module: string, d: UsageDelt
         userMessages: sql`${usageByCode.userMessages} + ${d.userMessages ?? 0}`,
         quizAnswers: sql`${usageByCode.quizAnswers} + ${d.quizAnswers ?? 0}`,
         writingSaves: sql`${usageByCode.writingSaves} + ${d.writingSaves ?? 0}`,
+        ...(provider !== undefined
+          ? { provider: sql`COALESCE(${usageByCode.provider}, ${provider})` }
+          : {}),
+        ...(model !== undefined ? { model: sql`COALESCE(${usageByCode.model}, ${model})` } : {}),
       })
       .where(and(eq(usageByCode.code, code), eq(usageByCode.hour, hour)));
   }
@@ -132,10 +162,14 @@ async function record(
   at: Date,
   d: UsageDeltas,
   op: string,
+  attr?: LlmAttribution,
 ): Promise<void> {
   try {
     const hour = hourBucket(at);
-    await bumpByCode(code, hour, module, d);
+    // Provider/model attribution goes to `usage_by_code` ONLY — on `usage_by_user`
+    // even a coarse provider signal would hint WHICH activity a student did
+    // (the anonymity invariant, docs/usage-metering.md).
+    await bumpByCode(code, hour, module, d, attr);
     if (userId) await bumpByUser(userId, hour, d);
   } catch (error) {
     console.error(`usage-store: ${op} failed`, error);
@@ -149,6 +183,10 @@ export interface LlmUsageInput {
   module: string;
   /** Absent ⇒ only `usage_by_code` is metered (the coding-proxy path carries no oid). */
   userId?: string;
+  /** The LLM provider that served the generation (e.g. "SCCH"). `usage_by_code` only. */
+  provider?: string;
+  /** The raw model id / deployment name that served it. `usage_by_code` only. */
+  model?: string;
   inputNew: number;
   inputCached: number;
   output: number;
@@ -171,6 +209,7 @@ export function recordLlmUsage(input: LlmUsageInput): Promise<void> {
       toolCalls: input.toolCalls,
     },
     "recordLlmUsage",
+    { provider: input.provider, model: input.model },
   );
 }
 

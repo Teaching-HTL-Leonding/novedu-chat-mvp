@@ -131,6 +131,13 @@ the writing code when the code is created, and the Save action re-checks it live
 Required. The model that drives the **feedback chat**. Same id space as a tutor's
 or quiz's `llm.model`. SERVER-ONLY.
 
+### `llm.provider`
+
+Optional, default `SCCH` (the school's self-hosted server). Set
+`provider: Azure Foundry` to drive the feedback chat from an Azure OpenAI
+deployment instead — then `llm.model` is the **deployment name** (e.g.
+`gpt-5.4-mini`).
+
 ### `instructions`
 
 Required. The writing coach's **system prompt**. SERVER-ONLY — never sent to the

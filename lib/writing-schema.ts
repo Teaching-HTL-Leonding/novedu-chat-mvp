@@ -10,6 +10,7 @@
 // crash; this gate exists so a teacher never SAVES a structurally broken activity.
 
 import { z } from "zod";
+import { providerSchema } from "@/lib/llm/provider";
 
 export const WritingYamlSchema = z.strictObject({
   id: z.string().min(1),
@@ -21,7 +22,8 @@ export const WritingYamlSchema = z.strictObject({
   // review and the Save feature need to know whose text it is. `anonymous: true`
   // makes the activity ephemeral and disables saving.
   anonymous: z.boolean().optional(),
-  llm: z.strictObject({ model: z.string().min(1) }),
+  // `provider` selects which LLM endpoint serves `model` (default SCCH).
+  llm: z.strictObject({ model: z.string().min(1), provider: providerSchema }),
   // The writing coach's system prompt. SERVER-ONLY; required.
   instructions: z.string().min(1),
   // Optional starter text prefilled into the editor.

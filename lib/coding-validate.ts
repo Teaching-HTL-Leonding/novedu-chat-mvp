@@ -22,6 +22,7 @@ import {
   validate,
 } from "@/lib/tutors";
 import { type CodingYaml, CodingYamlSchema } from "./coding-schema";
+import type { LlmProvider } from "./llm/provider";
 
 /**
  * The result of checking a coding file. Mirrors `lib/writing-validate`'s
@@ -33,6 +34,8 @@ export type CodingCheckResult =
       ok: true;
       codingId: string;
       model: string;
+      /** The LLM provider serving `model` (`llm.provider`, default SCCH). */
+      provider: LlmProvider;
       title: string | null;
       warnings: ValidationWarning[];
     }
@@ -52,6 +55,7 @@ export function checkCodingValue(parsed: unknown, url?: string): CodingCheckResu
     ok: true,
     codingId: coding.id,
     model: coding.llm.model,
+    provider: coding.llm.provider,
     title: coding.title ?? null,
     warnings: [],
   };

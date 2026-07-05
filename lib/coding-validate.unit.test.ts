@@ -28,8 +28,22 @@ describe("loadAndCheckCoding — positive", () => {
     if (result.ok) {
       expect(result.codingId).toBe("buddy");
       expect(result.model).toBe("some-model");
+      expect(result.provider).toBe("SCCH"); // llm.provider defaults to SCCH
       expect(result.title).toBe("Coding Buddy");
     }
+  });
+
+  it("accepts and reports an explicit llm.provider", async () => {
+    const foundry = `
+id: c
+llm:
+  model: gpt-5.4-mini
+  provider: Azure Foundry
+instructions: "Help the student code."
+`;
+    const result = await loadAndCheckCoding(URL_, fetcherFor(foundry));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.provider).toBe("Azure Foundry");
   });
 
   it("accepts the minimal shape (no name/title) and defaults title to null", async () => {
@@ -70,6 +84,18 @@ describe("loadAndCheckCoding — negative", () => {
 
 describe("checkCodingValue — schema errors", () => {
   const check = (yaml: string) => checkCodingValue(parseYamlText(yaml), URL_);
+
+  it("rejects an unsupported llm.provider", () => {
+    const result = check(`
+id: c
+llm:
+  model: m
+  provider: OpenAI
+instructions: "Help."
+`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("CODING_SCHEMA_ERROR");
+  });
 
   it("rejects a missing llm.model", () => {
     const result = check(`

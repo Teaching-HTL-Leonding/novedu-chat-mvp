@@ -5,6 +5,7 @@ import {
   SpanType,
   type TracingEvent,
 } from "@mastra/core/observability";
+import { providerFromModelProviderId } from "@/lib/llm/provider";
 import { recordError } from "@/lib/telemetry";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
 import { recordLlmUsage } from "@/lib/usage-store";
@@ -35,11 +36,31 @@ export interface MappedUsage {
   code: string;
   module: string;
   userId?: string;
+  /** From the span's `attributes.provider` (see `llmAttribution`). Generation spans only. */
+  provider?: string;
+  /** From the span's `attributes.model` — the activity YAML's `llm.model`. */
+  model?: string;
   inputNew: number;
   inputCached: number;
   output: number;
   toolCalls: number;
   at?: Date;
+}
+
+// Which LLM served the generation, read off the MODEL_GENERATION span's typed
+// attributes: Mastra stamps `model` (the ai-sdk modelId = the YAML's `llm.model`)
+// and `provider` (the ai-sdk provider name, e.g. "scch.chat" — set via
+// `createOpenAI({ name })`, the metering contract in lib/llm/provider.ts). The
+// mapped app-level label ("SCCH"/"Azure Foundry") is stored; an unmapped id falls
+// through raw rather than being dropped, so a naming regression stays visible.
+function llmAttribution(attrs: ModelGenerationAttributes | undefined): {
+  provider?: string;
+  model?: string;
+} {
+  return {
+    provider: providerFromModelProviderId(attrs?.provider) ?? attrs?.provider,
+    model: attrs?.model,
+  };
 }
 
 // Reads the usage-attribution keys off a span. `requestContextKeys` snapshots them
@@ -76,13 +97,26 @@ export function mapSpanToUsage(span: AnyExportedSpan): MappedUsage | null {
   const at = span.endTime ?? undefined;
 
   if (span.type === SpanType.MODEL_GENERATION) {
-    const usage = (span.attributes as ModelGenerationAttributes | undefined)?.usage;
+    const attrs = span.attributes as ModelGenerationAttributes | undefined;
+    const usage = attrs?.usage;
     if (!usage) return null;
     const inputCached = usage.inputDetails?.cacheRead ?? 0;
     const inputNew = Math.max(0, (usage.inputTokens ?? 0) - inputCached);
     const output = usage.outputTokens ?? 0;
     if (inputNew === 0 && inputCached === 0 && output === 0) return null;
-    return { code, module, userId, inputNew, inputCached, output, toolCalls: 0, at };
+    const { provider, model } = llmAttribution(attrs);
+    return {
+      code,
+      module,
+      userId,
+      provider,
+      model,
+      inputNew,
+      inputCached,
+      output,
+      toolCalls: 0,
+      at,
+    };
   }
 
   if (TOOL_SPAN_TYPES.has(span.type)) {

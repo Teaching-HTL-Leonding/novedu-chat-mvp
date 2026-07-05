@@ -31,8 +31,14 @@ bucket). Trade-off: "student X's usage on code Y" is unanswerable, by design.
 Columns: `input_tokens_new` / `input_tokens_cached` / `output_tokens` are `bigint`
 token sums (`output_tokens` already includes reasoning tokens); `tool_calls` /
 `user_messages` / `quiz_answers` / `writing_saves` are `int` counts. `hour` is the
-UTC top-of-hour bucket. No foreign keys (same rule as the other `novedu_*` tables);
-never garbage-collected. Migrated by Drizzle at startup like every `novedu_*` table.
+UTC top-of-hour bucket. `usage_by_code` additionally carries two nullable
+attribution columns — `provider` (the LLM provider label, e.g. `SCCH` /
+`Azure Foundry`) and `model` (the raw model id / deployment name) — which only the
+LLM recorder knows (see the write seam); a NULL `model` means "metered before
+models were recorded". They exist on `usage_by_code` ONLY: on `usage_by_user` even
+a coarse provider signal would hint which activity a student did. No foreign keys
+(same rule as the other `novedu_*` tables); never garbage-collected. Migrated by
+Drizzle at startup like every `novedu_*` table.
 
 ## The write seam — `lib/usage-store.ts`
 
@@ -42,18 +48,24 @@ The **only** access to both tables. Mirrors `lib/user-chat-store.ts` discipline:
 writes run **off the response path** (the exporter is async; the route/action
 counters use `after()`; the coding tap is fire-and-forget).
 
-- `recordLlmUsage({ code, module, userId?, inputNew, inputCached, output, toolCalls, at? })`
+- `recordLlmUsage({ code, module, userId?, provider?, model?, inputNew, inputCached, output, toolCalls, at? })`
   — increments `usage_by_code` always, and `usage_by_user` **only when `userId` is
   present** (absent ⇒ the coding-proxy path, metered per-code only).
+  `provider`/`model` feed `usage_by_code` alone.
 - `recordUserMessage` / `recordQuizAnswer` / `recordWritingSave` — `+1` on their
-  counter in both tables.
+  counter in both tables; they carry no provider/model.
 
 Each write is an **increment-UPSERT**: INSERT the bucket with the deltas as its
 initial values; on a duplicate key increment each column in place (the same
 INSERT-first / catch-UPDATE idiom as `writing-store`, adapted to add rather than
 overwrite, so two concurrent writers on one bucket both land). `module` is required
 for the `usage_by_code` INSERT; it is constant per code, so whichever recorder
-inserts first sets it.
+inserts first sets it. `provider`/`model` are NOT increments and only the LLM
+recorder knows them — and a user-message counter usually creates the `(code, hour)`
+bucket BEFORE the generation finishes — so the INSERT sets them when known and the
+LLM recorder's duplicate-key UPDATE **COALESCE-fills a NULL** (first writer WITH
+the knowledge wins; a bucket straddling a republished YAML keeps its first-seen
+value — negligible for a cost aggregate).
 
 ## Capture points
 
@@ -85,8 +97,15 @@ On `span_ended` the pure `mapSpanToUsage`:
 - `MODEL_GENERATION`: reads `attributes.usage` — the `UsageStats` shape in
   `@mastra/core@1.47.0`: `inputCached = inputDetails.cacheRead ?? 0`,
   `inputNew = inputTokens − inputCached`, `output = outputTokens`. Uses
-  `MODEL_GENERATION` **only** (never `MODEL_STEP`) to avoid double-counting.
-- `TOOL_CALL` / `CLIENT_TOOL_CALL` / `MCP_TOOL_CALL`: `+1` tool call, no tokens.
+  `MODEL_GENERATION` **only** (never `MODEL_STEP`) to avoid double-counting. The
+  same span's typed `attributes.model`/`attributes.provider` (stamped by Mastra
+  from the resolved ai-sdk model — the **named-provider contract**, see
+  `docs/ai-models.md`) yield the `provider`/`model` attribution:
+  `providerFromModelProviderId` maps `"scch.chat"`/`"azure-foundry.chat"` back to
+  the app-level labels; an unmapped id passes through raw so a naming regression
+  stays visible. No extra RequestContext keys are involved.
+- `TOOL_CALL` / `CLIENT_TOOL_CALL` / `MCP_TOOL_CALL`: `+1` tool call, no tokens,
+  no provider/model (nothing to COALESCE-fill).
 
 The auto-applied `SensitiveDataFilter` is left on (privacy-safe default); it uses
 **exact** field-name matching and processes only `attributes`/`metadata`/`input`/
@@ -100,9 +119,10 @@ so it is metered separately: `buildUpstreamChatBody` sets
 `stream_options.include_usage: true` when the client streams (non-streamed responses
 already carry `usage`), and the route **tees** the upstream body — one branch to the
 client byte-for-byte, the other read in the background to extract the final `usage`
-(`extractCodingUsage`) and `recordLlmUsage({ module: "coding" })`. No `oid` on this
-path, so it never touches `usage_by_user`; the passthrough (streaming + client tools)
-is unchanged.
+(`extractCodingUsage`) and `recordLlmUsage({ module: "coding", provider, model })`
+(provider + pinned model straight from the loaded coding YAML — this path has no
+Mastra span to read them from). No `oid` on this path, so it never touches
+`usage_by_user`; the passthrough (streaming + client tools) is unchanged.
 
 ## Cached input tokens
 

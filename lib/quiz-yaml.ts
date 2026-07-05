@@ -1,5 +1,6 @@
 import { parse as parseYamlText } from "yaml";
 import type { ImageRef } from "./image-ref";
+import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "./llm/provider";
 import type { QuizPublic, QuizQuestionPublic } from "./quiz-types";
 
 // LENIENT runtime parse of a quiz YAML — the STUDENT path. Quizzes are stored in
@@ -38,6 +39,8 @@ export interface Quiz {
   shuffle: boolean;
   /** The model id that grades answers AND drives the discussion chat. */
   model: string;
+  /** The LLM provider serving `model` (`llm.provider`, default SCCH). */
+  provider: LlmProvider;
   /** Optional guidance appended to the discussion chat's system prompt. */
   discussionInstructions?: string;
   questions: QuizQuestion[];
@@ -99,9 +102,21 @@ export function parseQuiz(content: string): QuizParseResult {
   }
   const root = doc as Record<string, unknown>;
 
-  const model = asString((root.llm as Record<string, unknown> | undefined)?.model);
+  const llm = root.llm as Record<string, unknown> | undefined;
+  const model = asString(llm?.model);
   if (!model) {
     return { ok: false, message: "This quiz does not specify a model (llm.model)." };
+  }
+
+  // Missing ⇒ SCCH; present-but-invalid is rejected so a Foundry-intended quiz
+  // never silently runs against SCCH.
+  const provider =
+    llm?.provider === undefined ? DEFAULT_PROVIDER : parseLenientProvider(llm.provider);
+  if (!provider) {
+    return {
+      ok: false,
+      message: 'This quiz uses an unsupported llm.provider (use "SCCH" or "Azure Foundry").',
+    };
   }
 
   const rawQuestions = root.questions;
@@ -146,6 +161,7 @@ export function parseQuiz(content: string): QuizParseResult {
       anonymous: asBool(root.anonymous, true),
       shuffle: asBool(root.shuffle, true),
       model,
+      provider,
       discussionInstructions: asString(
         (root.discussion as Record<string, unknown> | undefined)?.instructions,
       ),

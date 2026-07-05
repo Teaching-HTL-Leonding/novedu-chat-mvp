@@ -31,9 +31,23 @@ describe("loadAndCheckWriting — positive", () => {
     if (result.ok) {
       expect(result.writingId).toBe("essay");
       expect(result.model).toBe("some-model");
+      expect(result.provider).toBe("SCCH"); // llm.provider defaults to SCCH
       expect(result.anonymous).toBe(true);
       expect(result.title).toBe("Write an essay");
     }
+  });
+
+  it("accepts and reports an explicit llm.provider", async () => {
+    const foundry = `
+id: w
+llm:
+  model: gpt-5.4-mini
+  provider: Azure Foundry
+instructions: "Coach the student."
+`;
+    const result = await loadAndCheckWriting(URL_, fetcherFor(foundry));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.provider).toBe("Azure Foundry");
   });
 
   it("DEFAULTS anonymous to FALSE (the writing divergence) when omitted", async () => {
@@ -89,6 +103,18 @@ instructions: "Coach."
 id: w
 llm:
   model: m
+`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("WRITING_SCHEMA_ERROR");
+  });
+
+  it("rejects an unsupported llm.provider", () => {
+    const result = check(`
+id: w
+llm:
+  model: m
+  provider: OpenAI
+instructions: "Coach."
 `);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]?.code).toBe("WRITING_SCHEMA_ERROR");

@@ -195,6 +195,7 @@ exampleQuestions: # optional: clickable starter questions on the empty chat
 anonymous: false # optional: omit for default true; false records which student each chat belongs to
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model serves this tutor
+  provider: SCCH # optional: omit for default SCCH; "Azure Foundry" uses an Azure OpenAI deployment
   imageInput: false # optional: omit for default true; set false to disable image uploads
 prompt:
   fragment_files: [...] # optional: the libraries you pull fragments from
@@ -240,6 +241,19 @@ records attribution.
 
 ```yaml
 anonymous: false
+```
+
+### `llm.provider`
+
+Optional, default `SCCH` (the school's self-hosted server). Set
+`provider: Azure Foundry` to serve the tutor from an Azure OpenAI deployment
+instead — then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`)
+rather than an SCCH model id.
+
+```yaml
+llm:
+  model: gpt-5.4-mini
+  provider: Azure Foundry
 ```
 
 ### `prompt.fragment_files`

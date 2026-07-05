@@ -157,6 +157,12 @@ questions build on earlier ones).
 Required. The model that **grades** the answers and **drives** the per-question
 discussion chat. Same id space as a tutor's `llm.model`.
 
+### `llm.provider`
+
+Optional, default `SCCH` (the school's self-hosted server). Set
+`provider: Azure Foundry` to grade and discuss on an Azure OpenAI deployment
+instead — then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`).
+
 ### `discussion.instructions`
 
 Optional. Guidance appended to the system prompt of the follow-up **discussion

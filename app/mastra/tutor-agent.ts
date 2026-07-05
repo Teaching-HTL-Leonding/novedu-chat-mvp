@@ -1,8 +1,10 @@
 import { Agent } from "@mastra/core/agent";
 import type { RequestContext } from "@mastra/core/request-context";
 import { Memory } from "@mastra/memory";
+import { providerUnavailableReason } from "@/lib/llm/availability";
+import { resolveLanguageModel } from "@/lib/llm/model";
+import type { LlmProvider } from "@/lib/llm/provider";
 import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
-import { scchProvider } from "./scch";
 
 // A single agent that is configured entirely by a tutor-definition YAML. The
 // tutor's URL arrives per request via `requestContext` (set by the CopilotKit
@@ -13,6 +15,7 @@ import { scchProvider } from "./scch";
 interface LoadedTutor {
   prompt: string;
   model: string;
+  provider: LlmProvider;
 }
 
 // A built prompt is NEVER cached across requests: the YAML is fetched + assembled
@@ -41,7 +44,12 @@ function loadTutor(requestContext: RequestContext): Promise<LoadedTutor> {
             : "Tutor validation failed",
         );
       }
-      return { prompt: result.prompt, model: result.model };
+      // The authoring gate blocks saving such a file, but externally hosted YAML
+      // (or an env change) can still name a provider this server cannot serve —
+      // fail with a clear reason via this loader's established throw channel.
+      const unavailable = providerUnavailableReason(result.provider);
+      if (unavailable) throw new Error(unavailable);
+      return { prompt: result.prompt, model: result.model, provider: result.provider };
     },
   );
 
@@ -63,7 +71,10 @@ export const tutorAgent = new Agent({
   // Both resolvers run per request and share the same request-scoped build. The
   // prompt is used verbatim — no app-level formatting guidance is appended.
   instructions: async ({ requestContext }) => (await loadTutor(requestContext)).prompt,
-  model: async ({ requestContext }) => scchProvider.chat((await loadTutor(requestContext)).model),
+  model: async ({ requestContext }) => {
+    const loaded = await loadTutor(requestContext);
+    return resolveLanguageModel(loaded.provider, loaded.model);
+  },
   // Persist the conversation so the tutor remembers earlier turns. No explicit
   // storage here: Memory inherits the Mastra instance's Azure SQL store (see
   // `index.ts`), so threads/messages land in the `mastra_*` tables. The thread
