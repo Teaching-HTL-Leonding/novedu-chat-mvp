@@ -17,6 +17,7 @@ vi.mock("@/app/codes/[code]/conversation-stats", () => ({ ConversationStats: con
 vi.mock("@/app/mastra/quiz-agents", () => ({
   QUIZ_DISCUSSION_INSTRUCTIONS: "quiz-discussion-instructions",
   QUIZ_DISCUSSION_MODEL: "quiz-discussion-model",
+  QUIZ_DISCUSSION_PROVIDER: "quiz-discussion-provider",
 }));
 vi.mock("@mastra/core/request-context", () => ({
   RequestContext: class {
@@ -41,6 +42,7 @@ const entry = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("quizModule.runtime.buildRequestContext", () => {
@@ -53,19 +55,44 @@ describe("quizModule.runtime.buildRequestContext", () => {
     });
   });
 
-  it("sets the discussion model and instructions (default frame + the quiz's own)", async () => {
+  it("sets the discussion model, provider and instructions (default frame + the quiz's own)", async () => {
+    // A Foundry quiz needs the endpoint configured — the availability gate is real here.
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "https://res.openai.azure.com");
     loadQuiz.mockResolvedValue({
       ok: true,
-      quiz: { model: "gemma-4", discussionInstructions: "Focus on big-O." },
+      quiz: {
+        model: "gemma-4",
+        provider: "Azure Foundry",
+        discussionInstructions: "Focus on big-O.",
+      },
     });
     const result = await quizModule.runtime?.buildRequestContext(entry);
     expect(result?.ok).toBe(true);
     if (result?.ok) {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("quiz-discussion-model")).toBe("gemma-4");
+      expect(ctx.get("quiz-discussion-provider")).toBe("Azure Foundry");
       const instr = ctx.get("quiz-discussion-instructions") as string;
       expect(instr).toContain("single quiz question"); // the default frame
       expect(instr).toContain("Focus on big-O."); // appended quiz-authored instructions
+    }
+  });
+
+  it("502s a Foundry quiz when the server has no AZURE_FOUNDRY_ENDPOINT (availability gate)", async () => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
+    try {
+      loadQuiz.mockResolvedValue({
+        ok: true,
+        quiz: { model: "gpt-5.4-mini", provider: "Azure Foundry" },
+      });
+      const result = await quizModule.runtime?.buildRequestContext(entry);
+      expect(result).toMatchObject({
+        ok: false,
+        status: 502,
+        message: expect.stringContaining("Azure Foundry"),
+      });
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 

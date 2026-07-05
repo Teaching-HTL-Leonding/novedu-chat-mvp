@@ -5,6 +5,7 @@
 // dropping data and causing confusing downstream consistency failures.
 
 import { z } from "zod";
+import { providerSchema } from "@/lib/llm/provider";
 
 /**
  * A fragment-file reference: either an absolute http(s) URL or a relative path that
@@ -115,7 +116,12 @@ export const TutorSchema = z.strictObject({
   // Students may attach images in the chat by default; a tutor opts OUT with
   // `imageInput: false` (e.g. for models without vision support — the flag is
   // what gates the upload UI, nothing checks the model's actual modalities).
-  llm: z.strictObject({ model: z.string(), imageInput: z.boolean().optional() }),
+  // `provider` selects which LLM endpoint serves `model` (default SCCH).
+  llm: z.strictObject({
+    model: z.string(),
+    provider: providerSchema,
+    imageInput: z.boolean().optional(),
+  }),
   prompt: z.strictObject({
     fragment_files: z.array(FragmentFileRefSchema).default([]),
     fragments: z.array(FragmentRefSchema).default([]),

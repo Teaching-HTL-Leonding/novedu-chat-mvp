@@ -38,7 +38,12 @@
         "model": {
           "type": "string",
           "minLength": 1,
-          "description": "The SCCH model that answers. SERVER-ONLY and PINNED: the proxy always uses this model and ignores whatever model the coding agent sends."
+          "description": "The model that answers. SERVER-ONLY and PINNED: the proxy always uses this model and ignores whatever model the coding agent sends."
+        },
+        "provider": {
+          "enum": ["SCCH", "Azure Foundry"],
+          "default": "SCCH",
+          "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name."
         }
       }
     }

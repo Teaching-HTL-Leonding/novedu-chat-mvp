@@ -19,6 +19,7 @@ vi.mock("@/app/codes/[code]/conversation-stats", () => ({ ConversationStats: con
 vi.mock("@/app/mastra/writing-agents", () => ({
   WRITING_INSTRUCTIONS: "writing-instructions",
   WRITING_MODEL: "writing-model",
+  WRITING_PROVIDER: "writing-provider",
 }));
 vi.mock("@mastra/core/request-context", () => ({
   RequestContext: class {
@@ -44,6 +45,7 @@ const entry = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("writingModule descriptor", () => {
@@ -63,16 +65,35 @@ describe("writingModule.runtime.buildRequestContext", () => {
     });
   });
 
-  it("sets the model and the teacher's instructions on the request context", async () => {
+  it("502s a Foundry activity when the server has no AZURE_FOUNDRY_ENDPOINT (availability gate)", async () => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
+    try {
+      loadWriting.mockResolvedValue({
+        ok: true,
+        writing: { model: "gpt-5.4-mini", provider: "Azure Foundry", instructions: "Coach." },
+      });
+      const result = await writingModule.runtime?.buildRequestContext(entry);
+      expect(result).toMatchObject({
+        ok: false,
+        status: 502,
+        message: expect.stringContaining("Azure Foundry"),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("sets the model, provider and the teacher's instructions on the request context", async () => {
     loadWriting.mockResolvedValue({
       ok: true,
-      writing: { model: "gemma-4", instructions: "Be a writing coach." },
+      writing: { model: "gemma-4", provider: "SCCH", instructions: "Be a writing coach." },
     });
     const result = await writingModule.runtime?.buildRequestContext(entry);
     expect(result?.ok).toBe(true);
     if (result?.ok) {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("writing-model")).toBe("gemma-4");
+      expect(ctx.get("writing-provider")).toBe("SCCH");
       expect(ctx.get("writing-instructions")).toBe("Be a writing coach.");
     }
   });

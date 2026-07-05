@@ -16,15 +16,17 @@
 // `description` and no editor `placeholder` (those are for other modules).
 
 import { z } from "zod";
+import { providerSchema } from "@/lib/llm/provider";
 
 export const CodingYamlSchema = z.strictObject({
   id: z.string().min(1),
   name: z.string().optional(),
   // Student-facing label shown on the /<code> connection page (optional).
   title: z.string().optional(),
-  // The pinned SCCH model that answers. SERVER-ONLY — the proxy pins it and ignores
-  // whatever model the coding agent sends; required.
-  llm: z.strictObject({ model: z.string().min(1) }),
+  // The pinned model that answers. SERVER-ONLY — the proxy pins it and ignores
+  // whatever model the coding agent sends; required. `provider` selects which LLM
+  // endpoint serves it (default SCCH).
+  llm: z.strictObject({ model: z.string().min(1), provider: providerSchema }),
   // The teacher's system prompt, appended after the coding tool's own. SERVER-ONLY;
   // required.
   instructions: z.string().min(1),

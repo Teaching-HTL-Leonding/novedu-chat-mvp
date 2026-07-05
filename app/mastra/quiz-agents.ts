@@ -2,16 +2,16 @@ import { Agent } from "@mastra/core/agent";
 import type { RequestContext } from "@mastra/core/request-context";
 import { Memory } from "@mastra/memory";
 import { z } from "zod";
-import { scchProvider } from "./scch";
+import { resolveLanguageModel } from "@/lib/llm/model";
+import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
 
 // Two agents that back the Quizzes feature. Both are configured ENTIRELY per
 // request from values the caller places on the `RequestContext` (the quiz's
-// model, and the system prompt the caller built) — mirroring how `tutorAgent`
-// resolves its prompt/model per request, but without the tutor-YAML coupling.
-// Going through Mastra (rather than calling the model SDK directly) keeps these
-// portable to the planned multi-provider model seam.
+// provider + model, and the system prompt the caller built) — mirroring how
+// `tutorAgent` resolves its prompt/model per request, but without the tutor-YAML
+// coupling.
 //
-// SERVER-ONLY: resolves models against the self-hosted endpoint via `scch`.
+// SERVER-ONLY: resolves models through the `lib/llm` seam.
 
 // The grader's structured verdict. The self-hosted vLLM endpoint honors
 // OpenAI-compatible `response_format: json_schema` (verified against gemma-4 at
@@ -27,8 +27,10 @@ export const QUIZ_VERDICT_SCHEMA = z.object({
 // the other (defense in depth on top of the runtime route's agent gating).
 export const QUIZ_EVAL_INSTRUCTIONS = "quiz-eval-instructions";
 export const QUIZ_EVAL_MODEL = "quiz-eval-model";
+export const QUIZ_EVAL_PROVIDER = "quiz-eval-provider";
 export const QUIZ_DISCUSSION_INSTRUCTIONS = "quiz-discussion-instructions";
 export const QUIZ_DISCUSSION_MODEL = "quiz-discussion-model";
+export const QUIZ_DISCUSSION_PROVIDER = "quiz-discussion-provider";
 
 function requiredString(requestContext: RequestContext, key: string): string {
   const value = requestContext.get(key);
@@ -36,6 +38,12 @@ function requiredString(requestContext: RequestContext, key: string): string {
     throw new Error(`Missing "${key}" on the request context for the quiz agent.`);
   }
   return value;
+}
+
+// An absent provider key means SCCH (matching the YAML default); an invalid value
+// was already rejected by the quiz load, so lenient reading here is safe.
+function providerFrom(requestContext: RequestContext, key: string): LlmProvider {
+  return parseLenientProvider(requestContext.get(key)) ?? DEFAULT_PROVIDER;
 }
 
 // STATELESS grader: no `Memory`, so a `generate()` call persists nothing (the
@@ -47,7 +55,11 @@ export const quizEvaluatorAgent = new Agent({
   id: "quizEvaluator",
   name: "Quiz Evaluator",
   instructions: ({ requestContext }) => requiredString(requestContext, QUIZ_EVAL_INSTRUCTIONS),
-  model: ({ requestContext }) => scchProvider.chat(requiredString(requestContext, QUIZ_EVAL_MODEL)),
+  model: ({ requestContext }) =>
+    resolveLanguageModel(
+      providerFrom(requestContext, QUIZ_EVAL_PROVIDER),
+      requiredString(requestContext, QUIZ_EVAL_MODEL),
+    ),
 });
 
 // The per-question discussion chat. Memory-backed exactly like `tutorAgent`
@@ -61,7 +73,10 @@ export const quizDiscussionAgent = new Agent({
   instructions: ({ requestContext }) =>
     requiredString(requestContext, QUIZ_DISCUSSION_INSTRUCTIONS),
   model: ({ requestContext }) =>
-    scchProvider.chat(requiredString(requestContext, QUIZ_DISCUSSION_MODEL)),
+    resolveLanguageModel(
+      providerFrom(requestContext, QUIZ_DISCUSSION_PROVIDER),
+      requiredString(requestContext, QUIZ_DISCUSSION_MODEL),
+    ),
   memory: new Memory({
     options: {
       lastMessages: 40,

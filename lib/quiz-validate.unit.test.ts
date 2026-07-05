@@ -42,10 +42,27 @@ describe("loadAndCheckQuiz — positive", () => {
     if (result.ok) {
       expect(result.quizId).toBe("capitals");
       expect(result.model).toBe("some-model");
+      expect(result.provider).toBe("SCCH"); // llm.provider defaults to SCCH
       expect(result.questionCount).toBe(2);
       expect(result.anonymous).toBe(false);
       expect(result.title).toBe("Capitals Quiz");
     }
+  });
+
+  it("accepts and reports an explicit llm.provider", async () => {
+    const foundry = `
+id: q
+llm:
+  model: gpt-5.4-mini
+  provider: Azure Foundry
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+`;
+    const result = await loadAndCheckQuiz(URL_, fetcherFor(foundry));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.provider).toBe("Azure Foundry");
   });
 
   it("defaults anonymous to TRUE and title to null when omitted", async () => {
@@ -108,6 +125,21 @@ id: q
 llm:
   model: m
 questions: []
+`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_SCHEMA_ERROR");
+  });
+
+  it("rejects an unsupported llm.provider", () => {
+    const result = check(`
+id: q
+llm:
+  model: m
+  provider: OpenAI
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
 `);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_SCHEMA_ERROR");

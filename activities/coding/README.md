@@ -117,10 +117,17 @@ the connection page (`/<code>`). Neither is required for the endpoint to work.
 
 ### `llm.model`
 
-Required. The model that answers, on the SCCH server. Same id space as a tutor's,
-quiz's, or writing's `llm.model`. **SERVER-ONLY** and **pinned**: the proxy always
-uses this model and **ignores** whatever model the coding agent sends, so the student
-never needs to know it.
+Required. The model that answers. Same id space as a tutor's, quiz's, or
+writing's `llm.model`. **SERVER-ONLY** and **pinned**: the proxy always uses this
+model and **ignores** whatever model the coding agent sends, so the student never
+needs to know it.
+
+### `llm.provider`
+
+Optional, default `SCCH` (the school's self-hosted server). Set
+`provider: Azure Foundry` to answer from an Azure OpenAI deployment instead —
+then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`). Like the
+model, the provider never reaches the student.
 
 ### `instructions`
 

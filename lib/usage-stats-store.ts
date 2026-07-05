@@ -140,6 +140,41 @@ export async function getUsageBreakdown(opts: {
   }
 }
 
+/**
+ * Total tokens per MODEL over the window, folded to the top 9 + "Other". Grouped
+ * by the denormalized `model` column (the activity YAML's `llm.model`); model ids
+ * are provider-specific (SCCH ids and Foundry deployment names are disjoint), so
+ * this breakdown also reads as the provider split. Rows with a NULL model (metered
+ * before models were recorded) show as "(unknown)"; zero-token rows (buckets that
+ * only counted messages/saves) are dropped like in the other pies. Returns
+ * `undefined` on a DB error. Never throws.
+ */
+export async function getTokensByModel(opts: {
+  range: UsageRange;
+  now: Date;
+}): Promise<Slice[] | undefined> {
+  const { start } = resolveRange(opts.range, opts.now);
+  try {
+    const res = await getDb().execute<{ model: string | null; total: number | string }>(sql`
+      SELECT u.model AS model,
+             SUM(u.input_tokens_new + u.input_tokens_cached + u.output_tokens) AS total
+      FROM novedu_usage_by_code u
+      WHERE u.hour >= ${start}
+      GROUP BY u.model
+    `);
+    const slices: Slice[] = res.recordset
+      .map((row) => {
+        const model = row.model ?? "(unknown)";
+        return { key: model, label: model, total: Number(row.total) };
+      })
+      .filter((s) => s.total > 0);
+    return foldTopN(slices, 9);
+  } catch (error) {
+    console.error("usage-stats-store: tokens by model failed", error);
+    return undefined;
+  }
+}
+
 /** The two headline KPIs, both windowed to the selected range. */
 export interface DashboardKpis {
   /** Distinct Mastra threads with ≥1 user message in the window (a real chat). */

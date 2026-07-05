@@ -11,13 +11,13 @@ import {
 import { formatCount } from "./_charts/format";
 import { legendText } from "./_charts/legend";
 
-// Donut used for BOTH dashboard pies (docs/dashboard.md). Color assignment differs
+// Donut used for ALL dashboard pies (docs/dashboard.md). Color assignment differs
 // by variant, so it is decided here from serializable props (a function prop can't
 // cross the server→client boundary):
 //   - "module": color follows the module identity (fixed CODE_MODULES order), so
 //     tutor/quiz/writing/coding keep the same hue as elsewhere.
-//   - "code":   color follows rank (top slices), and the folded "Other" slice is
-//     the muted gray.
+//   - "code" / "model": color follows rank (top slices), and the folded "Other"
+//     slice is the muted gray.
 // Legend + tooltip carry identity (the dataviz "relief" for sub-3:1 hues); slices
 // ≥6% also get an on-slice percentage.
 
@@ -28,7 +28,7 @@ export function TokensPieChart({
   variant,
 }: {
   slices: Slice[];
-  variant: "module" | "code";
+  variant: "module" | "code" | "model";
 }) {
   // Read the CSS tokens on every render (cheap): an empty read during SSR is
   // harmless (Recharts paints nothing measurable server-side) and a later client

@@ -59,9 +59,28 @@ questions:
     expect(result.quiz.shuffle).toBe(true);
   });
 
+  it("defaults a missing llm.provider to SCCH and carries an explicit one", () => {
+    const defaulted = parseQuiz(VALID);
+    expect(defaulted.ok && defaulted.quiz.provider).toBe("SCCH");
+    const foundry = parseQuiz(`
+llm:
+  model: gpt-5.4-mini
+  provider: Azure Foundry
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+`);
+    expect(foundry.ok && foundry.quiz.provider).toBe("Azure Foundry");
+  });
+
   it.each([
     ["invalid YAML", ":::not yaml::: ["],
     ["missing model", "questions:\n  - id: a\n    question: Q\n    evaluation: E\n"],
+    [
+      "an unsupported llm.provider",
+      "llm:\n  model: m\n  provider: OpenAI\nquestions:\n  - id: a\n    question: Q\n    evaluation: E\n",
+    ],
     ["no questions", "llm:\n  model: m\n"],
     [
       "no complete questions",
@@ -218,6 +237,7 @@ describe("toPublicQuiz", () => {
       anonymous: false,
       shuffle: true,
       model: "m",
+      provider: "SCCH",
       questions: [{ id: "a", question: "Q", evaluation: "E" }],
     };
     expect(toPublicQuiz(quiz)).not.toHaveProperty("anonymous");
@@ -230,6 +250,7 @@ describe("toPublicQuiz", () => {
       anonymous: true,
       shuffle: true,
       model: "m",
+      provider: "SCCH",
       questions: [{ id: "a", question: "Q", evaluation: "E", image }],
     };
     const pub = toPublicQuiz(quiz);

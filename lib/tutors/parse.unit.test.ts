@@ -41,6 +41,22 @@ describe("validate — tutor", () => {
     const result = validate({ surprise: true }, TutorSchema, "TUTOR_SCHEMA_ERROR");
     expect(result.ok).toBe(false);
   });
+
+  it("defaults llm.provider to SCCH, accepts Azure Foundry, rejects junk", () => {
+    const parsed = parseYaml(readFixture("linked-list-tutor.yaml"));
+    if (!parsed.ok) throw new Error("precondition");
+    const tutor = structuredClone(parsed.value) as { llm: Record<string, unknown> };
+
+    const defaulted = validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR");
+    expect(defaulted.ok && defaulted.data.llm.provider).toBe("SCCH");
+
+    tutor.llm.provider = "Azure Foundry";
+    const foundry = validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR");
+    expect(foundry.ok && foundry.data.llm.provider).toBe("Azure Foundry");
+
+    tutor.llm.provider = "OpenAI";
+    expect(validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR").ok).toBe(false);
+  });
 });
 
 describe("validate — fragment file", () => {

@@ -35,6 +35,14 @@ export function BreakdownSkeleton() {
   );
 }
 
+export function ModelsSkeleton() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <ChartSkeleton title="Tokens by model" />
+    </div>
+  );
+}
+
 export function KpiSkeleton() {
   return (
     <div className="flex flex-wrap gap-4" role="status" aria-live="polite">

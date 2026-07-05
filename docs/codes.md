@@ -355,7 +355,8 @@ in-page discussion live in `app/[code]/_quiz/`.
 - **Quiz YAML** (`activities/quizzes/sample-quiz.yaml`, parsed leniently by `parseQuiz` in
   `lib/quiz-yaml.ts`): `id`, `name`, optional `title`/`description` (student
   welcome), `anonymous` (default `true`), `shuffle` (default `true`), `llm.model`
-  (grades AND drives the discussion), optional `discussion.instructions`, and
+  (grades AND drives the discussion) with optional `llm.provider` (missing ⇒ SCCH;
+  every module's YAML has it — docs/ai-models.md), optional `discussion.instructions`, and
   `questions[]` each with `id`, optional `title`, `question` (markdown), an
   optional content `image` (below), and `evaluation` (the SERVER-ONLY grading
   prompt).

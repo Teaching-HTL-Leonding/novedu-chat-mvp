@@ -7,6 +7,7 @@ import { mastra } from "@/app/mastra";
 import {
   QUIZ_EVAL_INSTRUCTIONS,
   QUIZ_EVAL_MODEL,
+  QUIZ_EVAL_PROVIDER,
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
 import { auth } from "@/auth";
@@ -140,6 +141,7 @@ export async function submitAnswer(
   const requestContext = new RequestContext();
   requestContext.set(QUIZ_EVAL_INSTRUCTIONS, buildGradingPrompt(ctx.question));
   requestContext.set(QUIZ_EVAL_MODEL, ctx.quiz.model);
+  requestContext.set(QUIZ_EVAL_PROVIDER, ctx.quiz.provider);
   // Attribute the server-only grader's token usage exactly like a runtime-route
   // agent — the observability exporter reads these off its MODEL_GENERATION span.
   requestContext.set(USAGE_CODE, ctx.code);

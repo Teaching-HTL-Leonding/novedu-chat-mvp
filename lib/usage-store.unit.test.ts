@@ -119,6 +119,53 @@ describe("recordLlmUsage", () => {
     expect(tableOf(mocks.insert.mock.calls[0] ?? [])).toBe(usageByCode);
   });
 
+  it("writes provider/model to usage_by_code ONLY — never to usage_by_user", async () => {
+    await recordLlmUsage({
+      code: CODE,
+      module: "tutor",
+      userId: USER,
+      provider: "Azure Foundry",
+      model: "gpt-5.4-mini",
+      inputNew: 10,
+      inputCached: 0,
+      output: 5,
+      toolCalls: 0,
+    });
+    expect(mocks.insertValues).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ provider: "Azure Foundry", model: "gpt-5.4-mini" }),
+    );
+    // The anonymity invariant: the per-user row must carry no activity dimension.
+    const userRow = mocks.insertValues.mock.calls[1]?.[0] as Record<string, unknown>;
+    expect(userRow).not.toHaveProperty("provider");
+    expect(userRow).not.toHaveProperty("model");
+  });
+
+  it("COALESCE-fills provider/model on the duplicate-key UPDATE (a counter usually creates the bucket first)", async () => {
+    mocks.insertValues.mockRejectedValue(duplicateKeyError());
+    await recordLlmUsage({
+      code: CODE,
+      module: "tutor",
+      provider: "SCCH",
+      model: "some-model",
+      inputNew: 5,
+      inputCached: 0,
+      output: 3,
+      toolCalls: 0,
+    });
+    const setArg = mocks.updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(setArg).toHaveProperty("provider");
+    expect(setArg).toHaveProperty("model");
+  });
+
+  it("does not touch the provider/model columns when the caller has no attribution", async () => {
+    mocks.insertValues.mockRejectedValue(duplicateKeyError());
+    await recordUserMessage({ code: CODE, module: "tutor", userId: USER });
+    const setArg = mocks.updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(setArg).not.toHaveProperty("provider");
+    expect(setArg).not.toHaveProperty("model");
+  });
+
   it("falls back to an increment UPDATE on a duplicate key, and never throws", async () => {
     mocks.insertValues.mockRejectedValue(duplicateKeyError());
     await expect(

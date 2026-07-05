@@ -4,20 +4,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // HTTP-level integration test for the OpenAI-compatible coding endpoint. It drives
 // the real POST handler with `Request` objects (the HTTP contract at the route
-// boundary) and asserts OpenAI-shaped `Response`s. The two I/O seams it does NOT
-// own are mocked: `checkCode` (the DB-backed code gate) and `loadCoding` (the YAML
-// read). The SCCH upstream is mocked via global `fetch`, so the test is hermetic
-// and deterministic — it exercises bearer parsing, the gate, the body transform
-// forwarded upstream, and the (streamed and non-streamed) response passthrough.
+// boundary) and asserts OpenAI-shaped `Response`s. The I/O seams it does NOT own
+// are mocked: `checkCode` (the DB-backed code gate), `loadCoding` (the YAML read),
+// and the Foundry token/URL machinery. The upstream is mocked via global `fetch`,
+// so the test is hermetic and deterministic — it exercises bearer parsing, the
+// gate, the body transform + provider dialect adaptation forwarded upstream, and
+// the (streamed and non-streamed) response passthrough.
 //
 // The real end-to-end path against SCCH is covered separately by driving
 // little-coder against a dev server.
 
 const checkCode = vi.hoisted(() => vi.fn());
 const loadCoding = vi.hoisted(() => vi.fn());
+const foundryBearerToken = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/code-store", () => ({ checkCode }));
 vi.mock("@/lib/coding-fetch", () => ({ loadCoding }));
+vi.mock("@/lib/llm/foundry-endpoint", () => ({
+  foundryBearerToken,
+  foundryChatCompletionsUrl: () => "https://res.openai.azure.com/openai/v1/chat/completions",
+}));
 
 import { POST } from "@/app/api/coding/v1/chat/completions/route";
 
@@ -71,6 +77,7 @@ beforeEach(() => {
     ok: true,
     coding: { instructions: "TEACHER PROMPT", model: "gemma-pinned" },
   });
+  foundryBearerToken.mockResolvedValue("entra-token");
   fetchSpy = vi.spyOn(globalThis, "fetch");
 });
 
@@ -258,6 +265,79 @@ describe("POST /api/coding/v1/chat/completions — forwarding", () => {
     process.env.SCCH_BASE_URL = "";
     const res = await POST(post(chatBody()));
     expect(res.status).toBe(500);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes the classic sampling dialect to SCCH untouched", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    await POST(post({ ...chatBody(), max_tokens: 900, temperature: 0.2, top_p: 0.9 }));
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    const sent = JSON.parse(init.body as string);
+    expect(sent.max_tokens).toBe(900);
+    expect(sent.temperature).toBe(0.2);
+    expect(sent.top_p).toBe(0.9);
+  });
+});
+
+describe("POST /api/coding/v1/chat/completions — forwarding via Azure Foundry", () => {
+  beforeEach(() => {
+    loadCoding.mockResolvedValue({
+      ok: true,
+      coding: {
+        instructions: "TEACHER PROMPT",
+        model: "gpt-5-pinned",
+        provider: "Azure Foundry",
+      },
+    });
+  });
+
+  it("forwards to the Foundry URL with the Entra bearer and the adapted dialect", async () => {
+    fetchSpy.mockResolvedValue(
+      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+    );
+
+    const res = await POST(
+      post({ ...chatBody(), max_tokens: 900, temperature: 0.2, stream: true }),
+    );
+    expect(res.status).toBe(200);
+
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://res.openai.azure.com/openai/v1/chat/completions");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer entra-token");
+
+    const sent = JSON.parse(init.body as string);
+    expect(sent.model).toBe("gpt-5-pinned");
+    // The dialect adaptation: max_tokens renamed, sampling params stripped …
+    expect(sent.max_completion_tokens).toBe(900);
+    expect(sent).not.toHaveProperty("max_tokens");
+    expect(sent).not.toHaveProperty("temperature");
+    // … while the usage-tap contract survives untouched.
+    expect(sent.stream).toBe(true);
+    expect(sent.stream_options).toEqual({ include_usage: true });
+  });
+
+  it("500s when the Entra token acquisition fails, without calling fetch", async () => {
+    foundryBearerToken.mockRejectedValue(new Error("no az login"));
+    const res = await POST(post(chatBody()));
+    expect(res.status).toBe(500);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("413s an oversized body even while the token acquisition fails (no unhandled rejection)", async () => {
+    // The token is requested BEFORE the body read; if the body is then rejected, the
+    // abandoned auth promise must not surface as an unhandled rejection — vitest
+    // fails the run on unhandled rejections, so this test is the tripwire.
+    foundryBearerToken.mockRejectedValue(new Error("no az login"));
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < 3; i++) controller.enqueue(new Uint8Array(1024 * 1024));
+        controller.close();
+      },
+    });
+    const res = await POST(postStream(stream));
+    expect(res.status).toBe(413);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

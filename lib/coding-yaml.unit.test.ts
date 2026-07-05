@@ -36,6 +36,21 @@ describe("parseCoding", () => {
     expect(result.coding.title).toBeUndefined();
   });
 
+  it("defaults a missing llm.provider to SCCH and carries an explicit one", () => {
+    const defaulted = parseCoding("llm:\n  model: m\ninstructions: Help.\n");
+    expect(defaulted.ok && defaulted.coding.provider).toBe("SCCH");
+    const foundry = parseCoding(
+      "llm:\n  model: gpt-5.4-mini\n  provider: Azure Foundry\ninstructions: Help.\n",
+    );
+    expect(foundry.ok && foundry.coding.provider).toBe("Azure Foundry");
+  });
+
+  it("rejects an unsupported llm.provider instead of silently using SCCH", () => {
+    const result = parseCoding("llm:\n  model: m\n  provider: OpenAI\ninstructions: Help.\n");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toContain("llm.provider");
+  });
+
   it.each([
     ["invalid YAML", ":::not yaml::: ["],
     ["missing model", "instructions: Help.\n"],

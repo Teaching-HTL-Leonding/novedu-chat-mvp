@@ -1,4 +1,5 @@
 import { parse as parseYamlText } from "yaml";
+import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "./llm/provider";
 
 // LENIENT runtime parse of a coding YAML — the path the OpenAI-compatible proxy
 // uses to read the activity behind a (verified) code's file_url. Coding activities
@@ -19,8 +20,10 @@ import { parse as parseYamlText } from "yaml";
 export interface Coding {
   /** Student-facing display name. Optional — the surfaces fall back to a default. */
   title?: string;
-  /** The model id that answers on SCCH. SERVER-ONLY — the proxy pins it. */
+  /** The model id that answers. SERVER-ONLY — the proxy pins it. */
   model: string;
+  /** The LLM provider serving `model` (`llm.provider`, default SCCH). SERVER-ONLY. */
+  provider: LlmProvider;
   /** The teacher's system prompt, prepended ahead of the client's. SERVER-ONLY. */
   instructions: string;
 }
@@ -56,9 +59,22 @@ export function parseCoding(content: string): CodingParseResult {
   }
   const root = doc as Record<string, unknown>;
 
-  const model = asString((root.llm as Record<string, unknown> | undefined)?.model);
+  const llm = root.llm as Record<string, unknown> | undefined;
+  const model = asString(llm?.model);
   if (!model) {
     return { ok: false, message: "This coding activity does not specify a model (llm.model)." };
+  }
+
+  // Missing ⇒ SCCH; present-but-invalid is rejected so a Foundry-intended
+  // activity never silently runs against SCCH.
+  const provider =
+    llm?.provider === undefined ? DEFAULT_PROVIDER : parseLenientProvider(llm.provider);
+  if (!provider) {
+    return {
+      ok: false,
+      message:
+        'This coding activity uses an unsupported llm.provider (use "SCCH" or "Azure Foundry").',
+    };
   }
 
   const instructions = asString(root.instructions);
@@ -71,6 +87,7 @@ export function parseCoding(content: string): CodingParseResult {
     coding: {
       title: asString(root.title),
       model,
+      provider,
       instructions,
     },
   };

@@ -100,7 +100,7 @@ describe("buildUpstreamChatBody", () => {
     ]);
   });
 
-  it("passes tools, tool_choice, temperature, and stream through verbatim", () => {
+  it("passes tools, tool_choice, temperature, and stream through verbatim (provider dialect adaptation happens later, in ChatEndpoint.adaptBody)", () => {
     const tools = [{ type: "function", function: { name: "read_file" } }];
     const out = buildUpstreamChatBody(
       { messages: [], tools, tool_choice: "auto", temperature: 0.2, stream: true },

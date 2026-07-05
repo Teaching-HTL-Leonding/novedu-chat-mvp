@@ -79,6 +79,11 @@
           "type": "string",
           "description": "Model used for this tutor."
         },
+        "provider": {
+          "enum": ["SCCH", "Azure Foundry"],
+          "default": "SCCH",
+          "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name."
+        },
         "imageInput": {
           "type": "boolean",
           "default": true,

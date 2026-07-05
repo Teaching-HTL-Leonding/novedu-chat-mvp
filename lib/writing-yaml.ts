@@ -1,4 +1,5 @@
 import { parse as parseYamlText } from "yaml";
+import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "./llm/provider";
 import type { WritingPublic } from "./writing-types";
 
 // LENIENT runtime parse of a writing YAML — the STUDENT path. Writing activities
@@ -29,6 +30,8 @@ export interface Writing {
   anonymous: boolean;
   /** The model id that drives the feedback chat. SERVER-ONLY. */
   model: string;
+  /** The LLM provider serving `model` (`llm.provider`, default SCCH). SERVER-ONLY. */
+  provider: LlmProvider;
   /** The teacher-provided system prompt for the feedback chat. SERVER-ONLY. */
   instructions: string;
   /** Optional starter text prefilled into the editor. */
@@ -71,9 +74,22 @@ export function parseWriting(content: string): WritingParseResult {
   }
   const root = doc as Record<string, unknown>;
 
-  const model = asString((root.llm as Record<string, unknown> | undefined)?.model);
+  const llm = root.llm as Record<string, unknown> | undefined;
+  const model = asString(llm?.model);
   if (!model) {
     return { ok: false, message: "This writing activity does not specify a model (llm.model)." };
+  }
+
+  // Missing ⇒ SCCH; present-but-invalid is rejected so a Foundry-intended
+  // activity never silently runs against SCCH.
+  const provider =
+    llm?.provider === undefined ? DEFAULT_PROVIDER : parseLenientProvider(llm.provider);
+  if (!provider) {
+    return {
+      ok: false,
+      message:
+        'This writing activity uses an unsupported llm.provider (use "SCCH" or "Azure Foundry").',
+    };
   }
 
   const instructions = asString(root.instructions);
@@ -90,6 +106,7 @@ export function parseWriting(content: string): WritingParseResult {
       description: asString(root.description),
       anonymous: asBool(root.anonymous, false),
       model,
+      provider,
       instructions,
       placeholder: asString(root.placeholder),
     },

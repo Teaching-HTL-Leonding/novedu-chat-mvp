@@ -21,12 +21,16 @@ Four kinds of e2e, by the external infra they need:
   file CRUD, the SQL-auth path). **Run in CI** against an ephemeral SQL Server
   service container reached with SQL auth (see "DB-backed `@live-db` in CI" below),
   and locally against real Azure SQL.
-- **`@live-llm` e2e** — also need the SCCH LLM (chat round-trips, vision, the
-  health probe, and the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`).
-  The SCCH endpoint is **geo-blocked to Austria** and cannot be containerized, so
-  these are **excluded from CI** and run locally only. (Such a test is tagged
-  `@live-llm` ONLY — the DB it also uses is implied — so a `--grep @live-db` run
-  never selects it.)
+- **`@live-llm` e2e** — also need a real LLM endpoint (chat round-trips, vision,
+  the health probe, and the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`).
+  Neither provider is reachable from CI: the SCCH endpoint is **geo-blocked to
+  Austria** and cannot be containerized, and Azure Foundry needs a **Managed
+  Identity / `az login`** with the `Cognitive Services OpenAI User` role
+  (docs/ai-models.md) — so these are **excluded from CI** and run locally only.
+  The Foundry legs (the second `tutor-chat-reply` case, the `health-foundry`
+  assertions) additionally self-skip when `AZURE_FOUNDRY_ENDPOINT` is not set.
+  (Such a test is tagged `@live-llm` ONLY — the DB it also uses is implied — so a
+  `--grep @live-db` run never selects it.)
 - **`@live-storage` e2e** — need real **Azure Blob Storage** (the image subsystem
   in `e2e/image-management.live.spec.ts`): minting User-Delegation SAS URLs,
   PUT/GET-ing actual blobs, plus the `novedu_images` metadata rows. The storage

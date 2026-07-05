@@ -1,5 +1,10 @@
+import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
+
+// Read the dev server's .env the way Next does, so the Foundry assertions below
+// mirror exactly what the server sees (AZURE_FOUNDRY_ENDPOINT set or not).
+loadEnvConfig(process.cwd());
 
 // The /health page renders its shell immediately (the server only gates access
 // and supplies session facts); the connectivity probes are fetched by the
@@ -66,6 +71,19 @@ test.describe("as a teacher", () => {
     await expect(page.getByTestId("health-scch-host")).toHaveText(hostPattern, {
       timeout: 20_000,
     });
+
+    // Azure Foundry is optional: when configured, its probe must pass (Entra
+    // token via `az login` + a model listing); when not, its rows must not exist.
+    if (process.env.AZURE_FOUNDRY_ENDPOINT) {
+      await expect(page.getByTestId("health-foundry")).toContainText("OK", { timeout: 20_000 });
+      await expect(page.getByTestId("health-foundry")).toContainText("models available");
+      await expect(page.getByTestId("health-foundry-host")).toHaveText(hostPattern, {
+        timeout: 20_000,
+      });
+    } else {
+      await expect(page.getByTestId("health-foundry")).toHaveCount(0);
+      await expect(page.getByTestId("health-foundry-host")).toHaveCount(0);
+    }
   });
 
   test("the nav menu links to the Health page", async ({ page }) => {

@@ -18,6 +18,7 @@ import {
   type ValidationWarning,
   validate,
 } from "@/lib/tutors";
+import type { LlmProvider } from "./llm/provider";
 import { type QuizYaml, QuizYamlSchema } from "./quiz-schema";
 
 /**
@@ -30,6 +31,8 @@ export type QuizCheckResult =
       ok: true;
       quizId: string;
       model: string;
+      /** The LLM provider serving `model` (`llm.provider`, default SCCH). */
+      provider: LlmProvider;
       questionCount: number;
       /** Privacy flag, default `true` (anonymous). */
       anonymous: boolean;
@@ -78,6 +81,7 @@ export function checkQuizValue(parsed: unknown, url?: string): QuizCheckResult {
     ok: true,
     quizId: quiz.id,
     model: quiz.llm.model,
+    provider: quiz.llm.provider,
     questionCount: quiz.questions.length,
     anonymous: quiz.anonymous ?? DEFAULT_ANONYMOUS,
     title: quiz.title ?? null,

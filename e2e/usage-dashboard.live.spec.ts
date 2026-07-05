@@ -42,22 +42,26 @@ test("the usage dashboard renders seeded token metrics", { tag: ["@live", "@live
   });
   const tutorCode = await mintCode({ module: "tutor", note: `${note} tutor` });
 
+  // A unique model id so the model-pie legend can be asserted unambiguously; the
+  // provider/model columns are seeded like the LLM recorder writes them.
+  const model = `e2e-model-${Date.now()}`;
   const seedUsage = (code: string, module: string, quizAnswers: number) =>
     pool
       .request()
       .input("code", sql.VarChar(32), code)
       .input("module", sql.VarChar(16), module)
+      .input("model", sql.NVarChar(256), model)
       .input("inNew", sql.BigInt, TOKENS_NEW)
       .input("inCached", sql.BigInt, TOKENS_CACHED)
       .input("out", sql.BigInt, TOKENS_OUTPUT)
       .input("quiz", sql.Int, quizAnswers)
       .query(
         `INSERT INTO novedu_usage_by_code
-             (code, hour, module, input_tokens_new, input_tokens_cached, output_tokens,
-              tool_calls, user_messages, quiz_answers, writing_saves)
+             (code, hour, module, provider, model, input_tokens_new, input_tokens_cached,
+              output_tokens, tool_calls, user_messages, quiz_answers, writing_saves)
            VALUES
              (@code, DATEADD(hour, DATEDIFF(hour, 0, SYSUTCDATETIME()), 0), @module,
-              @inNew, @inCached, @out, 0, 0, @quiz, 0)`,
+              'SCCH', @model, @inNew, @inCached, @out, 0, 0, @quiz, 0)`,
       );
 
   try {
@@ -66,10 +70,11 @@ test("the usage dashboard renders seeded token metrics", { tag: ["@live", "@live
 
     await page.goto("/usage");
 
-    // All three sections render their headings.
+    // All four sections render their headings.
     await expect(page.getByRole("heading", { name: "Token usage over time" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tokens by category" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tokens by code" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tokens by model" })).toBeVisible();
 
     // The time-series query ran and the shared table rendered.
     await expect(page.getByRole("columnheader", { name: "Total" })).toBeVisible();
@@ -87,6 +92,9 @@ test("the usage dashboard renders seeded token metrics", { tag: ["@live", "@live
 
     // The breakdown query ran: the seeded code shows in the code-pie legend.
     await expect(page.getByText(note, { exact: true })).toBeVisible();
+
+    // The by-model query ran: the seeded model id shows in the model-pie legend.
+    await expect(page.getByText(model, { exact: true })).toBeVisible();
 
     // The KPI query ran and is windowed: quiz answers ≥ what we seeded (== in CI's
     // clean DB; ≥ locally where other codes may add to the bucket).

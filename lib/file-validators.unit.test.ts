@@ -34,6 +34,7 @@ const fetcher = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("fileValidators.tutor", () => {
@@ -204,6 +205,74 @@ describe("fileValidators.coding", () => {
       ok: false,
       errors: [{ code: "CODING_SCHEMA_ERROR", message: "m" }],
     });
+  });
+});
+
+describe("provider availability gate (app-only, on top of the CLI-shared core)", () => {
+  // The loaders are mocked, but providerUnavailableReason stays REAL — the gate's
+  // env sensitivity is exactly what these tests pin down.
+  const okResults: Record<"tutor" | "quiz" | "writing" | "coding", () => void> = {
+    tutor: () =>
+      mocks.loadAndBuildTutorPrompt.mockResolvedValue({
+        ok: true,
+        warnings: [],
+        provider: "Azure Foundry",
+      }),
+    quiz: () =>
+      mocks.loadAndCheckQuiz.mockResolvedValue({
+        ok: true,
+        warnings: [],
+        anonymous: true,
+        title: "Q",
+        provider: "Azure Foundry",
+      }),
+    writing: () =>
+      mocks.loadAndCheckWriting.mockResolvedValue({
+        ok: true,
+        warnings: [],
+        anonymous: false,
+        title: "W",
+        provider: "Azure Foundry",
+      }),
+    coding: () =>
+      mocks.loadAndCheckCoding.mockResolvedValue({
+        ok: true,
+        warnings: [],
+        title: "C",
+        provider: "Azure Foundry",
+      }),
+  };
+
+  for (const kind of ["tutor", "quiz", "writing", "coding"] as const) {
+    it(`${kind}: BLOCKS a valid Foundry file when the server has no AZURE_FOUNDRY_ENDPOINT`, async () => {
+      vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
+      okResults[kind]();
+      const result = await fileValidators[kind].validate(URL_, fetcher);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.errors).toEqual([
+          { code: "PROVIDER_UNAVAILABLE", message: expect.stringContaining("Azure Foundry") },
+        ]);
+      }
+    });
+  }
+
+  it("passes a Foundry file when the server is configured for it", async () => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "https://res.openai.azure.com");
+    okResults.quiz();
+    expect(await fileValidators.quiz.validate(URL_, fetcher)).toMatchObject({ ok: true });
+  });
+
+  it("passes an SCCH file regardless of the Foundry env", async () => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
+    mocks.loadAndCheckQuiz.mockResolvedValue({
+      ok: true,
+      warnings: [],
+      anonymous: true,
+      title: "Q",
+      provider: "SCCH",
+    });
+    expect(await fileValidators.quiz.validate(URL_, fetcher)).toMatchObject({ ok: true });
   });
 });
 
