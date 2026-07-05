@@ -40,9 +40,11 @@ export function YamlEditor({
   /** Show the "Upload file…" button (load a local file into the editor). The
    * `/files` forms keep it (default); the writing surface passes `false`. */
   upload?: boolean;
-  /** Fill the parent's height instead of the default fixed height. The writing
-   * surface passes `true` so the editor spans the full split-screen column; the
-   * `/files` forms keep the fixed `420px`. The parent must establish a height. */
+  /** Fill the parent's height instead of the default fixed `420px`. The writing
+   * surface passes `true` inside a viewport-bounded column, so the editor spans
+   * the split-screen height and scrolls internally; the `/files` forms pass it
+   * inside PageBody's `min-h-full` column, so the editor starts viewport-high
+   * and then GROWS with its content (the page scrolls, not the editor). */
   fill?: boolean;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -89,7 +91,9 @@ export function YamlEditor({
           establishes the height this chain fills. */}
       <div
         className={cn(
-          "overflow-hidden rounded-lg border border-foreground/25",
+          // Explicit bg: CodeMirror itself is transparent, and on PageBody's
+          // gray canvas the editor must read as a white input surface.
+          "overflow-hidden rounded-lg border border-foreground/25 bg-background",
           fill && "flex min-h-0 flex-1 flex-col *:min-h-0 *:flex-1 [&_.cm-editor]:h-full",
         )}
       >

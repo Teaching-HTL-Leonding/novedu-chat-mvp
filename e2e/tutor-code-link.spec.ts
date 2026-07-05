@@ -56,7 +56,7 @@ test("a valid code opens the tutor chat for a student", { tag: ["@live", "@live-
   await page.waitForTimeout(3000);
   await expect(page.getByText(/not found after runtime sync/i)).toHaveCount(0);
 
-  // The assembled system prompt is available in the collapsible preview.
-  await page.getByText("System prompt & warnings").click();
-  await expect(page.locator('code[class*="language-"]')).toContainText("basic arithmetic");
+  // The student surface is chat-only: no debug header (activity URL or system
+  // prompt preview) above it.
+  await expect(page.getByText("System prompt & warnings")).toHaveCount(0);
 });

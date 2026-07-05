@@ -101,6 +101,31 @@ export const LayoutIcon = (props: SVGProps<SVGSVGElement>) => (
   </Icon>
 );
 
+/** Angle brackets — the coding module pill. */
+export const CodeIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <polyline points="16 18 22 12 16 6" />
+    <polyline points="8 6 2 12 8 18" />
+  </Icon>
+);
+
+/** Flag — the tutor module pill. */
+export const FlagIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+    <line x1="4" y1="22" x2="4" y2="15" />
+  </Icon>
+);
+
+/** Question-mark bubble — the quiz module pill. */
+export const HelpCircleIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <circle cx="12" cy="12" r="10" />
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </Icon>
+);
+
 /** Ticked box — "Select all" (the list multi-select header). */
 export const CheckSquareIcon = (props: SVGProps<SVGSVGElement>) => (
   <Icon {...props}>

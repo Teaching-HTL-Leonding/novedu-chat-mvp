@@ -21,7 +21,7 @@ export function RangeTabs() {
   return (
     <nav
       aria-label="Time range"
-      className="inline-flex flex-wrap gap-1 self-start rounded-lg border border-foreground/15 p-1"
+      className="inline-flex flex-wrap gap-1 self-start rounded-lg border border-foreground/15 bg-card p-1"
     >
       {USAGE_RANGES.map((range) => {
         const isActive = range === active;

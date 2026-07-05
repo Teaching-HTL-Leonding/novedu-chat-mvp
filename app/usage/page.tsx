@@ -32,7 +32,7 @@ export default async function UsagePage({
 
   return (
     <Main>
-      <PageBody className="dashboard-scroll gap-6">
+      <PageBody className="gap-6">
         <RangeTabs />
         <Suspense key={`kpi-${range}`} fallback={<KpiSkeleton />}>
           <KpiSection range={range} now={now} />

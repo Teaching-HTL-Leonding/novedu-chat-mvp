@@ -15,7 +15,7 @@ export function StatTile({
 }: { label: ReactNode; value: ReactNode } & Omit<ComponentProps<"div">, "children">) {
   return (
     <div
-      className={cn("min-w-32 rounded-lg border border-foreground/15 px-4 py-3", className)}
+      className={cn("min-w-32 rounded-lg border border-foreground/15 bg-card px-4 py-3", className)}
       {...props}
     >
       <dt className={cn("mb-1", META_LABEL)}>{label}</dt>

@@ -17,11 +17,11 @@ import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "../../markdown-renderer";
 import { QuizDiscussion } from "./quiz-discussion";
 
-// The quiz page column: centered, capped width, with a horizontal gutter at
-// every width so it is never flush with the window edges.
-const RUNNER = "mx-auto flex w-full max-w-4xl flex-col gap-4 px-5";
+// The quiz page column: centered and capped inside the PageBody canvas (which
+// owns the horizontal gutter).
+const RUNNER = "mx-auto flex w-full max-w-4xl flex-col gap-4";
 const PROGRESS = "text-foreground/55 text-sm";
-const CARD = "rounded-xl border border-foreground/15 bg-background px-5 py-4";
+const CARD = "rounded-xl border border-foreground/15 bg-card px-5 py-4";
 const LABEL = "mb-1.5 block font-semibold text-sm";
 const ACTIONS = "flex flex-wrap items-center gap-2";
 

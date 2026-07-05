@@ -18,7 +18,8 @@ export type ListColumnKind = "numeric" | "time" | "actions";
 
 // The table chrome — private: every table renders through <ListTable>.
 const TABLE_CLASSES = "w-full border-collapse text-sm";
-const TH_CLASSES = "border-foreground/25 border-b-2 px-3 py-2 text-left font-semibold";
+const TH_CLASSES =
+  "border-foreground/25 border-b-2 bg-foreground/5 px-3 py-2 text-left font-semibold text-foreground/70 text-xs uppercase tracking-wide";
 const TD_CLASSES = "border-foreground/15 border-b px-3 py-2 align-middle";
 
 // Built-in cell recipes so pages don't repeat alignment classes per column:
@@ -55,6 +56,8 @@ export interface DataListProps<T> {
   rows: T[];
   getRowKey: (row: T) => string;
   columns: ListColumn<T>[];
+  /** Optional per-row <tr> classes (e.g. the codes list's module accent stripe). */
+  rowClassName?: (row: T) => string | undefined;
   /** Top-left slot — the "New …" button/link. */
   actions?: ReactNode;
   /** Top-right slot — a <ListFilterBar> with the page's filter controls. */
@@ -74,10 +77,13 @@ export function ListTable<T>({
   rows,
   getRowKey,
   columns,
+  rowClassName,
 }: {
   rows: T[];
   getRowKey: (row: T) => string;
   columns: ListColumn<T>[];
+  /** Optional per-row <tr> classes (e.g. the codes list's module accent stripe). */
+  rowClassName?: (row: T) => string | undefined;
 }) {
   // Cell classes vary only by COLUMN, so merge them once per column here
   // instead of once per cell inside the row loop.
@@ -94,34 +100,38 @@ export function ListTable<T>({
   );
 
   return (
-    <table className={TABLE_CLASSES}>
-      <thead>
-        <tr>
-          {columns.map((column, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
-            <th key={index} scope="col" className={headerClasses[index]}>
-              {column.srOnlyHeader ? (
-                <span className="sr-only">{column.header}</span>
-              ) : (
-                column.header
-              )}
-            </th>
-          ))}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={getRowKey(row)}>
+    // The white card holding every table: rounded so the row accent stripes clip
+    // with it; the last row drops its hairline so it doesn't double the card edge.
+    <div className="overflow-hidden rounded-xl border border-foreground/10 bg-card shadow-xs [&_tbody_tr:last-child>td]:border-b-0">
+      <table className={TABLE_CLASSES}>
+        <thead>
+          <tr>
             {columns.map((column, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
-              <td key={index} className={cellClasses[index]}>
-                {column.render(row)}
-              </td>
+              <th key={index} scope="col" className={headerClasses[index]}>
+                {column.srOnlyHeader ? (
+                  <span className="sr-only">{column.header}</span>
+                ) : (
+                  column.header
+                )}
+              </th>
             ))}
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={getRowKey(row)} className={rowClassName?.(row)}>
+              {columns.map((column, index) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
+                <td key={index} className={cellClasses[index]}>
+                  {column.render(row)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -129,6 +139,7 @@ export function DataList<T>({
   rows,
   getRowKey,
   columns,
+  rowClassName,
   actions,
   filterBar,
   hint,
@@ -148,7 +159,12 @@ export function DataList<T>({
       {rows.length === 0 ? (
         <p>{isFiltered ? noMatchState : emptyState}</p>
       ) : (
-        <ListTable rows={rows} getRowKey={getRowKey} columns={columns} />
+        <ListTable
+          rows={rows}
+          getRowKey={getRowKey}
+          columns={columns}
+          rowClassName={rowClassName}
+        />
       )}
 
       {/* PAGINATION SEAM: a future server-rendered pager (prev/next <Link>s that

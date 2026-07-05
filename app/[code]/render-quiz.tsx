@@ -1,5 +1,5 @@
 import { Notice } from "@/components/notice";
-import { Main } from "@/components/page-main";
+import { Main, PageBody } from "@/components/page-main";
 import type { CodeEntry } from "@/lib/code-store";
 import { resolveImageRef } from "@/lib/image-resolve";
 import { loadQuiz } from "@/lib/quiz-fetch";
@@ -38,7 +38,11 @@ export async function RenderQuiz({ entry, code }: { entry: CodeEntry; code: stri
 
   return (
     <Main>
-      <QuizRunner code={code} quiz={quiz} />
+      {/* PageBody gives the runner the shared page canvas + window-edge
+          scrollbar; the runner column centers itself (block flow). */}
+      <PageBody className="block">
+        <QuizRunner code={code} quiz={quiz} />
+      </PageBody>
     </Main>
   );
 }

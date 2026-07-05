@@ -111,8 +111,7 @@ slots; none of them re-implement message rendering, streaming, input, the
 provider, or the threadId decision.
 
 **Tutor** (`app/tutor-chat.tsx`) wraps `ModuleChat` (`agentId="tutor"`,
-`providerKey={code}`) in the tutor-specific shell: the **tutor bar** (the activity
-URL), the **`<details>` system-prompt + warnings preview**, and the dismissible
+`providerKey={code}`) in the tutor-specific shell: the dismissible
 **image-upload error notice**. It passes `labels` (the optional welcome greeting),
 a `chatView` from `useTutorWelcomeView(...)` (`app/_tutor/welcome-view.tsx` — the
 fragile welcome-screen override, pinned to a CopilotKit version in a comment next
@@ -218,10 +217,10 @@ module.
   `MarkdownRenderer`), empty feedback renders no block, and it hands `ModuleChat`
   `agentId="quizDiscussion"`, `providerKey={threadId}`, `threadId`, and the headers.
 - **`tests/component/tutor-chat.browser.test.tsx`** — mocks `ModuleChat` and covers
-  only the tutor-unique cases: the tutor bar URL, the prompt + warnings `<details>`,
-  the props it hands `ModuleChat` (incl. `title`→`labels`, `imageInput`→`attachments`
-  with `onUploadFailed`, a `chatView`), the welcome-view composition, and the
-  dismissible upload-error notice.
+  only the tutor-unique cases: the props it hands `ModuleChat` (incl.
+  `title`→`labels`, `imageInput`→`attachments` with `onUploadFailed`, a
+  `chatView`), the welcome-view composition, and the dismissible upload-error
+  notice.
 - **`tests/unit/runtime-headers.unit.test.ts`** — `buildRuntimeHeaders(code, token)`
   returns `{ "x-code": code, "x-thread-token": token }` exactly (a cheap guard on
   the header names the backend re-reads).

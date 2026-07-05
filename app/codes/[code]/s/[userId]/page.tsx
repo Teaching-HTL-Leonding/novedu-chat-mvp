@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { Notice } from "@/components/notice";
-import { Main } from "@/components/page-main";
+import { Main, PageBody } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { listStudentConversations } from "@/lib/code-stats-store";
 import { getCode } from "@/lib/code-store";
@@ -84,7 +84,7 @@ export default async function StudentTextPage({
 
   return (
     <Main>
-      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-6">
+      <PageBody className="block">
         <BackLink href={`/codes/${code}`}>Back to savers</BackLink>
 
         <div className="mt-3 mb-4 flex flex-wrap items-baseline gap-x-6 gap-y-2">
@@ -123,7 +123,7 @@ export default async function StudentTextPage({
         </div>
 
         <div
-          className="wrap-break-word mb-6 rounded-lg border border-foreground/15 px-5 py-4"
+          className="wrap-break-word mb-6 rounded-lg border border-foreground/15 bg-card px-5 py-4"
           data-testid="student-text"
         >
           <MarkdownRenderer content={submission.text} />
@@ -133,7 +133,7 @@ export default async function StudentTextPage({
           <h2 className="mb-3 font-bold text-lg">Conversations</h2>
           <StudentConversations code={code} conversations={conversations ?? []} />
         </section>
-      </div>
+      </PageBody>
     </Main>
   );
 }

@@ -59,7 +59,7 @@ export function UserMenu({
       )}
       <button
         type="button"
-        className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-foreground/15 bg-background py-1 pr-1.5 pl-2.5 hover:bg-foreground/5"
+        className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-foreground/15 bg-background py-1 pr-1.5 pl-2.5 text-foreground hover:bg-foreground/5"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}

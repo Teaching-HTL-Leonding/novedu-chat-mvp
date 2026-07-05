@@ -2,6 +2,7 @@
 
 import { type ReactNode, useActionState, useState } from "react";
 import { BackLink } from "@/components/back-link";
+import { PageBody } from "@/components/page-main";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel, FieldSuccess } from "@/components/ui/field";
 import { Input, Select } from "@/components/ui/input";
@@ -81,7 +82,7 @@ export function CodeForm({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pt-4 pb-5">
+    <PageBody className="pb-5">
       <BackLink href="/codes">Back to codes</BackLink>
 
       {isEdit ? resultSlot : null}
@@ -267,6 +268,6 @@ export function CodeForm({
         ) : null}
         {state.status === "error" && "errors" in state ? <ErrorList errors={state.errors} /> : null}
       </div>
-    </div>
+    </PageBody>
   );
 }
