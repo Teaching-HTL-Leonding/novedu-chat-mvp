@@ -213,6 +213,25 @@ The `activities/` directory contains sample YAML for each module — `tutors/`, 
 an activity file with the exact checks the app enforces (`npm run cli` locally; published as
 `@novedu/cli`).
 
+## Related projects
+
+This repository is the **server side** of Novedu — where teachers author activities and
+students connect. A companion repository provisions the **student coding environments**
+that consume the [`coding`](docs/coding.md) module:
+
+- **[`novedu-dev-venv-generator`](https://github.com/Teaching-HTL-Leonding/novedu-dev-venv-generator)**
+  (`vcoding-env`) — one idempotent `deploy.sh` spins up *N* disposable, browser-based Azure
+  VMs, each running [code-server](https://github.com/coder/code-server) (VS Code in the
+  browser) plus the [pi.dev](https://pi.dev) coding agent. The agent is pre-wired to this
+  app's coding endpoint (`POST /api/coding/v1/chat/completions`) with the activity **Code**
+  as its bearer API key, so a student's in-browser agent codes against the teacher's chosen
+  model and system prompt — no local setup.
+
+**Typical workflow:** a teacher creates a `coding` **Code** here (`/codes/new`), then runs
+`./deploy.sh <CODE>` in the generator to hand each student a ready-to-hack browser IDE whose
+coding agent talks back to this activity. The two repos are the server and client halves of
+the same coding-workshop flow.
+
 ## Documentation
 
 Per-subsystem deep references live in [`docs/`](docs/): codes & modules
