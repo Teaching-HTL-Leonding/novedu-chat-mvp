@@ -1,4 +1,4 @@
-import { Main } from "@/components/page-main";
+import { Main, PageBody } from "@/components/page-main";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import type { CodeEntry } from "@/lib/code-store";
 import { codingConnectionProps, loadCoding } from "@/lib/coding-fetch";
@@ -17,10 +17,12 @@ export async function RenderCoding({ entry, code }: { entry: CodeEntry; code: st
 
   return (
     <Main>
-      <section className="mx-auto w-full max-w-3xl px-5 pt-6 pb-8">
-        <h1 className="mb-3 font-bold text-2xl">{title ?? "Coding endpoint"}</h1>
-        <CodingConnection {...codingConnectionProps(loaded, origin, code)} />
-      </section>
+      <PageBody className="block pt-6 pb-8">
+        <section className="mx-auto w-full max-w-3xl">
+          <h1 className="mb-3 font-bold text-2xl">{title ?? "Coding endpoint"}</h1>
+          <CodingConnection {...codingConnectionProps(loaded, origin, code)} />
+        </section>
+      </PageBody>
     </Main>
   );
 }

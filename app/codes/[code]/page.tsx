@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { Notice } from "@/components/notice";
-import { Main } from "@/components/page-main";
+import { Main, PageBody } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { codeModules } from "@/lib/code-modules/registry";
 import { getCode } from "@/lib/code-store";
@@ -50,7 +50,7 @@ export default async function CodeStatsPage({
 
   return (
     <Main>
-      <div className="flex-1 overflow-y-auto px-5 pt-4 pb-6">
+      <PageBody className="block">
         <BackLink href="/codes">Back to codes</BackLink>
 
         {/* The page title lives in the status bar ("Code Stats"); this is just
@@ -63,7 +63,7 @@ export default async function CodeStatsPage({
         </p>
 
         {body}
-      </div>
+      </PageBody>
     </Main>
   );
 }

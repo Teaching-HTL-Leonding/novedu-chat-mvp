@@ -5,10 +5,10 @@ import type { ModuleChat as ModuleChatType } from "@/app/module-chat";
 
 // TutorChat is re-expressed on top of the shared ModuleChat primitive, so this
 // suite mocks ModuleChat away and asserts only what is unique to the tutor: the
-// tutor bar, the prompt/warnings preview, the upload-error notice, the welcome
-// view it composes, and the props it hands ModuleChat. The shared chat wiring
-// (provider headers, the threadId explicit mode, the markdown renderer) is owned
-// and tested once by module-chat.browser.test.tsx — it is not re-checked here.
+// upload-error notice, the welcome view it composes, and the props it hands
+// ModuleChat. The shared chat wiring (provider headers, the threadId explicit
+// mode, the markdown renderer) is owned and tested once by
+// module-chat.browser.test.tsx — it is not re-checked here.
 //
 // The mock renders ModuleChat's children (so any provider-context children would
 // mount) and reports its props to a spy. The captured `chatView` is the tutor's
@@ -40,7 +40,6 @@ vi.mock("@copilotkit/react-core/v2", () => {
 
 import { TutorChat } from "@/app/tutor-chat";
 
-const TUTOR_URL = "https://example.com/tutor.yaml";
 const TUTOR_CODE = "a1b2c3d4e5";
 const THREAD_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const RUNTIME_HEADERS = {
@@ -48,64 +47,33 @@ const RUNTIME_HEADERS = {
   "x-thread-token": "deadbeef".repeat(8),
 };
 
-test("renders the chat with the tutor bar and prompt preview", async () => {
-  const screen = await render(
+// Every test renders the same minimal surface; overrides carry the per-test
+// deltas (title, imageInput, exampleQuestions, …).
+function renderTutorChat(overrides: Partial<ComponentProps<typeof TutorChat>> = {}) {
+  moduleChatSpy.mockClear();
+  return render(
     <TutorChat
       code={TUTOR_CODE}
       threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
       runtimeHeaders={RUNTIME_HEADERS}
-      prompt={"# Hello\n\nMass-energy: $E=mc^2$."}
-      warnings={[]}
       imageInput={false}
       description="Beschreibung des Tutors"
+      {...overrides}
     />,
   );
+}
 
-  // The tutor URL is shown (no "Change tutor" control anymore — the tutor is
-  // fixed by the share link).
-  await expect.element(screen.getByTitle(TUTOR_URL)).toBeVisible();
-  expect(screen.getByRole("button", { name: "Change tutor" }).query()).toBeNull();
+test("renders the shared chat primitive and nothing above it", async () => {
+  const screen = await renderTutorChat();
 
-  // The shared chat primitive is mounted.
   await expect.element(screen.getByTestId("module-chat")).toBeInTheDocument();
-
-  // The assembled prompt is available (collapsed in <details>, shown via the
-  // shared CodeBlock as markdown source).
-  expect(document.querySelector('code[class*="language-"]')?.textContent).toContain("# Hello");
-});
-
-test("shows warnings from the tutor build in the preview", async () => {
-  const screen = await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="prompt"
-      warnings={[{ code: "UNDECLARED_VARIABLE", message: "Variable foo is not declared" }]}
-      imageInput={false}
-      description="Beschreibung des Tutors"
-    />,
-  );
-
-  await expect.element(screen.getByText("UNDECLARED_VARIABLE")).toBeInTheDocument();
+  // The debug header (tutor URL + "System prompt & warnings" preview) is gone —
+  // students see only the chat.
+  expect(document.querySelector("details")).toBeNull();
 });
 
 test("hands ModuleChat the tutor agent, code-keyed provider, threadId and headers", async () => {
-  moduleChatSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={false}
-      description="Beschreibung des Tutors"
-    />,
-  );
+  await renderTutorChat();
 
   expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({
     agentId: "tutor",
@@ -118,19 +86,7 @@ test("hands ModuleChat the tutor agent, code-keyed provider, threadId and header
 });
 
 test("enables image attachments (images only, 5 MB cap) when the tutor opts in", async () => {
-  moduleChatSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={true}
-      description="Beschreibung des Tutors"
-    />,
-  );
+  await renderTutorChat({ imageInput: true });
 
   expect(moduleChatSpy.mock.lastCall?.[0].attachments).toMatchObject({
     enabled: true,
@@ -141,38 +97,13 @@ test("enables image attachments (images only, 5 MB cap) when the tutor opts in",
 });
 
 test("passes no attachments config when the tutor does not opt in", async () => {
-  moduleChatSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={false}
-      description="Beschreibung des Tutors"
-    />,
-  );
+  await renderTutorChat();
 
   expect(moduleChatSpy.mock.lastCall?.[0].attachments).toBeUndefined();
 });
 
 test("passes the tutor title as the welcome greeting label", async () => {
-  moduleChatSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={false}
-      title="Dein Tutor für verkettete Listen"
-      description="Beschreibung des Tutors"
-    />,
-  );
+  await renderTutorChat({ title: "Dein Tutor für verkettete Listen" });
 
   expect(moduleChatSpy.mock.lastCall?.[0].labels).toEqual({
     welcomeMessageText: "Dein Tutor für verkettete Listen",
@@ -180,38 +111,14 @@ test("passes the tutor title as the welcome greeting label", async () => {
 });
 
 test("keeps CopilotKit's default greeting when the tutor has no title", async () => {
-  moduleChatSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={false}
-      description="Beschreibung des Tutors"
-    />,
-  );
+  await renderTutorChat();
 
   expect(moduleChatSpy.mock.lastCall?.[0].labels).toBeUndefined();
 });
 
 test("the welcome view forces the welcome screen back on in explicit-threadId mode", async () => {
-  moduleChatSpy.mockClear();
   viewSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={false}
-      description="Beschreibung des Tutors"
-    />,
-  );
+  await renderTutorChat();
 
   // Explicit mode (the threadId ModuleChat pins) suppresses the view's welcome
   // screen; the chatView wrapper must override the two flags that gate it, no
@@ -241,19 +148,7 @@ async function renderWelcomeMessage(viewProps: Record<string, unknown> = {}) {
 }
 
 test("the welcome screen slot composes the built-in greeting plus the description", async () => {
-  moduleChatSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={false}
-      description="Ich helfe dir Schritt für Schritt."
-    />,
-  );
+  await renderTutorChat({ description: "Ich helfe dir Schritt für Schritt." });
 
   const screen = await renderWelcomeMessage();
   await expect.element(screen.getByTestId("ck-welcome-message")).toBeInTheDocument();
@@ -266,20 +161,7 @@ const EXAMPLE_QUESTIONS = [
 ];
 
 test("example questions render as buttons with the question text as tooltip", async () => {
-  moduleChatSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={false}
-      description="Beschreibung des Tutors"
-      exampleQuestions={EXAMPLE_QUESTIONS}
-    />,
-  );
+  await renderTutorChat({ exampleQuestions: EXAMPLE_QUESTIONS });
 
   const screen = await renderWelcomeMessage();
   for (const { title, question } of EXAMPLE_QUESTIONS) {
@@ -290,20 +172,7 @@ test("example questions render as buttons with the question text as tooltip", as
 });
 
 test("clicking an example question fills the chat input without sending", async () => {
-  moduleChatSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={false}
-      description="Beschreibung des Tutors"
-      exampleQuestions={EXAMPLE_QUESTIONS}
-    />,
-  );
+  await renderTutorChat({ exampleQuestions: EXAMPLE_QUESTIONS });
 
   const onInputChange = vi.fn();
   const onSubmitMessage = vi.fn();
@@ -316,38 +185,14 @@ test("clicking an example question fills the chat input without sending", async 
 });
 
 test("renders no question list when the tutor defines no example questions", async () => {
-  moduleChatSpy.mockClear();
-  await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={false}
-      description="Beschreibung des Tutors"
-    />,
-  );
+  await renderTutorChat();
 
   const screen = await renderWelcomeMessage();
   expect(screen.container.querySelector("ul")).toBeNull();
 });
 
 test("a failed upload shows a dismissible notice", async () => {
-  moduleChatSpy.mockClear();
-  const screen = await render(
-    <TutorChat
-      code={TUTOR_CODE}
-      threadId={THREAD_ID}
-      tutorUrl={TUTOR_URL}
-      runtimeHeaders={RUNTIME_HEADERS}
-      prompt="p"
-      warnings={[]}
-      imageInput={true}
-      description="Beschreibung des Tutors"
-    />,
-  );
+  const screen = await renderTutorChat({ imageInput: true });
 
   // Simulate CopilotKit rejecting a file (too large / wrong type): the chat
   // calls onUploadFailed, and TutorChat must surface the reason to the student.

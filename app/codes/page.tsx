@@ -1,7 +1,15 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { auth } from "@/auth";
 import { DataList, type ListColumn } from "@/components/data-list";
-import { EditIcon, ExternalLinkIcon, StatsIcon } from "@/components/icons";
+import {
+  CodeIcon,
+  EditIcon,
+  ExternalLinkIcon,
+  FlagIcon,
+  HelpCircleIcon,
+  StatsIcon,
+} from "@/components/icons";
 import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { AccessDenied, Notice } from "@/components/notice";
@@ -70,8 +78,30 @@ function statusBadge(status: WindowStatus) {
         upcoming
       </Badge>
     );
-  return null;
+  return (
+    <Badge tone="green" caps className="ml-2 align-middle">
+      <span className="size-1.5 rounded-full bg-current" />
+      active
+    </Badge>
+  );
 }
+
+// The module's tiny pill icon — decorative (the pill text carries the label).
+const MODULE_ICONS: Record<CodeModule, ReactNode> = {
+  tutor: <FlagIcon className="size-3" />,
+  quiz: <HelpCircleIcon className="size-3" />,
+  writing: <EditIcon className="size-3" />,
+  coding: <CodeIcon className="size-3" />,
+};
+
+// Left row stripe in the module's color — same hues as the solid module pills
+// (the Badge `solid` compound variants).
+const MODULE_ROW_ACCENT: Record<CodeModule, string> = {
+  tutor: "border-l-4 border-l-teal-700",
+  quiz: "border-l-4 border-l-amber-700",
+  writing: "border-l-4 border-l-green-700",
+  coding: "border-l-4 border-l-blue-800",
+};
 
 // Teacher-only: lists ALL codes across modules (any effective teacher may
 // see/manage every code — finer-grained RBAC is planned), with a contains-filter
@@ -148,7 +178,12 @@ export default async function CodesPage({
     ),
     {
       header: "Module",
-      render: (row) => <Badge>{codeModuleLabels[row.module].badge}</Badge>,
+      render: (row) => (
+        <Badge tone={codeModuleLabels[row.module].tone} solid caps>
+          {MODULE_ICONS[row.module]}
+          {codeModuleLabels[row.module].badge}
+        </Badge>
+      ),
     },
     {
       header: "Note",
@@ -224,6 +259,7 @@ export default async function CodesPage({
           rows={rows}
           getRowKey={(row) => row.code}
           columns={columns}
+          rowClassName={(row) => MODULE_ROW_ACCENT[row.module]}
           hint={
             <>
               All codes. Filter by note/code, activity, or tick “Only my codes”. Expired ones stay

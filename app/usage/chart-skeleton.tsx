@@ -49,7 +49,7 @@ export function KpiSkeleton() {
       {[0, 1].map((i) => (
         <div
           key={i}
-          className="h-[4.75rem] min-w-32 flex-1 rounded-lg border border-foreground/15"
+          className="h-[4.75rem] min-w-32 flex-1 rounded-lg border border-foreground/15 bg-card"
         />
       ))}
     </div>

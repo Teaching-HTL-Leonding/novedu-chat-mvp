@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import { PageBody } from "@/components/page-main";
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -73,7 +74,7 @@ export function ValidateTutorForm() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 pb-5">
+    <PageBody className="pt-0 pb-5">
       <div
         className="flex shrink-0 items-center gap-2"
         role="radiogroup"
@@ -137,6 +138,6 @@ export function ValidateTutorForm() {
           </>
         ) : null}
       </div>
-    </div>
+    </PageBody>
   );
 }

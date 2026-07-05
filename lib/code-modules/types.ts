@@ -34,13 +34,20 @@ export interface CodeModuleLabels {
   badge: string;
   /** Header of the per-code interaction-count column (tutor chats vs quiz discussions). */
   countColumn: string;
+  /**
+   * Badge tone of the module's identity pill — the module's color everywhere it
+   * appears (the /codes Module column + row accent, the /files kind column).
+   * A subset of the Badge tone palette (components/ui/badge.tsx), spelled as
+   * literals so this module stays free of component imports.
+   */
+  tone: "teal" | "orange" | "green" | "blue";
 }
 
 export const codeModuleLabels: Record<CodeModule, CodeModuleLabels> = {
-  tutor: { badge: "Tutor", countColumn: "Conversations" },
-  quiz: { badge: "Quiz", countColumn: "Discussions" },
-  writing: { badge: "Writing", countColumn: "Conversations" },
+  tutor: { badge: "Tutor", countColumn: "Conversations", tone: "teal" },
+  quiz: { badge: "Quiz", countColumn: "Discussions", tone: "orange" },
+  writing: { badge: "Writing", countColumn: "Conversations", tone: "green" },
   // Coding has no in-app conversations and renders its own detail (not
   // ConversationStats), so `countColumn` is never displayed for it.
-  coding: { badge: "Coding", countColumn: "—" },
+  coding: { badge: "Coding", countColumn: "—", tone: "blue" },
 };

@@ -77,7 +77,7 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
         // a column of three bars instead of a centered svg.
         className={cn(
           iconButtonVariants(),
-          "flex-col gap-1 border-foreground/15 bg-background p-2",
+          "flex-col gap-1 rounded-lg border-foreground/15 bg-background p-2 not-disabled:hover:bg-background/85",
         )}
         aria-label="Open navigation menu"
         aria-haspopup="true"

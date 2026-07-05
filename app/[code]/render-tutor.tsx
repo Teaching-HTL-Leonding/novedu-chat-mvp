@@ -44,12 +44,9 @@ export async function RenderTutor({
       <TutorChat
         code={code}
         threadId={threadId}
-        tutorUrl={entry.fileUrl}
         // The runtime re-checks both headers server-side on every request — the
         // code gates access, the token proves the thread belongs to this user.
         runtimeHeaders={buildRuntimeHeaders(code, threadToken)}
-        prompt={result.prompt}
-        warnings={result.warnings}
         imageInput={result.imageInput}
         title={result.title}
         description={result.description}

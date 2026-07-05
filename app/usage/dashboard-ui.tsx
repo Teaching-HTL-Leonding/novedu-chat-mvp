@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 // styled with the app's hairline-card recipe + foreground ramp (docs/styling.md);
 // folds into shadcn's Card when that lands.
 
-export const DASHBOARD_CARD = "rounded-lg border border-foreground/15 p-4";
+export const DASHBOARD_CARD = "rounded-lg border border-foreground/15 bg-card p-4";
 
 export function DashboardCard({
   title,

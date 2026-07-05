@@ -15,7 +15,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { iconButtonVariants } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { resolveAppOriginOr } from "@/lib/app-origin";
-import { isCodeModule } from "@/lib/code-modules/types";
+import { codeModuleLabels, isCodeModule } from "@/lib/code-modules/types";
 import { listFiles } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
@@ -34,14 +34,15 @@ interface FileRow {
   createdBy: string;
 }
 
-// Kind → badge tone, shared visual language with the codes list (tutor blue,
-// quiz orange, coding purple); fragment/writing fall back to green.
+// Kind → badge tone, shared visual language with the codes list: module kinds
+// use the module's pill color (codeModuleLabels); `fragment` is the one kind
+// without a module and gets its own hue.
 const KIND_TONES: Record<string, VariantProps<typeof badgeVariants>["tone"]> = {
-  tutor: "blue",
-  quiz: "orange",
-  coding: "purple",
-  fragment: "green",
-  writing: "green",
+  tutor: codeModuleLabels.tutor.tone,
+  quiz: codeModuleLabels.quiz.tone,
+  writing: codeModuleLabels.writing.tone,
+  coding: codeModuleLabels.coding.tone,
+  fragment: "purple",
 };
 
 // Teacher-only: every app-hosted YAML file (active versions only), with a
@@ -106,7 +107,7 @@ export default async function FilesPage({
     {
       header: "Kind",
       render: (row) => (
-        <Badge caps tone={KIND_TONES[row.kind] ?? "green"}>
+        <Badge caps solid tone={KIND_TONES[row.kind] ?? "green"}>
           {row.kind}
         </Badge>
       ),

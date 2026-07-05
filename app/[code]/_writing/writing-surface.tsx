@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { PAGE_CANVAS } from "@/components/page-main";
 import { Button } from "@/components/ui/button";
 import { DIALOG_BODY, DialogShell } from "@/components/ui/dialog-shell";
 import { FieldError } from "@/components/ui/field";
@@ -192,130 +193,139 @@ export function WritingSurface({
     !!writing.description && writing.description.length > DESCRIPTION_PREVIEW_CHARS;
 
   return (
-    // px-5: a horizontal gutter at every width — once the viewport is narrower
-    // than the page max-width the auto margins give no inset, so without this the
-    // columns would sit flush against the window edges.
-    <div className="flex min-h-0 w-full flex-1 flex-col px-5">
-      <div
-        ref={splitRef}
-        className="flex min-h-0 flex-1 items-stretch max-md:flex-col"
-        // The editor/chat width split; ignored by the stacked (narrow) layout.
-        // Scaled to whole numbers summing to 100 so that when one column is
-        // collapsed the other still has flex-grow >= 1 and fills ALL the freed
-        // space — grow factors summing to < 1 leave the remainder empty.
-        style={
-          {
-            "--editor-grow": Math.round(editorFraction * 100),
-            "--chat-grow": Math.round((1 - editorFraction) * 100),
-          } as React.CSSProperties
-        }
-      >
-        <section className={cn(PANE_BASE, "flex-[var(--editor-grow,1)_1_0] gap-3")}>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            {writing.title ? <h1 className="font-semibold text-xl">{writing.title}</h1> : null}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={() => setPreviewOpen(true)}>
-                Read formatted
-              </Button>
-              {!anonymous ? (
-                <Button onClick={onSave} disabled={saving || !dirty}>
-                  {saving ? "Saving…" : dirty ? "Save" : "Saved"}
+    // The shared full-bleed canvas as a NON-scrolling flex column (the split is
+    // viewport-bounded; editor and chat scroll internally). The inner div
+    // re-centers the content and carries the horizontal gutter (px-5) plus the
+    // vertical inset the canvas's negative margins swallowed from Main.
+    <div className={cn(PAGE_CANVAS, "flex flex-col")}>
+      <div className="mx-auto flex min-h-0 w-full max-w-7xl flex-1 flex-col px-5 py-3">
+        <div
+          ref={splitRef}
+          className="flex min-h-0 flex-1 items-stretch max-md:flex-col"
+          // The editor/chat width split; ignored by the stacked (narrow) layout.
+          // Scaled to whole numbers summing to 100 so that when one column is
+          // collapsed the other still has flex-grow >= 1 and fills ALL the freed
+          // space — grow factors summing to < 1 leave the remainder empty.
+          style={
+            {
+              "--editor-grow": Math.round(editorFraction * 100),
+              "--chat-grow": Math.round((1 - editorFraction) * 100),
+            } as React.CSSProperties
+          }
+        >
+          <section className={cn(PANE_BASE, "flex-[var(--editor-grow,1)_1_0] gap-3")}>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              {writing.title ? <h1 className="font-semibold text-xl">{writing.title}</h1> : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" onClick={() => setPreviewOpen(true)}>
+                  Read formatted
                 </Button>
-              ) : null}
+                {!anonymous ? (
+                  <Button onClick={onSave} disabled={saving || !dirty}>
+                    {saving ? "Saving…" : dirty ? "Save" : "Saved"}
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          </div>
-          {writing.description ? (
-            <div>
-              {longDescription ? (
-                <>
-                  <MarkdownRenderer
-                    content={`${writing.description.slice(0, DESCRIPTION_PREVIEW_CHARS).trimEnd()}…`}
-                  />
-                  {/* An inline "more" link inside the flowing prompt text, not a button block. */}
-                  <button
-                    type="button"
-                    className="cursor-pointer font-semibold underline"
-                    onClick={() => setDescriptionOpen(true)}
-                  >
-                    more
-                  </button>
-                </>
-              ) : (
-                <MarkdownRenderer content={writing.description} />
-              )}
+            {writing.description ? (
+              <div>
+                {longDescription ? (
+                  <>
+                    <MarkdownRenderer
+                      content={`${writing.description.slice(0, DESCRIPTION_PREVIEW_CHARS).trimEnd()}…`}
+                    />
+                    {/* An inline "more" link inside the flowing prompt text, not a button block. */}
+                    <button
+                      type="button"
+                      className="cursor-pointer font-semibold underline"
+                      onClick={() => setDescriptionOpen(true)}
+                    >
+                      more
+                    </button>
+                  </>
+                ) : (
+                  <MarkdownRenderer content={writing.description} />
+                )}
+              </div>
+            ) : null}
+            {saveError ? <FieldError>{saveError}</FieldError> : null}
+            {/* The editor fills the remaining column height (YamlEditor in `fill` mode). */}
+            <div className="flex min-h-0 flex-1 flex-col">
+              <YamlEditor
+                value={buffer}
+                onChange={onEdit}
+                language="markdown"
+                upload={false}
+                fill
+              />
             </div>
-          ) : null}
-          {saveError ? <FieldError>{saveError}</FieldError> : null}
-          {/* The editor fills the remaining column height (YamlEditor in `fill` mode). */}
-          <div className="flex min-h-0 flex-1 flex-col">
-            <YamlEditor value={buffer} onChange={onEdit} language="markdown" upload={false} fill />
-          </div>
-        </section>
+          </section>
 
-        {/* The divider: drag to resize, and the ›/‹ button toggles the assistant.
+          {/* The divider: drag to resize, and the ›/‹ button toggles the assistant.
             It stays visible when the chat is collapsed (then showing ‹ to reopen).
             The drag is a mouse-only enhancement; the nested button is the
             accessible control, so the bar carries no role of its own. Only in the
             side-by-side layout — stacked has no collapse/resize (max-md:hidden
             covers pre-hydration and no-JS, where the JS below still renders it).
             The before: hairline runs down the middle, behind the toggle. */}
-        {sideBySide ? (
-          <div
-            className={cn(
-              "relative flex w-5 flex-none touch-none items-center justify-center before:absolute before:inset-y-0 before:w-px before:bg-foreground/15 max-md:hidden",
-              chatOpen ? "cursor-col-resize" : "cursor-default",
-            )}
-            onPointerDown={onResizePointerDown}
-          >
-            <button
-              type="button"
-              className="relative z-1 flex h-11 w-6 cursor-pointer items-center justify-center rounded-lg border border-foreground/25 bg-background text-foreground text-lg leading-none hover:bg-foreground/5"
-              // Toggling must not also start a resize drag.
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setChatOpen((open) => !open)}
-              aria-expanded={chatOpen}
-              aria-label={chatOpen ? "Hide assistant" : "Show assistant"}
+          {sideBySide ? (
+            <div
+              className={cn(
+                "relative flex w-5 flex-none touch-none items-center justify-center before:absolute before:inset-y-0 before:w-px before:bg-foreground/15 max-md:hidden",
+                chatOpen ? "cursor-col-resize" : "cursor-default",
+              )}
+              onPointerDown={onResizePointerDown}
             >
-              <span aria-hidden="true">{chatOpen ? "›" : "‹"}</span>
-            </button>
-          </div>
-        ) : null}
+              <button
+                type="button"
+                className="relative z-1 flex h-11 w-6 cursor-pointer items-center justify-center rounded-lg border border-foreground/25 bg-background text-foreground text-lg leading-none hover:bg-foreground/5"
+                // Toggling must not also start a resize drag.
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => setChatOpen((open) => !open)}
+                aria-expanded={chatOpen}
+                aria-label={chatOpen ? "Hide assistant" : "Show assistant"}
+              >
+                <span aria-hidden="true">{chatOpen ? "›" : "‹"}</span>
+              </button>
+            </div>
+          ) : null}
 
-        {/* Stacked layout always shows the chat (no toggle to reopen it). */}
-        {!sideBySide || chatOpen ? (
-          <aside
-            className={cn(
-              PANE_BASE,
-              "flex-[var(--chat-grow,1)_1_0] overflow-hidden rounded-xl border border-foreground/15",
-            )}
+          {/* Stacked layout always shows the chat (no toggle to reopen it). */}
+          {!sideBySide || chatOpen ? (
+            <aside
+              className={cn(
+                PANE_BASE,
+                "flex-[var(--chat-grow,1)_1_0] overflow-hidden rounded-xl border border-foreground/15 bg-card",
+              )}
+            >
+              <WritingChat
+                code={code}
+                threadId={threadId}
+                runtimeHeaders={runtimeHeaders}
+                currentTextRef={currentTextRef}
+              />
+            </aside>
+          ) : null}
+        </div>
+
+        <Lightbox
+          open={previewOpen}
+          heading="Formatted preview"
+          onClose={() => setPreviewOpen(false)}
+        >
+          <MarkdownRenderer content={buffer} />
+        </Lightbox>
+
+        {longDescription ? (
+          <Lightbox
+            open={descriptionOpen}
+            heading={writing.title ?? "Activity prompt"}
+            onClose={() => setDescriptionOpen(false)}
           >
-            <WritingChat
-              code={code}
-              threadId={threadId}
-              runtimeHeaders={runtimeHeaders}
-              currentTextRef={currentTextRef}
-            />
-          </aside>
+            <MarkdownRenderer content={writing.description ?? ""} />
+          </Lightbox>
         ) : null}
       </div>
-
-      <Lightbox
-        open={previewOpen}
-        heading="Formatted preview"
-        onClose={() => setPreviewOpen(false)}
-      >
-        <MarkdownRenderer content={buffer} />
-      </Lightbox>
-
-      {longDescription ? (
-        <Lightbox
-          open={descriptionOpen}
-          heading={writing.title ?? "Activity prompt"}
-          onClose={() => setDescriptionOpen(false)}
-        >
-          <MarkdownRenderer content={writing.description ?? ""} />
-        </Lightbox>
-      ) : null}
     </div>
   );
 }
