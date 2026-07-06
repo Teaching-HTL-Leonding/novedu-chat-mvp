@@ -97,6 +97,48 @@ describe("writingModule.runtime.buildRequestContext", () => {
       expect(ctx.get("writing-instructions")).toBe("Be a writing coach.");
     }
   });
+
+  it("applies the code's LLM override pair over the writing YAML's llm values", async () => {
+    loadWriting.mockResolvedValue({
+      ok: true,
+      writing: { model: "yaml-model", provider: "SCCH", instructions: "Be a writing coach." },
+    });
+    const withOverride = {
+      ...entry,
+      llm: { provider: "SCCH", model: "override-model" },
+    } as CodeEntry;
+    const result = await writingModule.runtime?.buildRequestContext(withOverride);
+    expect(result?.ok).toBe(true);
+    if (result?.ok) {
+      const ctx = result.context as unknown as { get(k: string): unknown };
+      expect(ctx.get("writing-model")).toBe("override-model");
+      expect(ctx.get("writing-provider")).toBe("SCCH");
+      // The instructions still come from the YAML — the override swaps only the LLM.
+      expect(ctx.get("writing-instructions")).toBe("Be a writing coach.");
+    }
+  });
+
+  it("502s a Foundry OVERRIDE on a server without AZURE_FOUNDRY_ENDPOINT (gate on the effective provider)", async () => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
+    try {
+      loadWriting.mockResolvedValue({
+        ok: true,
+        writing: { model: "gemma-4", provider: "SCCH", instructions: "Coach." },
+      });
+      const withOverride = {
+        ...entry,
+        llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" },
+      } as CodeEntry;
+      const result = await writingModule.runtime?.buildRequestContext(withOverride);
+      expect(result).toMatchObject({
+        ok: false,
+        status: 502,
+        message: expect.stringContaining("Azure Foundry"),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("writingModule.renderDetail", () => {

@@ -26,6 +26,7 @@ A **code** is a `[a-z0-9-]` string (1–32 chars; `generateCode()` mints 10 rand
 | `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
 | `origin` | **documentation-only**: where the code was created (DEV vs PROD rows). Lookups never read it — a code created on localhost works in production, since all environments share the database |
 | `anonymous` | the activity YAML's `anonymous` flag (default is module-specific — tutor/quiz `true`, writing `false`, coding always `true`), **frozen at create time** — a later YAML edit does NOT update it. Governs whether the stats page shows per-student data |
+| `llm_provider` / `llm_model` | the code's optional **LLM override pair**: when set, they replace the activity YAML's `llm.provider`/`llm.model` for every request served under this code. **Both-or-nothing** — either both NULL (the YAML's `llm:` block applies) or both set; model ids are provider-specific, so validation rejects a lone half. Surfaced as `CodeEntry.llm` and applied via `effectiveLlm` (`lib/code-store.ts`); a corrupt stored pair is logged and read as no override. Editable on `/codes/edit` (NOT frozen) |
 | `created_at` | creation time |
 
 Indexes: PK on `code`; `created_by` (the teacher list); `module` (the
@@ -158,6 +159,17 @@ because CopilotKit appends sub-paths like `/info` to the runtime URL). It
 `RequestContext`, and runs that one agent. `resourceId` is the **code** for every
 module. One access check, one header scheme, module-driven agent selection.
 
+Every consumption of the activity's `llm.provider`/`llm.model` goes through
+`effectiveLlm(entry, activityLlm)` (`lib/code-store.ts`): the code's LLM override
+pair wins wholesale when set. The five sites: the tutor agent (the descriptor
+puts the pair on the RequestContext as `tutor-provider-override`/
+`tutor-model-override`; `app/mastra/tutor-agent.ts` applies it), the quiz
+discussion + writing `buildRequestContext`s, the quiz grader (`submitAnswer`),
+and the coding proxy. Each gates `providerUnavailableReason` on the EFFECTIVE
+provider. Usage metering needs no extra wiring — the exporter reads the actually
+resolved provider/model off the MODEL_GENERATION span (`docs/ai-models.md`), and
+the coding proxy meters the effective pair explicitly.
+
 The runtime route additionally enforces **thread ownership**: every
 thread-touching request (`agent/{id}/run`, `agent/{id}/connect`,
 `agent/{id}/stop/{threadId}`) must carry an `x-thread-token` whose HMAC-SHA256
@@ -193,11 +205,24 @@ below. All runtime endpoints the app does not use (`/threads/*`, `/transcribe`,
 "Create code" shortcut — `/share-tutor` and `/share-quiz` both 308-redirect
 here): a **module** selector + the file URL + optional note + window as
 `datetime-local` (converted to unix seconds IN THE BROWSER — the only place the
-teacher's timezone is known). **Either window field may be left blank** for an
+teacher's timezone is known) + the optional **LLM override** (below). **Either
+window field may be left blank** for an
 open-ended code (no start / no end → a null bound). The action (`createCodeAction`,
 `lib/code-actions.ts`) validates the input, then runs `validateCodeFile(module, …)`
 (the Layer-2 validator for the module's `fileKind`), **freezes**
-`anonymous`/`title` from the result, and inserts the row. **A storage failure is a
+`anonymous`/`title` from the result, and inserts the row.
+
+The **LLM override** section is two free-text fields (provider + model) plus
+preset buttons (`LLM_OVERRIDE_PRESETS`, `lib/llm/presets.ts` — the built-in
+SCCH/Gemma-4 and Azure-Foundry/gpt-5.4-mini fills; a Clear button empties both).
+Left blank, the code serves the activity YAML's `llm:` values. Filled, the pair
+replaces provider AND model for every request under the code (both-or-nothing:
+the server rejects a half-filled pair or an unknown provider, and gates the
+override's provider through `providerUnavailableReason` at save time so a
+Foundry override cannot be stored on an SCCH-only server). The override swaps
+ONLY the LLM — the system prompt, `anonymous`, and everything else still come
+from the YAML (a tutor YAML's `llm.imageInput` still gates the attachment UI, so
+pick a vision-capable override model for a vision tutor). **A storage failure is a
 hard error** — without a row there is nothing to hand out. On success the action
 **redirects to `/codes/edit/<code>`**, which shows the module's **result body** via
 `renderCodeResult`: the default `/<code>` share link (copy button) for
@@ -206,8 +231,10 @@ first), then `TUTOR_CODE_ORIGIN` (fallback), then the request's forwarded/host h
 (fine for dev); it is display-only.
 
 **Editing** (`/codes/edit/[code]`, the SAME `CodeForm` in `mode="edit"` →
-`updateCodeAction` → `updateCode`) changes only the **note** and the
-**availability window**. The module and the file URL are shown **read-only** and
+`updateCodeAction` → `updateCode`) changes only the **note**, the
+**availability window**, and the **LLM override pair** (set or cleared as a
+whole, same validation + availability gate as create). The module and the file
+URL are shown **read-only** and
 are never submitted, so the frozen `anonymous` flag (which the file implies) stays
 valid and no YAML re-validation is needed.
 
@@ -299,7 +326,9 @@ planned). This is NOT the thread-ownership token, which remains the student-side
 isolation and is unaffected.
 
 - **`/codes/[code]`** — a thin **dispatcher**: it gates, loads `getCode(code)`,
-  renders the shared chrome (back-link + which code), then hands the body to
+  renders the shared chrome (back-link + which code + an "LLM override:
+  provider · model" line when the code carries one; the coding detail
+  additionally shows the EFFECTIVE pinned model), then hands the body to
   `codeModules[entry.module].renderDetail(entry, searchParams)`. Each module owns its
   detail. tutor/quiz render the shared **`ConversationStats`** component
   (`getCodeStats(code, anonymous)`): the interaction count (labelled per module —
@@ -352,7 +381,7 @@ row of `kind: "quiz"`. Teachers author the quiz YAML on `/files/new` (kind
 shortcut). Students reach it at `/<code>` like any other activity; the runner +
 in-page discussion live in `app/[code]/_quiz/`.
 
-- **Quiz YAML** (`activities/quizzes/sample-quiz.yaml`, parsed leniently by `parseQuiz` in
+- **Quiz YAML** (sample: `activities/examples/sorting-algorithms/sorting-quiz.yaml`, parsed leniently by `parseQuiz` in
   `lib/quiz-yaml.ts`): `id`, `name`, optional `title`/`description` (student
   welcome), `anonymous` (default `true`), `shuffle` (default `true`), `llm.model`
   (grades AND drives the discussion) with optional `llm.provider` (missing ⇒ SCCH;
@@ -360,7 +389,7 @@ in-page discussion live in `app/[code]/_quiz/`.
   `questions[]` each with `id`, optional `title`, `question` (markdown), an
   optional content `image` (below), and `evaluation` (the SERVER-ONLY grading
   prompt).
-- **An optional question `image`** (`activities/quizzes/sample-image-quiz.yaml`) is an
+- **An optional question `image`** is an
   `ImageRef` from the **image subsystem** (`docs/images.md`) — it carries no
   secret (unlike `evaluation`), so it survives `toPublicQuiz` and is resolved
   server-side (`resolveImageRef`) to a `ResolvedImage` rendered above the question
@@ -441,6 +470,12 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   module dispatch, plus the rejection/error UI
   (`tests/component/code-error.browser.test.tsx`) and the window/pattern logic
   itself (`lib/code-store.unit.test.ts`).
+- The **LLM override** is covered in CI end to end across its seams: validation +
+  persistence + `effectiveLlm` (`lib/code-store.unit.test.ts`), the save-time
+  availability gate (`lib/code-actions.unit.test.ts`), each apply point (the
+  module descriptor tests, `app/mastra/tutor-agent.unit.test.ts`,
+  `lib/quiz-actions.unit.test.ts`, the coding route test), and the form round-trip
+  in the `@live-db` CRUD spec (preset fill → stored → shown → cleared).
 - The `@live-llm` flows (the tutor chat, the quiz answer→discuss flow, and the
   writing feedback flow **through codes**) live in `e2e/quiz.spec.ts` /
   `e2e/tutor-chat-reply.spec.ts` / `e2e/writing.spec.ts`, local-only.

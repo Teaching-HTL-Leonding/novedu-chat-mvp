@@ -1,4 +1,4 @@
-import { checkCode } from "@/lib/code-store";
+import { checkCode, effectiveLlm } from "@/lib/code-store";
 import { loadCoding } from "@/lib/coding-fetch";
 import {
   buildUpstreamChatBody,
@@ -190,11 +190,14 @@ export async function POST(req: Request): Promise<Response> {
     return errorResponse("Invalid API key.", 401, "invalid_request_error", "invalid_api_key");
   }
 
-  // 3. Load the teacher's coding YAML (system prompt + pinned model).
+  // 3. Load the teacher's coding YAML (system prompt + pinned model). The code's
+  // LLM override pair, when set, replaces the YAML's provider/model — the pinned
+  // model and the upstream endpoint below both follow the EFFECTIVE pair.
   const loaded = await loadCoding(entry.fileUrl);
   if (!loaded.ok) {
     return errorResponse(loaded.message, 502, "server_error", null);
   }
+  const llm = effectiveLlm(entry, loaded.coding);
 
   // 4. Resolve the provider endpoint up front, OUTSIDE the fetch try — a missing env
   // var or a failed Entra token acquisition (Foundry) is a server misconfiguration
@@ -205,7 +208,7 @@ export async function POST(req: Request): Promise<Response> {
   let endpoint: ChatEndpoint;
   let authPromise: Promise<string>;
   try {
-    endpoint = resolveChatEndpoint(loaded.coding.provider);
+    endpoint = resolveChatEndpoint(llm.provider);
     authPromise = endpoint.authHeader();
     authPromise.catch(() => {});
   } catch (error) {
@@ -222,7 +225,7 @@ export async function POST(req: Request): Promise<Response> {
   const upstreamBody = endpoint.adaptBody(
     buildUpstreamChatBody(parsed.value, {
       instructions: loaded.coding.instructions,
-      model: loaded.coding.model,
+      model: llm.model,
     }),
   );
 
@@ -270,10 +273,7 @@ export async function POST(req: Request): Promise<Response> {
   if (upstream.body) {
     const [toClient, toTap] = upstream.body.tee();
     const isStream = (contentType ?? "").includes("text/event-stream");
-    void tapCodingUsage(toTap, isStream, entry.code, {
-      provider: loaded.coding.provider,
-      model: loaded.coding.model,
-    });
+    void tapCodingUsage(toTap, isStream, entry.code, llm);
     return new Response(toClient, { status: upstream.status, headers });
   }
   return new Response(upstream.body, { status: upstream.status, headers });

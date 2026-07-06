@@ -1,7 +1,7 @@
 import { Notice } from "@/components/notice";
 import { META_LABEL } from "@/components/ui/meta-label";
 import { resolveAppOriginOr } from "@/lib/app-origin";
-import type { CodeEntry } from "@/lib/code-store";
+import { type CodeEntry, effectiveLlm } from "@/lib/code-store";
 import { codingConnectionProps, loadCoding } from "@/lib/coding-fetch";
 import { CODE_PANEL } from "./code-panel";
 import { CodingConnection } from "./coding-connection";
@@ -24,7 +24,12 @@ export async function CodingDetail({ entry }: { entry: CodeEntry }) {
           <div className="mb-6">
             <p className={`mb-1.5 ${META_LABEL}`}>Model (pinned)</p>
             <p>
-              <code>{loaded.coding.model}</code>
+              {/* The EFFECTIVE model — what the proxy actually pins: the code's
+                  LLM override when set, the YAML's model otherwise. */}
+              <code>{effectiveLlm(entry, loaded.coding).model}</code>
+              {entry.llm ? (
+                <span className="text-foreground/70 text-sm"> (overridden by this code)</span>
+              ) : null}
             </p>
           </div>
           <div className="mb-6">

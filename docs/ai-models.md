@@ -3,7 +3,15 @@
 How the app talks to language models: two OpenAI-compatible providers behind one
 isolated seam. Every activity YAML picks its model with `llm.model` and its
 provider with `llm.provider` (`"SCCH"` when missing); no other code in the app
-knows which provider serves a request.
+knows which provider serves a request. The YAML values are the **default**: a
+code may carry a per-code `(provider, model)` **override pair**
+(`novedu_codes.llm_provider`/`llm_model`, both-or-nothing) that replaces them for
+every request served under that code — the precedence is `effectiveLlm`
+(`lib/code-store.ts`), applied at every consumption site (`docs/codes.md`), and
+the availability gate below runs on the EFFECTIVE provider. Metering is
+unaffected: the exporter reads the actually-resolved provider/model off the span
+(the named-provider contract below), and the coding proxy meters its effective
+pair explicitly.
 
 Read before touching: `lib/llm/**`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`,
 `buildCognitiveServicesCredential` in `lib/azure-credential.ts`, the `llm:` block

@@ -18,7 +18,12 @@ const checkCode = vi.hoisted(() => vi.fn());
 const loadCoding = vi.hoisted(() => vi.fn());
 const foundryBearerToken = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/code-store", () => ({ checkCode }));
+// `effectiveLlm` stays REAL (pure precedence logic — the point of the override
+// tests below); only the DB-backed gate is mocked.
+vi.mock("@/lib/code-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/code-store")>()),
+  checkCode,
+}));
 vi.mock("@/lib/coding-fetch", () => ({ loadCoding }));
 vi.mock("@/lib/llm/foundry-endpoint", () => ({
   foundryBearerToken,
@@ -278,6 +283,38 @@ describe("POST /api/coding/v1/chat/completions — forwarding", () => {
     expect(sent.max_tokens).toBe(900);
     expect(sent.temperature).toBe(0.2);
     expect(sent.top_p).toBe(0.9);
+  });
+
+  it("pins the CODE's override model instead of the YAML's when the entry carries one", async () => {
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { ...codingEntry, llm: { provider: "SCCH", model: "override-model" } },
+    });
+    fetchSpy.mockResolvedValue(
+      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    await POST(post(chatBody()));
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://scch.example/v1/chat/completions");
+    const sent = JSON.parse(init.body as string);
+    expect(sent.model).toBe("override-model");
+    // The teacher's prompt still comes from the YAML — the override swaps only the LLM.
+    expect(sent.messages[0]).toEqual({ role: "system", content: "TEACHER PROMPT" });
+  });
+
+  it("routes to Azure Foundry when the CODE's override says so, even for an SCCH YAML", async () => {
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { ...codingEntry, llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" } },
+    });
+    fetchSpy.mockResolvedValue(
+      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    await POST(post(chatBody()));
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://res.openai.azure.com/openai/v1/chat/completions");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer entra-token");
+    expect(JSON.parse(init.body as string).model).toBe("gpt-5.4-mini");
   });
 });
 

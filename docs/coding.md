@@ -13,7 +13,7 @@ Read it before touching the coding libs (`lib/coding-*.ts`, `lib/llm/endpoint.ts
 the public route (`app/api/coding/**`), the student surface
 (`app/[code]/render-coding.tsx`, `app/[code]/_coding/**`), the descriptor
 (`lib/code-modules/coding.ts`), the `api/coding` matcher in `proxy.ts`, or the
-samples (`activities/coding/*.yaml`).
+samples (the coding YAML under `activities/examples/`).
 
 ## What it is, and what it is NOT
 
@@ -54,6 +54,11 @@ samples (`activities/coding/*.yaml`).
   proxy injects the prompt and pins the model; neither is sent to the browser (nor
   is the provider). The connection page deliberately advertises only a generic
   model id (the proxy ignores whatever model the client sends).
+- The pinned model + provider are the **effective** pair: the code's LLM override
+  (`novedu_codes.llm_provider`/`llm_model`, `docs/codes.md`) when set, the YAML's
+  `llm:` values otherwise — `effectiveLlm` drives `resolveChatEndpoint`, the model
+  pin, and the usage tap alike. The teacher detail's "Model (pinned)" shows the
+  effective model.
 
 ## The coding YAML
 
@@ -85,9 +90,11 @@ instructions: |
   freezes `anonymous: true` onto the row regardless. `activities/coding/coding-yaml.schema.json`
   is the hand-maintained JSON-Schema mirror for editor IntelliSense (a modeline
   points each coding YAML at its raw GitHub URL).
-- `activities/coding/beginner-typescript.yaml` is the shipped sample: a buddy constrained to a
-  beginner's knowledge (primitive types only, no OOP/classes, `if` + basic loops, no
-  arrow functions, full type annotations). It is demo content — no test reads it
+- `activities/examples/sorting-algorithms/sorting-visualizer.yaml` is the shipped
+  sample: a sorting-visualizer project buddy constrained to a beginner's knowledge
+  (plain loops + `function` declarations, explicit types, no classes/arrow
+  functions/`map`/`filter`/`reduce`) that scaffolds p5.js freely but leaves the
+  sorting algorithm for the student to write. It is demo content — no test reads it
   (docs/testing.md); the validation tests exercise the synthetic fixtures under
   `test-fixtures/activities/coding/`.
 

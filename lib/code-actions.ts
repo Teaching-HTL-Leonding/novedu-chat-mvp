@@ -8,6 +8,7 @@ import { validateCodeFile } from "@/lib/code-modules/registry";
 import { isCodeModule } from "@/lib/code-modules/types";
 import { deleteCodesAndData } from "@/lib/code-stats-store";
 import { createCode, getCode, updateCode, validateCodeRequest } from "@/lib/code-store";
+import { providerUnavailableReason } from "@/lib/llm/availability";
 import { requireTeacherUserId } from "@/lib/student-mode";
 import type { ValidationError } from "@/lib/tutors";
 
@@ -56,8 +57,18 @@ export async function createCodeAction(
     start: formData.get("startTs"),
     end: formData.get("endTs"),
     note: formData.get("note"),
+    llmProvider: formData.get("llmProvider"),
+    llmModel: formData.get("llmModel"),
   });
   if (!validation.ok) return { status: "error", message: validation.message };
+
+  // An override naming a provider this server has not configured must fail NOW,
+  // not when the first student opens the code — the same save-time gate the
+  // Layer-2 validators run for the YAML's own provider.
+  if (validation.payload.llm) {
+    const unavailable = providerUnavailableReason(validation.payload.llm.provider);
+    if (unavailable) return { status: "error", message: unavailable };
+  }
 
   let origin: string;
   try {
@@ -92,6 +103,7 @@ export async function createCodeAction(
     note: validation.payload.note,
     origin,
     anonymous: result.anonymous,
+    llm: validation.payload.llm,
   });
   if (!stored.stored) {
     return {
@@ -172,19 +184,29 @@ export async function updateCodeAction(
   }
 
   // Reuse the create-time validator with the STORED url (which is already
-  // normalized, so it passes) — it also validates the window + note.
+  // normalized, so it passes) — it also validates the window + note + the LLM
+  // override pair (editable here, unlike the frozen module/file URL).
   const validation = validateCodeRequest({
     file: entry.fileUrl,
     start: formData.get("startTs"),
     end: formData.get("endTs"),
     note: formData.get("note"),
+    llmProvider: formData.get("llmProvider"),
+    llmModel: formData.get("llmModel"),
   });
   if (!validation.ok) return { status: "error", message: validation.message };
+
+  // Same save-time gate as create: never store an override this server can't serve.
+  if (validation.payload.llm) {
+    const unavailable = providerUnavailableReason(validation.payload.llm.provider);
+    if (unavailable) return { status: "error", message: unavailable };
+  }
 
   const result = await updateCode(code, {
     validFrom: validation.payload.validFrom,
     validUntil: validation.payload.validUntil,
     note: validation.payload.note,
+    llm: validation.payload.llm,
   });
   if (!result.ok) {
     return {

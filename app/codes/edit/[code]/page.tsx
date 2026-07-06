@@ -55,6 +55,8 @@ export default async function EditCodePage({ params }: { params: Promise<{ code:
         initialNote={entry.note}
         initialStartSeconds={entry.validFrom ? seconds(entry.validFrom) : undefined}
         initialEndSeconds={entry.validUntil ? seconds(entry.validUntil) : undefined}
+        initialLlmProvider={entry.llm?.provider}
+        initialLlmModel={entry.llm?.model}
         resultSlot={resultSlot}
       />
     </Main>

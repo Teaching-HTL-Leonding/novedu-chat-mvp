@@ -96,6 +96,45 @@ describe("quizModule.runtime.buildRequestContext", () => {
     }
   });
 
+  it("applies the code's LLM override pair over the quiz YAML's llm values", async () => {
+    loadQuiz.mockResolvedValue({
+      ok: true,
+      quiz: { model: "yaml-model", provider: "SCCH", discussionInstructions: "Focus on big-O." },
+    });
+    const withOverride = {
+      ...entry,
+      llm: { provider: "SCCH", model: "override-model" },
+    } as CodeEntry;
+    const result = await quizModule.runtime?.buildRequestContext(withOverride);
+    expect(result?.ok).toBe(true);
+    if (result?.ok) {
+      const ctx = result.context as unknown as { get(k: string): unknown };
+      expect(ctx.get("quiz-discussion-model")).toBe("override-model");
+      expect(ctx.get("quiz-discussion-provider")).toBe("SCCH");
+      // The instructions still come from the YAML — the override swaps only the LLM.
+      expect(ctx.get("quiz-discussion-instructions")).toContain("Focus on big-O.");
+    }
+  });
+
+  it("502s a Foundry OVERRIDE on a server without AZURE_FOUNDRY_ENDPOINT (gate on the effective provider)", async () => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
+    try {
+      loadQuiz.mockResolvedValue({ ok: true, quiz: { model: "gemma-4", provider: "SCCH" } });
+      const withOverride = {
+        ...entry,
+        llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" },
+      } as CodeEntry;
+      const result = await quizModule.runtime?.buildRequestContext(withOverride);
+      expect(result).toMatchObject({
+        ok: false,
+        status: 502,
+        message: expect.stringContaining("Azure Foundry"),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("uses only the default frame when the quiz omits discussionInstructions", async () => {
     loadQuiz.mockResolvedValue({ ok: true, quiz: { model: "gemma-4" } });
     const result = await quizModule.runtime?.buildRequestContext(entry);
