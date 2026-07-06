@@ -19,6 +19,12 @@ description: >-
   authored for the Novedu chat app. Prefer this CLI over reading the YAML by eye or
   re-deriving the rules -- the CLI is the source of truth and reports precise error
   codes you can act on.
+
+  The CLI also authenticates against Microsoft Entra ID (`login` via browser
+  sign-in or `--device-code`, `logout`, `whoami`) to call the Novedu app's
+  protected APIs. Use it on phrasings like "log in to novedu", "sign in the CLI",
+  "who am I signed in as?", "am I authenticated?", "sign out of novedu", or
+  whenever a CLI command fails with "Not signed in".
 ---
 
 # Validating activity YAML with `novedu-cli`
@@ -47,8 +53,9 @@ so a latent template bug anywhere in a referenced library fails the tutor.
 
 - **Exit code `0`** = valid, **`1`** = errors found. That makes it usable as a
   pre-commit / CI gate.
-- `validate` is the only command today; the CLI is built to grow, so check
-  `--help` if a task sounds like it might be covered by a newer command.
+- Besides `validate`, the CLI has the auth commands `login` / `logout` / `whoami`
+  (see below); it is built to grow, so check `--help` if a task sounds like it
+  might be covered by a newer command.
 
 ## Pick the right invocation: inside the repo vs. outside
 
@@ -134,11 +141,55 @@ the specific error code rather than just relaying it:
 For the full set, the codes come from `lib/tutors/errors.ts` in the repo. When a
 schema error is vague, re-run with `--json` to see the underlying issue detail.
 
+## Authentication: `login`, `logout`, `whoami`
+
+Commands that call the Novedu app's protected APIs need an Entra ID sign-in.
+`validate` does NOT — it needs no login and touches no protected resource.
+
+```
+login [--device-code]     # browser sign-in — the ONE human-assisted step
+logout                    # remove the cached credentials (local only)
+whoami [--server <url>]   # prove the round-trip: calls GET /api/me
+```
+
+**Agent workflow for `login` — the human must finish it.** By default the
+command opens the system browser for the Microsoft sign-in (and prints the
+sign-in URL as a fallback), then blocks until the sign-in completes (or times
+out after 5 minutes). So:
+
+1. Run `login` in the background (or otherwise keep reading its output while it
+   runs) — it is interactive by design and will not return until the human acts.
+2. **Tell the user a browser window opened for the Microsoft sign-in** and ask
+   them to complete it; if no window appeared, relay the printed URL.
+3. First-time users get a **one-time consent prompt** ("Access Novedu APIs from
+   the CLI") — tell them to accept it; it never reappears.
+4. When the command prints `Signed in as <name>.`, you're done. Everything after
+   `login` is non-interactive: the refresh token is cached in
+   `~/.novedu/token-cache.json` (mode 0600), and commands acquire tokens
+   silently from it.
+
+`login --device-code` instead prints a verification URL + code to enter from
+any device — useful on a headless machine, but many tenants **block the device
+code flow** by Conditional Access policy (the sign-in page then shows error
+53003). Prefer the default browser flow; only fall back to `--device-code` when
+there is no local browser, and warn the user it may be blocked.
+
+Re-running `login` while signed in just prints `Already signed in as <name>.`
+and exits 0 — it never blocks, so it is safe to run defensively.
+
+**When any command fails with `Not signed in — run "novedu-cli login".`** (exit
+1), do exactly that: run `login` and relay the URL + code to the user.
+
+**`whoami`** verifies the full chain (cache → token → server validation) and
+prints the display name, user id, and whether the account is a teacher. It
+targets the production server by default; pass `--server http://localhost:3000`
+(or set `NOVEDU_SERVER`) against a local dev server.
+
 ## Scope — what this CLI does NOT do
 
-It only **validates**. It does not authenticate, create or delete codes, deploy, or
-talk to the running app. Don't offer those via this CLI; validation needs no login
-and touches no protected resource.
+Beyond validating and authenticating, nothing yet: it does not create or delete
+codes, upload files, or deploy. Don't offer those via this CLI today (they are
+planned — check `--help` for what actually exists).
 
 ## Examples
 

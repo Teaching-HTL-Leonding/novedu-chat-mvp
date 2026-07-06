@@ -54,6 +54,7 @@
     "clsx": "^2.1.1",
     "drizzle-orm": "1.0.0-beta.22",
     "handlebars": "^4.7.9",
+    "jose": "^6.2.3",
     "katex": "^0.17.0",
     "mssql": "^12.6.0",
     "next": "^16.2.9",
