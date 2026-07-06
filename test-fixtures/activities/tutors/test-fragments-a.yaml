@@ -1,0 +1,31 @@
+id: test-fragments-a
+fragments:
+  - id: persona
+    version: 1
+    priority: 10
+    input_schema:
+      type: object
+      required:
+        - subject
+      properties:
+        subject:
+          type: string
+    content: |
+      You are a tutor for {{subject}}.
+  - id: rules
+    version: 1
+    priority: 20
+    input_schema:
+      type: object
+      required:
+        - rules
+      properties:
+        rules:
+          type: array
+          items:
+            type: string
+    content: |
+      Rules:
+      {{#each rules}}
+      - {{this}}
+      {{/each}}

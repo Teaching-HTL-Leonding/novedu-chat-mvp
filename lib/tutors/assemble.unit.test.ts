@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { assembleSystemPrompt } from "./assemble";
 import { checkConsistency, type ResolvedFragment } from "./consistency";
 import type { Tutor } from "./schemas";
-import { loadRealFragmentFiles, loadRealTutor } from "./test-fixtures";
+import { loadFixtureFragmentFiles, loadFixtureTutor } from "./test-fixtures";
 
-function realPlan(): { plan: ResolvedFragment[]; tutor: Tutor } {
-  const tutor = loadRealTutor();
-  const { plan, errors } = checkConsistency(tutor, loadRealFragmentFiles());
-  if (errors.length) throw new Error("precondition: real sample must be consistent");
+function fixturePlan(): { plan: ResolvedFragment[]; tutor: Tutor } {
+  const tutor = loadFixtureTutor();
+  const { plan, errors } = checkConsistency(tutor, loadFixtureFragmentFiles());
+  if (errors.length) throw new Error("precondition: fixture must be consistent");
   return { plan, tutor };
 }
 
@@ -61,35 +61,33 @@ describe("assembleSystemPrompt — templating", () => {
   });
 });
 
-describe("assembleSystemPrompt — real sample", () => {
+describe("assembleSystemPrompt — fixture", () => {
   it("orders fragments by priority and appends tutor_instructions last", () => {
-    const { plan, tutor } = realPlan();
+    const { plan, tutor } = fixturePlan();
     const out = assembleSystemPrompt(plan, tutor);
 
-    const socratic = out.indexOf("Socratic tutor for linked list data structures");
-    const safety = out.indexOf("The student may be a school child");
-    const instructions = out.indexOf(
-      "You are a Socratic tutor specializing in linked list data structures",
-    );
+    const first = out.indexOf("FIRST-MARKER");
+    const last = out.indexOf("LAST-MARKER");
+    const instructions = out.indexOf("TUTOR-INSTRUCTIONS-MARKER");
 
-    expect(socratic).toBeGreaterThanOrEqual(0);
-    expect(safety).toBeGreaterThan(socratic); // priority 900 after priority 100
-    expect(instructions).toBeGreaterThan(safety); // tutor_instructions last
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(last).toBeGreaterThan(first); // priority 60 after priority 10
+    expect(instructions).toBeGreaterThan(last); // tutor_instructions last
   });
 
-  it("renders the supplied concepts and ASCII diagram verbatim", () => {
-    const { plan, tutor } = realPlan();
+  it("renders the supplied items and ASCII diagram verbatim", () => {
+    const { plan, tutor } = fixturePlan();
     const out = assembleSystemPrompt(plan, tutor);
-    expect(out).toContain("singly linked lists vs. doubly linked lists");
+    expect(out).toContain("ITEM-ALPHA");
     expect(out).toContain("[head] -> [ A");
   });
 
   it("renders a fragment's default when the tutor omits the variable", () => {
     // End-to-end: an optional `{{greeting}}` with a default, not supplied by the tutor.
     // checkConsistency must inject the default so the strict renderer doesn't throw.
-    const tutor = loadRealTutor();
-    const files = loadRealFragmentFiles();
-    const frag = files.get("general_fragments")?.fragments.find((f) => f.id === "socratic_tutor");
+    const tutor = loadFixtureTutor();
+    const files = loadFixtureFragmentFiles();
+    const frag = files.get("lib_a")?.fragments.find((f) => f.id === "str_frag");
     if (frag?.input_schema) {
       frag.input_schema.properties.greeting = { type: "string", default: "Hello from default" };
       frag.content = `${frag.content}\n\nGreeting: {{greeting}}`;

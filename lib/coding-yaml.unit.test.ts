@@ -1,12 +1,10 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseCoding } from "@/lib/coding-yaml";
 
 // The lenient coding YAML parser (mirrors lib/writing-yaml's parser). It requires
 // only `llm.model` + `instructions`; everything else is optional. There is no
-// `anonymous` field — a coding activity is always anonymous. This also parses the
-// shipped sample so the repo's example never drifts out of sync with the parser.
+// `anonymous` field — a coding activity is always anonymous. (Parsing a full
+// on-disk sample is covered by the CLI validate test over test-fixtures/.)
 
 const VALID = `
 id: beginner-typescript
@@ -59,20 +57,5 @@ describe("parseCoding", () => {
     const result = parseCoding(content);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(typeof result.message).toBe("string");
-  });
-
-  it("parses the shipped sample (activities/coding/beginner-typescript.yaml)", () => {
-    // Vitest runs from the repo root, so the sample is addressable from cwd.
-    const sample = readFileSync(
-      join(process.cwd(), "activities/coding/beginner-typescript.yaml"),
-      "utf8",
-    );
-    const result = parseCoding(sample);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.coding.model).toBeTruthy();
-    // The sample's beginner constraints live in the system prompt.
-    expect(result.coding.instructions).toMatch(/annotations/i);
-    expect(result.coding.instructions).toMatch(/arrow function/i);
   });
 });

@@ -1,0 +1,20 @@
+id: vision-test-tutor
+name: "Vision Test Tutor"
+description: "Test tutor with image input enabled — drives the @live-llm image round-trip."
+# A REAL model: the image-attachment e2e spec sends this to the live SCCH vision
+# endpoint, unlike the hermetic fixtures which use a fake `test-model`.
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+  imageInput: true
+prompt:
+  fragment_files:
+    - id: frags
+      url: "test-fragments-a.yaml"
+  fragments:
+    - file: frags
+      id: persona
+      variables:
+        subject: "images"
+  tutor_instructions: |
+    When the student attaches an image, describe what you see factually. If they
+    ask for the dominant color, answer with a single word.

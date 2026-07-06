@@ -1,7 +1,7 @@
 import { loadEnvConfig } from "@next/env";
 import { expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { mintTutorCode, RAW_TUTORS } from "./code.utils";
+import { LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 
 // A REAL end-to-end chat, run once per LLM PROVIDER: open a tutor code, send
 // "Hi!", and assert the tutor streams back a non-empty answer (content doesn't
@@ -10,11 +10,10 @@ import { mintTutorCode, RAW_TUTORS } from "./code.utils";
 // turn is persisted to the configured Azure SQL store, scoped to the tutor code
 // as resourceId).
 //
-// - SCCH: the stable GitHub-raw sample tutor, exactly as before.
+// - SCCH: the local fixtures server's live-tutor.yaml (a real model).
 // - Azure Foundry: proves Managed-Identity/`az login` auth + deployment-as-model
 //   end-to-end through Mastra. Its tutor YAML is authored app-hosted through
-//   /files/new (the quiz.spec pattern) because a fixture on GitHub `main` would
-//   not exist before this change merges. Skipped when AZURE_FOUNDRY_ENDPOINT is
+//   /files/new (the quiz.spec pattern). Skipped when AZURE_FOUNDRY_ENDPOINT is
 //   not set. The other module specs stay SCCH-only by design.
 //
 // CopilotKit v2 testids used here (discovered from the rendered chat):
@@ -27,9 +26,12 @@ import { mintTutorCode, RAW_TUTORS } from "./code.utils";
 // exactly what the server sees.
 loadEnvConfig(process.cwd());
 
-const TUTOR_URL = `${RAW_TUTORS}/linked-list-tutor.yaml`;
-
-// Minimal valid tutor (no fragment files) pointing at a Foundry deployment.
+// Minimal valid tutor (no fragment files) pointing at a Foundry deployment. It
+// stays inline and is authored through /files/new — NOT a served fixture —
+// because (a) the authoring pass is deliberate coverage of the save-time strict
+// validation of a `provider: Azure Foundry` tutor, and (b) a Foundry deployment
+// name is environment-specific, so it has no place in the content-stable
+// fixture tree (docs/testing.md's fixture-model taxonomy).
 const FOUNDRY_TUTOR = `id: e2e-foundry-tutor
 name: "E2E Foundry Tutor"
 description: "A minimal tutor used to smoke-test the Azure Foundry provider."
@@ -74,14 +76,14 @@ async function setEditorContent(page: Page, text: string): Promise<void> {
   await page.keyboard.insertText(text);
 }
 
-// GitHub fetch + Next compile + a full model round-trip — give it room.
+// Fixture fetch + Next compile + a full model round-trip — give it room.
 test.setTimeout(120_000);
 
 // @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
 test("sending a message gets a non-empty reply from the tutor", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
-  await page.goto(`/${await mintTutorCode({ tutor: TUTOR_URL })}`);
+  await page.goto(`/${await mintTutorCode({ tutor: LIVE_TUTOR_URL })}`);
   await sendAndExpectReply(page);
 });
 

@@ -1,10 +1,12 @@
 import { randomInt } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { loadEnvConfig } from "@next/env";
 import { expect, type Page, test } from "@playwright/test";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "../lib/azure-credential";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { deleteUserName, mintCode, setUserName } from "./code.utils";
+import { deleteUserName, mintCode, setUserName, VALID_WRITING_URL } from "./code.utils";
 
 // End-to-end coverage for the Writing module: a `novedu_codes` row with
 // `module: "writing"` reached at `/<code>`. The student writes Markdown on the
@@ -24,24 +26,15 @@ import { deleteUserName, mintCode, setUserName } from "./code.utils";
 test.use({ storageState: TEACHER_STORAGE_STATE });
 test.setTimeout(120_000);
 
-// A minimal attributed (anonymous: false) writing activity. anonymous:false is
-// what enables Save + prefill + the teacher review showing text.
-const SAMPLE_WRITING = `id: e2e-writing
-name: "E2E Writing"
-title: "E2E Writing"
-anonymous: false
-llm:
-  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
-instructions: |
-  You are a writing coach. Use the getCurrentText tool to read the student's
-  current draft, then state the EXACT first line of it back, verbatim.
-`;
-
-// The published sample writing activity (anonymous:false, with full coach
-// instructions) — used by the full round-trip test exactly as a teacher would: a
-// code pointed straight at a remote YAML URL, no local file to author.
-const REMOTE_WRITING_URL =
-  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/writings/human-animal-short-story.yaml";
+// The fixture writing activity (attributed — anonymous:false enables Save +
+// prefill + the teacher review showing text). ONE source for both consumption
+// paths: the /files authoring flow pastes this text, and the round-trip test
+// mints a code straight at the same file's served URL (VALID_WRITING_URL) —
+// so the coach's "state the EXACT first line" contract lives in one place.
+const SAMPLE_WRITING = readFileSync(
+  path.join(process.cwd(), "test-fixtures", "activities", "writings", "test-writing.yaml"),
+  "utf8",
+);
 
 async function setCodeMirrorContent(page: Page, text: string): Promise<void> {
   const content = page.locator(".cm-content");
@@ -175,11 +168,11 @@ test("writing round-trip: write → chat reply → save → teacher reads the sa
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
   test.setTimeout(180_000);
-  // A code straight at the published sample YAML — anonymous:false so Save + the
+  // A code straight at the fixture writing YAML — anonymous:false so Save + the
   // savers review apply. No local file to author or clean up.
   const code = await mintCode({
     module: "writing",
-    file: REMOTE_WRITING_URL,
+    file: VALID_WRITING_URL,
     anonymous: false,
     note: "e2e writing round-trip",
   });

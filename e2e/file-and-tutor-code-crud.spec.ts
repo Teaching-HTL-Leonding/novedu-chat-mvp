@@ -6,12 +6,12 @@ import { VALID_CODING_URL, VALID_TUTOR_URL } from "./code.utils";
 // @live end-to-end CRUD over BOTH a hosted YAML file and a tutor link ("tutor
 // code"), as a teacher, against the real database (the dev server authenticates
 // with the local `az login` identity). Writes real rows, so it is excluded from
-// CI like the other live specs. The tutor link shares the canonical simple
-// tutor YAML (VALID_TUTOR_URL → .../activities/tutors/simple-tutor.yaml). Covers the
-// DB-side filtering (Apply → ?q=) on both list pages.
+// CI like the other live specs. The tutor link shares the canonical fixture
+// tutor YAML (VALID_TUTOR_URL → the local fixtures server's test-tutor.yaml).
+// Covers the DB-side filtering (Apply → ?q=) on both list pages.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
-// Dev compilation of the routes + GitHub fetch of the tutor YAML + DB round-trips.
+// Dev compilation of the routes + fixture fetch of the tutor YAML + DB round-trips.
 test.setTimeout(120_000);
 
 const FRAGMENT_V1 = `id: e2e_crud_fragments
@@ -148,7 +148,7 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   expect((await page.request.get(fileUrl)).status()).toBe(404);
 
   // =========================================================================
-  // TUTOR LINK — create (sharing the canonical simple tutor YAML)
+  // TUTOR LINK — create (sharing the fixture tutor YAML, VALID_TUTOR_URL)
   // =========================================================================
   const note = `e2e tutor link ${Date.now()}`;
   const now = Math.floor(Date.now() / 1000);

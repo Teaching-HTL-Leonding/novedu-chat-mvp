@@ -1,9 +1,6 @@
-import { readFile } from "node:fs/promises";
-import http from "node:http";
-import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { mintTutorCode } from "./code.utils";
+import { mintTutorCode, VISION_TUTOR_URL } from "./code.utils";
 
 // A REAL multi-modal round-trip through the chat: attach an image and confirm
 // the model actually saw it. This is the only @live image test — the upload-UI
@@ -12,44 +9,17 @@ import { mintTutorCode } from "./code.utils";
 // covered without a browser/LLM in tests/component/tutor-chat.browser.test.tsx.
 // What's left here genuinely needs the SCCH vision model + Azure SQL.
 //
-// The tutor fixtures are served from a LOCAL http server (the repo's own
-// `activities/tutors/` directory) instead of GitHub raw `main` like the other specs:
-// vision-tutor.yaml is introduced on this branch, so it isn't on `main` yet —
-// and serving locally keeps this spec independent of GitHub anyway. The Next
-// dev server fetches tutor URLs server-side, so 127.0.0.1 resolves fine.
+// The vision tutor YAML is served by the shared local fixtures server (see
+// code.utils.ts / test-fixtures/serve.mjs); the Next dev server fetches it
+// server-side, so 127.0.0.1 resolves fine.
 
-const TUTORS_DIR = path.join(process.cwd(), "activities", "tutors");
 const RED_PNG = path.join(process.cwd(), "e2e", "fixtures", "red.png");
 
-let server: http.Server;
-let tutorsBaseUrl: string;
-
-test.beforeAll(async () => {
-  server = http.createServer(async (req, res) => {
-    // Serve only flat files out of activities/tutors/ — basename() forecloses traversal.
-    const name = path.basename(new URL(req.url ?? "/", "http://localhost").pathname);
-    try {
-      const body = await readFile(path.join(TUTORS_DIR, name));
-      res.writeHead(200, { "content-type": "application/yaml" });
-      res.end(body);
-    } catch {
-      res.writeHead(404);
-      res.end();
-    }
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  tutorsBaseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-});
-
-test.afterAll(async () => {
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-});
-
-// Local fixture fetch + Next compile can still be slow on first hit.
+// Fixture fetch + Next compile can still be slow on first hit.
 test.setTimeout(60_000);
 
-async function openChat(page: import("@playwright/test").Page, tutorFile: string) {
-  const code = await mintTutorCode({ tutor: `${tutorsBaseUrl}/${tutorFile}` });
+async function openChat(page: import("@playwright/test").Page, tutorUrl: string) {
+  const code = await mintTutorCode({ tutor: tutorUrl });
   await page.goto(`/${code}`);
   await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
 }
@@ -61,7 +31,7 @@ test("the tutor answers a question about an attached image", {
 }, async ({ page }) => {
   // Image upload + a full vision-model round-trip — give it room.
   test.setTimeout(120_000);
-  await openChat(page, "vision-tutor.yaml");
+  await openChat(page, VISION_TUTOR_URL);
 
   // Attach + ask. In a FULL parallel run the dev server may hard-reload this
   // page (Turbopack recompiles routes that other specs touch), silently wiping

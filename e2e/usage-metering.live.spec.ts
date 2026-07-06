@@ -2,7 +2,7 @@ import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "../lib/azure-credential";
-import { mintTutorCode, RAW_TUTORS } from "./code.utils";
+import { LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 
 // A REAL end-to-end metering check: open a tutor code, send a message, get a reply,
 // then assert the observability exporter wrote a usage row for that code —
@@ -16,15 +16,13 @@ import { mintTutorCode, RAW_TUTORS } from "./code.utils";
 // (the exporter is async; the `user_messages` counter runs in `after()`), so the DB
 // read POLLS until the row lands. See docs/usage-metering.md.
 
-const TUTOR_URL = `${RAW_TUTORS}/linked-list-tutor.yaml`;
-
-// GitHub fetch + Next compile + a full model round-trip + the metering write.
+// Fixture fetch + Next compile + a full model round-trip + the metering write.
 test.setTimeout(150_000);
 
 test("a real tutor chat meters tokens + the user message into usage_by_code", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
-  const code = await mintTutorCode({ tutor: TUTOR_URL });
+  const code = await mintTutorCode({ tutor: LIVE_TUTOR_URL });
 
   // One real round-trip so a MODEL_GENERATION span fires and the run completes.
   await page.goto(`/${code}`);

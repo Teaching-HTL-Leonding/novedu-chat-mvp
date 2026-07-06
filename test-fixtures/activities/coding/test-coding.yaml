@@ -1,0 +1,7 @@
+id: test-coding
+name: "Functional Test Coding"
+title: "Test Coding Buddy"
+llm:
+  model: test-model
+instructions: |
+  You are a coding buddy used only by automated tests. Keep answers short.

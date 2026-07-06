@@ -1,22 +1,44 @@
 import { spawn } from "node:child_process";
+import type { Server } from "node:http";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { startFixturesServer } from "../../test-fixtures/serve.mjs";
 
 // Integration tests that invoke the REAL built CLI binary the way a user would
-// (`node dist/main.js …`), asserting stdout + exit code. Local-file cases need no
-// network; the public-URL cases fetch tutor YAMLs from the GitHub repo, which is
-// why this whole file is excluded from CI (see cli/vitest.config.mts).
+// (`node dist/main.js …`), asserting stdout + exit code. Local-file cases read the
+// synthetic fixtures under `test-fixtures/activities/`; the served-URL cases fetch
+// them from a local fixtures server (no network). Excluded from CI because it needs
+// the built binary (see cli/vitest.config.mts).
 //
 // Run via `npm run test:cli` — it builds the CLI first, so `dist/main.js` exists.
 
 const cli = fileURLToPath(new URL("../dist/main.js", import.meta.url));
-const tutorsDir = fileURLToPath(new URL("../../activities/tutors/", import.meta.url));
-const quizzesDir = fileURLToPath(new URL("../../activities/quizzes/", import.meta.url));
-const writingsDir = fileURLToPath(new URL("../../activities/writings/", import.meta.url));
-const codingDir = fileURLToPath(new URL("../../activities/coding/", import.meta.url));
+const tutorsDir = fileURLToPath(new URL("../../test-fixtures/activities/tutors/", import.meta.url));
+const quizzesDir = fileURLToPath(
+  new URL("../../test-fixtures/activities/quizzes/", import.meta.url),
+);
+const writingsDir = fileURLToPath(
+  new URL("../../test-fixtures/activities/writings/", import.meta.url),
+);
+const codingDir = fileURLToPath(new URL("../../test-fixtures/activities/coding/", import.meta.url));
 
-const RAW_BASE =
-  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors";
+// The served-URL cases point the CLI at a local fixtures server, reachable by
+// the spawned child on 127.0.0.1 — fully offline.
+let fixtures: { server: Server; baseUrl: string } | undefined;
+beforeAll(async () => {
+  fixtures = await startFixturesServer(0);
+});
+afterAll(async () => {
+  // `fixtures` stays undefined when beforeAll fails — guard so the teardown
+  // doesn't bury the root cause under a TypeError.
+  const server = fixtures?.server;
+  if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
+function fixturesBaseUrl(): string {
+  if (!fixtures) throw new Error("fixtures server not started");
+  return fixtures.baseUrl;
+}
 
 interface Run {
   code: number;
@@ -42,7 +64,7 @@ function runCli(args: string[]): Promise<Run> {
 
 describe("novedu-cli validate — local files", () => {
   it("exits 0 for a valid tutor", async () => {
-    const { code, stdout } = await runCli(["validate", `${tutorsDir}simple-tutor.yaml`]);
+    const { code, stdout } = await runCli(["validate", `${tutorsDir}test-tutor.yaml`]);
 
     expect(code).toBe(0);
     expect(stdout).toContain("Valid tutor");
@@ -56,7 +78,7 @@ describe("novedu-cli validate — local files", () => {
   });
 
   it("emits raw JSON with --json", async () => {
-    const { code, stdout } = await runCli(["validate", `${tutorsDir}simple-tutor.yaml`, "--json"]);
+    const { code, stdout } = await runCli(["validate", `${tutorsDir}test-tutor.yaml`, "--json"]);
 
     expect(code).toBe(0);
     expect(JSON.parse(stdout).ok).toBe(true);
@@ -65,7 +87,7 @@ describe("novedu-cli validate — local files", () => {
   it("exits 0 for a valid fragment library with --kind fragment", async () => {
     const { code, stdout } = await runCli([
       "validate",
-      `${tutorsDir}simple-fragments.yaml`,
+      `${tutorsDir}test-fragments-a.yaml`,
       "--kind",
       "fragment",
     ]);
@@ -89,7 +111,7 @@ describe("novedu-cli validate — local files", () => {
   it("exits 0 for a valid quiz with --kind quiz", async () => {
     const { code, stdout } = await runCli([
       "validate",
-      `${quizzesDir}sample-quiz.yaml`,
+      `${quizzesDir}test-quiz.yaml`,
       "--kind",
       "quiz",
     ]);
@@ -113,7 +135,7 @@ describe("novedu-cli validate — local files", () => {
   it("exits 0 for a valid writing activity with --kind writing", async () => {
     const { code, stdout } = await runCli([
       "validate",
-      `${writingsDir}human-animal-short-story.yaml`,
+      `${writingsDir}test-writing.yaml`,
       "--kind",
       "writing",
     ]);
@@ -137,7 +159,7 @@ describe("novedu-cli validate — local files", () => {
   it("exits 0 for a valid coding activity with --kind coding", async () => {
     const { code, stdout } = await runCli([
       "validate",
-      `${codingDir}beginner-typescript.yaml`,
+      `${codingDir}test-coding.yaml`,
       "--kind",
       "coding",
     ]);
@@ -161,7 +183,7 @@ describe("novedu-cli validate — local files", () => {
   it("rejects an invalid --kind", async () => {
     const { code, stderr } = await runCli([
       "validate",
-      `${tutorsDir}simple-tutor.yaml`,
+      `${tutorsDir}test-tutor.yaml`,
       "--kind",
       "bogus",
     ]);
@@ -171,16 +193,22 @@ describe("novedu-cli validate — local files", () => {
   });
 });
 
-describe("novedu-cli validate — public URLs", () => {
-  it("exits 0 for the published valid tutor", async () => {
-    const { code, stdout } = await runCli(["validate", `${RAW_BASE}/simple-tutor.yaml`]);
+describe("novedu-cli validate — served URLs", () => {
+  it("exits 0 for a fixture tutor served over HTTP", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${fixturesBaseUrl()}/tutors/test-tutor.yaml`,
+    ]);
 
     expect(code).toBe(0);
     expect(stdout).toContain("Valid tutor");
   });
 
-  it("exits 1 for the published broken tutor", async () => {
-    const { code, stdout } = await runCli(["validate", `${RAW_BASE}/broken-tutor.yaml`]);
+  it("exits 1 for a broken fixture tutor served over HTTP", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${fixturesBaseUrl()}/tutors/broken-tutor.yaml`,
+    ]);
 
     expect(code).toBe(1);
     expect(stdout).toContain("Invalid tutor");

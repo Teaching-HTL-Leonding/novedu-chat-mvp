@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { getStoredMessages, mintTutorCode, RAW_TUTORS } from "./code.utils";
+import { getStoredMessages, LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 
 // REGRESSION GUARD for the "replayed history" persistence bug (issue #28).
 //
@@ -18,8 +18,6 @@ import { getStoredMessages, mintTutorCode, RAW_TUTORS } from "./code.utils";
 // CopilotKit v2 testids (see tutor-chat-reply.spec.ts): composer
 // `copilot-chat-textarea`, send `copilot-send-button`, assistant bubbles
 // `copilot-assistant-message`.
-
-const TUTOR_URL = `${RAW_TUTORS}/linked-list-tutor.yaml`;
 
 // Distinctive markers so the stored USER rows are unambiguous to count. The
 // query is already scoped to this run's freshly minted code, so they only need
@@ -70,7 +68,7 @@ async function sendTurnAndSettle(
 test("a two-turn chat stores each turn once (no replayed-history duplicates)", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
-  const code = await mintTutorCode({ tutor: TUTOR_URL });
+  const code = await mintTutorCode({ tutor: LIVE_TUTOR_URL });
   await page.goto(`/${code}`);
 
   await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });

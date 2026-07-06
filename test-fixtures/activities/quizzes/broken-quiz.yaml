@@ -1,0 +1,12 @@
+id: broken-quiz
+name: "Broken Test Quiz"
+# The question misspells `evaluation` as `evaluaton`, so it is MISSING its
+# required grading prompt and carries an unrecognized key → QUIZ_SCHEMA_ERROR.
+llm:
+  model: test-model
+questions:
+  - id: q1
+    question: |
+      What is **2 + 2**?
+    evaluaton: |
+      Misspelled key — should be `evaluation`.

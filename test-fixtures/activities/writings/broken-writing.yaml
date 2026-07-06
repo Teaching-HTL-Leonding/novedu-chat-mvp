@@ -1,0 +1,8 @@
+id: broken-writing
+name: "Broken Test Writing"
+# Misspells `instructions` as `instructons`, so it is MISSING the required coach
+# prompt and carries an unrecognized key → WRITING_SCHEMA_ERROR.
+llm:
+  model: test-model
+instructons: |
+  Misspelled key — should be `instructions`.

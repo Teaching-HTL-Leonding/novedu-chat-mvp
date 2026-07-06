@@ -1,0 +1,8 @@
+id: broken-coding
+name: "Broken Test Coding"
+# Misspells `instructions` as `instructons`, so it is MISSING the required system
+# prompt and carries an unrecognized key → CODING_SCHEMA_ERROR.
+llm:
+  model: test-model
+instructons: |
+  Misspelled key — should be `instructions`.
