@@ -1,9 +1,10 @@
 # Writing Activity Files
 
-This folder contains **writing activity definitions** — the YAML files that
-describe a split-screen writing task with an AI **writing coach**. This guide
-explains the format so that teachers can write their own activities without
-touching any code.
+This guide explains **writing activity definitions** — the YAML files that
+describe a split-screen writing task with an AI **writing coach** — so that
+teachers can write their own activities without touching any code. This folder
+holds the guide and the JSON schema; complete sample files live in
+[`../examples/`](../examples/).
 
 You do not need to be a programmer. If you can edit a structured text file and
 follow the example below, you can build a writing activity.
@@ -58,7 +59,9 @@ placeholder: "" # optional starter text; empty = blank page
 ```
 
 This repository ships a complete example you can copy from:
-[`human-animal-short-story.yaml`](./human-animal-short-story.yaml).
+[`../examples/review-writing/restaurant-review-letter.yaml`](../examples/review-writing/restaurant-review-letter.yaml)
+— a feedback letter to a restaurant, with a formal-letter scaffold as
+`placeholder` and priority-ordered coaching criteria.
 
 ---
 
@@ -74,7 +77,7 @@ can pick up the schema from a modeline comment at the top of a writing file:
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/writings/writing-yaml.schema.json
 ```
 
-The sample files in this folder use this **full raw GitHub URL** so that validation,
+The sample files in [`../examples/`](../examples/) use this **full raw GitHub URL** so that validation,
 completion, and hover help work in your editor **whether or not** the schema file
 happens to sit next to the YAML you are editing. (If your file _is_ next to the
 schema, the relative path `./writing-yaml.schema.json` works too.)
@@ -138,6 +141,10 @@ Optional, default `SCCH` (the school's self-hosted server). Set
 deployment instead — then `llm.model` is the **deployment name** (e.g.
 `gpt-5.4-mini`).
 
+The `llm:` values are the **default**: when a teacher mints a code for this
+activity, the code's create/edit form can **override provider + model per
+code** (always both together) — the YAML file itself stays unchanged.
+
 ### `instructions`
 
 Required. The writing coach's **system prompt**. SERVER-ONLY — never sent to the
@@ -147,8 +154,8 @@ strategy.
 This is where you shape the coach. A good `instructions` block tells it to read
 the draft with the `getCurrentText` tool before commenting, to advise rather than
 rewrite, what to prioritise in feedback, and how to talk to the student. See
-[`human-animal-short-story.yaml`](./human-animal-short-story.yaml) for a thorough
-example.
+[`../examples/review-writing/restaurant-review-letter.yaml`](../examples/review-writing/restaurant-review-letter.yaml)
+for a thorough example.
 
 > The coach has **no** tool to change the text — it can only read the draft. So
 > even if `instructions` asked it to rewrite, it physically cannot. Lean into that:

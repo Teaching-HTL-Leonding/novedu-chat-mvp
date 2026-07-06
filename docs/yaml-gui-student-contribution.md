@@ -92,10 +92,12 @@ source of truth). A machine-readable JSON Schema is in
 
 | File | What it is |
 | --- | --- |
-| `activities/tutors/simple-tutor.yaml` | minimal valid tutor |
-| `activities/tutors/simple-fragments.yaml` | minimal valid fragment library |
-| `activities/tutors/linked-list-tutor.yaml` | a realistic tutor referencing several fragments |
-| `activities/tutors/general-fragments.yaml` | a larger fragment library |
+| `activities/examples/sorting-algorithms/sorting-tutor.yaml` | a realistic tutor referencing fragments from a shared library |
+| `activities/examples/shared/general-fragments.yaml` | a reusable fragment library (parameterized topic/language fragments + a safety fragment) |
+| `activities/examples/authoring/tutor-authoring-tutor.yaml` | a large tutor whose behavior lives mostly in `tutor_instructions` |
+
+(A minimal tutor + fragment-library pair is shown inline in the quick start of
+`activities/tutors/README.md`.)
 
 ### Tutor file (shape)
 

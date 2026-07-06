@@ -1,10 +1,11 @@
 # Coding Activity Files
 
-This folder contains **coding activity definitions** — the YAML files that describe
+This guide explains **coding activity definitions** — the YAML files that describe
 an **OpenAI-compatible coding endpoint**. A student points an external coding agent
 (such as [little-coder](https://github.com/itayinbarr/little-coder)) at the app, and
-codes against the school's model with behaviour you control. This guide explains the
-format so that teachers can write their own activities without touching any code.
+codes against the school's model with behaviour you control. Teachers can write
+their own activities without touching any code. This folder holds the guide and
+the JSON schema; complete sample files live in [`../examples/`](../examples/).
 
 If you can edit a structured text file and follow the example below, you can build a
 coding activity.
@@ -62,7 +63,10 @@ instructions: |
 The first line is the editor schema hint — see [Editor support](#3-editor-support).
 
 This repository ships a complete example you can copy from:
-[`beginner-typescript.yaml`](./beginner-typescript.yaml).
+[`../examples/sorting-algorithms/sorting-visualizer.yaml`](../examples/sorting-algorithms/sorting-visualizer.yaml)
+— a sorting-visualizer project buddy that states the class's prior knowledge,
+limits the TypeScript constructs, and keeps the algorithm itself for the student
+to write.
 
 ---
 
@@ -77,7 +81,7 @@ pick up the schema from a modeline comment at the top of a coding file:
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
 ```
 
-The sample files in this folder use this **full raw GitHub URL** so that validation,
+The sample files in [`../examples/`](../examples/) use this **full raw GitHub URL** so that validation,
 completion, and hover help work in your editor **whether or not** the schema file
 happens to sit next to the YAML you are editing. (If your file _is_ next to the
 schema, the relative path `./coding-yaml.schema.json` works too.)
@@ -129,6 +133,10 @@ Optional, default `SCCH` (the school's self-hosted server). Set
 then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`). Like the
 model, the provider never reaches the student.
 
+The `llm:` values are the **default**: when a teacher mints a code for this
+activity, the code's create/edit form can **override provider + model per
+code** (always both together) — the YAML file itself stays unchanged.
+
 ### `instructions`
 
 Required. The assistant's **system prompt**. **SERVER-ONLY** — never sent to the
@@ -136,7 +144,8 @@ browser or the coding agent — and **appended after** the coding tool's own pro
 (so your rules are the final word). This is where you constrain the assistant to what
 your class has learned (a
 language, a subset of features, a teaching style). See
-[`beginner-typescript.yaml`](./beginner-typescript.yaml) for a thorough example.
+[`../examples/sorting-algorithms/sorting-visualizer.yaml`](../examples/sorting-algorithms/sorting-visualizer.yaml)
+for a thorough example.
 
 > There is **no** `anonymous` field — coding activities are always anonymous — and
 > **no** `placeholder` or `description` field (those are for other modules). The

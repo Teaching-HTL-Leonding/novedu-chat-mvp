@@ -1,0 +1,267 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
+# Quiz for the "sorting algorithms" unit: Bubble Sort, Selection Sort, and
+# their TypeScript implementations. Target group: 16-year-old vocational-college
+# students who know basic TypeScript (see the companion tutor
+# ./sorting-tutor.yaml). All questions are open-ended and graded by the
+# LLM via the server-only `evaluation` prompts.
+
+id: sorting-algorithms-quiz
+name: "Quiz: Bubble Sort & Selection Sort"
+
+title: "Quiz: Bubble Sort & Selection Sort"
+description: |
+  Ein kurzes Quiz über Bubble Sort, Selection Sort und ihre Umsetzung in
+  TypeScript. Antworte in eigenen Worten — es gibt keine Auswahlmöglichkeiten.
+  Du kannst jederzeit aufhören und deine Zusammenfassung ansehen.
+
+# The questions build up from concept to code, so keep the authored order.
+shuffle: false
+
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+
+discussion:
+  instructions: |
+    You are a friendly programming tutor helping the student understand THIS
+    quiz question about sorting algorithms. The student has already submitted
+    an answer, so you may reveal and explain the correct answer. Prefer small
+    hints and tiny example arrays (like [5, 2, 4, 1]) before long explanations.
+    Keep code fragments short and beginner-friendly: plain loops, `function`
+    declarations, `let`/`const`, no classes, no arrow functions, no
+    `map`/`filter`/`reduce`. Respond in German, keep code and identifiers in
+    English, and stay on the topic of this question.
+
+questions:
+  - id: bubble-idea
+    title: "Idee von Bubble Sort"
+    question: |
+      Erkläre in eigenen Worten, wie **Bubble Sort** ein Array von Zahlen
+      sortiert. Was passiert in einem einzelnen Durchlauf, und warum ist das
+      Array am Ende sortiert?
+    evaluation: |
+      Erwartete Kernidee: Bubble Sort vergleicht wiederholt **benachbarte**
+      Elemente und vertauscht sie, wenn sie in der falschen Reihenfolge
+      stehen. Nach jedem vollständigen Durchlauf ist das größte verbleibende
+      Element ans Ende "geblubbert"; das wiederholt sich, bis keine
+      Vertauschung mehr nötig ist (bzw. bis alle Durchläufe erledigt sind).
+
+      Bewerte als:
+      - `correct`   — Nachbarn vergleichen + bei falscher Reihenfolge tauschen
+                      + mehrere Durchläufe (oder: das größte Element wandert
+                      pro Durchlauf ans Ende). Eigene Worte genügen, keine
+                      Fachbegriffe nötig.
+      - `partial`   — die Grundidee (vergleichen und tauschen) ist erkennbar,
+                      aber es fehlt das "benachbart" oder das wiederholte
+                      Durchlaufen, oder die Erklärung ist sehr unklar.
+      - `incorrect` — beschreibt einen anderen Algorithmus (z. B. Minimum
+                      suchen und nach vorne tauschen = Selection Sort) oder
+                      etwas Unzutreffendes.
+
+      Gib das Feedback auf Deutsch. Zeige bei Bedarf einen Mini-Durchlauf mit
+      [5, 2, 4, 1] als Beispiel.
+
+  - id: selection-idea
+    title: "Idee von Selection Sort"
+    question: |
+      Erkläre in eigenen Worten, wie **Selection Sort** ein Array von Zahlen
+      sortiert. Was macht der Algorithmus in jedem Schritt?
+    evaluation: |
+      Erwartete Kernidee: Selection Sort sucht im **unsortierten Teil** des
+      Arrays das **kleinste** Element (das Minimum) und tauscht es an den
+      Anfang des unsortierten Teils. Dadurch wächst der sortierte Bereich
+      vorne Schritt für Schritt, bis das ganze Array sortiert ist.
+      (Die Variante "Maximum suchen und ans Ende tauschen" ist ebenfalls
+      korrekt.)
+
+      Bewerte als:
+      - `correct`   — Minimum (oder Maximum) im unsortierten Teil suchen und
+                      an die richtige Position tauschen, wiederholt für den
+                      restlichen Teil.
+      - `partial`   — "das kleinste Element suchen" kommt vor, aber der Rest
+                      (tauschen an den Anfang, sortierter Bereich wächst) ist
+                      unklar oder fehlt.
+      - `incorrect` — beschreibt Nachbarn-Vergleichen-und-Tauschen (das wäre
+                      Bubble Sort) oder etwas Unzutreffendes.
+
+      Gib das Feedback auf Deutsch und stelle den Unterschied zu Bubble Sort
+      klar, wenn die Antwort die beiden verwechselt.
+
+  - id: bubble-trace
+    title: "Bubble Sort von Hand"
+    question: |
+      Gegeben ist das Array `[5, 2, 4, 1]`.
+
+      Wie sieht das Array nach dem **ersten vollständigen Durchlauf** von
+      Bubble Sort aus (aufsteigend sortiert, ein Durchlauf = einmal von links
+      nach rechts alle Nachbarpaare vergleichen)?
+
+      Du darfst auch die Zwischenschritte aufschreiben.
+    evaluation: |
+      Der erste Durchlauf im Detail:
+      - vergleiche 5 und 2 → tauschen → `[2, 5, 4, 1]`
+      - vergleiche 5 und 4 → tauschen → `[2, 4, 5, 1]`
+      - vergleiche 5 und 1 → tauschen → `[2, 4, 1, 5]`
+
+      Die korrekte Antwort ist **`[2, 4, 1, 5]`** — die 5 (das Maximum) steht
+      nach dem ersten Durchlauf ganz rechts.
+
+      Bewerte als:
+      - `correct`   — das Ergebnis `[2, 4, 1, 5]` (mit oder ohne
+                      Zwischenschritte).
+      - `partial`   — die Zwischenschritte zeigen das richtige Vorgehen, aber
+                      es passiert ein einzelner Flüchtigkeitsfehler, ODER die
+                      Antwort ist das fertig sortierte Array `[1, 2, 4, 5]`
+                      (zu weit gedacht: das ist das Ergebnis ALLER
+                      Durchläufe, nicht des ersten).
+      - `incorrect` — ein anderes Ergebnis ohne erkennbar richtiges Vorgehen.
+
+      Gib das Feedback auf Deutsch und zeige die drei Vergleichsschritte.
+
+  - id: swap-typescript
+    title: "Tauschen in TypeScript"
+    question: |
+      Du willst in einem `number`-Array die Elemente an den Positionen `i`
+      und `j` vertauschen:
+
+      ```typescript
+      let numbers: number[] = [5, 2, 4, 1];
+      let i: number = 0;
+      let j: number = 3;
+      // hier tauschen …
+      ```
+
+      Wie sieht der TypeScript-Code zum Tauschen aus? Erkläre kurz, warum man
+      nicht einfach `numbers[i] = numbers[j];` und dann
+      `numbers[j] = numbers[i];` schreiben kann.
+    evaluation: |
+      Erwartete Lösung mit einer Hilfsvariablen:
+
+      ```typescript
+      const temp: number = numbers[i];
+      numbers[i] = numbers[j];
+      numbers[j] = temp;
+      ```
+
+      Erwartete Begründung: Ohne Hilfsvariable überschreibt die erste
+      Zuweisung `numbers[i]` — der ursprüngliche Wert ist danach verloren,
+      und beide Positionen enthalten am Ende denselben Wert.
+
+      Bewerte als:
+      - `correct`   — Tausch über eine Hilfsvariable (Name egal, `let` statt
+                      `const` ist auch in Ordnung) UND die Erklärung, dass
+                      sonst ein Wert überschrieben/verloren geht. Eine
+                      Destructuring-Lösung (`[numbers[i], numbers[j]] = …`)
+                      ist ebenfalls korrekt, wenn die Begründung stimmt.
+      - `partial`   — der Code stimmt, aber die Begründung fehlt oder ist
+                      falsch — oder umgekehrt: die Begründung stimmt, aber
+                      der Code hat einen Fehler (z. B. falsche Reihenfolge
+                      der Zuweisungen).
+      - `incorrect` — Code, der nicht tauscht (z. B. genau die beiden
+                      Zuweisungen aus der Frage), ohne richtige Begründung.
+
+      Gib das Feedback auf Deutsch und zeige die korrekte Lösung mit
+      Hilfsvariable.
+
+  - id: find-the-bug
+    title: "Finde den Fehler"
+    question: |
+      Dieser Bubble Sort soll aufsteigend sortieren, aber er hat einen Fehler:
+
+      ```typescript
+      function bubbleSort(numbers: number[]): void {
+        for (let pass: number = 0; pass < numbers.length - 1; pass++) {
+          for (let j: number = 0; j < numbers.length; j++) {
+            if (numbers[j] > numbers[j + 1]) {
+              const temp: number = numbers[j];
+              numbers[j] = numbers[j + 1];
+              numbers[j + 1] = temp;
+            }
+          }
+        }
+      }
+      ```
+
+      Wo liegt der Fehler, und was passiert dadurch beim Ausführen?
+    evaluation: |
+      Der Fehler steckt in der Bedingung der inneren Schleife:
+      `j < numbers.length` läuft eine Position zu weit. Beim letzten
+      Schleifendurchlauf greift `numbers[j + 1]` hinter das Array-Ende —
+      dort ist der Wert `undefined`. Richtig wäre
+      `j < numbers.length - 1` (noch besser: `j < numbers.length - 1 - pass`,
+      weil der hintere Teil schon sortiert ist — das ist aber nur eine
+      Optimierung, kein Fehler).
+
+      Folge beim Ausführen: Der Vergleich `numbers[j] > undefined` ist immer
+      `false`, es wird also nie über das Ende hinaus getauscht — aber je nach
+      Variante kann `undefined` ins Array gelangen bzw. der Vergleich ist
+      schlicht sinnlos. Entscheidend ist: Der Zugriff `numbers[j + 1]` geht
+      über das Array-Ende hinaus.
+
+      Bewerte als:
+      - `correct`   — benennt die innere Schleifenbedingung (`j <
+                      numbers.length` statt `j < numbers.length - 1`) und
+                      dass `numbers[j + 1]` dadurch hinter das Array-Ende
+                      greift (`undefined`).
+      - `partial`   — zeigt auf die richtige Stelle (innere Schleife /
+                      `j + 1` zu weit), erklärt aber nicht, was dadurch
+                      passiert — oder erklärt nur vage "Index zu groß".
+      - `incorrect` — findet den Fehler nicht oder benennt eine falsche
+                      Stelle (z. B. den Tausch-Code oder die äußere
+                      Schleife).
+
+      Gib das Feedback auf Deutsch, zeige die korrigierte Bedingung und
+      erwähne gern die Optimierung mit `- pass`.
+
+  - id: selection-swaps
+    title: "Wer tauscht seltener?"
+    question: |
+      Bubble Sort und Selection Sort sortieren beide durch Vertauschen.
+
+      Welcher der beiden Algorithmen führt bei einem Array mit `n` Elementen
+      **weniger Vertauschungen** aus — und warum?
+    evaluation: |
+      Die korrekte Antwort: **Selection Sort** tauscht weniger. Er führt pro
+      Durchlauf höchstens **eine** Vertauschung aus (das gefundene Minimum an
+      den Anfang des unsortierten Teils), also höchstens `n - 1`
+      Vertauschungen insgesamt. Bubble Sort tauscht dagegen bei JEDEM
+      Nachbarpaar in falscher Reihenfolge — im schlimmsten Fall (absteigend
+      sortiertes Array) sind das etwa `n²/2` Vertauschungen.
+
+      Bewerte als:
+      - `correct`   — Selection Sort, mit der Begründung "ein Tausch pro
+                      Durchlauf / höchstens n−1 Tauschungen" (die genaue
+                      Zahl für Bubble Sort ist nicht nötig).
+      - `partial`   — Selection Sort ohne Begründung, oder eine richtige
+                      Begründung mit unklarer Schlussfolgerung.
+      - `incorrect` — Bubble Sort, oder "beide gleich".
+
+      Gib das Feedback auf Deutsch. Hinweis für die Diskussion: Bei den
+      **Vergleichen** nehmen sich beide wenig — beide sind O(n²).
+
+  - id: early-exit
+    title: "Früher fertig"
+    question: |
+      Bubble Sort kann aufhören, **bevor** alle Durchläufe erledigt sind.
+
+      Woran erkennt der Algorithmus, dass das Array schon fertig sortiert
+      ist — und wie würdest du das in TypeScript umsetzen (Beschreibung oder
+      Codeskizze)?
+    evaluation: |
+      Die Kernidee: Wenn in einem **kompletten Durchlauf keine einzige
+      Vertauschung** passiert, ist das Array sortiert — weitere Durchläufe
+      sind unnötig. Umsetzung: eine `boolean`-Variable (z. B. `swapped`), die
+      vor jedem Durchlauf auf `false` gesetzt und bei jedem Tausch auf `true`
+      gesetzt wird; bleibt sie `false`, bricht die äußere Schleife ab (z. B.
+      mit `break` oder als `while (swapped)`-Schleife).
+
+      Bewerte als:
+      - `correct`   — "keine Vertauschung im Durchlauf ⇒ sortiert" UND eine
+                      passende Umsetzung mit einer booleschen Merkvariable
+                      (Beschreibung genügt, Code ist nicht Pflicht).
+      - `partial`   — die Idee "keine Vertauschung mehr" ist da, aber die
+                      Umsetzung fehlt oder ist unklar.
+      - `incorrect` — eine falsche Abbruchbedingung (z. B. "wenn das erste
+                      Element am Anfang steht") oder keine erkennbare Idee.
+
+      Gib das Feedback auf Deutsch und skizziere die `swapped`-Variante mit
+      einer `do`/`while`- oder `for`-Schleife in wenigen Zeilen.

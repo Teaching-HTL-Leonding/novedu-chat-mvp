@@ -1,0 +1,226 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
+# Quiz for the English unit "writing a review / critique": structure, register,
+# and useful language for reviews and feedback letters. Target group:
+# 16-year-old vocational-college students learning English (roughly B1–B2).
+# Companion activities: ./review-writing-tutor.yaml and
+# ./restaurant-review-letter.yaml.
+#
+# The questions are independent of each other, so the default shuffle (random
+# order per attempt) stays enabled.
+
+id: review-writing-quiz
+name: "Quiz: Writing Reviews & Feedback Letters (English)"
+
+title: "Quiz: Writing Reviews & Feedback Letters"
+description: |
+  A short quiz about writing **reviews and feedback letters in English** —
+  structure, polite tone, and useful phrases. Answer in your own words and in
+  English; there are no multiple-choice options. You can stop at any time and
+  see your summary.
+
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+
+discussion:
+  instructions: |
+    You are a friendly English tutor helping the student understand THIS quiz
+    question about writing reviews and feedback letters. The student has
+    already submitted an answer, so you may reveal and explain the correct
+    answer. Use simple, clear English suitable for B1–B2 learners, give short
+    example phrases rather than long explanations, and stay on the topic of
+    this question.
+
+questions:
+  - id: letter-parts
+    title: "Parts of a feedback letter"
+    question: |
+      You are writing a **feedback letter** to a restaurant after an event.
+
+      Which parts should the letter have, and in what order?
+    evaluation: |
+      Expected parts, in roughly this order:
+      1. A formal salutation/opening (e.g. "Dear Sir or Madam").
+      2. The reason for writing (who the writer is, when they visited, what
+         the occasion was).
+      3. Positive points about the visit.
+      4. Negative points, expressed politely.
+      5. A suggestion, request, or recommendation.
+      6. A formal closing (e.g. "Yours faithfully") and the writer's name.
+
+      Grade as:
+      - `correct`   — names at least five of the six parts in a sensible
+                      order (wording may differ; "introduction", "say why you
+                      write", "good things / bad things", "ending" all count).
+      - `partial`   — names roughly half the parts, or lists good content but
+                      with no sense of order.
+      - `incorrect` — mostly unrelated parts or no recognizable structure.
+
+      Write the feedback in simple English. If parts were missing, list the
+      complete sequence briefly.
+
+  - id: opening-salutation
+    title: "Opening the letter"
+    question: |
+      You do not know the name of the restaurant's manager.
+
+      How do you **open** the feedback letter (the first line), and what
+      should the **first paragraph** tell the reader?
+    evaluation: |
+      Expected answer: Open with a formal salutation for an unknown reader —
+      "Dear Sir or Madam," (also acceptable: "To whom it may concern"). The
+      first paragraph states the reason for writing: when the writer visited,
+      what the occasion was (e.g. a birthday party), and that they want to
+      give feedback.
+
+      Grade as:
+      - `correct`   — a suitable formal salutation AND the reason-for-writing
+                      content of the first paragraph.
+      - `partial`   — only one of the two (e.g. the salutation but no idea
+                      what the first paragraph should say), or an informal
+                      salutation ("Hi!", "Hello guys") with otherwise correct
+                      content.
+      - `incorrect` — informal or missing salutation and no reason for
+                      writing.
+
+      Write the feedback in simple English and show a short example opening
+      (salutation + one first sentence).
+
+  - id: polite-complaint
+    title: "Complaining politely"
+    question: |
+      This sentence is honest but **much too rude** for a feedback letter:
+
+      > "The food was terrible and your waiter was totally useless."
+
+      Rewrite it so it is **polite but still clear**, and name one phrase or
+      technique you used to soften it.
+    evaluation: |
+      A good rewrite expresses the same criticism politely and specifically,
+      e.g.: "Unfortunately, we were disappointed with the food, and the
+      service was slower than we had expected." Typical softening techniques:
+      starting with "Unfortunately" or "I am sorry to say", using "I was
+      disappointed that …" / "I would have expected …", criticizing the
+      experience rather than a person, adding specifics instead of insults,
+      using "not as … as we had hoped" or "could have been better".
+
+      Grade as:
+      - `correct`   — a polite, clear rewrite (both the food and the service
+                      criticism kept in some form) AND at least one named
+                      softening phrase/technique. Minor grammar slips are
+                      fine — grade the register, not the grammar.
+      - `partial`   — a polite rewrite without naming a technique, or a
+                      technique named but the rewrite still rude, vague, or
+                      dropping both criticisms.
+      - `incorrect` — still rude or insulting, or no real rewrite.
+
+      Write the feedback in simple English and show one strong example
+      rewrite.
+
+  - id: balanced-review
+    title: "Fair and balanced"
+    question: |
+      A good review mentions **positive AND negative points**.
+
+      Why does this make your feedback letter more effective — and which
+      **linking words** can you use to connect praise and criticism? Give at
+      least two.
+    evaluation: |
+      Expected reasoning (any of these counts): balanced feedback sounds fair
+      and credible, the reader takes it more seriously, it doesn't read as an
+      angry rant, and the restaurant is more likely to act on it. Expected
+      linking words connecting praise and criticism: "however", "although",
+      "on the other hand", "but", "while", "nevertheless", "unfortunately"
+      (as a contrast opener) — any two suffice.
+
+      Grade as:
+      - `correct`   — a sensible reason (fairness/credibility/being taken
+                      seriously) AND at least two suitable linking words.
+      - `partial`   — a good reason but fewer than two linking words, or two
+                      linking words with no real reason.
+      - `incorrect` — no valid reason and no suitable linking words.
+
+      Write the feedback in simple English and show one example sentence that
+      links a positive and a negative point.
+
+  - id: suggestion-phrases
+    title: "Making a suggestion"
+    question: |
+      Near the end of a feedback letter you often make a **suggestion** so
+      the restaurant can improve.
+
+      Write **two different polite sentences** suggesting an improvement
+      (for example: faster serving of the food, or checking birthday
+      reservations more carefully).
+    evaluation: |
+      Expected: two polite suggestion sentences using patterns such as
+      "I would suggest (that) …" / "I would suggest + -ing", "You might
+      consider + -ing", "It would be helpful if …", "Perhaps you could …",
+      "May I suggest …". The two sentences should use different patterns or
+      at least clearly different wording.
+
+      Grade as:
+      - `correct`   — two polite, grammatically understandable suggestion
+                      sentences with recognizably different wording.
+      - `partial`   — only one good suggestion sentence, or two that are
+                      nearly identical, or suggestions that drift into
+                      commands ("You must …", "Do it faster") in one of them.
+      - `incorrect` — rude demands or no recognizable suggestion.
+
+      Write the feedback in simple English and show two model patterns with
+      one example each.
+
+  - id: closing-formula
+    title: "Closing the letter"
+    question: |
+      How do you **close** a formal feedback letter in English?
+
+      Explain when to use **"Yours sincerely"** and when to use
+      **"Yours faithfully"**, and what comes after that line.
+    evaluation: |
+      Expected rule: "Yours faithfully" when the letter opened with
+      "Dear Sir or Madam" (name unknown); "Yours sincerely" when it opened
+      with a name (e.g. "Dear Ms Smith"). After the closing formula comes the
+      writer's (full) name — in a printed letter with a signature above it.
+      (Accept the note that "Kind regards"/"Best regards" are common in
+      e-mails but less formal.)
+
+      Grade as:
+      - `correct`   — the faithfully/sincerely rule stated correctly AND the
+                      name (or signature + name) after the closing.
+      - `partial`   — knows both formulas but mixes up the rule, or states
+                      the rule without mentioning the name/signature.
+      - `incorrect` — informal closings only ("Bye", "See you") or no
+                      recognizable rule.
+
+      Write the feedback in simple English and restate the rule as a short
+      table-like summary.
+
+  - id: past-simple-narration
+    title: "Which tense?"
+    question: |
+      In your feedback letter you describe what happened during the birthday
+      party at the restaurant.
+
+      Which **tense** do you mainly use for this, and why? Give **one example
+      sentence** about the party in that tense.
+    evaluation: |
+      Expected answer: the **past simple**, because the visit is a finished
+      event at a specific time in the past. A correct example sentence, e.g.
+      "We celebrated my birthday at your restaurant last Saturday." or "The
+      starters arrived quickly, but we waited forty minutes for the main
+      course." (An example in past simple with a minor spelling slip is still
+      acceptable; accept a mention of past continuous/past perfect for
+      background details as a bonus, not a requirement.)
+
+      Grade as:
+      - `correct`   — names the past simple, gives a sensible reason
+                      (finished/completed past event), and provides an
+                      example sentence actually in past simple.
+      - `partial`   — names the past simple but the example is missing or in
+                      the wrong tense, or gives a correct example without
+                      naming the tense.
+      - `incorrect` — names a clearly wrong tense (e.g. present simple or
+                      will-future) for narrating the visit.
+
+      Write the feedback in simple English. If the example was wrong, show it
+      corrected in past simple.
