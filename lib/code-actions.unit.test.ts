@@ -102,7 +102,42 @@ describe("createCodeAction", () => {
       note: "trimmed note",
       origin: "http://localhost:3000",
       anonymous: true,
+      llm: null,
     });
+  });
+
+  it("stores the LLM override pair when both fields are submitted", async () => {
+    const data = formData();
+    data.set("llmProvider", "SCCH");
+    data.set("llmModel", "some-model");
+    await createCodeAction({ status: "idle" }, data);
+    expect(mocks.createCode).toHaveBeenCalledWith(
+      "teacher-sub-1",
+      expect.objectContaining({ llm: { provider: "SCCH", model: "some-model" } }),
+    );
+  });
+
+  it("rejects an override naming a provider this server has not configured", async () => {
+    // Without AZURE_FOUNDRY_ENDPOINT Foundry is unavailable, so the save-time
+    // gate must reject the override instead of storing it.
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
+    const data = formData();
+    data.set("llmProvider", "Azure Foundry");
+    data.set("llmModel", "gpt-5.4-mini");
+    const state = await createCodeAction({ status: "idle" }, data);
+    expect(state).toMatchObject({
+      status: "error",
+      message: expect.stringMatching(/Azure Foundry/),
+    });
+    expect(mocks.createCode).not.toHaveBeenCalled();
+  });
+
+  it("rejects a half-filled override pair without touching storage", async () => {
+    const data = formData();
+    data.set("llmModel", "some-model");
+    const state = await createCodeAction({ status: "idle" }, data);
+    expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/both/i) });
+    expect(mocks.createCode).not.toHaveBeenCalled();
   });
 
   it("stores null bounds for an open-ended code (blank start and end)", async () => {
@@ -211,9 +246,35 @@ describe("updateCodeAction", () => {
       validFrom: new Date(START * 1000),
       validUntil: new Date(END * 1000),
       note: "new",
+      llm: null,
     });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/codes");
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/codes/edit/a1b2c3d4e5");
+  });
+
+  it("saves an edited LLM override pair (editable, unlike the module/file URL)", async () => {
+    const data = formData();
+    data.set("llmProvider", "SCCH");
+    data.set("llmModel", "another-model");
+    const state = await updateCodeAction("a1b2c3d4e5", { status: "idle" }, data);
+    expect(state).toEqual({ status: "saved" });
+    expect(mocks.updateCode).toHaveBeenCalledWith(
+      "a1b2c3d4e5",
+      expect.objectContaining({ llm: { provider: "SCCH", model: "another-model" } }),
+    );
+  });
+
+  it("rejects an override provider this server has not configured, without writing", async () => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
+    const data = formData();
+    data.set("llmProvider", "Azure Foundry");
+    data.set("llmModel", "gpt-5.4-mini");
+    const state = await updateCodeAction("a1b2c3d4e5", { status: "idle" }, data);
+    expect(state).toMatchObject({
+      status: "error",
+      message: expect.stringMatching(/Azure Foundry/),
+    });
+    expect(mocks.updateCode).not.toHaveBeenCalled();
   });
 
   it("does not require ownership — any effective teacher may edit any code", async () => {

@@ -11,7 +11,8 @@ import {
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
 import { auth } from "@/auth";
-import { type CodeRejection, checkCode } from "@/lib/code-store";
+import { type CodeRejection, checkCode, effectiveLlm } from "@/lib/code-store";
+import type { LlmProvider } from "@/lib/llm/provider";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import { type QuizVerdict, verdictLabel } from "@/lib/quiz-types";
 import type { Quiz, QuizQuestion } from "@/lib/quiz-yaml";
@@ -59,6 +60,8 @@ type LoadedQuestion = {
   fileUrl: string;
   quiz: Quiz;
   question: QuizQuestion;
+  /** The provider+model to grade with: the code's LLM override or the quiz YAML's. */
+  llm: { provider: LlmProvider; model: string };
 };
 
 const CODE_REJECTION_MESSAGES: Record<CodeRejection, string> = {
@@ -100,6 +103,7 @@ async function verifyAndLoadQuestion(
     fileUrl: entry.fileUrl,
     quiz: loaded.quiz,
     question,
+    llm: effectiveLlm(entry, loaded.quiz),
   };
 }
 
@@ -140,8 +144,8 @@ export async function submitAnswer(
 
   const requestContext = new RequestContext();
   requestContext.set(QUIZ_EVAL_INSTRUCTIONS, buildGradingPrompt(ctx.question));
-  requestContext.set(QUIZ_EVAL_MODEL, ctx.quiz.model);
-  requestContext.set(QUIZ_EVAL_PROVIDER, ctx.quiz.provider);
+  requestContext.set(QUIZ_EVAL_MODEL, ctx.llm.model);
+  requestContext.set(QUIZ_EVAL_PROVIDER, ctx.llm.provider);
   // Attribute the server-only grader's token usage exactly like a runtime-route
   // agent — the observability exporter reads these off its MODEL_GENERATION span.
   requestContext.set(USAGE_CODE, ctx.code);

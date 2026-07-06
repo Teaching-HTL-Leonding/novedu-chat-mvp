@@ -79,6 +79,8 @@ export async function mintCode(
     endOffset?: number | null;
     note?: string;
     anonymous?: boolean;
+    /** Per-code LLM override pair (both-or-nothing) — omitted = NULL columns. */
+    llm?: { provider: string; model: string };
   } = {},
 ): Promise<string> {
   const pool = await getPool();
@@ -104,9 +106,11 @@ export async function mintCode(
     .input("validUntil", sql.DateTime2, validUntil)
     .input("note", sql.NVarChar(200), options.note ?? "e2e test code")
     .input("anonymous", sql.Bit, options.anonymous === false ? 0 : 1)
+    .input("llmProvider", sql.VarChar(32), options.llm?.provider ?? null)
+    .input("llmModel", sql.NVarChar(256), options.llm?.model ?? null)
     .query(
-      `INSERT INTO novedu_codes (code, module, created_by, file_url, valid_from, valid_until, note, origin, anonymous, created_at)
-       VALUES (@code, @module, @createdBy, @fileUrl, @validFrom, @validUntil, @note, 'e2e', @anonymous, SYSUTCDATETIME())`,
+      `INSERT INTO novedu_codes (code, module, created_by, file_url, valid_from, valid_until, note, origin, anonymous, llm_provider, llm_model, created_at)
+       VALUES (@code, @module, @createdBy, @fileUrl, @validFrom, @validUntil, @note, 'e2e', @anonymous, @llmProvider, @llmModel, SYSUTCDATETIME())`,
     );
 
   return code;

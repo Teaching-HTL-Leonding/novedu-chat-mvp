@@ -52,6 +52,14 @@ import {
 // the teacher deletes the code (no garbage collection), so the activity at
 // `/<code>` simply stops opening once the window closes (`checkCode`) while the
 // code and its conversation data remain available for stats.
+//
+// `llm_provider`/`llm_model` are the code's OPTIONAL per-code LLM override: when
+// set, they replace the activity YAML's `llm.provider`/`llm.model` for every
+// request served under this code (docs/ai-models.md). BOTH-OR-NOTHING: either
+// both are NULL (the YAML's `llm:` block applies) or both are set — model ids
+// are provider-specific, so a lone half is meaningless and validation rejects
+// it. Editable on /codes/edit (unlike the frozen `anonymous`/`file_url`). Sized
+// like the usage tables' provider/model columns.
 export const codes = mssqlTable(
   "novedu_codes",
   {
@@ -66,6 +74,10 @@ export const codes = mssqlTable(
     // Default true = anonymous: the privacy-safe default, and what any row
     // predating this column should read as.
     anonymous: bit("anonymous").notNull().default(true),
+    // Per-code LLM override pair (see the block comment above): NULL = no
+    // override. Set/cleared together, never singly.
+    llmProvider: varchar("llm_provider", { length: 32 }),
+    llmModel: nvarchar("llm_model", { length: 256 }),
     createdAt: datetime2("created_at").notNull(),
   },
   // The teacher's "Codes" page (and the stats pages) list by creator; the

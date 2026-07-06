@@ -5,6 +5,7 @@ import {
   QUIZ_DISCUSSION_MODEL,
   QUIZ_DISCUSSION_PROVIDER,
 } from "@/app/mastra/quiz-agents";
+import { effectiveLlm } from "@/lib/code-store";
 import { providerUnavailableReason } from "@/lib/llm/availability";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import type { Quiz } from "@/lib/quiz-yaml";
@@ -31,17 +32,19 @@ export const quizModule: CodeModuleDef = {
     agentId: "quizDiscussion",
     async buildRequestContext(entry) {
       // The quiz YAML supplies the discussion system prompt + provider/model
-      // (re-loaded server-side, never trusted from the client).
+      // (re-loaded server-side, never trusted from the client); the code's LLM
+      // override pair, when set, replaces the YAML's llm values.
       const loaded = await loadQuiz(entry.fileUrl);
       if (!loaded.ok) return { ok: false, status: 502, message: loaded.message };
+      const llm = effectiveLlm(entry, loaded.quiz);
       // The authoring gate blocks saving such a file, but externally hosted YAML
       // (or an env change) can still name a provider this server cannot serve.
-      const unavailable = providerUnavailableReason(loaded.quiz.provider);
+      const unavailable = providerUnavailableReason(llm.provider);
       if (unavailable) return { ok: false, status: 502, message: unavailable };
       const context = new RequestContext();
       context.set(QUIZ_DISCUSSION_INSTRUCTIONS, buildDiscussionInstructions(loaded.quiz));
-      context.set(QUIZ_DISCUSSION_MODEL, loaded.quiz.model);
-      context.set(QUIZ_DISCUSSION_PROVIDER, loaded.quiz.provider);
+      context.set(QUIZ_DISCUSSION_MODEL, llm.model);
+      context.set(QUIZ_DISCUSSION_PROVIDER, llm.provider);
       return { ok: true, context };
     },
   },

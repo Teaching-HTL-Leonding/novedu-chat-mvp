@@ -1,8 +1,9 @@
 # Writing Quiz Files
 
-This folder contains **quiz definitions** — the YAML files that describe an
-LLM-graded, open-ended quiz. This guide explains the format so that teachers can
-write their own quizzes without touching any code.
+This guide explains **quiz definitions** — the YAML files that describe an
+LLM-graded, open-ended quiz — so that teachers can write their own quizzes
+without touching any code. This folder holds the guide and the JSON schema;
+complete sample files live in [`../examples/`](../examples/).
 
 You do not need to be a programmer. If you can edit a structured text file and
 follow the examples below, you can build a quiz.
@@ -67,14 +68,13 @@ questions:
       - `incorrect` — names Sydney, Melbourne, or any other city.
 ```
 
-This repository ships three complete examples you can copy from:
+This repository ships complete examples you can copy from:
 
-- [`sample-quiz.yaml`](./sample-quiz.yaml) — a five-question geography quiz with a
-  discussion prompt.
-- [`future-tenses-quiz.yaml`](./future-tenses-quiz.yaml) — a longer, anonymous
-  self-assessment.
-- [`sample-image-quiz.yaml`](./sample-image-quiz.yaml) — a quiz with a content
-  **image** on a question.
+- [`../examples/sorting-algorithms/sorting-quiz.yaml`](../examples/sorting-algorithms/sorting-quiz.yaml)
+  — a seven-question quiz about sorting algorithms with code-reading questions,
+  a discussion prompt, and `shuffle: false` (the questions build on each other).
+- [`../examples/review-writing/review-writing-quiz.yaml`](../examples/review-writing/review-writing-quiz.yaml)
+  — an anonymous English-class quiz about writing reviews and feedback letters.
 
 ---
 
@@ -89,7 +89,7 @@ can pick up the schema from a modeline comment at the top of a quiz file:
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
 ```
 
-The sample files in this folder use this **full raw GitHub URL** so that validation,
+The sample files in [`../examples/`](../examples/) use this **full raw GitHub URL** so that validation,
 completion, and hover help work in your editor **whether or not** the schema file
 happens to sit next to the YAML you are editing. (If your file _is_ next to the
 schema, the relative path `./quiz-yaml.schema.json` works too.)
@@ -162,6 +162,10 @@ discussion chat. Same id space as a tutor's `llm.model`.
 Optional, default `SCCH` (the school's self-hosted server). Set
 `provider: Azure Foundry` to grade and discuss on an Azure OpenAI deployment
 instead — then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`).
+
+The `llm:` values are the **default**: when a teacher mints a code for this
+activity, the code's create/edit form can **override provider + model per
+code** (always both together) — the YAML file itself stays unchanged.
 
 ### `discussion.instructions`
 

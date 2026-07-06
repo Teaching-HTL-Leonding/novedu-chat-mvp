@@ -62,6 +62,16 @@ export default async function CodeStatsPage({
           </code>
         </p>
 
+        {/* Module-agnostic: a code with an LLM override serves its requests with
+            this pair instead of the activity YAML's llm values (editable on the
+            code's edit page). */}
+        {entry.llm ? (
+          <p className="mb-5 text-foreground/70 text-sm">
+            LLM override: <code className="text-[0.85em]">{entry.llm.provider}</code> ·{" "}
+            <code className="text-[0.85em]">{entry.llm.model}</code>
+          </p>
+        ) : null}
+
         {body}
       </PageBody>
     </Main>

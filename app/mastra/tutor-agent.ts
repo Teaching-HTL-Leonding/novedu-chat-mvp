@@ -3,7 +3,7 @@ import type { RequestContext } from "@mastra/core/request-context";
 import { Memory } from "@mastra/memory";
 import { providerUnavailableReason } from "@/lib/llm/availability";
 import { resolveLanguageModel } from "@/lib/llm/model";
-import type { LlmProvider } from "@/lib/llm/provider";
+import { type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
 import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
 
 // A single agent that is configured entirely by a tutor-definition YAML. The
@@ -11,6 +11,14 @@ import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
 // route after it verified the tutor code and thread token); this agent resolves its
 // system prompt and model from that URL at request time using the reusable
 // `lib/tutors` core.
+
+// RequestContext keys the tutor module's buildRequestContext sets
+// (lib/code-modules/tutor.ts). The override pair is the code's per-code LLM
+// override (docs/ai-models.md): set together or not at all, it replaces the
+// tutor YAML's `llm.provider`/`llm.model` below.
+export const TUTOR_URL = "tutor-url";
+export const TUTOR_PROVIDER_OVERRIDE = "tutor-provider-override";
+export const TUTOR_MODEL_OVERRIDE = "tutor-model-override";
 
 interface LoadedTutor {
   prompt: string;
@@ -44,12 +52,18 @@ function loadTutor(requestContext: RequestContext): Promise<LoadedTutor> {
             : "Tutor validation failed",
         );
       }
+      // The code's LLM override pair (when the runtime route put one on the
+      // context) replaces the YAML's llm values wholesale.
+      const override = llmOverride(requestContext);
+      const provider = override?.provider ?? result.provider;
+      const model = override?.model ?? result.model;
       // The authoring gate blocks saving such a file, but externally hosted YAML
       // (or an env change) can still name a provider this server cannot serve —
       // fail with a clear reason via this loader's established throw channel.
-      const unavailable = providerUnavailableReason(result.provider);
+      // Checked on the EFFECTIVE provider, so an override is gated too.
+      const unavailable = providerUnavailableReason(provider);
       if (unavailable) throw new Error(unavailable);
-      return { prompt: result.prompt, model: result.model, provider: result.provider };
+      return { prompt: result.prompt, model, provider };
     },
   );
 
@@ -58,11 +72,28 @@ function loadTutor(requestContext: RequestContext): Promise<LoadedTutor> {
 }
 
 function tutorUrl(requestContext: RequestContext): string {
-  const url = requestContext.get("tutor-url");
+  const url = requestContext.get(TUTOR_URL);
   if (typeof url !== "string" || url === "") {
     throw new Error("No tutor URL provided for this chat. Load a tutor first.");
   }
   return url;
+}
+
+// The code's LLM override off the request context; `undefined` when the code
+// carries none. The runtime route sets the pair from a typed CodeEntry, so a
+// present-but-invalid value is a wiring bug — fail loud rather than silently
+// serving the YAML's (or the default) provider against the teacher's intent.
+function llmOverride(
+  requestContext: RequestContext,
+): { provider: LlmProvider; model: string } | undefined {
+  const rawProvider = requestContext.get(TUTOR_PROVIDER_OVERRIDE);
+  const rawModel = requestContext.get(TUTOR_MODEL_OVERRIDE);
+  if (rawProvider === undefined && rawModel === undefined) return undefined;
+  const provider = parseLenientProvider(rawProvider);
+  if (!provider || typeof rawModel !== "string" || rawModel === "") {
+    throw new Error("This code's LLM override is invalid. Ask the teacher to re-save the code.");
+  }
+  return { provider, model: rawModel };
 }
 
 export const tutorAgent = new Agent({

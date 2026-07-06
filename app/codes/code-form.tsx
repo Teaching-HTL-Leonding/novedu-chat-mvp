@@ -16,6 +16,7 @@ import {
   nowAsDatetimeLocal,
   unixSecondsToDatetimeLocal,
 } from "@/lib/datetime-local";
+import { LLM_OVERRIDE_PRESETS } from "@/lib/llm/presets";
 
 const INITIAL_STATE: CodeFormState = { status: "idle" };
 
@@ -36,6 +37,9 @@ export interface CodeFormProps {
   initialNote?: string;
   initialStartSeconds?: number;
   initialEndSeconds?: number;
+  /** The stored LLM override pair (edit mode); both empty = no override. */
+  initialLlmProvider?: string;
+  initialLlmModel?: string;
   /** Edit mode only: the code being edited. */
   code?: string;
   /**
@@ -59,6 +63,8 @@ export function CodeForm({
   initialNote = "",
   initialStartSeconds,
   initialEndSeconds,
+  initialLlmProvider = "",
+  initialLlmModel = "",
   code,
   resultSlot,
 }: CodeFormProps) {
@@ -73,6 +79,10 @@ export function CodeForm({
   const [end, setEnd] = useState(
     initialEndSeconds ? unixSecondsToDatetimeLocal(initialEndSeconds) : "",
   );
+  // The LLM override pair — controlled so the preset buttons can fill/clear both
+  // fields at once. Free text; the server action validates the provider.
+  const [llmProvider, setLlmProvider] = useState(initialLlmProvider);
+  const [llmModel, setLlmModel] = useState(initialLlmModel);
 
   // "+1h"/"+1d"/"+1w": extend the until time if set; otherwise start the window
   // length from the from time (or from now as a last resort).
@@ -158,6 +168,75 @@ export function CodeForm({
             disabled={pending}
           />
         </Field>
+
+        {/* Optional per-code LLM override: replaces the activity YAML's llm
+            provider/model for this code only. Both-or-nothing — the server
+            action rejects a half-filled pair. Editable in BOTH modes (not
+            frozen like the module/file URL). */}
+        <div className="flex flex-col gap-1.5 self-stretch">
+          <div className="flex flex-wrap gap-3.5 self-stretch">
+            <Field className={ROW_FIELD_CLASSES}>
+              <FieldLabel htmlFor="code-llm-provider">
+                LLM provider override (optional — leave blank to use the activity&apos;s LLM)
+              </FieldLabel>
+              <Input
+                id="code-llm-provider"
+                type="text"
+                name="llmProvider"
+                className="font-mono"
+                value={llmProvider}
+                onChange={(event) => setLlmProvider(event.target.value)}
+                placeholder="SCCH or Azure Foundry"
+                disabled={pending}
+              />
+            </Field>
+            <Field className={ROW_FIELD_CLASSES}>
+              <FieldLabel htmlFor="code-llm-model">
+                LLM model override (required with a provider override)
+              </FieldLabel>
+              <Input
+                id="code-llm-model"
+                type="text"
+                name="llmModel"
+                maxLength={256}
+                className="font-mono"
+                value={llmModel}
+                onChange={(event) => setLlmModel(event.target.value)}
+                placeholder="e.g. gpt-5.4-mini"
+                disabled={pending}
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {LLM_OVERRIDE_PRESETS.map((preset) => (
+              <Button
+                key={preset.label}
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setLlmProvider(preset.provider);
+                  setLlmModel(preset.model);
+                }}
+                disabled={pending}
+              >
+                {preset.label}
+              </Button>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setLlmProvider("");
+                setLlmModel("");
+              }}
+              disabled={pending || (!llmProvider && !llmModel)}
+              title="Use the activity's LLM settings"
+              aria-label="Clear LLM override"
+            >
+              Clear
+            </Button>
+          </div>
+        </div>
 
         <div className="flex flex-wrap gap-3.5 self-stretch">
           <Field className={ROW_FIELD_CLASSES}>

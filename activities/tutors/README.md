@@ -1,8 +1,9 @@
 # Writing Tutor Files
 
-This folder contains **tutor definitions** and **fragment libraries** — the YAML
-files that describe how an AI tutor should behave. This guide explains the format
-so that teachers can write their own tutors without touching any code.
+This guide explains **tutor definitions** and **fragment libraries** — the YAML
+files that describe how an AI tutor should behave — so that teachers can write
+their own tutors without touching any code. This folder holds the guide and the
+JSON schema; complete sample files live in [`../examples/`](../examples/).
 
 You do not need to be a programmer. If you can edit a structured text file and
 follow the examples below, you can build a tutor.
@@ -149,8 +150,11 @@ Always stay positive and patient. If the student is stuck, give a small hint
 rather than the full solution.
 ```
 
-These two files are kept in this folder (`simple-fragments.yaml`,
-`simple-tutor.yaml`) as a stable, working reference.
+Complete, working tutors built exactly this way live in
+[`../examples/`](../examples/) — for instance
+[`../examples/sorting-algorithms/sorting-tutor.yaml`](../examples/sorting-algorithms/sorting-tutor.yaml),
+which pulls its fragments from the shared library
+[`../examples/shared/general-fragments.yaml`](../examples/shared/general-fragments.yaml).
 
 ---
 
@@ -167,7 +171,7 @@ can pick up the schema from a modeline comment at the top of a YAML file:
 ```
 
 The **same** schema covers both tutor files and fragment-library files, so use this
-line on either. The sample files in this folder use this **full raw GitHub URL** so
+line on either. The sample files in [`../examples/`](../examples/) use this **full raw GitHub URL** so
 that validation, completion, and hover help work in your editor **whether or not**
 the schema file happens to sit next to the YAML you are editing. (If your file _is_
 next to the schema, the relative path `./tutor-yaml.schema.json` works too.)
@@ -249,6 +253,10 @@ Optional, default `SCCH` (the school's self-hosted server). Set
 `provider: Azure Foundry` to serve the tutor from an Azure OpenAI deployment
 instead — then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`)
 rather than an SCCH model id.
+
+The `llm:` values are the **default**: when a teacher mints a code for this
+activity, the code's create/edit form can **override provider + model per
+code** (always both together) — the YAML file itself stays unchanged.
 
 ```yaml
 llm:

@@ -4,6 +4,7 @@ import { type CodeModule, isCodeModule } from "@/lib/code-modules/types";
 import { getDb } from "@/lib/db";
 import { codes } from "@/lib/db/schema";
 import { containsAny } from "@/lib/db/text-filter";
+import { type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
 
 // Persistence for codes in the `novedu_codes` SQL table: every code a teacher
 // creates stores its `module`, the activity YAML URL (`file_url`), the
@@ -38,6 +39,34 @@ export function generateCode(): string {
 /** Longest accepted teacher note — matches the `note` column's nvarchar(200). */
 export const MAX_NOTE_LENGTH = 200;
 
+/** Longest accepted override model id — matches the `llm_model` column's nvarchar(256). */
+export const MAX_LLM_MODEL_LENGTH = 256;
+
+/**
+ * A code's per-code LLM override: replaces the activity YAML's
+ * `llm.provider`/`llm.model` for every request served under the code.
+ * BOTH-OR-NOTHING — the pair exists as a whole or not at all (`null`); model ids
+ * are provider-specific, so a lone half is meaningless and never stored.
+ */
+export interface CodeLlmOverride {
+  provider: LlmProvider;
+  model: string;
+}
+
+/**
+ * The provider+model a request under `entry` must be served with: the code's
+ * override pair when set, the activity YAML's `llm:` values otherwise. The one
+ * definition of the precedence — every consumption site (the module
+ * buildRequestContexts, the quiz grader, the tutor agent, the coding proxy)
+ * goes through it.
+ */
+export function effectiveLlm(
+  entry: Pick<CodeEntry, "llm">,
+  activityLlm: { provider: LlmProvider; model: string },
+): { provider: LlmProvider; model: string } {
+  return entry.llm ?? activityLlm;
+}
+
 // Unix-seconds values are 10 digits today; 15 caps far beyond year 9999 while
 // staying well inside Number.isSafeInteger territory.
 const TIMESTAMP_PATTERN = /^\d{1,15}$/;
@@ -45,7 +74,13 @@ const TIMESTAMP_PATTERN = /^\d{1,15}$/;
 export type CodeRequestValidation =
   | {
       ok: true;
-      payload: { fileUrl: string; validFrom: Date | null; validUntil: Date | null; note: string };
+      payload: {
+        fileUrl: string;
+        validFrom: Date | null;
+        validUntil: Date | null;
+        note: string;
+        llm: CodeLlmOverride | null;
+      };
     }
   | { ok: false; message: string };
 
@@ -70,6 +105,8 @@ export function validateCodeRequest(input: {
   start: unknown;
   end: unknown;
   note: unknown;
+  llmProvider: unknown;
+  llmModel: unknown;
 }): CodeRequestValidation {
   let url: URL;
   try {
@@ -104,7 +141,37 @@ export function validateCodeRequest(input: {
     return { ok: false, message: `The note must be at most ${MAX_NOTE_LENGTH} characters.` };
   }
 
-  return { ok: true, payload: { fileUrl: url.href, validFrom, validUntil, note } };
+  // The LLM override pair: blank fields mean "no override" (the activity YAML's
+  // `llm:` block applies). The pair is both-or-nothing, and the provider must be
+  // one of the known literals — free text in the form, strict here.
+  const providerText = (typeof input.llmProvider === "string" ? input.llmProvider : "").trim();
+  const modelText = (typeof input.llmModel === "string" ? input.llmModel : "").trim();
+  if ((providerText === "") !== (modelText === "")) {
+    return {
+      ok: false,
+      message:
+        "The LLM override needs both a provider and a model — fill both fields or leave both blank.",
+    };
+  }
+  let llm: CodeLlmOverride | null = null;
+  if (providerText) {
+    const provider = parseLenientProvider(providerText);
+    if (!provider) {
+      return {
+        ok: false,
+        message: 'The LLM override provider must be "SCCH" or "Azure Foundry".',
+      };
+    }
+    if (modelText.length > MAX_LLM_MODEL_LENGTH) {
+      return {
+        ok: false,
+        message: `The LLM override model must be at most ${MAX_LLM_MODEL_LENGTH} characters.`,
+      };
+    }
+    llm = { provider, model: modelText };
+  }
+
+  return { ok: true, payload: { fileUrl: url.href, validFrom, validUntil, note, llm } };
 }
 
 /** A code's stored data, as read back from `novedu_codes`. */
@@ -135,6 +202,12 @@ export interface CodeEntry {
    * instead (lib/user-chat-store.ts).
    */
   anonymous: boolean;
+  /**
+   * The code's per-code LLM override, or `null` for "use the activity YAML's
+   * `llm:` block". Editable on /codes/edit (NOT frozen like `anonymous`). Apply
+   * it via `effectiveLlm` — never read the pair's halves directly.
+   */
+  llm: CodeLlmOverride | null;
   createdAt: Date;
 }
 
@@ -150,7 +223,28 @@ function toEntry(row: typeof codes.$inferSelect): CodeEntry | null {
     console.error(`code-store: code ${row.code} has unknown module ${JSON.stringify(row.module)}`);
     return null;
   }
-  return { ...row, module: row.module };
+  const { llmProvider, llmModel, ...rest } = row;
+  return { ...rest, module: row.module, llm: toLlmOverride(row.code, llmProvider, llmModel) };
+}
+
+// Combines the two override columns into the both-or-nothing pair. Only the
+// validated create/edit actions write them, so a lone half or an unknown
+// provider is a corrupt row — logged, then treated as NO override so the code
+// keeps working on the activity YAML's own `llm:` values.
+function toLlmOverride(
+  code: string,
+  provider: string | null,
+  model: string | null,
+): CodeLlmOverride | null {
+  if (provider === null && model === null) return null;
+  const parsed = provider === null ? undefined : parseLenientProvider(provider);
+  if (!parsed || !model) {
+    console.error(
+      `code-store: code ${code} has an invalid LLM override ${JSON.stringify({ provider, model })}; ignoring it`,
+    );
+    return null;
+  }
+  return { provider: parsed, model };
 }
 
 export type CreateCodeResult = { stored: true; code: string } | { stored: false };
@@ -187,23 +281,29 @@ export async function createCode(
     origin?: string;
     /** The activity YAML's `anonymous` flag, captured now and frozen on the row. */
     anonymous: boolean;
+    /** The per-code LLM override pair, or `null` for none. */
+    llm: CodeLlmOverride | null;
   },
 ): Promise<CreateCodeResult> {
   for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt++) {
     const candidate = generateCode();
     try {
-      await getDb().insert(codes).values({
-        code: candidate,
-        module: data.module,
-        createdBy,
-        fileUrl: data.fileUrl,
-        validFrom: data.validFrom,
-        validUntil: data.validUntil,
-        note: data.note,
-        origin: data.origin,
-        anonymous: data.anonymous,
-        createdAt: new Date(),
-      });
+      await getDb()
+        .insert(codes)
+        .values({
+          code: candidate,
+          module: data.module,
+          createdBy,
+          fileUrl: data.fileUrl,
+          validFrom: data.validFrom,
+          validUntil: data.validUntil,
+          note: data.note,
+          origin: data.origin,
+          anonymous: data.anonymous,
+          llmProvider: data.llm?.provider ?? null,
+          llmModel: data.llm?.model ?? null,
+          createdAt: new Date(),
+        });
       return { stored: true, code: candidate };
     } catch (error) {
       if (isDuplicateKeyError(error)) continue; // code taken — retry with a new one
@@ -327,21 +427,33 @@ export async function getCode(code: string): Promise<CodeEntry | null | undefine
 export type UpdateCodeResult = { ok: true } | { ok: false; reason: "not-found" | "error" };
 
 /**
- * Updates the editable fields of a code: the availability window and the note.
- * The file URL is INTENTIONALLY not updatable here — and neither is the frozen
- * `anonymous` flag (which is tied to that URL): editing them would break the
- * documented "anonymous frozen at create time" invariant. `not-found` if no row
- * matches (deleted meanwhile). Never throws.
+ * Updates the editable fields of a code: the availability window, the note, and
+ * the LLM override pair (set or cleared as a whole). The file URL is
+ * INTENTIONALLY not updatable here — and neither is the frozen `anonymous` flag
+ * (which is tied to that URL): editing them would break the documented
+ * "anonymous frozen at create time" invariant. `not-found` if no row matches
+ * (deleted meanwhile). Never throws.
  */
 export async function updateCode(
   code: string,
-  data: { validFrom: Date | null; validUntil: Date | null; note: string },
+  data: {
+    validFrom: Date | null;
+    validUntil: Date | null;
+    note: string;
+    llm: CodeLlmOverride | null;
+  },
 ): Promise<UpdateCodeResult> {
   if (!CODE_PATTERN.test(code)) return { ok: false, reason: "not-found" };
   try {
     const updated = await getDb()
       .update(codes)
-      .set({ validFrom: data.validFrom, validUntil: data.validUntil, note: data.note })
+      .set({
+        validFrom: data.validFrom,
+        validUntil: data.validUntil,
+        note: data.note,
+        llmProvider: data.llm?.provider ?? null,
+        llmModel: data.llm?.model ?? null,
+      })
       .where(eq(codes.code, code));
     const ra = (updated as { rowsAffected?: unknown }).rowsAffected;
     const affected = Array.isArray(ra) ? Number(ra[0] ?? 0) : typeof ra === "number" ? ra : 1;

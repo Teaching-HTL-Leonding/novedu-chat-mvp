@@ -157,6 +157,9 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await page.getByLabel(/Note/).fill(note);
   await page.getByLabel(/Available from/).fill(unixSecondsToDatetimeLocal(now - 3600));
   await page.getByLabel(/Available until/).fill(unixSecondsToDatetimeLocal(now + 3600));
+  // The LLM override: the preset button fills both free-text fields at once.
+  await page.getByRole("button", { name: "SCCH · Gemma 4" }).click();
+  await expect(page.getByLabel(/LLM provider override/)).toHaveValue("SCCH");
   createdCodeLabel = note;
   await page.getByRole("button", { name: "Create code" }).click();
 
@@ -166,6 +169,12 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await expect(link).toBeVisible({ timeout: 30_000 });
   const linkValue = await link.inputValue();
   expect(linkValue).toMatch(/^http:\/\/localhost:3000\/[a-z0-9]{10}$/);
+
+  // The stored override pair round-trips into the edit form.
+  await expect(page.getByLabel(/LLM provider override/)).toHaveValue("SCCH");
+  await expect(page.getByLabel(/LLM model override/)).toHaveValue(
+    "RedHatAI/gemma-4-31B-it-FP8-Dynamic",
+  );
 
   // TUTOR LINK — stats detail: opening /codes/<code> renders ConversationStats,
   // which runs getCodeStats' RAW SQL (the `LEFT JOIN novedu_users` + `GROUP BY
@@ -179,15 +188,26 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
     page.getByText(/a conversation counts once a student sends at least one message/i),
   ).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(/Stats temporarily unavailable/i)).toHaveCount(0);
+  // The detail chrome surfaces the code's LLM override.
+  await expect(page.getByText(/LLM override:/)).toBeVisible();
 
-  // TUTOR LINK — update: change the note (the URL field is read-only).
+  // TUTOR LINK — update: change the note (the URL field is read-only) and CLEAR
+  // the LLM override (editable in edit mode, cleared as a whole pair).
   await page.goto(`/codes/edit/${codeId}`);
   await expect(page.getByLabel(/Activity YAML URL/)).toHaveAttribute("readonly", "");
   const editedNote = `${note} edited`;
   await page.getByLabel(/Note/).fill(editedNote);
+  await page.getByRole("button", { name: "Clear LLM override" }).click();
   createdCodeLabel = editedNote;
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText("Saved")).toBeVisible({ timeout: 30_000 });
+
+  // The cleared override is gone from the form and the detail chrome.
+  await page.reload();
+  await expect(page.getByLabel(/LLM provider override/)).toHaveValue("");
+  await expect(page.getByLabel(/LLM model override/)).toHaveValue("");
+  await page.goto(`/codes/${codeId}`);
+  await expect(page.getByText(/LLM override:/)).toHaveCount(0);
 
   // TUTOR LINK — read: the edited note is findable via the DB-side filter.
   await page.goto("/codes");
