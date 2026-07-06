@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { mintCode, RAW_TUTORS } from "./code.utils";
+import { mintCode, VALID_CODING_URL, VALID_QUIZ_URL } from "./code.utils";
 
 // Renders every module's teacher detail page (/codes/<code>) end-to-end through
 // the REAL server rendering pipeline. Component tests run without React Server
@@ -9,10 +9,6 @@ import { mintCode, RAW_TUTORS } from "./code.utils";
 // client-reference proxy, whose string coercion lands the proxy's SOURCE CODE in
 // the rendered class attribute instead of the classes. These specs pin each
 // detail body's key content AND assert no such proxy artifact reaches the HTML.
-
-const RAW_REPO = RAW_TUTORS.replace(/\/tutors$/, "");
-const CODING_URL = `${RAW_REPO}/coding/beginner-typescript.yaml`;
-const QUIZ_URL = `${RAW_REPO}/quizzes/sample-quiz.yaml`;
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
 
@@ -37,7 +33,7 @@ test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () =>
   });
 
   test("quiz: discussion stats render", async ({ page }) => {
-    const code = await mintCode({ module: "quiz", file: QUIZ_URL });
+    const code = await mintCode({ module: "quiz", file: VALID_QUIZ_URL });
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText(code)).toBeVisible();
@@ -60,7 +56,7 @@ test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () =>
   test("coding: config + connection render, and the system-prompt panel is styled", async ({
     page,
   }) => {
-    const code = await mintCode({ module: "coding", file: CODING_URL });
+    const code = await mintCode({ module: "coding", file: VALID_CODING_URL });
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText("Model (pinned)")).toBeVisible();

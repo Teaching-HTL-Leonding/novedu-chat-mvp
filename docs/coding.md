@@ -87,9 +87,9 @@ instructions: |
   points each coding YAML at its raw GitHub URL).
 - `activities/coding/beginner-typescript.yaml` is the shipped sample: a buddy constrained to a
   beginner's knowledge (primitive types only, no OOP/classes, `if` + basic loops, no
-  arrow functions, full type annotations). A unit test parses it so it never drifts;
-  `activities/coding/broken-coding.yaml` is the committed invalid fixture the validation tests
-  reject.
+  arrow functions, full type annotations). It is demo content — no test reads it
+  (docs/testing.md); the validation tests exercise the synthetic fixtures under
+  `test-fixtures/activities/coding/`.
 
 ## The proxy route
 

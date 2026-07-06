@@ -1,0 +1,12 @@
+id: test-writing
+name: "Functional Test Writing"
+title: "Functional Test Writing"
+# Attributed (anonymous: false) so Save + the teacher review work.
+anonymous: false
+# A REAL model: the writing e2e round-trip drives the live SCCH endpoint, unlike
+# the hermetic fixtures which use a fake `test-model`.
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+instructions: |
+  You are a writing coach. Use the getCurrentText tool to read the student's
+  current draft, then state the EXACT first line of it back, verbatim.

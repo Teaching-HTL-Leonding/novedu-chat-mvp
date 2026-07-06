@@ -1,0 +1,33 @@
+id: broken-template-fragments
+# Schema-valid, but the `motto` fragment's template references a variable its
+# input_schema never declares — used to exercise FRAGMENT_TEMPLATE_ERROR
+# (standalone `--kind fragment` and the thorough whole-library tutor check).
+fragments:
+  - id: persona
+    version: 1
+    priority: 10
+    input_schema:
+      type: object
+      required:
+        - subject
+      properties:
+        subject:
+          type: string
+    content: |
+      You are a tutor for {{subject}}.
+  - id: motto
+    version: 1
+    priority: 20
+    input_schema:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            type: string
+    content: |
+      Rules:
+      {{#each rules}}
+      - {{this}}
+      {{/each}}
+      Motto: {{undeclared_motto}}.

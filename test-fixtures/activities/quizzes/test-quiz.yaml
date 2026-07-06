@@ -1,0 +1,11 @@
+id: test-quiz
+name: "Functional Test Quiz"
+llm:
+  model: test-model
+questions:
+  - id: q1
+    title: "Addition"
+    question: |
+      What is **2 + 2**?
+    evaluation: |
+      The answer is 4. Grade `correct` for 4, otherwise `incorrect`.

@@ -4,17 +4,24 @@ import { describe, expect, it } from "vitest";
 import { runValidate } from "./validate";
 
 // In-process, no network: drive the real validate handler (real loader + real
-// file fetcher) over the committed fixtures in
-// `activities/tutors/` / `activities/quizzes/` / `activities/writings/`.
+// file fetcher) over the synthetic fixtures under `test-fixtures/activities/`.
 // Runs in CI.
-const tutorsDir = fileURLToPath(new URL("../../../activities/tutors/", import.meta.url));
-const quizzesDir = fileURLToPath(new URL("../../../activities/quizzes/", import.meta.url));
-const writingsDir = fileURLToPath(new URL("../../../activities/writings/", import.meta.url));
-const codingDir = fileURLToPath(new URL("../../../activities/coding/", import.meta.url));
+const tutorsDir = fileURLToPath(
+  new URL("../../../test-fixtures/activities/tutors/", import.meta.url),
+);
+const quizzesDir = fileURLToPath(
+  new URL("../../../test-fixtures/activities/quizzes/", import.meta.url),
+);
+const writingsDir = fileURLToPath(
+  new URL("../../../test-fixtures/activities/writings/", import.meta.url),
+);
+const codingDir = fileURLToPath(
+  new URL("../../../test-fixtures/activities/coding/", import.meta.url),
+);
 
 describe("runValidate — tutors (local files)", () => {
   it("accepts a valid tutor and reports its model", async () => {
-    const outcome = await runValidate(`${tutorsDir}simple-tutor.yaml`, "tutor");
+    const outcome = await runValidate(`${tutorsDir}test-tutor.yaml`, "tutor");
 
     expect(outcome.kind).toBe("tutor");
     expect(outcome.result.ok).toBe(true);
@@ -42,16 +49,28 @@ describe("runValidate — tutors (local files)", () => {
       expect(outcome.result.errors[0]?.code).toBe("FETCH_FAILED");
     }
   });
+
+  // The @live-llm fixture tutors are consumed only by local-only e2e specs, so
+  // this CI-run check is the ONLY gate keeping them schema-valid: a break here
+  // would otherwise surface days later as an opaque chat timeout in a live run.
+  it.each([
+    "vision-tutor.yaml",
+    "live-tutor.yaml",
+  ])("keeps the live e2e fixture %s valid", async (fixture) => {
+    const outcome = await runValidate(`${tutorsDir}${fixture}`, "tutor");
+
+    expect(outcome.result.ok).toBe(true);
+  });
 });
 
 describe("runValidate — fragment libraries (local files)", () => {
   it("accepts a valid fragment file and lists its fragments", async () => {
-    const outcome = await runValidate(`${tutorsDir}simple-fragments.yaml`, "fragment");
+    const outcome = await runValidate(`${tutorsDir}test-fragments-a.yaml`, "fragment");
 
     expect(outcome.kind).toBe("fragment");
     expect(outcome.result.ok).toBe(true);
     if (outcome.kind === "fragment" && outcome.result.ok) {
-      expect(outcome.result.fragmentFileId).toBe("simple-fragments");
+      expect(outcome.result.fragmentFileId).toBe("test-fragments-a");
       expect(outcome.result.fragmentIds.length).toBeGreaterThan(0);
     }
   });
@@ -68,7 +87,7 @@ describe("runValidate — fragment libraries (local files)", () => {
 
 describe("runValidate — quizzes (local files)", () => {
   it("accepts a valid quiz and reports its model + question count", async () => {
-    const outcome = await runValidate(`${quizzesDir}sample-quiz.yaml`, "quiz");
+    const outcome = await runValidate(`${quizzesDir}test-quiz.yaml`, "quiz");
 
     expect(outcome.kind).toBe("quiz");
     expect(outcome.result.ok).toBe(true);
@@ -99,7 +118,7 @@ describe("runValidate — quizzes (local files)", () => {
 
 describe("runValidate — writing activities (local files)", () => {
   it("accepts a valid writing activity and reports its model", async () => {
-    const outcome = await runValidate(`${writingsDir}human-animal-short-story.yaml`, "writing");
+    const outcome = await runValidate(`${writingsDir}test-writing.yaml`, "writing");
 
     expect(outcome.kind).toBe("writing");
     expect(outcome.result.ok).toBe(true);
@@ -120,13 +139,13 @@ describe("runValidate — writing activities (local files)", () => {
 
 describe("runValidate — coding activities (local files)", () => {
   it("accepts a valid coding activity and reports its model", async () => {
-    const outcome = await runValidate(`${codingDir}beginner-typescript.yaml`, "coding");
+    const outcome = await runValidate(`${codingDir}test-coding.yaml`, "coding");
 
     expect(outcome.kind).toBe("coding");
     expect(outcome.result.ok).toBe(true);
     if (outcome.kind === "coding" && outcome.result.ok) {
       expect(outcome.result.model).toBeTruthy();
-      expect(outcome.result.codingId).toBe("beginner-typescript");
+      expect(outcome.result.codingId).toBe("test-coding");
     }
   });
 

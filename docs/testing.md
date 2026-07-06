@@ -65,6 +65,37 @@ credentials (Azure SQL / SCCH / Azure Blob Storage) must never run on a fork
 - A unit test that needs Web `fetch` types or to import a server route uses the
   per-file pragma `// @vitest-environment node` (still in the `unit` project).
 
+## Test fixtures
+
+Tests own their fixtures — **nothing under test reads `activities/`** (that folder
+is demo content, free to restructure, and — an accepted trade-off — validated by
+no test or CI check; both workflows `paths-ignore` it). Fixtures are deliberately
+**synthetic**
+(ids like `test-tutor`, content built from `MARKER` strings) so they never read as
+real activities. Two homes, by what the layer needs:
+
+- **Inline (unit)** — the `lib/tutors` unit tests (`parse` / `consistency` /
+  `assemble` / `fragment` / `load`) share an in-code synthetic tutor + two fragment
+  libraries defined as YAML string constants in **`lib/tutors/test-fixtures.ts`**.
+  No files, no `node:fs` — the data sits next to the tests.
+- **On disk (CLI + e2e)** — **`test-fixtures/activities/{tutors,quizzes,writings,coding}/`**
+  holds the minimal synthetic YAML the two layers that genuinely need a file/URL
+  use: the CLI (`validate <path>`) and e2e (the app fetches a YAML by URL). See
+  `test-fixtures/README.md`.
+
+e2e gets those files over HTTP from a tiny static server, **`test-fixtures/serve.mjs`**,
+wired as a **second Playwright `webServer`** — so specs run fully offline (no
+GitHub); the dev server fetches the URLs server-side, so `127.0.0.1` resolves.
+The fixed port lives in ONE place, `e2e/fixtures.constants.ts`: the Playwright
+config health-checks it and passes it to the server's env, and `e2e/code.utils.ts`
+builds its URLs from the same constant. The CLI integration test imports
+`startFixturesServer` (ephemeral port) for its served-URL cases.
+
+Hermetic fixtures pin a fake **`model: test-model`** (nothing calls an LLM). The
+`@live-llm` fixtures — `tutors/live-tutor.yaml`, `tutors/vision-tutor.yaml`,
+`writings/test-writing.yaml` — carry a **real** model id because those specs drive
+the live SCCH endpoint.
+
 ## Scripts
 
 | Script | Runs |

@@ -2,26 +2,36 @@ import { randomInt } from "node:crypto";
 import { loadEnvConfig } from "@next/env";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "../lib/azure-credential";
+import { FIXTURES_BASE } from "./fixtures.constants";
 
 // Mints codes by writing rows DIRECTLY into the same database the dev server
 // reads (`novedu_codes`), so e2e specs can produce valid (or deliberately
 // expired/not-yet-active) codes for any module without driving the create UI each
 // time. Needs the live database — `az login` for the data-store tenant — so every
-// spec that mints a code carries the @live tag. Stable sample tutors live on
-// `main` of the public repo precisely so these URLs stay valid.
+// spec that mints a code carries the @live tag.
+//
+// Activity YAML is served by the local fixtures server (test-fixtures/serve.mjs,
+// wired as a second Playwright webServer). The dev server fetches these URLs
+// server-side, so 127.0.0.1 resolves — fully offline. The server's address is
+// the shared constant in e2e/fixtures.constants.ts.
 //
 // Deliberately uses the plain `mssql` driver instead of the app's Drizzle store:
 // Playwright's CJS test runner cannot load drizzle-orm's ESM modules. The INSERT
 // below must match lib/db/schema.ts — keep them in sync.
-
-export const RAW_REPO =
-  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main";
-export const RAW_TUTORS = `${RAW_REPO}/activities/tutors`;
-export const VALID_TUTOR_URL = `${RAW_TUTORS}/simple-tutor.yaml`;
-export const BROKEN_TUTOR_URL = `${RAW_TUTORS}/broken-tutor.yaml`;
-// A valid CODING activity URL — coding now has a strict authoring gate, so a coding
+export const VALID_TUTOR_URL = `${FIXTURES_BASE}/tutors/test-tutor.yaml`;
+export const BROKEN_TUTOR_URL = `${FIXTURES_BASE}/tutors/broken-tutor.yaml`;
+// A minimal tutor with a REAL model for the @live-llm chat specs (they send a
+// message and only assert a non-empty reply — content is irrelevant).
+export const LIVE_TUTOR_URL = `${FIXTURES_BASE}/tutors/live-tutor.yaml`;
+// A REAL-model tutor with image input enabled for the @live-llm image round-trip.
+export const VISION_TUTOR_URL = `${FIXTURES_BASE}/tutors/vision-tutor.yaml`;
+// A valid CODING activity URL — coding has a strict authoring gate, so a coding
 // code must point at a real coding YAML (a tutor URL would fail CODING_SCHEMA_ERROR).
-export const VALID_CODING_URL = `${RAW_REPO}/activities/coding/beginner-typescript.yaml`;
+export const VALID_CODING_URL = `${FIXTURES_BASE}/coding/test-coding.yaml`;
+// A valid QUIZ activity URL, used by the teacher quiz-detail page.
+export const VALID_QUIZ_URL = `${FIXTURES_BASE}/quizzes/test-quiz.yaml`;
+// A valid WRITING activity URL (attributed, real model) for the full round-trip.
+export const VALID_WRITING_URL = `${FIXTURES_BASE}/writings/test-writing.yaml`;
 
 // Rows minted here are attributed to a recognizable fake teacher, so they are
 // easy to tell apart (and clean up) in the table. There is no automatic GC, so a
@@ -51,7 +61,9 @@ function getPool(): Promise<sql.ConnectionPool> {
  * Inserts a code (any module) with a window of [now+startOffset, now+endOffset]
  * seconds and returns the code. Pass `startOffset: null` / `endOffset: null` to
  * leave that bound OPEN (a NULL column → an open-ended code). `module` defaults to
- * "tutor" and `file` to the stable sample tutor; pass `module: "quiz"` + an
+ * "tutor" and `file` to the synthetic fixture tutor (VALID_TUTOR_URL — its model is
+ * the fake `test-model`, so a spec that actually SENDS a chat message must pass
+ * LIVE_TUTOR_URL instead); pass `module: "quiz"` + an
  * app-hosted quiz `file` URL for the quiz flow. `anonymous` is the FROZEN row flag
  * and defaults to `true`
  * (matching tutor/quiz); pass `anonymous: false` for a writing code so its teacher

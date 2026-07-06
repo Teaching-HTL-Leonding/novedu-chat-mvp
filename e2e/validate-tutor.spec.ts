@@ -2,16 +2,16 @@ import { expect, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { BROKEN_TUTOR_URL, VALID_TUTOR_URL } from "./code.utils";
 
-// These tests exercise the full stack: the page POSTs a public URL to
-// /api/validate-tutor, which fetches the stable sample tutors from GitHub,
-// validates + assembles them, and returns the result. The sample files under
-// activities/tutors/ are kept stable on `main` precisely so these URLs stay valid.
+// These tests exercise the full stack: the page POSTs a URL to
+// /api/validate-tutor, which fetches the fixture tutors from the local fixtures
+// server (served server-side), validates + assembles them, and returns the result.
 //
 // Validate Tutor is teacher-only now, so this spec runs with the minted teacher
 // session (the student-side denial is covered by permissions.spec.ts).
 test.use({ storageState: TEACHER_STORAGE_STATE });
 
-// Network round-trip to GitHub + Next dev compilation — give it room.
+// Fixtures-server fetch + Next dev compilation — give it room. (A failure of the
+// local fixtures webServer surfaces here as FETCH_FAILED from /api/validate-tutor.)
 test.setTimeout(60_000);
 
 test("renders the assembled system prompt for a valid tutor", async ({ page }) => {
@@ -26,9 +26,9 @@ test("renders the assembled system prompt for a valid tutor", async ({ page }) =
 
   // Assert on the source block's text content (robust to syntax-highlight token spans).
   const source = page.locator('code[class*="language-"]');
-  await expect(source).toContainText("basic arithmetic"); // persona {{subject}}
-  await expect(source).toContainText("Never give the final answer immediately."); // {{#each}}
-  await expect(source).toContainText("Always stay positive and patient"); // tutor_instructions last
+  await expect(source).toContainText("SUBJECT-MARKER"); // persona {{subject}}
+  await expect(source).toContainText("RULE-ONE-MARKER"); // {{#each}}
+  await expect(source).toContainText("INSTRUCTIONS-MARKER"); // tutor_instructions last
 });
 
 test("shows consistency errors for a broken tutor", async ({ page }) => {

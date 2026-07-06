@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { checkFragmentFileValue } from "./fragment";
 import { loadAndCheckFragmentFile } from "./load";
 import { parseYaml } from "./parse";
-import { fixtureResponse, readFixture } from "./test-fixtures";
+import { BROKEN_TEMPLATE_YAML, fixtureResponse, LIB_A_YAML } from "./test-fixtures";
 
 // Parse a YAML string into the `unknown` value `checkFragmentFileValue` expects.
 function parse(yaml: string): unknown {
@@ -12,12 +12,12 @@ function parse(yaml: string): unknown {
 }
 
 describe("checkFragmentFileValue", () => {
-  it("accepts a valid fragment file (real simple-fragments fixture)", () => {
-    const result = checkFragmentFileValue(parse(readFixture("simple-fragments.yaml")));
+  it("accepts a valid fragment file (synthetic lib-a fixture)", () => {
+    const result = checkFragmentFileValue(parse(LIB_A_YAML));
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.fragmentFileId).toBe("simple-fragments");
-      expect(result.fragmentIds).toEqual(["persona", "ground_rules"]);
+      expect(result.fragmentFileId).toBe("lib-a");
+      expect(result.fragmentIds).toEqual(["str_frag", "list_frag", "flag_frag", "safety_frag"]);
     }
   });
 
@@ -49,13 +49,13 @@ describe("checkFragmentFileValue", () => {
   });
 
   it("FRAGMENT_TEMPLATE_ERROR for a template referencing an undeclared variable", () => {
-    // The fixture's `motto` fragment uses `{{undeclared_motto}}`, which its
+    // The fixture's `undeclared_frag` fragment uses `{{undeclared_var}}`, which its
     // input_schema never declares — strict rendering throws.
-    const result = checkFragmentFileValue(parse(readFixture("broken-template-fragments.yaml")));
+    const result = checkFragmentFileValue(parse(BROKEN_TEMPLATE_YAML));
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const err = result.errors.find((e) => e.code === "FRAGMENT_TEMPLATE_ERROR");
-      expect(err?.fragmentId).toBe("motto");
+      expect(err?.fragmentId).toBe("undeclared_frag");
     }
   });
 
@@ -104,13 +104,10 @@ describe("checkFragmentFileValue", () => {
 
 describe("loadAndCheckFragmentFile", () => {
   it("fetches, parses and validates a fragment file by URL", async () => {
-    const fetcher = async () => fixtureResponse(readFixture("simple-fragments.yaml"));
-    const result = await loadAndCheckFragmentFile(
-      "https://example.com/simple-fragments.yaml",
-      fetcher,
-    );
+    const fetcher = async () => fixtureResponse(LIB_A_YAML);
+    const result = await loadAndCheckFragmentFile("https://example.com/lib-a.yaml", fetcher);
     expect(result.ok).toBe(true);
-    if (result.ok) expect(result.fragmentFileId).toBe("simple-fragments");
+    if (result.ok) expect(result.fragmentFileId).toBe("lib-a");
   });
 
   it("INVALID_URL for a disallowed scheme (no fetch attempted)", async () => {

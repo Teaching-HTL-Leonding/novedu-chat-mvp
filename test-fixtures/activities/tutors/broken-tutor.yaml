@@ -1,0 +1,21 @@
+id: broken-tutor
+name: "Broken Test Tutor"
+description: "Intentionally invalid — exercises the validator's consistency errors."
+llm:
+  model: test-model
+prompt:
+  fragment_files:
+    - id: frags
+      url: "broken-fragments.yaml"
+  fragments:
+    # ERROR 1 — `persona` requires a `subject` variable, none supplied →
+    # MISSING_REQUIRED_VARIABLE.
+    - file: frags
+      id: persona
+      variables: {}
+    # ERROR 2 — there is no `summary` fragment in broken-fragments.yaml →
+    # FRAGMENT_NOT_FOUND.
+    - file: frags
+      id: summary
+  tutor_instructions: |
+    Intentionally broken so the validator has something to report.

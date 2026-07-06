@@ -1,0 +1,11 @@
+id: live-test-tutor
+name: "Live Test Tutor"
+description: "Minimal tutor with a REAL model — drives the @live-llm chat specs, which
+  only send a message and assert a non-empty reply, so the content is irrelevant."
+# A REAL model: these specs send a message to the live SCCH endpoint, unlike the
+# hermetic fixtures which use a fake `test-model`.
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+prompt:
+  tutor_instructions: |
+    You are a friendly tutor. Answer briefly.

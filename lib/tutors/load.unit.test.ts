@@ -4,20 +4,21 @@ import { loadAndBuildTutorPrompt, resolveFragmentUrl } from "./load";
 import {
   fixtureFetcher,
   fixtureResponse,
-  GENERAL_URL,
-  LINKED_URL,
-  readFixture,
+  LIB_A_URL,
+  LIB_A_YAML,
+  LIB_B_URL,
   TUTOR_URL,
+  TUTOR_YAML,
 } from "./test-fixtures";
 
 describe("loadAndBuildTutorPrompt — happy path", () => {
-  it("builds the prompt from the real fixtures with no network", async () => {
+  it("builds the prompt from the synthetic fixtures with no network", async () => {
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.prompt).toContain("Knoten"); // German prose from a fragment
+      expect(result.prompt).toContain("FIRST-MARKER"); // prose from a fragment
       expect(result.prompt).toContain("->"); // ASCII diagram, unescaped
-      expect(result.model).toBe("RedHatAI/gemma-4-31B-it-FP8-Dynamic"); // from the tutor's llm.model
+      expect(result.model).toBe("test-model"); // from the tutor's llm.model
     }
   });
 
@@ -29,20 +30,17 @@ describe("loadAndBuildTutorPrompt — happy path", () => {
       return base(url);
     };
     await loadAndBuildTutorPrompt(TUTOR_URL, spy);
-    // The real fixture uses relative refs (`general-fragments.yaml`); seeing the
-    // absolute GENERAL_URL/LINKED_URL fetched proves they were resolved against TUTOR_URL.
-    expect(new Set(seen)).toEqual(new Set([TUTOR_URL, GENERAL_URL, LINKED_URL]));
+    // The tutor uses relative refs (`lib-a.yaml`); seeing the absolute
+    // LIB_A_URL/LIB_B_URL fetched proves they were resolved against TUTOR_URL.
+    expect(new Set(seen)).toEqual(new Set([TUTOR_URL, LIB_A_URL, LIB_B_URL]));
   });
 });
 
 describe("loadAndBuildTutorPrompt — image input flag", () => {
-  // The real fixture declares no `llm.imageInput`; these variants patch the
-  // llm block to exercise the flag without a second fixture file.
+  // The tutor declares no `llm.imageInput`; these variants patch the llm block to
+  // exercise the flag without a second fixture.
   const withImageInput = (value: string) =>
-    readFixture("linked-list-tutor.yaml").replace(
-      "  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic",
-      `  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic\n  imageInput: ${value}`,
-    );
+    TUTOR_YAML.replace("  model: test-model", `  model: test-model\n  imageInput: ${value}`);
 
   it("defaults imageInput to true when the tutor omits llm.imageInput", async () => {
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
@@ -63,31 +61,12 @@ describe("loadAndBuildTutorPrompt — image input flag", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]?.code).toBe("TUTOR_SCHEMA_ERROR");
   });
-
-  // Both YAMLs are documented examples AND e2e fixtures — keep them valid.
-  for (const [fixture, expected] of [
-    ["vision-tutor.yaml", true],
-    ["text-only-tutor.yaml", false],
-  ] as const) {
-    it(`the ${fixture} fixture resolves to imageInput: ${expected}`, async () => {
-      const url = TUTOR_URL.replace("linked-list-tutor.yaml", fixture);
-      const simpleUrl = TUTOR_URL.replace("linked-list-tutor.yaml", "simple-fragments.yaml");
-      const overrides = new Map([
-        [url, fixtureResponse(readFixture(fixture))],
-        [simpleUrl, fixtureResponse(readFixture("simple-fragments.yaml"))],
-      ]);
-      const result = await loadAndBuildTutorPrompt(url, fixtureFetcher(overrides));
-      expect(result.ok).toBe(true);
-      if (result.ok) expect(result.imageInput).toBe(expected);
-    });
-  }
 });
 
 describe("loadAndBuildTutorPrompt — anonymous flag", () => {
-  // The real fixture declares no `anonymous`; these variants prepend the
-  // top-level field to exercise the flag without a second fixture file.
-  const withAnonymous = (value: string) =>
-    `anonymous: ${value}\n${readFixture("linked-list-tutor.yaml")}`;
+  // The tutor declares no `anonymous`; these variants prepend the top-level field
+  // to exercise the flag without a second fixture.
+  const withAnonymous = (value: string) => `anonymous: ${value}\n${TUTOR_YAML}`;
 
   it("defaults anonymous to true when the tutor omits it", async () => {
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
@@ -122,13 +101,13 @@ describe("loadAndBuildTutorPrompt — title & description", () => {
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.title).toBe("Dein Tutor für verkettete Listen");
-      expect(result.description).toContain("verkettete Listen");
+      expect(result.title).toBe("Functional Test Tutor");
+      expect(result.description).toContain("Synthetic tutor");
     }
   });
 
   it("leaves title undefined when the tutor omits it (description stays required)", async () => {
-    const withoutTitle = readFixture("linked-list-tutor.yaml").replace(/^title: .*\n/m, "");
+    const withoutTitle = TUTOR_YAML.replace(/^title: .*\n/m, "");
     const overrides = new Map([[TUTOR_URL, fixtureResponse(withoutTitle)]]);
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
     expect(result.ok).toBe(true);
@@ -142,17 +121,16 @@ describe("loadAndBuildTutorPrompt — title & description", () => {
 describe("loadAndBuildTutorPrompt — example questions", () => {
   // The fixture's exampleQuestions block sits between `description:` and `llm:`.
   const withoutExampleQuestions = () =>
-    readFixture("linked-list-tutor.yaml").replace(/^exampleQuestions:[\s\S]*?(?=^llm:)/m, "");
+    TUTOR_YAML.replace(/^exampleQuestions:[\s\S]*?(?=^llm:)/m, "");
 
   it("surfaces the tutor's example questions for the welcome screen", async () => {
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.exampleQuestions).toHaveLength(6);
+      expect(result.exampleQuestions).toHaveLength(2);
       expect(result.exampleQuestions[0]).toEqual({
-        title: "Was ist eine verkettete Liste?",
-        question:
-          "Kannst du mir erklären, was eine verkettete Liste ist und wie sie sich von einem Array unterscheidet?",
+        title: "First example",
+        question: "What is the first example question?",
       });
     }
   });
@@ -167,7 +145,7 @@ describe("loadAndBuildTutorPrompt — example questions", () => {
   it("TUTOR_SCHEMA_ERROR for an example question with an empty title", async () => {
     const broken = `${withoutExampleQuestions().replace(
       /^llm:/m,
-      'exampleQuestions:\n  - title: ""\n    question: "Wie geht das?"\nllm:',
+      'exampleQuestions:\n  - title: ""\n    question: "How does this work?"\nllm:',
     )}`;
     const overrides = new Map([[TUTOR_URL, fixtureResponse(broken)]]);
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
@@ -178,21 +156,21 @@ describe("loadAndBuildTutorPrompt — example questions", () => {
 
 describe("resolveFragmentUrl", () => {
   it("returns an absolute http(s) ref unchanged", () => {
-    expect(resolveFragmentUrl(GENERAL_URL, TUTOR_URL)).toBe(GENERAL_URL);
+    expect(resolveFragmentUrl(LIB_A_URL, TUTOR_URL)).toBe(LIB_A_URL);
     expect(resolveFragmentUrl("http://example.com/x.yaml", TUTOR_URL)).toBe(
       "http://example.com/x.yaml",
     );
   });
 
   it("resolves a bare filename against the tutor's directory (filename dropped)", () => {
-    expect(resolveFragmentUrl("general-fragments.yaml", TUTOR_URL)).toBe(GENERAL_URL);
+    expect(resolveFragmentUrl("lib-a.yaml", TUTOR_URL)).toBe(LIB_A_URL);
   });
 
   it("resolves ./ and ../ segments", () => {
-    expect(resolveFragmentUrl("./general-fragments.yaml", TUTOR_URL)).toBe(GENERAL_URL);
-    // TUTOR_URL lives in `.../main/activities/tutors/`; `../` steps up to `.../main/activities/`.
+    expect(resolveFragmentUrl("./lib-a.yaml", TUTOR_URL)).toBe(LIB_A_URL);
+    // TUTOR_URL lives in `.../tutors/`; `../` steps up to the parent directory.
     expect(resolveFragmentUrl("../other/x.yaml", TUTOR_URL)).toBe(
-      "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/other/x.yaml",
+      "https://fixtures.test/other/x.yaml",
     );
   });
 
@@ -204,10 +182,11 @@ describe("resolveFragmentUrl", () => {
 });
 
 describe("loadAndBuildTutorPrompt — fragment URL resolution", () => {
-  // Rewrite the (now relative) fixture refs back to absolute to prove absolute still works.
-  const absoluteTutorBody = readFixture("linked-list-tutor.yaml")
-    .replace("general-fragments.yaml", GENERAL_URL)
-    .replace("linked-list-fragments.yaml", LINKED_URL);
+  // Rewrite the (relative) fixture refs back to absolute to prove absolute still works.
+  const absoluteTutorBody = TUTOR_YAML.replace("lib-a.yaml", LIB_A_URL).replace(
+    "lib-b.yaml",
+    LIB_B_URL,
+  );
 
   it("still supports absolute fragment refs", async () => {
     const seen: string[] = [];
@@ -219,25 +198,19 @@ describe("loadAndBuildTutorPrompt — fragment URL resolution", () => {
     };
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, spy);
     expect(result.ok).toBe(true);
-    expect(new Set(seen)).toEqual(new Set([TUTOR_URL, GENERAL_URL, LINKED_URL]));
+    expect(new Set(seen)).toEqual(new Set([TUTOR_URL, LIB_A_URL, LIB_B_URL]));
   });
 
   it("supports a mix of absolute and relative refs in one tutor", async () => {
-    // general → absolute URL, linked-list → left relative.
-    const mixedBody = readFixture("linked-list-tutor.yaml").replace(
-      "general-fragments.yaml",
-      GENERAL_URL,
-    );
+    // lib_a → absolute URL, lib_b → left relative.
+    const mixedBody = TUTOR_YAML.replace("lib-a.yaml", LIB_A_URL);
     const overrides = new Map([[TUTOR_URL, fixtureResponse(mixedBody)]]);
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
     expect(result.ok).toBe(true);
   });
 
   it("TUTOR_SCHEMA_ERROR for an absolute non-http(s) fragment ref", async () => {
-    const ftpBody = readFixture("linked-list-tutor.yaml").replace(
-      "general-fragments.yaml",
-      "ftp://example.com/frag.yaml",
-    );
+    const ftpBody = TUTOR_YAML.replace("lib-a.yaml", "ftp://example.com/frag.yaml");
     const overrides = new Map([[TUTOR_URL, fixtureResponse(ftpBody)]]);
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
     expect(result.ok).toBe(false);
@@ -282,9 +255,9 @@ describe("loadAndBuildTutorPrompt — failures", () => {
   it("FRAGMENT_FILE_SCHEMA_ERROR for a default whose type mismatches its property", async () => {
     // A boolean property with a string default must be rejected at schema validation.
     const badFragmentFile = [
-      "id: general-fragments",
+      "id: lib-a",
       "fragments:",
-      "  - id: socratic_tutor",
+      "  - id: str_frag",
       "    version: 1",
       "    priority: 100",
       "    input_schema:",
@@ -295,7 +268,7 @@ describe("loadAndBuildTutorPrompt — failures", () => {
       '          default: "not a boolean"',
       "    content: hi",
     ].join("\n");
-    const overrides = new Map([[GENERAL_URL, fixtureResponse(badFragmentFile)]]);
+    const overrides = new Map([[LIB_A_URL, fixtureResponse(badFragmentFile)]]);
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -305,15 +278,15 @@ describe("loadAndBuildTutorPrompt — failures", () => {
 
   it("collects every failing fragment file (parallel, not short-circuited)", async () => {
     const overrides = new Map([
-      [GENERAL_URL, fixtureResponse("", { ok: false, status: 500 })],
-      [LINKED_URL, fixtureResponse("", { ok: false, status: 503 })],
+      [LIB_A_URL, fixtureResponse("", { ok: false, status: 500 })],
+      [LIB_B_URL, fixtureResponse("", { ok: false, status: 503 })],
     ]);
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const failedUrls = result.errors.filter((e) => e.code === "FETCH_FAILED").map((e) => e.url);
-      expect(failedUrls).toContain(GENERAL_URL);
-      expect(failedUrls).toContain(LINKED_URL);
+      expect(failedUrls).toContain(LIB_A_URL);
+      expect(failedUrls).toContain(LIB_B_URL);
     }
   });
 });
@@ -322,8 +295,8 @@ describe("loadAndBuildTutorPrompt — validateLibraries (thorough whole-library 
   // Append an UNUSED fragment with a broken template (it references a variable its
   // input_schema never declares) to a real referenced library. The tutor never
   // references this fragment, so it only matters under the whole-library check.
-  const generalWithBrokenUnused = () =>
-    `${readFixture("general-fragments.yaml")}
+  const libAWithBrokenUnused = () =>
+    `${LIB_A_YAML}
   - id: broken_unused
     version: 1
     priority: 9999
@@ -331,7 +304,7 @@ describe("loadAndBuildTutorPrompt — validateLibraries (thorough whole-library 
       You forgot to declare {{undeclared_var}}.
 `;
 
-  it("passes when every referenced library is fully valid (real fixtures)", async () => {
+  it("passes when every referenced library is fully valid (synthetic fixtures)", async () => {
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(), {
       validateLibraries: true,
     });
@@ -339,14 +312,14 @@ describe("loadAndBuildTutorPrompt — validateLibraries (thorough whole-library 
   });
 
   it("does NOT check unused fragments when the option is off (chat hot path unaffected)", async () => {
-    const overrides = new Map([[GENERAL_URL, fixtureResponse(generalWithBrokenUnused())]]);
+    const overrides = new Map([[LIB_A_URL, fixtureResponse(libAWithBrokenUnused())]]);
     // The broken fragment is unused; the default (hot-path) build still succeeds.
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
     expect(result.ok).toBe(true);
   });
 
   it("FRAGMENT_TEMPLATE_ERROR (with fileAlias) for a broken unused fragment when on", async () => {
-    const overrides = new Map([[GENERAL_URL, fixtureResponse(generalWithBrokenUnused())]]);
+    const overrides = new Map([[LIB_A_URL, fixtureResponse(libAWithBrokenUnused())]]);
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides), {
       validateLibraries: true,
     });
@@ -354,7 +327,7 @@ describe("loadAndBuildTutorPrompt — validateLibraries (thorough whole-library 
     if (!result.ok) {
       const err = result.errors.find((e) => e.code === "FRAGMENT_TEMPLATE_ERROR");
       expect(err?.fragmentId).toBe("broken_unused");
-      expect(err?.fileAlias).toBe("general_fragments");
+      expect(err?.fileAlias).toBe("lib_a");
     }
   });
 });

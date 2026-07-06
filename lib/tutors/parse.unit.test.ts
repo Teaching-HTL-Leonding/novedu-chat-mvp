@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { parseYaml, validate } from "./parse";
 import { FragmentFileSchema, TutorSchema } from "./schemas";
-import { readFixture } from "./test-fixtures";
+import { LIB_A_YAML, LIB_B_YAML, TUTOR_YAML } from "./test-fixtures";
 
 describe("parseYaml", () => {
-  it("parses the real tutor fixture", () => {
-    const result = parseYaml(readFixture("linked-list-tutor.yaml"));
+  it("parses the synthetic tutor fixture", () => {
+    const result = parseYaml(TUTOR_YAML);
     expect(result.ok).toBe(true);
   });
 
@@ -17,15 +17,15 @@ describe("parseYaml", () => {
 });
 
 describe("validate — tutor", () => {
-  it("accepts the real tutor fixture", () => {
-    const parsed = parseYaml(readFixture("linked-list-tutor.yaml"));
+  it("accepts the synthetic tutor fixture", () => {
+    const parsed = parseYaml(TUTOR_YAML);
     if (!parsed.ok) throw new Error("precondition: tutor YAML must parse");
     const result = validate(parsed.value, TutorSchema, "TUTOR_SCHEMA_ERROR");
     expect(result.ok).toBe(true);
   });
 
   it("rejects a tutor missing prompt.tutor_instructions", () => {
-    const parsed = parseYaml(readFixture("linked-list-tutor.yaml"));
+    const parsed = parseYaml(TUTOR_YAML);
     if (!parsed.ok) throw new Error("precondition");
     const broken = structuredClone(parsed.value) as { prompt: Record<string, unknown> };
     delete broken.prompt.tutor_instructions;
@@ -43,7 +43,7 @@ describe("validate — tutor", () => {
   });
 
   it("defaults llm.provider to SCCH, accepts Azure Foundry, rejects junk", () => {
-    const parsed = parseYaml(readFixture("linked-list-tutor.yaml"));
+    const parsed = parseYaml(TUTOR_YAML);
     if (!parsed.ok) throw new Error("precondition");
     const tutor = structuredClone(parsed.value) as { llm: Record<string, unknown> };
 
@@ -60,12 +60,12 @@ describe("validate — tutor", () => {
 });
 
 describe("validate — fragment file", () => {
-  it("accepts both real fragment files", () => {
-    for (const name of ["general-fragments.yaml", "linked-list-fragments.yaml"]) {
-      const parsed = parseYaml(readFixture(name));
-      if (!parsed.ok) throw new Error(`precondition: ${name} must parse`);
+  it("accepts both synthetic fragment files", () => {
+    for (const body of [LIB_A_YAML, LIB_B_YAML]) {
+      const parsed = parseYaml(body);
+      if (!parsed.ok) throw new Error("precondition: fragment file must parse");
       const result = validate(parsed.value, FragmentFileSchema, "FRAGMENT_FILE_SCHEMA_ERROR");
-      expect(result.ok, name).toBe(true);
+      expect(result.ok).toBe(true);
     }
   });
 

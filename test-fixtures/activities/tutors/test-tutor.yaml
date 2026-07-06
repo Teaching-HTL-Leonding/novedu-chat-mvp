@@ -1,0 +1,22 @@
+id: test-tutor
+name: "Functional Test Tutor"
+description: "Synthetic tutor used only by automated tests — not a real activity."
+llm:
+  model: test-model
+prompt:
+  fragment_files:
+    - id: frags
+      url: "test-fragments-a.yaml"
+  fragments:
+    - file: frags
+      id: persona
+      variables:
+        subject: "SUBJECT-MARKER"
+    - file: frags
+      id: rules
+      variables:
+        rules:
+          - "RULE-ONE-MARKER"
+          - "RULE-TWO-MARKER"
+  tutor_instructions: |
+    INSTRUCTIONS-MARKER always stay in test mode.
