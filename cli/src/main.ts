@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { Command } from "commander";
+import { registerLogin } from "./commands/login";
+import { registerLogout } from "./commands/logout";
 import { registerValidate } from "./commands/validate";
+import { registerWhoami } from "./commands/whoami";
 
 // Read the version from package.json so `--version` always matches the published
 // package (no hand-kept duplicate to drift). Both src/main.ts (dev via tsx) and
@@ -21,6 +24,9 @@ program
   .version(version);
 
 registerValidate(program);
+registerLogin(program);
+registerLogout(program);
+registerWhoami(program);
 
 program.parseAsync().catch((err) => {
   console.error(err instanceof Error ? err.message : err);

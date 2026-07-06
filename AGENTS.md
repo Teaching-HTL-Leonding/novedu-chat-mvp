@@ -23,6 +23,7 @@ The highest-cost rules to break. They always apply, regardless of which subsyste
 - The activity YAML's **`anonymous` default is module-specific**: tutor/quiz default `true`, **writing defaults `false`**, coding is always anonymous. An anonymous writing code disables saving; the save action re-reads the flag live and rejects (`docs/writing.md`).
 - The quiz **grader agent (`quizEvaluator`) is never web-reachable** — only `submitAnswer` calls it; the runtime route 404s it. The server-only quiz `evaluation` prompts never reach the browser (`docs/codes.md`).
 - Exactly **two public, non-Entra routes**, both in the `proxy.ts` matcher: `GET /api/files/<name>` (raw YAML) and the coding module's `POST /api/coding/v1/chat/completions` (the **code is the bearer API key**, `checkCode` re-verified every request; always anonymous; the teacher's prompt + pinned model stay server-side — `docs/files.md`, `docs/coding.md`).
+- CLI/API **Entra-bearer routes** (today `GET /api/me`) are proxy-excluded per-path and gated **only** by `requireBearerUser` / `requireBearerTeacher` (`lib/api-auth.ts`) — token validated on every request, user id is the `oid`, groups overage fails closed, **no student mode on this channel**. `requireEffectiveTeacher()` remains the rule for cookie-session surfaces (`docs/api.md`).
 - **LLM connectivity is server-only** behind `lib/llm/` — the SCCH/Azure-Foundry branch exists ONLY in `resolveLanguageModel`, `resolveChatEndpoint`, and `providerUnavailableReason`; endpoints, the SCCH key, and Entra tokens never reach the browser. Foundry auth is **passwordless Entra** — never `DefaultAzureCredential`, never an API key. The YAML's `llm.provider`/`llm.model` are the defaults; a code's **LLM override pair** (both-or-nothing) replaces them via `effectiveLlm`, availability-gated on the effective provider (`docs/ai-models.md`).
 - Image bytes use **passwordless User-Delegation-SAS** (no app route serves bytes); SVG renders only via `<img src>` on the blob origin — never inline markup (`docs/images.md`).
 - Telemetry carries **no** message / prompt / PII content (`docs/telemetry.md`).
@@ -41,6 +42,14 @@ Read before touching: `auth.ts`, `proxy.ts`, sessions, teacher gating, student m
 - Microsoft Entra ID via Auth.js v5; the gate is `proxy.ts` at the repo root (Next 16's rename of `middleware`, Node.js runtime).
 - Teacher gating goes through `requireEffectiveTeacher()` (`lib/student-mode.ts`) — see the security block.
 - `novedu_users` maps the `oid` to a display name (upserted per sign-in; teacher surfaces LEFT-JOIN it by value, oid fallback).
+
+### CLI / API bearer auth → `docs/api.md`
+
+Read before touching: `lib/api-auth.ts`, `app/api/me/**`, `cli/src/auth.ts`, `cli/src/commands/{login,logout,whoami}.ts`, or when adding a bearer-protected endpoint.
+
+- The CLI is a public client of the same app registration; tokens carry the `cli.access` scope and are validated per request by `lib/api-auth.ts` — see the security block.
+- Adding a bearer endpoint = route gated by `requireBearerUser`/`requireBearerTeacher` + its own path-bounded `proxy.ts` exclusion + a `docs/api.md` entry.
+- Tests substitute only the signing key (`API_AUTH_JWKS_PATH`, non-production only); issuer/audience are never overridable.
 
 ### Codes → `docs/codes.md`
 

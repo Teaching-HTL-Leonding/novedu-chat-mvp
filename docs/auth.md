@@ -18,7 +18,9 @@ runs don't have to rediscover the setup:
   (`export { auth as proxy }`). In Next 16 the `middleware` convention was renamed to
   `proxy`; the matcher protects everything except the public paths `api/auth`
   (sign-in), `api/version` (build-identity probe), `api/files` (the public YAML GET
-  endpoint — see `docs/files.md`), `_next/static`, `_next/image`, `favicon.ico`.
+  endpoint — see `docs/files.md`), `api/coding` (code-as-bearer-key — see
+  `docs/coding.md`), `api/me` (Entra-bearer probe — see `docs/api.md`),
+  `_next/static`, `_next/image`, `favicon.ico`.
 - **Route handler:** `app/api/auth/[[...nextauth]]/route.ts` re-exports `handlers`.
 - **Default sign-in/out pages** are Auth.js built-ins at `/api/auth/signin` and
   `/api/auth/signout` (no custom UI). An existing valid cookie won't re-prompt, so to
@@ -63,6 +65,25 @@ runs don't have to rediscover the setup:
   (default, `STORAGE_STATE`, no `isTeacher` claim → `false`) and a teacher
   (`TEACHER_STORAGE_STATE`, `isTeacher: true`) — teacher-only specs opt in via
   `test.use({ storageState: TEACHER_STORAGE_STATE })`.
+
+## Two auth channels
+
+The app authenticates callers in exactly two ways; every server entry point uses
+one or the other, never both:
+
+1. **Browser cookie sessions** (this doc): Auth.js Entra sign-in, the `proxy.ts`
+   gate, `session.user`, teacher gating via `requireEffectiveTeacher()` — the
+   channel for everything a human uses in the browser.
+2. **CLI / API bearer tokens** (`docs/api.md`): Entra access tokens for the
+   app's own `cli.access` scope, validated per request by `lib/api-auth.ts`
+   (`requireBearerUser` / `requireBearerTeacher`), routes excluded per-path from
+   the proxy matcher. Same identity model — the `oid` is the user id and
+   `resolveTeacher` derives the role from the token's `groups` claim — but **no
+   session and no student mode** (that is a cookie): the bearer path always
+   sees the caller's real role.
+
+The teacher-gating rule therefore splits by channel: cookie surfaces use
+`requireEffectiveTeacher()`, bearer routes use `requireBearerTeacher()`.
 
 ## User display names
 
