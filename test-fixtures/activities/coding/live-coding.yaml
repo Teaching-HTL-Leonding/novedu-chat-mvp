@@ -1,0 +1,9 @@
+id: live-test-coding
+name: "Live Test Coding"
+title: "Live Test Coding Buddy"
+# A REAL model: the @live-llm coding-agent spec drives the live SCCH endpoint,
+# unlike the hermetic fixtures which use a fake `test-model`.
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+instructions: |
+  You are a coding buddy used only by automated tests. Answer briefly.

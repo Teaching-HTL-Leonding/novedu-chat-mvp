@@ -22,13 +22,16 @@ Four kinds of e2e, by the external infra they need:
   service container reached with SQL auth (see "DB-backed `@live-db` in CI" below),
   and locally against real Azure SQL.
 - **`@live-llm` e2e** — also need a real LLM endpoint (chat round-trips, vision,
-  the health probe, and the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`).
+  the health probe, the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`,
+  and the **coding-agent** round-trip in `e2e/coding-agent.spec.ts`, which drives
+  the real `pi` coding agent through the public coding endpoint).
   Neither provider is reachable from CI: the SCCH endpoint is **geo-blocked to
   Austria** and cannot be containerized, and Azure Foundry needs a **Managed
   Identity / `az login`** with the `Cognitive Services OpenAI User` role
   (docs/ai-models.md) — so these are **excluded from CI** and run locally only.
   The Foundry legs (the second `tutor-chat-reply` case, the `health-foundry`
-  assertions) additionally self-skip when `AZURE_FOUNDRY_ENDPOINT` is not set.
+  assertions, the `coding-agent` override case) additionally self-skip when
+  `AZURE_FOUNDRY_ENDPOINT` is not set.
   (Such a test is tagged `@live-llm` ONLY — the DB it also uses is implied — so a
   `--grep @live-db` run never selects it.)
 - **`@live-storage` e2e** — need real **Azure Blob Storage** (the image subsystem
@@ -93,8 +96,8 @@ builds its URLs from the same constant. The CLI integration test imports
 
 Hermetic fixtures pin a fake **`model: test-model`** (nothing calls an LLM). The
 `@live-llm` fixtures — `tutors/live-tutor.yaml`, `tutors/vision-tutor.yaml`,
-`writings/test-writing.yaml` — carry a **real** model id because those specs drive
-the live SCCH endpoint.
+`writings/test-writing.yaml`, `coding/live-coding.yaml` — carry a **real** model
+id because those specs drive the live SCCH endpoint.
 
 ## Scripts
 
@@ -119,7 +122,8 @@ Selected" over several files) (`e2e/file-and-tutor-code-crud.spec.ts`, which wri
 the real `novedu_files` table), and the **database auth-matrix**
 (`e2e/db-auth.live.spec.ts`, below) — also run **in CI** against a container (next
 section). The **`@live-llm`** ones — the text round-trip, the vision round-trip,
-the health probe — stay **local** (the SCCH endpoint is geo-blocked to Austria).
+the health probe, the coding-agent round-trip — stay **local** (the SCCH endpoint
+is geo-blocked to Austria).
 
 The shared list **multi-delete** layer's pure interaction (checkboxes, select-all,
 the confirm/spinner/clear flow over a mocked action) is a fast **component** test —

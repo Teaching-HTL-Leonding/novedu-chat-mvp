@@ -28,6 +28,8 @@ export const VISION_TUTOR_URL = `${FIXTURES_BASE}/tutors/vision-tutor.yaml`;
 // A valid CODING activity URL — coding has a strict authoring gate, so a coding
 // code must point at a real coding YAML (a tutor URL would fail CODING_SCHEMA_ERROR).
 export const VALID_CODING_URL = `${FIXTURES_BASE}/coding/test-coding.yaml`;
+// A REAL-model coding activity for the @live-llm pi-agent spec (coding-agent.spec.ts).
+export const LIVE_CODING_URL = `${FIXTURES_BASE}/coding/live-coding.yaml`;
 // A valid QUIZ activity URL, used by the teacher quiz-detail page.
 export const VALID_QUIZ_URL = `${FIXTURES_BASE}/quizzes/test-quiz.yaml`;
 // A valid WRITING activity URL (attributed, real model) for the full round-trip.

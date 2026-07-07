@@ -188,8 +188,13 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   real `POST` with `Request`s and a mocked SCCH `fetch` — auth/window gating,
   non-coding rejection, the forwarded body transform, OpenAI error shapes, and both
   non-streamed JSON and streamed SSE passthrough.
-- The real end-to-end path against SCCH is exercised by driving `little-coder`
-  against a dev server (SCCH is reachable locally; the live LLM leg is not run in CI).
+- The real end-to-end path is **`e2e/coding-agent.spec.ts`** (`@live-llm`, local
+  only): drives the REAL `pi` coding agent (`@earendil-works/pi-coding-agent`, a
+  pinned devDependency — little-coder's engine) through the endpoint once per
+  provider, and asserts model identity from the upstream's own `model` field
+  (the Foundry leg minting the per-code LLM override, so a silent fallback to
+  the YAML default fails the test). Chat smoke only (`--no-tools`); the harness
+  is `e2e/pi-agent.utils.ts`.
 
 ## Future work (deferred)
 
