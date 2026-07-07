@@ -8,8 +8,10 @@ mechanism — the loader (`lib/tutors/load.ts`) fetches any `http(s)` URL throug
 injectable `Fetcher` and does not care about host or content-type. The always-on
 invariants are summarized in `AGENTS.md`; this file has the full mechanics. Read it
 before touching `app/files/*`, `app/api/files/*`, `lib/file-store.ts`,
-`lib/files-actions.ts`, `lib/app-hosted-fetcher.ts`, the `novedu_files` schema, or
-the `api/files` entry in `proxy.ts`.
+`lib/file-service.ts`, `lib/files-actions.ts`, `lib/app-hosted-fetcher.ts`, the
+`novedu_files` schema, or the `api/files` entry in `proxy.ts`. The bearer API
+channel (`GET /api/files`, `PUT /api/files/<name>`, `novedu-cli files`) is
+documented in `docs/api.md`.
 
 ## Surfaces
 
@@ -19,6 +21,8 @@ the `api/files` entry in `proxy.ts`.
 | Create | `/files/new` (`create-file-form.tsx`) | teacher | name + kind + CodeMirror editor + upload |
 | Edit | `/files/edit/[...name]` (`edit-file-form.tsx`) | teacher | preloaded with the active version; copyable public URL (delete is the list's "Delete Selected" only) |
 | Public GET | `/api/files/<name>` (`app/api/files/[name]/route.ts`) | **anyone** | active version as `text/yaml`, `no-store` (404 once deleted) |
+| API upsert | `PUT /api/files/<name>` (same route file) | teacher (bearer) | create-or-new-version for `novedu-cli files upload` — `docs/api.md` |
+| API list | `GET /api/files` (`app/api/files/route.ts`) | teacher (bearer) | the list's filters as query params, JSON without content — `docs/api.md` |
 | GUI editor | `/files/gui/edit/<name>` (`app/files/gui/edit/[...name]/page.tsx`) | teacher | student-built form GUI; "Edit in GUI" on the list |
 
 The edit route is a **catch-all** (`[...name]`) and the `name` column is a
@@ -86,18 +90,26 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
   caps (512 / 2048) — lossless for the file (the body in `content` is authoritative)
   and it stops a perfectly valid tutor from failing the INSERT on truncation.
 
-## Server actions — `lib/files-actions.ts` (`"use server"`)
+## Service & server actions — `lib/file-service.ts` + `lib/files-actions.ts`
 
-The thin auth + policy shell. **Every** action gates with **`requireTeacherUserId()`**
-(an *effective* teacher — student mode is denied — plus the session `oid`); never
-`session.user.isTeacher`. Validation is **coupled to saving by design** — an invalid
-file is never persisted. The validators also gate on **provider availability**: a
+The validate-then-store pipeline lives in **`lib/file-service.ts`** (a plain
+server module; auth never enters it — each channel gates itself and passes the
+verified `userId` in): `createFileForUser` / `updateFileForUser` are the cores,
+and `upsertFileForUser` composes them for the bearer `PUT /api/files/<name>`
+(create if the name is free — `kind` then required — else update against the
+**stored** kind, a mismatching supplied kind failing loudly; `docs/api.md`).
+Validation is **coupled to saving by design** — an invalid file is never
+persisted. The validators also gate on **provider availability**: a
 structurally valid activity naming an LLM provider this server has not configured
 (e.g. `Azure Foundry` without `AZURE_FOUNDRY_ENDPOINT`) fails with a
 `PROVIDER_UNAVAILABLE` error instead of erroring later mid-chat (`docs/ai-models.md`).
 
-- `createFileAction` → validate name + kind + YAML, store, then `redirect("/files/edit/<name>")`.
-- `updateFileAction(name, content)` → re-validate against the **stored** kind, store a new version.
+`lib/files-actions.ts` (`"use server"`) is the web channel's thin auth shell.
+**Every** action gates with **`requireTeacherUserId()`** (an *effective* teacher —
+student mode is denied — plus the session `oid`); never `session.user.isTeacher`.
+
+- `createFileAction` → `createFileForUser`, then `redirect("/files/edit/<name>")`.
+- `updateFileAction(name, content)` → `updateFileForUser` (re-validates against the **stored** kind), stores a new version.
 - `deleteSelectedFilesAction(names)` → the list's **"Delete Selected"**, the **only**
   delete path: soft-deletes every selected file in **one transaction**
   (`softDeleteFiles`, which loops the per-item `closeActiveFile` primitive) — the
@@ -113,10 +125,10 @@ A failure is either a short `message` (auth, name, store) or the full structured
 `errors` list from the validator (schema field paths, missing variables, fetch
 failures).
 
-### Validating the in-editor buffer (`validateFileContent`)
+### Validating the in-editor buffer (`validateFileContent`, `lib/file-service.ts`)
 
 The validator is URL-based with an injectable `Fetcher`. To validate the **unsaved
-buffer**, the action injects a `selfFetcher` that intercepts
+buffer**, the service injects a `selfFetcher` that intercepts
 `<origin>/api/files/<name>` URLs and resolves them **without a network round-trip**:
 the file being saved resolves to its in-editor buffer, and a sibling hosted file
 (`./other` → `…/api/files/other`) resolves from the database via `getActiveFile`.
@@ -134,7 +146,7 @@ rest of the app:
 
 - **tutor** → `loadAndBuildTutorPrompt(selfUrl, selfFetcher, { validateLibraries: true })`
   — the THOROUGH authoring gate (every fragment in every referenced library is
-  strict-rendered), matching share time and the validate page. Returns
+  strict-rendered), matching code-create time. Returns
   `title`/`description` for the denormalized columns.
 - **fragment** → `loadAndCheckFragmentFile(selfUrl, selfFetcher)`.
 - **quiz** → `loadAndCheckQuiz(selfUrl, selfFetcher)` (`lib/quiz-validate.ts`): a
@@ -174,9 +186,12 @@ with no cookies and teachers may share it. `proxy.ts` must keep `api/files` in i
 negative-lookahead matcher (alongside `api/auth`, `api/version`) — **keep the route
 and the matcher in sync**. The handler is `force-dynamic` with `Cache-Control: no-store`
 (edits must be visible immediately — the tutor-code flow re-fetches on every chat
-open/message); `404` for a malformed/unknown/deleted name, `503` on a DB error. All
-teacher CRUD lives in server actions on authed pages (not under `/api/files`), so it
-stays gated.
+open/message); `404` for a malformed/unknown/deleted name, `503` on a DB error.
+Teacher CRUD runs on two gated channels: the server actions on authed pages, and
+the **bearer** handlers riding the same `api/files` proxy exclusion —
+`PUT /api/files/<name>` (upsert) and the `GET /api/files` list — which gate
+THEMSELVES with `requireBearerTeacher` (`docs/api.md`); the per-name GET is the
+only public one.
 
 ## Reused building blocks
 
@@ -197,10 +212,12 @@ memory (see `docs/filtered-lists.md`).
 
 - `lib/file-store.unit.test.ts` — the temporal transitions; `lib/file-name.unit.test.ts`
   — the pure name/kind helpers.
-- `lib/files-actions.unit.test.ts` — the teacher gate, validate-before-store
-  ordering, structured-error pass-through, that the validate-only actions never
-  touch the store, and the GUI loaders (`loadYamlFromUrlAction` URL resolution,
-  `loadFileFromDbAction`).
+- `lib/file-service.unit.test.ts` — the pipeline: validate-before-store
+  ordering, structured-error pass-through, the upsert dispatch (create vs
+  update, missing kind, loud kind mismatch). `lib/files-actions.unit.test.ts` —
+  the shell: the teacher gate, the result → form-state mapping, that the
+  validate-only actions never touch the store, and the GUI loaders
+  (`loadYamlFromUrlAction` URL resolution, `loadFileFromDbAction`).
 - `tests/component/list-filter-bar.browser.test.tsx` — the shared filter bar's
   Apply → URL-search-param behavior (the DB filter is then exercised end-to-end by
   the `@live` `e2e/file-and-tutor-code-crud.spec.ts`, which covers file CRUD).

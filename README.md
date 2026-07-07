@@ -29,7 +29,7 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 | **Usage metering** (`lib/usage-store.ts`, `app/mastra/usage-exporter.ts`) | Per-hour token / tool-call / activity counts written off the response path into two anonymity-preserving tables (`novedu_usage_by_code`, `novedu_usage_by_user`), surfaced on the teacher `/usage` dashboard. See [`docs/usage-metering.md`](docs/usage-metering.md) and [`docs/dashboard.md`](docs/dashboard.md). |
 | **LLM providers** (`lib/llm/`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | Two OpenAI-compatible upstreams behind one server-only seam: a self-hosted vLLM GPU server ("SCCH", the default) and — optionally, when `AZURE_FOUNDRY_ENDPOINT` is set — **Azure Foundry** (passwordless Entra auth, no API key). The activity YAML's `llm:` block picks provider + model, and a code can override the pair; endpoints, keys, and tokens stay server-side. See [`docs/ai-models.md`](docs/ai-models.md). |
 | **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate (Next 16 renamed `middleware` → `proxy.ts`). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). JWT sessions, no DB adapter. See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: Entra **bearer tokens** (the CLI is a public client of the same app registration), validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
-| **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
+| **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text; **bearer** PUT: upsert for `novedu-cli files upload`), `files` + `codes` (**bearer**, teacher-only: list/create for the CLI — see [`docs/api.md`](docs/api.md)), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
 
 ### Request flow
 
@@ -206,7 +206,7 @@ npm run start
 | `npm run test:e2e:ci` | Hermetic + `@live-db` (against a SQL container); skips `@live-llm` and `@live-storage`. (`test:e2e:db` / `test:e2e:storage` run one live group.) |
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
 | `npm run qa` | `check` + `typecheck` + `test` + `build`. (`qa:e2e` adds the e2e suite.) |
-| `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, plus `login` / `logout` / `whoami` for Entra ID sign-in to the app's bearer-protected APIs. |
+| `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, `login` / `logout` / `whoami` for Entra ID sign-in, and the teacher management commands `codes create/list` + `files upload/list` (JSON in/out) against the app's bearer-protected APIs. |
 
 > Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
 
@@ -219,9 +219,10 @@ npm run start
 The `activities/` directory contains sample YAML for each module — `tutors/`, `quizzes/`,
 `writings/`, and `coding/` — each with its own `README.md` authoring guide (see also
 [`activities/README.md`](activities/README.md)). The `@novedu/cli` package (`cli/`) validates
-an activity file with the exact checks the app enforces, and signs in with Entra ID
-(`login` / `logout` / `whoami`) to call the app's bearer-protected APIs (`npm run cli`
-locally; published as `@novedu/cli` — see [`docs/api.md`](docs/api.md)).
+an activity file with the exact checks the app enforces, signs in with Entra ID
+(`login` / `logout` / `whoami`), and lets teachers manage the app over its
+bearer-protected APIs — `codes create/list` and `files upload/list`, JSON in/out
+(`npm run cli` locally; published as `@novedu/cli` — see [`docs/api.md`](docs/api.md)).
 
 ## Related projects
 

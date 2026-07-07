@@ -7,8 +7,10 @@ invariants are summarized in `AGENTS.md`; this file has the full mechanics. Read
 it before touching the entry points (`app/page.tsx`, `app/[code]/**`), the
 teacher surfaces (`app/codes/**`), the runtime route
 (`app/api/copilotkit/[[...slug]]/route.ts`), the validator/module seams
-(`lib/file-validators.ts`, `lib/code-modules/**`), or the `novedu_*` stores in
-`lib/code-*.ts`.
+(`lib/file-validators.ts`, `lib/code-modules/**`), the create pipeline
+(`lib/code-service.ts`), or the `novedu_*` stores in `lib/code-*.ts`. The
+bearer API channel (`GET`/`POST /api/codes`, `novedu-cli codes`) is documented
+in `docs/api.md`.
 
 ## The model
 
@@ -207,10 +209,15 @@ here): a **module** selector + the file URL + optional note + window as
 `datetime-local` (converted to unix seconds IN THE BROWSER — the only place the
 teacher's timezone is known) + the optional **LLM override** (below). **Either
 window field may be left blank** for an
-open-ended code (no start / no end → a null bound). The action (`createCodeAction`,
-`lib/code-actions.ts`) validates the input, then runs `validateCodeFile(module, …)`
-(the Layer-2 validator for the module's `fileKind`), **freezes**
-`anonymous`/`title` from the result, and inserts the row.
+open-ended code (no start / no end → a null bound). The create pipeline lives in
+**`lib/code-service.ts`** (`createCodeForUser` — a plain server module that takes
+the verified `userId`; auth never enters it): it validates the input, gates an
+LLM override's provider, then runs `validateCodeFile(module, …)` (the Layer-2
+validator for the module's `fileKind`), **freezes** `anonymous`/`title` from the
+result, and inserts the row. TWO thin channel shells call it with identical
+semantics: the web form's `createCodeAction` (`lib/code-actions.ts`,
+`requireTeacherUserId` + FormData + redirect) and the bearer
+`POST /api/codes` (`requireBearerTeacher` + JSON — `docs/api.md`).
 
 The **LLM override** section is two free-text fields (provider + model) plus
 preset buttons (`LLM_OVERRIDE_PRESETS`, `lib/llm/presets.ts` — the built-in
@@ -472,7 +479,7 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   itself (`lib/code-store.unit.test.ts`).
 - The **LLM override** is covered in CI end to end across its seams: validation +
   persistence + `effectiveLlm` (`lib/code-store.unit.test.ts`), the save-time
-  availability gate (`lib/code-actions.unit.test.ts`), each apply point (the
+  availability gate (`lib/code-service.unit.test.ts`), each apply point (the
   module descriptor tests, `app/mastra/tutor-agent.unit.test.ts`,
   `lib/quiz-actions.unit.test.ts`, the coding route test), and the form round-trip
   in the `@live-db` CRUD spec (preset fill → stored → shown → cleared).
