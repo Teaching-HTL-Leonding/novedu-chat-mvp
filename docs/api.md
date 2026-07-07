@@ -68,17 +68,20 @@ analogue of `checkCode()` for codes):
 - Every rejection throws a typed **`ApiAuthError`** (`status` 401 or 403) with
   a deliberately generic message; the underlying jose reason goes to telemetry
   (`recordError`, never token content). Route handlers return the error status
-  with a `WWW-Authenticate: Bearer` header and the generic body — validation
-  detail never reaches the client.
+  with a `WWW-Authenticate: Bearer` header and the generic
+  `{ message: "Unauthorized" | "Forbidden" }` body — the same `{ message }` key
+  as every other failure on this channel; validation detail never reaches the
+  client.
 
 ## Routes & conventions
 
 Shared conventions: every handler is `force-dynamic`, answers
-`Cache-Control: no-store`, returns the generic 401/403 body with
-`WWW-Authenticate: Bearer` on an `ApiAuthError`, and maps store-level DB
-failures (`undefined` returns) to `503 { message }`. Failure bodies are
-`{ message }` or `{ errors: ValidationError[] }` — the identical structured
-detail the web forms render. All timestamps are ISO 8601 UTC or `null`; every
+`Cache-Control: no-store`, and maps store-level DB failures (`undefined`
+returns) to `503 { message }`. EVERY failure body on this channel — including
+the generic 401/403 (sent with `WWW-Authenticate: Bearer` on an
+`ApiAuthError`) and the 500 fallback — is `{ message }` or
+`{ errors: ValidationError[] }` (the identical structured detail the web forms
+render); there is no third key for scripts to probe. All timestamps are ISO 8601 UTC or `null`; every
 `url` field is built from the request-time `resolveAppOrigin()` (never the
 stored `origin` column, which is operator-only).
 

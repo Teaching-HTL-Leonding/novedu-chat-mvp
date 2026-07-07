@@ -21,8 +21,8 @@ export function failJson(value: unknown): void {
 
 /**
  * Performs one authenticated API request and prints the outcome per the JSON
- * contract. Server error bodies (`{ message }`, `{ errors }`, the generic
- * 401/403 `{ error }`) are passed through VERBATIM to stderr — the server's
+ * contract. Server error bodies (`{ message }` — incl. the generic 401/403 —
+ * or `{ errors }`) are passed through VERBATIM to stderr — the server's
  * structured validation detail is the CLI's error message. No client-side
  * pre-validation: the server runs the identical pipeline; offline checking is
  * the `validate` command's job.

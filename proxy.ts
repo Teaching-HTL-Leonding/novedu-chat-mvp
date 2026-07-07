@@ -25,7 +25,11 @@ export const config = {
   // never a blanket prefix. (The bearer PUT /api/files/<name> and GET /api/files
   // ride the existing /api/files exclusion and self-gate the same way.)
   // Without a matcher the proxy would also run on _next/static, blocking CSS/JS.
+  // Every API exclusion is anchored with a path boundary (`(?:/|$)`) so none
+  // can silently widen to a future sibling route (e.g. a hypothetical
+  // /api/files-export must NOT ride the /api/files exclusion past the cookie
+  // gate).
   matcher: [
-    "/((?!api/auth|api/version|api/files|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|_next/static|_next/image|favicon.ico).*)",
   ],
 };

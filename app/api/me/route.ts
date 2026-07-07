@@ -16,12 +16,13 @@ export async function GET(request: Request) {
   } catch (error) {
     if (error instanceof ApiAuthError) {
       // Generic body; the validation detail stays server-side (telemetry).
+      // `{ message }` is the ONE failure key on the bearer channel (docs/api.md).
       return Response.json(
-        { error: error.message },
+        { message: error.message },
         { status: error.status, headers: { "WWW-Authenticate": "Bearer" } },
       );
     }
     recordError(error, { "novedu.area": "api-me" });
-    return Response.json({ error: "Internal server error" }, { status: 500 });
+    return Response.json({ message: "Internal server error" }, { status: 500 });
   }
 }

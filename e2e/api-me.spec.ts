@@ -80,6 +80,8 @@ test("no token → 401 with WWW-Authenticate, not a sign-in redirect", async ({ 
   const response = await request.get("/api/me", { maxRedirects: 0 });
   expect(response.status()).toBe(401);
   expect(response.headers()["www-authenticate"]).toBe("Bearer");
+  // { message } is the ONE failure key on the bearer channel (docs/api.md).
+  expect(await response.json()).toEqual({ message: "Unauthorized" });
 });
 
 test("garbage token → 401", async ({ request }) => {

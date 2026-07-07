@@ -129,10 +129,13 @@ beforeEach(() => {
 });
 
 describe("GET /api/codes auth", () => {
-  it("401s without a token, with WWW-Authenticate", async () => {
+  it("401s without a token, with WWW-Authenticate and the uniform { message } body", async () => {
     const res = await getRequest();
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toBe("Bearer");
+    // The generic auth failure uses the SAME { message } key as every other
+    // failure on the bearer channel — no second key for scripts to probe.
+    expect(await res.json()).toEqual({ message: "Unauthorized" });
     expect(mocks.listCodes).not.toHaveBeenCalled();
   });
 
@@ -144,6 +147,7 @@ describe("GET /api/codes auth", () => {
   it("403s a valid non-teacher token", async () => {
     const res = await getRequest("", await mint(false));
     expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ message: "Forbidden" });
     expect(mocks.listCodes).not.toHaveBeenCalled();
   });
 });
