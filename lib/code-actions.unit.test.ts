@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The actions are thin shells around the pure validation, the module's Layer-2
-// validator, and the code store — these tests pin the wiring: what gets stored
-// under whose user id, that create redirects to the new code's edit page, that
-// edit saves only the window+note, and that delete is teacher-gated (but NOT
+// The actions are thin auth + FormData shells around the shared pipeline in
+// lib/code-service.ts (covered by code-service.unit.test.ts) — these tests pin
+// the SHELL: the teacher gate, the FormData field mapping, the result → form
+// state mapping, that create redirects to the new code's edit page, that edit
+// saves only the window+note, and that delete is teacher-gated (but NOT
 // owner-gated — any effective teacher may manage any code).
 
 const mocks = vi.hoisted(() => ({
@@ -121,7 +122,7 @@ describe("createCodeAction", () => {
     });
   });
 
-  it("stores the LLM override pair when both fields are submitted", async () => {
+  it("passes the LLM override FormData fields through to the pipeline", async () => {
     const data = formData();
     data.set("llmProvider", "SCCH");
     data.set("llmModel", "some-model");
@@ -130,65 +131,6 @@ describe("createCodeAction", () => {
       "teacher-sub-1",
       expect.objectContaining({ llm: { provider: "SCCH", model: "some-model" } }),
     );
-  });
-
-  it("rejects an override naming a provider this server has not configured", async () => {
-    // Without AZURE_FOUNDRY_ENDPOINT Foundry is unavailable, so the save-time
-    // gate must reject the override instead of storing it.
-    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
-    const data = formData();
-    data.set("llmProvider", "Azure Foundry");
-    data.set("llmModel", "gpt-5.4-mini");
-    const state = await createCodeAction({ status: "idle" }, data);
-    expect(state).toMatchObject({
-      status: "error",
-      message: expect.stringMatching(/Azure Foundry/),
-    });
-    expect(mocks.createCode).not.toHaveBeenCalled();
-  });
-
-  it("rejects a half-filled override pair without touching storage", async () => {
-    const data = formData();
-    data.set("llmModel", "some-model");
-    const state = await createCodeAction({ status: "idle" }, data);
-    expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/both/i) });
-    expect(mocks.createCode).not.toHaveBeenCalled();
-  });
-
-  it("stores null bounds for an open-ended code (blank start and end)", async () => {
-    const data = formData();
-    data.set("startTs", "");
-    data.set("endTs", "");
-    await createCodeAction({ status: "idle" }, data);
-    expect(mocks.createCode).toHaveBeenCalledWith(
-      "teacher-sub-1",
-      expect.objectContaining({ validFrom: null, validUntil: null }),
-    );
-  });
-
-  it("freezes the activity's anonymity flag from the validator result", async () => {
-    mocks.validateCodeFile.mockResolvedValue({
-      ok: true,
-      warnings: [],
-      title: null,
-      description: null,
-      anonymous: false,
-    });
-    await createCodeAction({ status: "idle" }, formData());
-    expect(mocks.createCode).toHaveBeenCalledWith(
-      "teacher-sub-1",
-      expect.objectContaining({ anonymous: false }),
-    );
-  });
-
-  it("is a HARD error when the code cannot be stored (no stateless fallback)", async () => {
-    mocks.createCode.mockResolvedValue({ stored: false });
-    const state = await createCodeAction({ status: "idle" }, formData());
-    expect(state).toMatchObject({
-      status: "error",
-      message: expect.stringMatching(/could not be stored/i),
-    });
-    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
   it("rejects a missing/invalid module without touching storage", async () => {
@@ -203,14 +145,6 @@ describe("createCodeAction", () => {
     mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
     const state = await createCodeAction({ status: "idle" }, formData());
     expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/teachers/i) });
-    expect(mocks.createCode).not.toHaveBeenCalled();
-  });
-
-  it("surfaces validation errors without touching storage", async () => {
-    const data = formData();
-    data.set("file", "not a url");
-    const state = await createCodeAction({ status: "idle" }, data);
-    expect(state).toMatchObject({ status: "error" });
     expect(mocks.createCode).not.toHaveBeenCalled();
   });
 
