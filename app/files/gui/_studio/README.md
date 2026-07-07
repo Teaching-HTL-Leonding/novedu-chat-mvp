@@ -1,10 +1,9 @@
 # `_studio/` — the student GUI workspace
 
-**This folder is yours.** Everything for the YAML-editing GUI lives here. The two
-files outside it under `app/files/gui/` (`edit/[...name]/page.tsx` and
-`view/page.tsx`) are **app-owned route shells** — don't edit them; they just gate
-access, load the YAML, and render your components (`StudentFileEditor` /
-`StudentFileViewer`) with plain props.
+**This folder is yours.** Everything for the YAML-editing GUI lives here. The one
+file outside it under `app/files/gui/` (`edit/[...name]/page.tsx`) is an
+**app-owned route shell** — don't edit it; it just gates access, loads the YAML,
+and renders your component (`StudentFileEditor`) with plain props.
 
 Start by reading the full brief:
 

@@ -6,10 +6,10 @@ import {
 } from "@/lib/tutors";
 
 // Pure presentational views for a validation result's errors, warnings, and (for
-// a fragment library) its successful summary. Shared by the validate-tutor page,
-// the tutor-code form, and the YAML Files create/edit forms — kept in
-// components/ (not a route folder) since several features depend on it. Rendered
-// and tested in isolation with plain props (no fetch, no state).
+// a fragment library) its successful summary. Shared by the tutor-code form and
+// the YAML Files create/edit forms — kept in components/ (not a route folder)
+// since several features depend on it. Rendered and tested in isolation with
+// plain props (no fetch, no state).
 
 // Local recipes shared by the error/warning/fragment items below.
 const LIST = "flex flex-col gap-2";

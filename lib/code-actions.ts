@@ -2,12 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { appHostedFetcher } from "@/lib/app-hosted-fetcher";
-import { resolveAppOrigin } from "@/lib/app-origin";
-import { validateCodeFile } from "@/lib/code-modules/registry";
-import { isCodeModule } from "@/lib/code-modules/types";
+import { createCodeForUser } from "@/lib/code-service";
 import { deleteCodesAndData } from "@/lib/code-stats-store";
-import { createCode, getCode, updateCode, validateCodeRequest } from "@/lib/code-store";
+import { getCode, updateCode, validateCodeRequest } from "@/lib/code-store";
 import { providerUnavailableReason } from "@/lib/llm/availability";
 import { requireTeacherUserId } from "@/lib/student-mode";
 import type { ValidationError } from "@/lib/tutors";
@@ -17,18 +14,17 @@ export type CodeFormState =
   | { status: "error"; message: string }
   // An activity that fails validation carries the FULL structured error list
   // (codes, field paths, missing variables) so the form can show the same
-  // actionable detail as the files / validate-tutor pages — not just the first
-  // message.
+  // actionable detail as the files pages — not just the first message.
   | { status: "error"; errors: ValidationError[] }
   // Edit succeeded. (Create does not use this — it redirects to the new code's
   // edit page, which shows the shareable link.)
   | { status: "saved" };
 
-// Creates a code for an activity (`module`) + file + availability window. The
-// stored row is the only artifact — there is no stateless fallback, so a storage
-// failure is a hard error. The browser submits `startTs`/`endTs` as unix seconds
-// (computed client-side — only the browser knows the teacher's timezone); the raw
-// datetime-local fields are display-only.
+// Creates a code for an activity (`module`) + file + availability window. Thin
+// auth + FormData shell around the shared pipeline in `lib/code-service.ts`
+// (the bearer API route is the other caller). The browser submits
+// `startTs`/`endTs` as unix seconds (computed client-side — only the browser
+// knows the teacher's timezone); the raw datetime-local fields are display-only.
 export async function createCodeAction(
   _prev: CodeFormState,
   formData: FormData,
@@ -45,14 +41,9 @@ export async function createCodeAction(
           : "Your session carries no user id — sign in again.",
     };
   }
-  const userId = gate.userId;
 
-  const module = formData.get("module");
-  if (!isCodeModule(module)) {
-    return { status: "error", message: "Pick which activity this code is for." };
-  }
-
-  const validation = validateCodeRequest({
+  const result = await createCodeForUser(gate.userId, {
+    module: formData.get("module"),
     file: formData.get("file"),
     start: formData.get("startTs"),
     end: formData.get("endTs"),
@@ -60,62 +51,16 @@ export async function createCodeAction(
     llmProvider: formData.get("llmProvider"),
     llmModel: formData.get("llmModel"),
   });
-  if (!validation.ok) return { status: "error", message: validation.message };
-
-  // An override naming a provider this server has not configured must fail NOW,
-  // not when the first student opens the code — the same save-time gate the
-  // Layer-2 validators run for the YAML's own provider.
-  if (validation.payload.llm) {
-    const unavailable = providerUnavailableReason(validation.payload.llm.provider);
-    if (unavailable) return { status: "error", message: unavailable };
-  }
-
-  let origin: string;
-  try {
-    origin = await resolveAppOrigin();
-  } catch {
-    return {
-      status: "error",
-      message:
-        "Could not determine the app's public address. Set CODE_ORIGIN in the server configuration.",
-    };
-  }
-
-  // Catch broken activities at create time, not when the first student opens the
-  // code. The module reuses its Layer-2 validator — a strict structural gate for
-  // every module (for tutor, the THOROUGH whole-library gate). The app-hosted
-  // fetcher resolves app-hosted file URLs from the DB directly (no loopback).
-  const result = await validateCodeFile(
-    module,
-    validation.payload.fileUrl,
-    appHostedFetcher(origin),
-  );
-  if (!result.ok) return { status: "error", errors: result.errors };
-
-  // Freeze the activity's anonymity flag onto the row at create time. `result` is
-  // the just-validated YAML's metadata; a later edit to it will not change the
-  // stored value (documented behavior). The validator defaults it to true.
-  const stored = await createCode(userId, {
-    module,
-    fileUrl: validation.payload.fileUrl,
-    validFrom: validation.payload.validFrom,
-    validUntil: validation.payload.validUntil,
-    note: validation.payload.note,
-    origin,
-    anonymous: result.anonymous,
-    llm: validation.payload.llm,
-  });
-  if (!stored.stored) {
-    return {
-      status: "error",
-      message: "The code could not be stored. Try again, or contact the operator.",
-    };
+  if (!result.ok) {
+    return result.reason === "validation"
+      ? { status: "error", errors: result.errors }
+      : { status: "error", message: result.message };
   }
 
   // Land on the new code's edit page — it shows the shareable URL (with a copy
   // button) and lets the teacher tweak the note/window straight away.
   revalidatePath("/codes");
-  redirect(`/codes/edit/${stored.code}`);
+  redirect(`/codes/edit/${result.entry.code}`);
 }
 
 /** The uniform shape every list's "Delete Selected" action returns. */

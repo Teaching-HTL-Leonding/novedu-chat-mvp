@@ -4,8 +4,7 @@ import { STORAGE_STATE, TEACHER_STORAGE_STATE } from "./auth.constants";
 // "Student mode": a teacher temporarily experiences the app as a student. While
 // active, every teacher surface must deny them exactly like a real student —
 // with one exception: the visible "Student mode" pill whose Exit control
-// restores their rights. The mode is a cookie, so page.request (same browser
-// context) lets us also prove the API enforcement.
+// restores their rights.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
 
@@ -29,27 +28,18 @@ test("a teacher can enter student mode, is treated as a student, and can exit ag
   await expect(page.getByRole("img", { name: "Teacher" })).toHaveCount(0);
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Validate Tutor" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "YAML Files" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Codes", exact: true })).toHaveCount(0);
 
-  // ...and the server-side enforcement points deny like for a real student.
-  await page.goto("/validate-tutor");
+  // ...and another teacher page's server-side gate denies like for a real student.
+  await page.goto("/files");
   await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
-  const res = await page.request.post("/api/validate-tutor", {
-    data: { url: "https://example.com/tutor.yaml" },
-  });
-  expect(res.status()).toBe(403);
 
   // Exit via the pill — rights come back immediately.
   await page.getByRole("button", { name: "Exit" }).click();
   await expect(page.getByText("Student mode")).toHaveCount(0);
   await expect(page.getByRole("img", { name: "Teacher" })).toBeVisible();
-  await expect(page.getByRole("textbox")).toBeVisible(); // validate-tutor form again
-
-  const restored = await page.request.post("/api/validate-tutor", {
-    data: { url: "not-a-url" },
-  });
-  expect(restored.status()).toBe(400); // past the 403 gate, rejected as a bad URL
+  await expect(page.getByRole("link", { name: "New file" })).toBeVisible(); // /files again
 });
 
 test("a student gains nothing by setting the student-mode cookie", async ({ browser }) => {

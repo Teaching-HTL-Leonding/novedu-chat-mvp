@@ -16,12 +16,6 @@ const BRAND = "HTBLA Leonding - Novedu";
 const NAV_ITEMS = [
   { href: "/", label: "Chat", heading: "Chat Prototype", teacherOnly: false },
   {
-    href: "/validate-tutor",
-    label: "Validate Tutor",
-    heading: "Validate Tutor",
-    teacherOnly: true,
-  },
-  {
     href: "/codes",
     label: "Codes",
     heading: "Codes",

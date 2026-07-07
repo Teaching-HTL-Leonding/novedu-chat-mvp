@@ -5,16 +5,18 @@ import { redirect } from "next/navigation";
 import { appHostedFetcher } from "@/lib/app-hosted-fetcher";
 import { resolveAppOrigin } from "@/lib/app-origin";
 import {
-  createFile,
+  createFileForUser,
+  type FileServiceResult,
+  updateFileForUser,
+  validateFileContent,
+} from "@/lib/file-service";
+import {
   type FileKind,
   getActiveFile,
   isFileKind,
   softDeleteFiles,
-  updateFile,
   validateFileName,
 } from "@/lib/file-store";
-import { filePublicUrl, filesUrlPrefix } from "@/lib/file-url";
-import { fileValidators } from "@/lib/file-validators";
 import { requireTeacherUserId } from "@/lib/student-mode";
 import {
   defaultFetcher,
@@ -23,11 +25,12 @@ import {
   type ValidationWarning,
 } from "@/lib/tutors";
 
-// Teacher-only server actions for app-hosted YAML files. Each gates with the
-// shared `requireTeacherUserId()`, VALIDATES the YAML before persisting (an
-// invalid file is rejected — saving and validity are coupled by design), and
-// revalidates the list. Storage lives in `lib/file-store.ts`; this is the thin
-// auth + policy shell around it.
+// Teacher-only server actions for app-hosted YAML files: thin auth + FormData
+// shells around the shared validate-then-store pipeline in `lib/file-service.ts`
+// (the bearer API route is the other caller). Each gates with the shared
+// `requireTeacherUserId()` and revalidates the list; the service VALIDATES the
+// YAML before persisting (an invalid file is rejected — saving and validity are
+// coupled by design).
 //
 // A failure is either a plain `message` (auth, name, store) or the structured
 // `errors` from the validator (so the UI can show the full, specific list —
@@ -45,10 +48,6 @@ export type SaveFileResult = { ok: true } | FileActionFailure;
 // as a rejected save (a short message or the full structured error list).
 export type ValidateFileResult = { ok: true; warnings: ValidationWarning[] } | FileActionFailure;
 
-type ContentValidation =
-  | { ok: true; title: string | null; description: string | null; warnings: ValidationWarning[] }
-  | { ok: false; errors: ValidationError[] };
-
 // Maps the shared teacher-gate failure to a message for these file actions —
 // only the verb (create/edit/delete) differs between the call sites.
 function gateFailure(
@@ -64,73 +63,18 @@ function gateFailure(
   };
 }
 
-/**
- * Validates the in-editor YAML buffer with the SAME core the chat and the
- * /validate-tutor page use, BEFORE anything is stored. The validator is URL-based
- * with an injectable fetcher; we intercept references to app-hosted files
- * (`<origin>/api/files/<name>`) and resolve them WITHOUT a network round-trip:
- *   - the file being saved resolves to its unsaved buffer, and
- *   - a sibling hosted file (`./other` → `<origin>/api/files/other`) resolves
- *     from the database directly — no loopback fetch to our own public origin
- *     (which a container may not even be able to reach), and no fragility around
- *     an exact self-URL string match.
- * Everything else (e.g. a fragment hosted on GitHub) is fetched for real.
- * On success it returns the tutor's title/description (null for fragments) for the
- * denormalized search columns; on failure, the full structured error list.
- */
-async function validateFileContent(
-  name: string,
-  kind: FileKind,
-  content: string,
-): Promise<ContentValidation> {
-  let origin: string;
-  try {
-    origin = await resolveAppOrigin();
-  } catch {
-    return {
-      ok: false,
-      errors: [
-        {
-          code: "INVALID_URL",
-          message:
-            "Could not determine the app's public address. Set CODE_ORIGIN in the server configuration.",
-        },
-      ],
-    };
-  }
-
-  const selfUrl = filePublicUrl(origin, name);
-  const prefix = filesUrlPrefix(origin);
-  const hostedFetcher = appHostedFetcher(origin);
-  const selfFetcher: Fetcher = async (url) => {
-    // The file being saved resolves to its UNSAVED buffer; siblings and external
-    // fragments go through the shared hosted fetcher (DB for app-hosted, real
-    // fetch otherwise).
-    if (url.startsWith(prefix)) {
-      const refName = decodeURIComponent(url.slice(prefix.length).split(/[?#]/)[0] ?? "");
-      if (refName === name) return { ok: true, status: 200, text: async () => content };
-    }
-    return hostedFetcher(url);
-  };
-
-  // Layer 2: the validator keyed by FileKind is the single source of truth for
-  // both /files save and code-create (see lib/file-validators.ts). It surfaces
-  // the title/description for the denormalized search columns; the `anonymous`
-  // flag it also carries is unused here (only code-create freezes it).
-  const result = await fileValidators[kind].validate(selfUrl, selfFetcher);
-  if (!result.ok) return { ok: false, errors: result.errors };
-  return {
-    ok: true,
-    title: result.title,
-    description: result.description,
-    warnings: result.warnings,
-  };
+// Collapses the service's failure discriminants to the two shapes the forms
+// render: the structured validator errors, or a plain message.
+function toActionFailure(result: Exclude<FileServiceResult, { ok: true }>): FileActionFailure {
+  return result.reason === "validation"
+    ? { ok: false, errors: result.errors }
+    : { ok: false, message: result.message };
 }
 
 /**
- * Creates a new hosted file (version 1). Validates the name, the chosen kind, and
- * the YAML; on success stores it and redirects to its edit page. Called directly
- * (not as a form action) so the create form keeps its entered fields on failure.
+ * Creates a new hosted file (version 1) via `createFileForUser`; on success
+ * redirects to its edit page. Called directly (not as a form action) so the
+ * create form keeps its entered fields on failure.
  */
 export async function createFileAction(input: {
   name: string;
@@ -139,87 +83,28 @@ export async function createFileAction(input: {
 }): Promise<FileActionFailure> {
   const gate = await requireTeacherUserId();
   if (!gate.ok) return gateFailure(gate.reason, "create");
-  const userId = gate.userId;
 
+  const result = await createFileForUser(gate.userId, input);
+  if (!result.ok) return toActionFailure(result);
+
+  // The service accepted the name, so the (normalizing) re-validation holds.
   const nameValidation = validateFileName(input.name);
-  if (!nameValidation.ok) return { ok: false, message: nameValidation.message };
-  const name = nameValidation.name;
-
-  if (!isFileKind(input.kind)) {
-    return {
-      ok: false,
-      message: "Choose whether this is a tutor, fragment, quiz, writing or coding file.",
-    };
-  }
-  if (typeof input.content !== "string" || input.content.trim() === "") {
-    return { ok: false, message: "The file is empty — add some YAML before creating it." };
-  }
-
-  const validation = await validateFileContent(name, input.kind, input.content);
-  if (!validation.ok) return { ok: false, errors: validation.errors };
-
-  const stored = await createFile(
-    {
-      name,
-      kind: input.kind,
-      content: input.content,
-      title: validation.title,
-      description: validation.description,
-    },
-    userId,
-  );
-  if (!stored.ok) {
-    return {
-      ok: false,
-      message:
-        stored.reason === "name-taken"
-          ? "A file with that name already exists. Choose another name."
-          : "The file could not be stored. Try again, or contact the operator.",
-    };
-  }
-
+  const name = nameValidation.ok ? nameValidation.name : input.name;
   revalidatePath("/files");
   redirect(`/files/edit/${name}`);
 }
 
 /**
- * Saves a new version of an existing file. Re-validates against the file's stored
- * kind and blocks the save if invalid. Called from the edit form's Save button.
+ * Saves a new version of an existing file via `updateFileForUser` (which
+ * re-validates against the file's stored kind and blocks the save if invalid).
+ * Called from the edit form's Save button.
  */
 export async function updateFileAction(name: string, content: string): Promise<SaveFileResult> {
   const gate = await requireTeacherUserId();
   if (!gate.ok) return gateFailure(gate.reason, "edit");
-  const userId = gate.userId;
 
-  if (typeof content !== "string" || content.trim() === "") {
-    return { ok: false, message: "The file is empty — add some YAML before saving." };
-  }
-
-  const active = await getActiveFile(name);
-  if (active === undefined) {
-    return { ok: false, message: "The file could not be checked right now — try again." };
-  }
-  if (active === null || !isFileKind(active.kind)) {
-    return { ok: false, message: "This file no longer exists. Reload the list." };
-  }
-
-  const validation = await validateFileContent(name, active.kind, content);
-  if (!validation.ok) return { ok: false, errors: validation.errors };
-
-  const result = await updateFile(
-    name,
-    { content, title: validation.title, description: validation.description },
-    userId,
-  );
-  if (!result.ok) {
-    return {
-      ok: false,
-      message:
-        result.reason === "not-found"
-          ? "The file changed or was removed by someone else. Reload and try again."
-          : "The file could not be saved. Try again.",
-    };
-  }
+  const result = await updateFileForUser(gate.userId, name, content);
+  if (!result.ok) return toActionFailure(result);
 
   revalidatePath("/files");
   revalidatePath(`/files/edit/${name}`);
@@ -322,10 +207,10 @@ export async function deleteSelectedFilesAction(names: string[]): Promise<Delete
  *     self-loopback fetch (reusing {@link appHostedFetcher}).
  * Returns the raw text plus the resolved absolute URL.
  *
- * SSRF note: like /api/validate-tutor this fetches an arbitrary user-supplied URL
- * server-side; for this prototype we only restrict the scheme to http(s). A
- * production deployment should additionally allow-list hosts / block private IP
- * ranges and disable redirects.
+ * SSRF note: like the save-time validators this fetches an arbitrary
+ * user-supplied URL server-side; for this prototype we only restrict the scheme
+ * to http(s). A production deployment should additionally allow-list hosts /
+ * block private IP ranges and disable redirects.
  */
 export async function loadYamlFromUrlAction(input: {
   url: string;

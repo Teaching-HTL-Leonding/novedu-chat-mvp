@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { Command } from "commander";
+import { registerCodes } from "./commands/codes";
+import { registerFiles } from "./commands/files";
 import { registerLogin } from "./commands/login";
 import { registerLogout } from "./commands/logout";
 import { registerValidate } from "./commands/validate";
@@ -15,7 +17,8 @@ const { version } = JSON.parse(
 ) as { version: string };
 
 // Entry point for the `novedu-cli` CLI. Each feature registers itself as a
-// subcommand; today that's `validate`, with more to follow.
+// subcommand: offline validation (`validate`), auth (`login`/`logout`/`whoami`),
+// and the JSON management commands (`codes`, `files`).
 const program = new Command();
 
 program
@@ -27,6 +30,8 @@ registerValidate(program);
 registerLogin(program);
 registerLogout(program);
 registerWhoami(program);
+registerCodes(program);
+registerFiles(program);
 
 program.parseAsync().catch((err) => {
   console.error(err instanceof Error ? err.message : err);

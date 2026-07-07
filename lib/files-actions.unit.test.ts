@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The file actions are thin auth + policy shells around the validator and the
-// store. These tests pin the wiring: the teacher gate, the VALIDATE-BEFORE-STORE
-// ordering (an invalid file must never be persisted), the structured-error
-// pass-through, and the store-reason → message mapping. The store and validator
-// are mocked; the pure name/kind checks stay real.
+// The save actions are thin auth shells around the shared pipeline in
+// lib/file-service.ts (covered by file-service.unit.test.ts). These tests pin
+// the SHELL for create/update — the teacher gate, the result → form-state
+// mapping, the revalidate/redirect wiring — plus the FULL behavior of what
+// still lives here: the validate-only actions and the student-GUI loaders.
+// The store and validator are mocked; the pure name/kind checks stay real.
 
 const mocks = vi.hoisted(() => ({
   requireTeacherUserId: vi.fn(),
@@ -115,61 +116,13 @@ describe("createFileAction", () => {
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/sign in/i) });
   });
 
-  it("rejects a malformed name without validating or storing", async () => {
-    const result = await createFileAction({ ...FRAGMENT, name: "bad name!" });
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/letters/i) });
-    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
-    expect(mocks.createFile).not.toHaveBeenCalled();
+  it("maps a service message failure to the form's message shape", async () => {
+    mocks.createFile.mockResolvedValue({ ok: false, reason: "name-taken" });
+    const result = await createFileAction(FRAGMENT);
+    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/already exists/i) });
   });
 
-  it("rejects an unknown kind", async () => {
-    const result = await createFileAction({ ...FRAGMENT, kind: "nonsense" });
-    expect(result).toMatchObject({
-      ok: false,
-      message: expect.stringMatching(/tutor, fragment, quiz, writing or coding/i),
-    });
-    expect(mocks.createFile).not.toHaveBeenCalled();
-  });
-
-  it("validates a quiz via loadAndCheckQuiz, then stores it with a null description", async () => {
-    mocks.loadAndCheckQuiz.mockResolvedValue({
-      ok: true,
-      warnings: [],
-      anonymous: true,
-      title: "Quiz Title",
-    });
-    await expect(
-      createFileAction({ name: "my-quiz", kind: "quiz", content: "id: q\n" }),
-    ).rejects.toThrow("REDIRECT:/files/edit/my-quiz");
-    // The quiz path runs the quiz validator, NOT the tutor/fragment loaders …
-    expect(mocks.loadAndCheckQuiz).toHaveBeenCalled();
-    expect(mocks.loadAndBuildTutorPrompt).not.toHaveBeenCalled();
-    expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
-    // … and stores the validator's title with a NULL description (quizzes carry none).
-    expect(mocks.createFile).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "quiz", title: "Quiz Title", description: null }),
-      "teacher-1",
-    );
-  });
-
-  it("blocks an invalid quiz with structured errors and does NOT store", async () => {
-    mocks.loadAndCheckQuiz.mockResolvedValue({
-      ok: false,
-      errors: [{ code: "QUIZ_SCHEMA_ERROR", message: "no questions" }],
-      warnings: [],
-    });
-    const result = await createFileAction({ name: "my-quiz", kind: "quiz", content: "id: q\n" });
-    expect(result).toMatchObject({ ok: false, errors: [{ code: "QUIZ_SCHEMA_ERROR" }] });
-    expect(mocks.createFile).not.toHaveBeenCalled();
-  });
-
-  it("rejects empty content", async () => {
-    const result = await createFileAction({ ...FRAGMENT, content: "   " });
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/empty/i) });
-    expect(mocks.createFile).not.toHaveBeenCalled();
-  });
-
-  it("passes the validator's structured errors through and does NOT store", async () => {
+  it("maps the validator's structured errors to the form's errors shape", async () => {
     mocks.loadAndCheckFragmentFile.mockResolvedValue({
       ok: false,
       errors: [
@@ -182,32 +135,6 @@ describe("createFileAction", () => {
       errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR" }],
     });
     expect(mocks.createFile).not.toHaveBeenCalled();
-  });
-
-  it("stores a tutor's denormalized title/description from the validator", async () => {
-    mocks.loadAndBuildTutorPrompt.mockResolvedValue({ ok: true, title: "T", description: "D" });
-    await expect(
-      createFileAction({ name: "my-tutor", kind: "tutor", content: "id: t" }),
-    ).rejects.toThrow("REDIRECT:/files/edit/my-tutor");
-    expect(mocks.createFile).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "my-tutor", kind: "tutor", title: "T", description: "D" }),
-      "teacher-1",
-    );
-  });
-
-  it("maps a name-taken store result to a clear message", async () => {
-    mocks.createFile.mockResolvedValue({ ok: false, reason: "name-taken" });
-    const result = await createFileAction(FRAGMENT);
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/already exists/i) });
-  });
-
-  it("maps a store error to a retry message", async () => {
-    mocks.createFile.mockResolvedValue({ ok: false, reason: "error" });
-    const result = await createFileAction(FRAGMENT);
-    expect(result).toMatchObject({
-      ok: false,
-      message: expect.stringMatching(/could not be stored/i),
-    });
   });
 
   it("revalidates and redirects to the edit page on success", async () => {
@@ -224,20 +151,7 @@ describe("updateFileAction", () => {
     expect(mocks.updateFile).not.toHaveBeenCalled();
   });
 
-  it("rejects empty content", async () => {
-    const result = await updateFileAction("my-file", "  ");
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/empty/i) });
-    expect(mocks.updateFile).not.toHaveBeenCalled();
-  });
-
-  it("reports a transient lookup failure (DB down)", async () => {
-    mocks.getActiveFile.mockResolvedValue(undefined);
-    const result = await updateFileAction("my-file", "id: f\n");
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/try again/i) });
-    expect(mocks.updateFile).not.toHaveBeenCalled();
-  });
-
-  it("reports a vanished file", async () => {
+  it("maps a service message failure to the form's message shape", async () => {
     mocks.getActiveFile.mockResolvedValue(null);
     const result = await updateFileAction("my-file", "id: f\n");
     expect(result).toMatchObject({
@@ -247,7 +161,7 @@ describe("updateFileAction", () => {
     expect(mocks.updateFile).not.toHaveBeenCalled();
   });
 
-  it("passes validator errors through and does NOT store", async () => {
+  it("maps validator errors to the form's errors shape", async () => {
     mocks.loadAndCheckFragmentFile.mockResolvedValue({
       ok: false,
       errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR", message: "bad" }],
@@ -255,15 +169,6 @@ describe("updateFileAction", () => {
     const result = await updateFileAction("my-file", "id: f\n");
     expect(result).toMatchObject({ ok: false, errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR" }] });
     expect(mocks.updateFile).not.toHaveBeenCalled();
-  });
-
-  it("maps a not-found store result to a conflict message", async () => {
-    mocks.updateFile.mockResolvedValue({ ok: false, reason: "not-found" });
-    const result = await updateFileAction("my-file", "id: f\n");
-    expect(result).toMatchObject({
-      ok: false,
-      message: expect.stringMatching(/changed or was removed/i),
-    });
   });
 
   it("revalidates on success", async () => {

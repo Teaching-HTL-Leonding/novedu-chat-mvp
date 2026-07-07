@@ -25,6 +25,13 @@ description: >-
   protected APIs. Use it on phrasings like "log in to novedu", "sign in the CLI",
   "who am I signed in as?", "am I authenticated?", "sign out of novedu", or
   whenever a CLI command fails with "Not signed in".
+
+  Signed-in teachers can also MANAGE the app from the CLI: mint activity codes
+  (`codes create`), list codes (`codes list`), upload app-hosted YAML files as an
+  upsert (`files upload`), and list files (`files list`) — all JSON output. Use
+  those on phrasings like "create a code for this quiz", "share this activity",
+  "upload this YAML to the app", "publish this tutor file", "what codes do I
+  have?", or "list my hosted files".
 ---
 
 # Validating activity YAML with `novedu-cli`
@@ -54,8 +61,9 @@ so a latent template bug anywhere in a referenced library fails the tutor.
 - **Exit code `0`** = valid, **`1`** = errors found. That makes it usable as a
   pre-commit / CI gate.
 - Besides `validate`, the CLI has the auth commands `login` / `logout` / `whoami`
-  (see below); it is built to grow, so check `--help` if a task sounds like it
-  might be covered by a newer command.
+  and the teacher management groups `codes` / `files` (all below); it is built to
+  grow, so check `--help` if a task sounds like it might be covered by a newer
+  command.
 
 ## Pick the right invocation: inside the repo vs. outside
 
@@ -185,11 +193,49 @@ prints the display name, user id, and whether the account is a teacher. It
 targets the production server by default; pass `--server http://localhost:3000`
 (or set `NOVEDU_SERVER`) against a local dev server.
 
+## Managing codes & files: `codes`, `files` (teacher, sign-in required)
+
+Teacher-only management over the app's bearer API — the server runs the
+IDENTICAL validation pipeline as the web forms, so there is no need to
+pre-validate before uploading (use `validate` for offline checks). All four
+commands accept `--server <url>` (default: production; or set `NOVEDU_SERVER`).
+
+```
+codes create --module <tutor|quiz|writing|coding> --file <url>
+             [--start <ISO>] [--end <ISO>] [--note <text>]
+             [--llm-provider <p> --llm-model <m>]
+codes list   [--search <q>] [--module <m>] [--all]
+files upload <name> [--kind <tutor|fragment|quiz|writing|coding>]
+             (--file <path> | reads stdin)
+files list   [--search <q>] [--all]
+```
+
+- **Output is JSON only.** Success: the API's objects verbatim on **stdout**,
+  pretty-printed (pipe into `jq`). Failures: JSON on **stderr** — `{ message }`
+  or `{ errors: [...] }` with the full structured validation detail — and exit
+  1. Read the stderr JSON to fix the exact problem instead of guessing.
+- `codes create` mints a shareable code for an activity YAML at a public URL
+  (or an app-hosted `…/api/files/<name>` URL). The YAML is fully validated
+  server-side before the code is stored; the response includes the shareable
+  `url`. `--start`/`--end` must be ISO 8601 **with an explicit offset or `Z`**
+  (e.g. `2026-07-07T08:00:00Z` or `…+02:00`) — a naive datetime is rejected.
+  The `--llm-provider`/`--llm-model` override pair is both-or-nothing.
+- `files upload <name>` is an **upsert**: if no file named `<name>` exists it
+  is created (then `--kind` is required — the error says so); if it exists, a
+  new version is saved and validated against the STORED kind. A `--kind` that
+  contradicts the stored kind fails with a 409 — a file's kind is frozen at
+  create time. YAML comes from `--file <path>` or stdin.
+- Both `list` commands default to **only your own** codes/files (like the web
+  lists); `--all` widens to every teacher's. `--search` is a contains-filter.
+- Downloading a file needs no command: every hosted file is public at the
+  `url` the list returns (`GET /api/files/<name>`).
+- A non-teacher account gets a generic 403 — verify with `whoami`
+  (`Teacher: yes`).
+
 ## Scope — what this CLI does NOT do
 
-Beyond validating and authenticating, nothing yet: it does not create or delete
-codes, upload files, or deploy. Don't offer those via this CLI today (they are
-planned — check `--help` for what actually exists).
+It does not edit or delete codes, delete files, show stats/conversations, or
+deploy. Those stay in the web app (deletion is deliberately bulk-only there).
 
 ## Examples
 
@@ -237,4 +283,30 @@ Machine-readable output for scripting/CI:
 
 ```bash
 npx @novedu/cli validate ./my-quiz.yaml --kind quiz --json
+```
+
+Upload a quiz YAML to the app (creates it — the name is new, so `--kind` is
+required) and mint a code for it:
+
+```bash
+npx @novedu/cli files upload sorting-quiz --kind quiz --file ./sorting-quiz.yaml
+# { "name": "sorting-quiz", "kind": "quiz", "url": "https://…/api/files/sorting-quiz", "action": "created" }
+
+npx @novedu/cli codes create --module quiz \
+  --file https://…/api/files/sorting-quiz \
+  --start 2026-07-07T08:00:00Z --note "3A Monday"
+# { "code": "…", "url": "https://…/<code>", … }   — hand the url to students
+```
+
+Save a new version of the same file from stdin (no `--kind` needed — it exists):
+
+```bash
+cat sorting-quiz.yaml | npx @novedu/cli files upload sorting-quiz
+# { …, "action": "updated" }
+```
+
+List your codes for one module, extracting just the share links:
+
+```bash
+npx @novedu/cli codes list --module quiz | jq -r '.[].url'
 ```

@@ -20,28 +20,23 @@ The app hosts two kinds of YAML files (explained in §4):
   templated text with declared input variables.
 
 Today teachers edit these as raw YAML in a code editor (`/files` → "Edit"). Your job
-is a **form-based GUI** alternative. Two deliverables:
+is a **form-based GUI** alternative:
 
-1. **GUI editor** (`StudentFileEditor`) — reached from the **"Edit in GUI"** button in
-   the `/files` list **Actions column** (it links to `/files/gui/edit/<name>`). Loads an
-   existing file and lets the teacher edit it with form controls, then **validate** and
-   **save** (and **delete**). Full lifecycle.
-2. **GUI viewer** (`StudentFileViewer`) — reached from the **"View in GUI"** button on
-   the `/validate-tutor` page (it links to `/files/gui/view?url=…&kind=…`). **Read-only**:
-   it shows a YAML fetched from an external URL (e.g. GitHub) in your GUI. No saving.
+- **GUI editor** (`StudentFileEditor`) — reached from the **"Edit in GUI"** button in
+  the `/files` list **Actions column** (it links to `/files/gui/edit/<name>`). Loads an
+  existing file and lets the teacher edit it with form controls, then **validate** and
+  **save** (and **delete**). Full lifecycle.
 
-The two buttons and the routes already exist and render your (currently placeholder)
-components — so you can see your work in the real app from day one.
+The button and the route already exist and render your (currently placeholder)
+component — so you can see your work in the real app from day one.
 
 ## 2. Where your code goes
 
 ```
 app/files/gui/
 ├─ edit/[...name]/page.tsx     ← APP-OWNED. Do not edit. Loads a file, renders your editor.
-├─ view/page.tsx               ← APP-OWNED. Do not edit. Loads a URL, renders your viewer.
 └─ _studio/                    ← 🟢 YOUR WORKSPACE — everything here is yours.
    ├─ file-editor.tsx          ←   StudentFileEditor (start here)
-   ├─ file-viewer.tsx          ←   StudentFileViewer (start here)
    └─ …                        ←   add as many components / hooks / helpers as you like
 
 e2e/yaml-gui/                  ← 🟢 your end-to-end (Playwright) tests
@@ -50,9 +45,9 @@ e2e/yaml-gui/                  ← 🟢 your end-to-end (Playwright) tests
 - **`_studio/`** — the leading underscore tells Next.js this folder is **private**
   (it is *not* turned into a URL route). So you can add any files here without
   accidentally creating pages.
-- **The two `page.tsx` files are app-owned route shells.** Don't edit them. They do
-  the server work and call your components with plain props (see §6). If you think you
-  need to change them, ask a maintainer — you probably need an API change instead.
+- **The `page.tsx` file is an app-owned route shell.** Don't edit it. It does
+  the server work and calls your component with plain props (see §6). If you think you
+  need to change it, ask a maintainer — you probably need an API change instead.
 
 ### Naming conventions
 
@@ -170,7 +165,7 @@ loadFileFromDbAction(name: string): Promise<
   | { ok: false; reason: "not-found" | "error" }
 >
 
-// Load raw YAML by URL (for referenced fragment files / the viewer). Handles
+// Load raw YAML by URL (for referenced fragment files). Handles
 // absolute http(s), relative (resolved against baseUrl), and app-hosted URLs.
 loadYamlFromUrlAction(input: { url: string; baseUrl?: string }): Promise<
   | { ok: true; content: string; resolvedUrl: string }
@@ -235,7 +230,7 @@ const content = stringify(myTutorObject);
 
 ## 6. The props your components receive
 
-The app-owned shells call your components with these props (plain data — no app
+The app-owned shell calls your component with these props (plain data — no app
 components cross the boundary):
 
 ```ts
@@ -245,14 +240,6 @@ interface StudentFileEditorProps {
   kind: FileKind;          // "tutor" | "fragment" — frozen
   initialContent: string;  // the active YAML, to parse into your form on mount
   publicUrl: string;       // use as baseUrl to resolve relative fragment_files URLs
-}
-
-// app/files/gui/_studio/file-viewer.tsx  (read-only)
-interface StudentFileViewerProps {
-  url: string;                    // the source YAML URL (use as baseUrl)
-  kind: FileKind;
-  initialContent: string | null;  // the fetched YAML, or null on error
-  loadError?: string;              // set when the YAML couldn't be loaded
 }
 ```
 
@@ -444,10 +431,8 @@ frequent changes instead of one big painful merge:
       **Validate & save** (rejected when invalid). Delete works.
 - [ ] Tutor editor reads each referenced fragment's `input_schema` and renders inputs
       for its variables (§7 ⭐).
-- [ ] **Viewer**: open a tutor and a fragment URL from "View in GUI" and render them
-      read-only; a bad URL shows a friendly message.
 - [ ] Round-trip is faithful: load → edit → save produces valid YAML the validator
       accepts.
-- [ ] Tests: unit/component tests for your logic; at least one e2e per deliverable.
+- [ ] Tests: unit/component tests for your logic; at least one e2e test.
 - [ ] `npm run check`, `npm run typecheck`, `npm run test` all green.
 - [ ] You only imported `@/lib/yaml-files` + your own files + npm packages.

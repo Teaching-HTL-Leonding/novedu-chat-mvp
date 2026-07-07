@@ -171,6 +171,28 @@ export async function deleteUserName(userId: string): Promise<void> {
     .query(`DELETE FROM novedu_users WHERE user_id = @userId`);
 }
 
+/** Removes a `novedu_codes` row — cleanup for codes a spec created via the API. */
+export async function deleteCode(code: string): Promise<void> {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("code", sql.VarChar(32), code)
+    .query(`DELETE FROM novedu_codes WHERE code = @code`);
+}
+
+/**
+ * Hard-deletes ALL versions of an app-hosted file — cleanup for files a spec
+ * created via the API. Test-only: the app itself never hard-deletes (the table
+ * is append-only history); a leftover e2e row is the only reason to.
+ */
+export async function hardDeleteFile(name: string): Promise<void> {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("name", sql.NVarChar(450), name)
+    .query(`DELETE FROM novedu_files WHERE name = @name`);
+}
+
 /** One stored Mastra message row (role + the raw JSON content envelope). */
 export interface StoredMessageRow {
   role: string;
