@@ -27,9 +27,9 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 | **Coding proxy** (`app/api/coding/**`, `lib/coding-proxy.ts`) | A **public**, OpenAI-compatible `POST /api/coding/v1/chat/completions` that authenticates with the code as the bearer key, appends the teacher's system prompt, pins the model, and streams SCCH's response straight back. See [`docs/coding.md`](docs/coding.md). |
 | **Images** (`app/images/**`, `lib/image-*.ts`) | Teacher-uploaded images stored in Azure Blob Storage, addressed by passwordless **User-Delegation SAS** (account keys disabled); retrieval is direct-to-blob (no app route serves the bytes). See [`docs/images.md`](docs/images.md). |
 | **Usage metering** (`lib/usage-store.ts`, `app/mastra/usage-exporter.ts`) | Per-hour token / tool-call / activity counts written off the response path into two anonymity-preserving tables (`novedu_usage_by_code`, `novedu_usage_by_user`), surfaced on the teacher `/usage` dashboard. See [`docs/usage-metering.md`](docs/usage-metering.md) and [`docs/dashboard.md`](docs/dashboard.md). |
-| **Model endpoint** (`app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | A self-hosted, OpenAI-compatible vLLM GPU server ("SCCH"). Activity models resolve against this endpoint; the API key stays server-side. |
-| **Auth** (`auth.ts`, `proxy.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate (Next 16 renamed `middleware` → `proxy.ts`). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). JWT sessions, no DB adapter. See [`docs/auth.md`](docs/auth.md). |
-| **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `validate-tutor` (validate a tutor URL → prompt or errors), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text), `auth` (sign-in), `version` (public build-identity probe), `health` (teacher-gated probe). |
+| **LLM providers** (`lib/llm/`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | Two OpenAI-compatible upstreams behind one server-only seam: a self-hosted vLLM GPU server ("SCCH", the default) and — optionally, when `AZURE_FOUNDRY_ENDPOINT` is set — **Azure Foundry** (passwordless Entra auth, no API key). The activity YAML's `llm:` block picks provider + model, and a code can override the pair; endpoints, keys, and tokens stay server-side. See [`docs/ai-models.md`](docs/ai-models.md). |
+| **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate (Next 16 renamed `middleware` → `proxy.ts`). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). JWT sessions, no DB adapter. See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: Entra **bearer tokens** (the CLI is a public client of the same app registration), validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
+| **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `validate-tutor` (validate a tutor URL → prompt or errors), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
 
 ### Request flow
 
@@ -52,6 +52,8 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 
 - **Node.js 24+** (developed against v24.15).
 - A reachable **OpenAI-compatible model endpoint** (the SCCH vLLM server) for activity chats.
+  **Optional:** an **Azure Foundry** resource as a second provider (passwordless Entra —
+  see [`docs/ai-models.md`](docs/ai-models.md)).
 - A **Microsoft Entra ID app registration** for sign-in.
 - An **Azure SQL database** for persistent agent memory/storage, with your Entra
   identity granted a database user (the app authenticates via Entra — no SQL password).
@@ -71,6 +73,13 @@ exposed to the browser** — they are read only in server-side modules.
 # --- Self-hosted vLLM (OpenAI-compatible) endpoint that serves activity chat models ---
 SCCH_BASE_URL=https://your-vllm-host/v1
 SCCH_API_KEY=your-vllm-api-key
+
+# --- Azure Foundry (optional) — second LLM provider ---
+# Bare resource endpoint of an Azure OpenAI / Foundry resource. Unset => the app
+# runs SCCH-only (Foundry activities are rejected at authoring time and guarded at
+# runtime). Auth is passwordless Entra — your `az login` identity locally, the
+# Managed Identity on Azure; there is NO API key. See docs/ai-models.md.
+AZURE_FOUNDRY_ENDPOINT=https://your-foundry-resource.cognitiveservices.azure.com
 
 # --- Microsoft Entra ID sign-in (Auth.js / NextAuth v5) ---
 AZURE_TENANT_ID=your-entra-tenant-id
@@ -197,7 +206,7 @@ npm run start
 | `npm run test:e2e:ci` | Hermetic + `@live-db` (against a SQL container); skips `@live-llm` and `@live-storage`. (`test:e2e:db` / `test:e2e:storage` run one live group.) |
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
 | `npm run qa` | `check` + `typecheck` + `test` + `build`. (`qa:e2e` adds the e2e suite.) |
-| `npm run cli` | Run the `@novedu/cli` activity validator (workspace under `cli/`). |
+| `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, plus `login` / `logout` / `whoami` for Entra ID sign-in to the app's bearer-protected APIs. |
 
 > Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
 
@@ -210,8 +219,9 @@ npm run start
 The `activities/` directory contains sample YAML for each module — `tutors/`, `quizzes/`,
 `writings/`, and `coding/` — each with its own `README.md` authoring guide (see also
 [`activities/README.md`](activities/README.md)). The `@novedu/cli` package (`cli/`) validates
-an activity file with the exact checks the app enforces (`npm run cli` locally; published as
-`@novedu/cli`).
+an activity file with the exact checks the app enforces, and signs in with Entra ID
+(`login` / `logout` / `whoami`) to call the app's bearer-protected APIs (`npm run cli`
+locally; published as `@novedu/cli` — see [`docs/api.md`](docs/api.md)).
 
 ## Related projects
 
@@ -238,7 +248,8 @@ Per-subsystem deep references live in [`docs/`](docs/): codes & modules
 ([`codes.md`](docs/codes.md)), [`writing.md`](docs/writing.md), [`coding.md`](docs/coding.md),
 the chat surface ([`chat.md`](docs/chat.md)), app-hosted [`files.md`](docs/files.md) and
 [`images.md`](docs/images.md), usage [`usage-metering.md`](docs/usage-metering.md) +
-[`dashboard.md`](docs/dashboard.md), [`auth.md`](docs/auth.md),
+[`dashboard.md`](docs/dashboard.md), [`auth.md`](docs/auth.md), the CLI/API bearer
+channel ([`api.md`](docs/api.md)), LLM providers ([`ai-models.md`](docs/ai-models.md)),
 [`database.md`](docs/database.md), [`telemetry.md`](docs/telemetry.md),
 [`testing.md`](docs/testing.md), and [`filtered-lists.md`](docs/filtered-lists.md).
 `AGENTS.md` is the slim router that ties them together.
