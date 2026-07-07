@@ -29,7 +29,7 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 | **Usage metering** (`lib/usage-store.ts`, `app/mastra/usage-exporter.ts`) | Per-hour token / tool-call / activity counts written off the response path into two anonymity-preserving tables (`novedu_usage_by_code`, `novedu_usage_by_user`), surfaced on the teacher `/usage` dashboard. See [`docs/usage-metering.md`](docs/usage-metering.md) and [`docs/dashboard.md`](docs/dashboard.md). |
 | **LLM providers** (`lib/llm/`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | Two OpenAI-compatible upstreams behind one server-only seam: a self-hosted vLLM GPU server ("SCCH", the default) and — optionally, when `AZURE_FOUNDRY_ENDPOINT` is set — **Azure Foundry** (passwordless Entra auth, no API key). The activity YAML's `llm:` block picks provider + model, and a code can override the pair; endpoints, keys, and tokens stay server-side. See [`docs/ai-models.md`](docs/ai-models.md). |
 | **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate (Next 16 renamed `middleware` → `proxy.ts`). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). JWT sessions, no DB adapter. See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: Entra **bearer tokens** (the CLI is a public client of the same app registration), validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
-| **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `validate-tutor` (validate a tutor URL → prompt or errors), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
+| **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
 
 ### Request flow
 
@@ -275,11 +275,12 @@ channel ([`api.md`](docs/api.md)), LLM providers ([`ai-models.md`](docs/ai-model
   never link a user to a code (`usage_by_code` has no user, `usage_by_user` has no code),
   so the anonymity invariant holds even though the runtime knows the `oid`. See
   `docs/usage-metering.md`.
-- **SSRF** — `/api/validate-tutor` fetches an arbitrary user-supplied URL server-side. The
-  prototype only restricts the scheme to `http(s)`; a production deployment should also
-  allow-list hosts, block private IP ranges, and disable redirects.
+- **SSRF** — validating an activity (saving a file, minting a code) fetches
+  teacher-supplied URLs server-side. The prototype only restricts the scheme to
+  `http(s)`; a production deployment should also allow-list hosts, block private IP
+  ranges, and disable redirects.
 - **Authorization** — the Entra gate admits any signed-in user, but teacher-only
-  operations (creating/listing codes, authoring files/images, validating tutors, the
+  operations (creating/listing codes, authoring files/images, the
   usage dashboard) are gated by membership in `TEACHER_GROUP_ID`, surfaced as
   `session.user.isTeacher` and enforced server-side via `requireEffectiveTeacher()`
   (`lib/student-mode.ts`, which also honors "view as student" mode). The public coding

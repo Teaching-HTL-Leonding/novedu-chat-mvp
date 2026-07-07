@@ -17,8 +17,7 @@ export type CodeFormState =
   | { status: "error"; message: string }
   // An activity that fails validation carries the FULL structured error list
   // (codes, field paths, missing variables) so the form can show the same
-  // actionable detail as the files / validate-tutor pages — not just the first
-  // message.
+  // actionable detail as the files pages — not just the first message.
   | { status: "error"; errors: ValidationError[] }
   // Edit succeeded. (Create does not use this — it redirects to the new code's
   // edit page, which shows the shareable link.)

@@ -20,7 +20,6 @@ the `api/files` entry in `proxy.ts`.
 | Edit | `/files/edit/[...name]` (`edit-file-form.tsx`) | teacher | preloaded with the active version; copyable public URL (delete is the list's "Delete Selected" only) |
 | Public GET | `/api/files/<name>` (`app/api/files/[name]/route.ts`) | **anyone** | active version as `text/yaml`, `no-store` (404 once deleted) |
 | GUI editor | `/files/gui/edit/<name>` (`app/files/gui/edit/[...name]/page.tsx`) | teacher | student-built form GUI; "Edit in GUI" on the list |
-| GUI viewer | `/files/gui/view?url=…&kind=…` (`app/files/gui/view/page.tsx`) | teacher | read-only student GUI; "View in GUI" on `/validate-tutor` |
 
 The edit route is a **catch-all** (`[...name]`) and the `name` column is a
 generous `nvarchar(450)`, both deliberately folder-ready (`/`-separated names) —
@@ -111,8 +110,8 @@ structurally valid activity naming an LLM provider this server has not configure
   server-side, the defensive backstop.)
 
 A failure is either a short `message` (auth, name, store) or the full structured
-`errors` list from the validator (rendered the same way as the `/validate-tutor`
-page — schema field paths, missing variables, fetch failures).
+`errors` list from the validator (schema field paths, missing variables, fetch
+failures).
 
 ### Validating the in-editor buffer (`validateFileContent`)
 

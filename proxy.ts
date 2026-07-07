@@ -6,7 +6,7 @@
 export { auth as proxy } from "@/auth";
 
 export const config = {
-  // Protect everything (pages + /api/copilotkit + /api/validate-tutor) EXCEPT the
+  // Protect everything (pages + /api/copilotkit) EXCEPT the
   // Auth.js endpoints (needed to complete sign-in), the public /api/version
   // build-identity probe (CD triage — see app/api/version/route.ts), the public
   // /api/files YAML-hosting endpoint (served without a session so the tutor-code

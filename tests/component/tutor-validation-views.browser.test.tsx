@@ -6,8 +6,7 @@ import type { ValidationError, ValidationWarning } from "@/lib/tutors";
 // Pure prop rendering of a broken tutor's structured errors/warnings. This is
 // what a student saw via the @live e2e/tutor-chat.spec.ts (a valid code for a
 // broken tutor → the error list, no chat); the list itself needs no DB. The
-// loading/consistency that PRODUCES these is covered by lib/tutors/*.unit.test,
-// and the form path by validate-tutor-form.browser.test (FRAGMENT_NOT_FOUND);
+// loading/consistency that PRODUCES these is covered by lib/tutors/*.unit.test;
 // here we pin both error codes plus the location string and the warning view.
 
 const errors: ValidationError[] = [

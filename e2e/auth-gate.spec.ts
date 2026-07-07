@@ -13,8 +13,8 @@ test("unauthenticated users are redirected to the sign-in page", async ({ page }
   await expect(page).toHaveURL(/\/api\/auth\/signin/);
 });
 
-test("unauthenticated users cannot reach the tutor-validation page", async ({ page }) => {
-  await page.goto("/validate-tutor");
+test("unauthenticated users cannot reach the files page", async ({ page }) => {
+  await page.goto("/files");
 
   await expect(page).toHaveURL(/\/api\/auth\/signin/);
 });

@@ -1,5 +1,4 @@
-// Shared studio recipes, used by BOTH file-editor.tsx and file-viewer.tsx so
-// the editor and the read-only viewer can't drift apart. Pure class strings —
+// Shared studio recipes for the studio components. Pure class strings —
 // safe to import from any "use client" studio component.
 
 /** The studio page column: centered, capped width, vertical rhythm. */
