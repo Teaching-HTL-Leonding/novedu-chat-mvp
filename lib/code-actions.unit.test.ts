@@ -79,6 +79,21 @@ beforeEach(() => {
     anonymous: true,
   });
   mocks.createCode.mockResolvedValue({ stored: true, code: "abc123def4" });
+  // The service reads the stored row back after a create (the API returns it);
+  // tests that exercise updateCodeAction override this per test.
+  mocks.getCode.mockResolvedValue({
+    code: "abc123def4",
+    module: "tutor",
+    createdBy: "teacher-sub-1",
+    fileUrl: FILE,
+    validFrom: new Date(START * 1000),
+    validUntil: new Date(END * 1000),
+    note: "My class",
+    origin: "http://localhost:3000",
+    anonymous: true,
+    llm: null,
+    createdAt: new Date(),
+  });
 });
 
 afterEach(() => {

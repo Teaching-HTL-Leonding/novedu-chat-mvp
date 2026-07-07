@@ -17,13 +17,15 @@ export const config = {
   // app/api/coding/v1/chat/completions/route.ts). It is anchored with a path
   // boundary (`api/coding(?:/|$)`) so the exclusion cannot silently widen to a
   // future, unrelated `/api/coding-*` route.
-  // The /api/me identity probe is a CLI/API bearer-token route: it self-gates
-  // via requireBearerUser (lib/api-auth.ts) and a CLI has no Entra session
-  // cookie, so it must not hit the cookie gate (see docs/api.md). Every future
-  // bearer route gets its own explicit, path-bounded exclusion like this one —
-  // never a blanket prefix.
+  // The /api/me identity probe and the /api/codes list/create endpoints are
+  // CLI/API bearer-token routes: they self-gate via requireBearerUser /
+  // requireBearerTeacher (lib/api-auth.ts) and a CLI has no Entra session
+  // cookie, so they must not hit the cookie gate (see docs/api.md). Every future
+  // bearer route gets its own explicit, path-bounded exclusion like these —
+  // never a blanket prefix. (The bearer PUT /api/files/<name> and GET /api/files
+  // ride the existing /api/files exclusion and self-gate the same way.)
   // Without a matcher the proxy would also run on _next/static, blocking CSS/JS.
   matcher: [
-    "/((?!api/auth|api/version|api/files|api/coding(?:/|$)|api/me(?:/|$)|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/version|api/files|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|_next/static|_next/image|favicon.ico).*)",
   ],
 };
