@@ -125,7 +125,9 @@ test("file upsert → file list → code create → code list, over real HTTP", 
 
     // CREATE a code: the full pipeline (window conversion, tutor validation
     // against the fixtures server, storing, read-back).
-    const start = new Date(Date.now() - 60_000).toISOString();
+    // Whole seconds: the API floors ISO bounds to unix seconds (the pipeline's
+    // unit), so a milliseconds-bearing input would round-trip differently.
+    const start = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000).toISOString();
     const createCode = await request.post("/api/codes", {
       headers,
       data: {
