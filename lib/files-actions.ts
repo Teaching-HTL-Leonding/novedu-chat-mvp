@@ -207,10 +207,10 @@ export async function deleteSelectedFilesAction(names: string[]): Promise<Delete
  *     self-loopback fetch (reusing {@link appHostedFetcher}).
  * Returns the raw text plus the resolved absolute URL.
  *
- * SSRF note: like /api/validate-tutor this fetches an arbitrary user-supplied URL
- * server-side; for this prototype we only restrict the scheme to http(s). A
- * production deployment should additionally allow-list hosts / block private IP
- * ranges and disable redirects.
+ * SSRF note: like the save-time validators this fetches an arbitrary
+ * user-supplied URL server-side; for this prototype we only restrict the scheme
+ * to http(s). A production deployment should additionally allow-list hosts /
+ * block private IP ranges and disable redirects.
  */
 export async function loadYamlFromUrlAction(input: {
   url: string;
