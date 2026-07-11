@@ -25,13 +25,13 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@azure/msal-node": "^5.3.1",
+    "@azure/msal-node": "^5.4.0",
     "commander": "^15.0.0",
     "handlebars": "^4.7.9",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "tsdown": "^0.22.3"
+    "tsdown": "^0.22.4"
   }
 }
