@@ -392,10 +392,11 @@ in-page discussion live in `app/[code]/_quiz/`.
   `lib/quiz-yaml.ts`): `id`, `name`, optional `title`/`description` (student
   welcome), `anonymous` (default `true`), `shuffle` (default `true`), `llm.model`
   (grades AND drives the discussion) with optional `llm.provider` (missing ⇒ SCCH;
-  every module's YAML has it — docs/ai-models.md), optional `discussion.instructions`, and
+  every module's YAML has it — docs/ai-models.md) and optional `llm.imageInput`
+  (photo answers, below), optional `discussion.instructions`, and
   `questions[]` each with `id`, optional `title`, `question` (markdown), an
-  optional content `image` (below), and `evaluation` (the SERVER-ONLY grading
-  prompt).
+  optional content `image` (below), an optional `imageInput` override, and
+  `evaluation` (the SERVER-ONLY grading prompt).
 - **An optional question `image`** is an
   `ImageRef` from the **image subsystem** (`docs/images.md`) — it carries no
   secret (unlike `evaluation`), so it survives `toPublicQuiz` and is resolved
@@ -420,6 +421,33 @@ in-page discussion live in `app/[code]/_quiz/`.
       evaluation: |
         North is at the top. …   # SERVER-ONLY, never reaches the browser
   ```
+- **Photo answers (`imageInput`)** — students may attach photos (e.g. a
+  handwritten derivation) to an answer. Two-level gate: quiz-level
+  **`llm.imageInput`** (default `false`, same name/placement as the tutor's
+  flag) sets the default; a per-question **`imageInput`** overrides it. The
+  effective flag is resolved server-side into the public projection
+  (`toPublicQuiz` → `QuizQuestionPublic.imageInput`) and **re-derived on every
+  server action** — the client copy is never trusted. Limits live in the shared
+  client-safe **`lib/answer-images.ts`** (5 MB per image, ≤ 3 per answer,
+  `image/*` — the tutor imports the same constants): the runner validates picks
+  client-side (`readAnswerImage`), both quiz actions re-validate server-side
+  (`validateAnswerImages`, images rejected outright when the effective flag is
+  false). Transport is **base64 data URLs through the existing server actions**
+  (no blob storage, no downscaling) — `next.config.ts` raises the global
+  server-action `bodySizeLimit` to 25 MB for the 3×5 MB base64-inflated worst
+  case. **Image-only answers are allowed** (Submit gates on trimmed text OR ≥ 1
+  photo). Grading sends ONE multimodal user message (text part + one image part
+  per photo) to `quizEvaluator`; nothing is persisted — the photos are discarded
+  after grading. `startDiscussion` seeds the same photos as stored **`file`
+  parts** (data URL in `data`) on the student-answer seed, so the discussion
+  agent recalls them from memory and the read-only transcript viewer
+  (`lib/conversation-collapse.ts`) renders them with zero changes — a teacher
+  sees the photo by design (`anonymous` hides *who*, never *what*). Caveat
+  (documented, not enforced — same as tutor): a code's LLM override on an
+  image-input quiz must be a **vision-capable** model. Covered hermetically in
+  `lib/quiz-actions.unit.test.ts` + `tests/component/quiz-runner.browser.test.tsx`;
+  the real vision round-trip is `e2e/quiz-image.spec.ts` (`@live-llm`,
+  CI-excluded).
 - **`evaluation` never reaches the browser.** `toPublicQuiz` strips it (and
   `model`, `anonymous`, `discussion`) before anything reaches the client; the
   runner ships only the `QuizPublic` projection. Verdict vocabulary is the internal

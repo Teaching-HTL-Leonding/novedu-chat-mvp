@@ -88,6 +88,10 @@ questions:
 
   - id: bubble-trace
     title: "Bubble Sort von Hand"
+    # Photo answers just for THIS question (the quiz default stays off): a
+    # handwritten trace on paper is the natural way to answer — the student can
+    # photograph it instead of retyping every step. Needs a vision-capable model.
+    imageInput: true
     question: |
       Gegeben ist das Array `[5, 2, 4, 1]`.
 
@@ -95,7 +99,8 @@ questions:
       Bubble Sort aus (aufsteigend sortiert, ein Durchlauf = einmal von links
       nach rechts alle Nachbarpaare vergleichen)?
 
-      Du darfst auch die Zwischenschritte aufschreiben.
+      Du darfst auch die Zwischenschritte aufschreiben — getippt oder als Foto
+      deiner handschriftlichen Lösung.
     evaluation: |
       Der erste Durchlauf im Detail:
       - vergleiche 5 und 2 → tauschen → `[2, 5, 4, 1]`

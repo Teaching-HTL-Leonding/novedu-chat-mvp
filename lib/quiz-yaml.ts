@@ -25,6 +25,8 @@ export interface QuizQuestion {
   evaluation: string;
   /** Optional content image — carries no secret, so it survives into the public projection. */
   image?: ImageRef;
+  /** Per-question override of the quiz-level `imageInput` (unset ⇒ inherit). */
+  imageInput?: boolean;
 }
 
 /** A fully parsed quiz. `evaluation` prompts and `model` are server-side only. */
@@ -41,6 +43,11 @@ export interface Quiz {
   model: string;
   /** The LLM provider serving `model` (`llm.provider`, default SCCH). */
   provider: LlmProvider;
+  /**
+   * Quiz-level default for photo answers (`llm.imageInput`, default `false` —
+   * the model must be vision-capable). Per-question `imageInput` overrides it.
+   */
+  imageInput: boolean;
   /** Optional guidance appended to the discussion chat's system prompt. */
   discussionInstructions?: string;
   questions: QuizQuestion[];
@@ -142,6 +149,9 @@ export function parseQuiz(content: string): QuizParseResult {
       question,
       evaluation,
       image: asImageRef(q.image),
+      // Only a literal boolean overrides; anything malformed inherits the
+      // quiz-level flag rather than failing the quiz.
+      ...(typeof q.imageInput === "boolean" ? { imageInput: q.imageInput } : {}),
     });
   }
   if (questions.length === 0) {
@@ -162,6 +172,7 @@ export function parseQuiz(content: string): QuizParseResult {
       shuffle: asBool(root.shuffle, true),
       model,
       provider,
+      imageInput: asBool(llm?.imageInput, false),
       discussionInstructions: asString(
         (root.discussion as Record<string, unknown> | undefined)?.instructions,
       ),
@@ -181,6 +192,9 @@ export function toPublicQuiz(quiz: Quiz): QuizPublic {
     question: q.question,
     // The image carries no secret (unlike `evaluation`) — pass it through unchanged.
     image: q.image,
+    // Resolve the two-level flag here so the client sees ONE effective boolean
+    // per question (the server actions re-derive it — the client is never trusted).
+    imageInput: q.imageInput ?? quiz.imageInput,
   }));
   return {
     id: quiz.id,

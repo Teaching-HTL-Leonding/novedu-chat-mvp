@@ -64,6 +64,11 @@
           "enum": ["SCCH", "Azure Foundry"],
           "default": "SCCH",
           "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name."
+        },
+        "imageInput": {
+          "type": "boolean",
+          "default": false,
+          "description": "Default for all questions: students may attach photos (up to 3, 5 MB each) to their answers. The model must be vision-capable. A per-question imageInput overrides it."
         }
       }
     },
@@ -105,6 +110,10 @@
         },
         "image": {
           "$ref": "#/$defs/image"
+        },
+        "imageInput": {
+          "type": "boolean",
+          "description": "Overrides the quiz-level llm.imageInput for this question only (photo answers on/off)."
         }
       }
     },

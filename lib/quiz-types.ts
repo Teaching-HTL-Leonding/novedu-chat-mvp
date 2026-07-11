@@ -31,6 +31,12 @@ export interface QuizQuestionPublic {
   question: string;
   /** Optional content image — carries no secret, so it crosses the wire unchanged. */
   image?: ImageRef;
+  /**
+   * Whether the student may attach photos to the answer — the EFFECTIVE flag,
+   * resolved server-side from the per-question override / quiz-level default
+   * (`toPublicQuiz`). Carries no secret; the server actions re-derive it.
+   */
+  imageInput: boolean;
 }
 
 /** The student-facing projection of a quiz — everything the runner needs, nothing more. */

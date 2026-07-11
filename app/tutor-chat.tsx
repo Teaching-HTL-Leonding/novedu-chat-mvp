@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { IMAGE_ACCEPT, MAX_IMAGE_BYTES } from "@/lib/answer-images";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
 import type { ExampleQuestion } from "@/lib/tutors";
 import { useTutorWelcomeView } from "./_tutor/welcome-view";
@@ -16,11 +17,8 @@ import { ModuleChat } from "./module-chat";
 // which travels along on every runtime request so the backend can re-check it.
 // The client is never trusted.
 //
-// Attachments are capped client-side at 5 MB per image: photos are inlined as
-// base64 into the chat request AND replayed from Mastra memory on every
-// following turn, so big files would bloat both the request body and the
-// model's context.
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+// The attachment limits are shared with the quiz module's photo answers
+// (lib/answer-images.ts) — see there for why 5 MB.
 
 export function TutorChat({
   code,
@@ -79,7 +77,7 @@ export function TutorChat({
           imageInput
             ? {
                 enabled: true,
-                accept: "image/*",
+                accept: IMAGE_ACCEPT,
                 maxSize: MAX_IMAGE_BYTES,
                 onUploadFailed: ({ file, message }) => setUploadError(`${file.name}: ${message}`),
               }

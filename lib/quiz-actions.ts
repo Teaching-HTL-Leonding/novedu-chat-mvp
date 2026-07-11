@@ -11,6 +11,7 @@ import {
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
 import { auth } from "@/auth";
+import { validateAnswerImages } from "@/lib/answer-images";
 import { type CodeRejection, checkCode, effectiveLlm } from "@/lib/code-store";
 import type { LlmProvider } from "@/lib/llm/provider";
 import { loadQuiz } from "@/lib/quiz-fetch";
@@ -47,10 +48,13 @@ export type StartDiscussionResult =
 // The three messages that seed a discussion thread's MEMORY (question / answer /
 // verdict+feedback) so the agent recalls full context. Server-internal only —
 // the dialog shows just the graded feedback, never these as bubbles, so they are
-// no longer handed back to the client.
+// no longer handed back to the client. The student-answer seed may carry the
+// answer's photos as `file` parts (data URLs), so the discussion agent sees them
+// via memory recall and the read-only transcript viewer renders them inline.
 interface QuizSeedMessage {
   role: "assistant" | "user";
   text: string;
+  images?: string[];
 }
 
 type LoadedQuestion = {
@@ -107,6 +111,13 @@ async function verifyAndLoadQuestion(
   };
 }
 
+// The question's EFFECTIVE photo-answers flag: the per-question override when
+// set, the quiz-level `llm.imageInput` otherwise. Re-derived server-side on
+// every action — the client's resolved copy is never trusted.
+function effectiveImageInput(quiz: Quiz, question: QuizQuestion): boolean {
+  return question.imageInput ?? quiz.imageInput;
+}
+
 // The grading system prompt. The question's `evaluation` is authoritative and
 // stays SERVER-SIDE — it may embed the expected answer, so it must never reach
 // the browser (it doesn't: only this string, on the request context, does).
@@ -129,18 +140,26 @@ function buildGradingPrompt(question: QuizQuestion): string {
 }
 
 /**
- * Grades one free-text answer. Re-verifies the quiz code, re-loads the quiz, finds
- * the question, and runs the stateless `quizEvaluator` for a structured verdict.
- * Returns the verdict + markdown feedback; nothing is persisted.
+ * Grades one answer — free text, photos (when the question's effective
+ * `imageInput` allows them), or both. Re-verifies the quiz code, re-loads the
+ * quiz, finds the question, and runs the stateless `quizEvaluator` for a
+ * structured verdict. Returns the verdict + markdown feedback; nothing is
+ * persisted — the images are discarded after grading.
  */
 export async function submitAnswer(
-  input: QuizCodeInput & { questionId: string; answer: string },
+  input: QuizCodeInput & { questionId: string; answer: string; images?: string[] },
 ): Promise<SubmitAnswerResult> {
   const answer = typeof input.answer === "string" ? input.answer.trim() : "";
-  if (!answer) return { ok: false, message: "Type an answer before submitting." };
+  if (!answer && (input.images === undefined || input.images.length === 0)) {
+    return { ok: false, message: "Type an answer or add a photo before submitting." };
+  }
 
   const ctx = await verifyAndLoadQuestion(input);
   if (!ctx.ok) return ctx;
+
+  const checked = validateAnswerImages(input.images, effectiveImageInput(ctx.quiz, ctx.question));
+  if (!checked.ok) return checked;
+  const images = checked.images;
 
   const requestContext = new RequestContext();
   requestContext.set(QUIZ_EVAL_INSTRUCTIONS, buildGradingPrompt(ctx.question));
@@ -152,13 +171,31 @@ export async function submitAnswer(
   requestContext.set(USAGE_USER_ID, ctx.userId);
   requestContext.set(USAGE_MODULE, "quiz");
 
+  // Text-only answers keep the plain-string call; an answer with photos becomes
+  // ONE multimodal user message (text part + one image part per photo — the
+  // data URL carries its own mime type). Only the message shape changes; the
+  // structured-output verdict flow is identical.
+  const answerText = answer
+    ? `The student's answer:\n\n${answer}`
+    : "The student answered with the attached photo(s) only.";
+  const prompt =
+    images.length === 0
+      ? answerText
+      : [
+          {
+            role: "user" as const,
+            content: [
+              { type: "text" as const, text: answerText },
+              ...images.map((image) => ({ type: "image" as const, image })),
+            ],
+          },
+        ];
+
   try {
-    const res = await mastra
-      .getAgent("quizEvaluator")
-      .generate(`The student's answer:\n\n${answer}`, {
-        structuredOutput: { schema: QUIZ_VERDICT_SCHEMA },
-        requestContext,
-      });
+    const res = await mastra.getAgent("quizEvaluator").generate(prompt, {
+      structuredOutput: { schema: QUIZ_VERDICT_SCHEMA },
+      requestContext,
+    });
     const object = res.object as { result: QuizVerdict; feedback: string } | undefined;
     if (!object) {
       return { ok: false, message: "The answer could not be graded right now. Please try again." };
@@ -190,14 +227,24 @@ export async function startDiscussion(
     answer: string;
     result: QuizVerdict;
     feedback: string;
+    images?: string[];
   },
 ): Promise<StartDiscussionResult> {
   const answer = typeof input.answer === "string" ? input.answer.trim() : "";
   const feedback = typeof input.feedback === "string" ? input.feedback : "";
-  if (!answer) return { ok: false, message: "There is no answer to discuss yet." };
+  if (!answer && (input.images === undefined || input.images.length === 0)) {
+    return { ok: false, message: "There is no answer to discuss yet." };
+  }
 
   const ctx = await verifyAndLoadQuestion(input);
   if (!ctx.ok) return ctx;
+
+  // The same photos the answer was graded with (the trust note below applies);
+  // the imageInput gate + size checks still run — a question that does not
+  // accept images never gets one persisted into a thread.
+  const checked = validateAnswerImages(input.images, effectiveImageInput(ctx.quiz, ctx.question));
+  if (!checked.ok) return checked;
+  const images = checked.images;
 
   const threadId = randomUUID();
   const resourceId = ctx.code;
@@ -211,7 +258,7 @@ export async function startDiscussion(
   // would only mislead the student's own chat, so they are accepted as-is.
   const seeds: QuizSeedMessage[] = [
     { role: "assistant", text: `Answer the following question: ${ctx.question.question.trim()}` },
-    { role: "user", text: answer },
+    { role: "user", text: answer, images },
     {
       role: "assistant",
       text: `Your answer is ${verdictLabel(safeVerdict(input.result))}. ${feedback}`.trim(),
@@ -226,7 +273,9 @@ export async function startDiscussion(
     await memory.createThread({ threadId, resourceId });
     // Distinct, increasing createdAt so the transcript orders by time as well as
     // by insertion (seq_id). The stored content envelope is the v2 UIMessage
-    // shape the read-only viewer parses (`lib/conversation-collapse.ts`).
+    // shape the read-only viewer parses (`lib/conversation-collapse.ts`): text
+    // parts plus — for the student-answer seed — one `file` part per photo whose
+    // `data` is the data URL, exactly what the tutor's attachments persist.
     const base = Date.now();
     await memory.saveMessages({
       messages: seeds.map((seed, i) => ({
@@ -238,7 +287,14 @@ export async function startDiscussion(
         createdAt: new Date(base + i),
         content: {
           format: 2 as const,
-          parts: [{ type: "text" as const, text: seed.text }],
+          parts: [
+            ...(seed.text ? [{ type: "text" as const, text: seed.text }] : []),
+            ...(seed.images ?? []).map((image) => ({
+              type: "file" as const,
+              mimeType: image.slice("data:".length, image.indexOf(";")),
+              data: image,
+            })),
+          ],
           content: seed.text,
         },
       })),

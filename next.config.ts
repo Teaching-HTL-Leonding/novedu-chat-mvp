@@ -14,6 +14,14 @@ const nextConfig: NextConfig = {
   // time, which only works when those modules load through Node's loader rather
   // than a bundle.
   serverExternalPackages: ["@mastra/*", "mssql", "tedious", "@azure/monitor-opentelemetry"],
+  // A quiz answer may carry up to 3 photos of 5 MB each as base64 data URLs
+  // (~20 MB inflated) through the quiz server actions — raise the default 1 MB
+  // body limit with headroom. Global to ALL server actions; accepted by design.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "25mb",
+    },
+  },
   // Code creation lives at `/codes/new` (the list page owns the "New code"
   // button). The old share entry points 308-redirect there so any lingering link
   // still lands somewhere useful (the teacher re-picks the file/module).

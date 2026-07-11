@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ContentImage } from "@/components/content-image";
 import { Button } from "@/components/ui/button";
 import { DialogShell } from "@/components/ui/dialog-shell";
 import { FieldError } from "@/components/ui/field";
+import { IMAGE_ACCEPT, MAX_IMAGES_PER_ANSWER, readAnswerImage } from "@/lib/answer-images";
 import { startDiscussion, submitAnswer } from "@/lib/quiz-actions";
 import {
   type QuizVerdict,
@@ -66,6 +67,12 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
 
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState("");
+  // Photo answers (only offered when the current question's `imageInput` is
+  // true): validated client-side by the shared helper, sent as data URLs, and
+  // re-validated server-side. `imageError` is the dismissible upload notice.
+  const [images, setImages] = useState<{ name: string; dataUrl: string }[]>([]);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [grading, setGrading] = useState(false);
   const [verdict, setVerdict] = useState<{ result: QuizVerdict; feedback: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,12 +107,41 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
 
   const isLast = index >= total - 1;
 
+  // Validate + read the picked files (camera or gallery). Accepted photos become
+  // thumbnails; every rejected file's reason lands in one dismissible notice.
+  async function handleAddImages(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const errors: string[] = [];
+    const accepted: { name: string; dataUrl: string }[] = [];
+    let count = images.length;
+    for (const file of Array.from(files)) {
+      if (count >= MAX_IMAGES_PER_ANSWER) {
+        errors.push(`${file.name}: at most ${MAX_IMAGES_PER_ANSWER} photos per answer.`);
+        continue;
+      }
+      const read = await readAnswerImage(file);
+      if (read.ok) {
+        accepted.push({ name: file.name, dataUrl: read.dataUrl });
+        count += 1;
+      } else {
+        errors.push(read.message);
+      }
+    }
+    if (accepted.length > 0) setImages((prev) => [...prev, ...accepted]);
+    setImageError(errors.length > 0 ? errors.join(" ") : null);
+  }
+
   async function handleSubmit(question: ResolvedQuizQuestion) {
     const trimmed = answer.trim();
-    if (!trimmed || grading) return;
+    if ((!trimmed && images.length === 0) || grading) return;
     setGrading(true);
     setError(null);
-    const res = await submitAnswer({ code, questionId: question.id, answer: trimmed });
+    const res = await submitAnswer({
+      code,
+      questionId: question.id,
+      answer: trimmed,
+      images: images.map((image) => image.dataUrl),
+    });
     setGrading(false);
     if (!res.ok) {
       setError(res.message);
@@ -126,6 +162,9 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
       answer: answer.trim(),
       result: verdict.result,
       feedback: verdict.feedback,
+      // The same photos the answer was graded with — seeded into the thread so
+      // the discussion agent (and the teacher's transcript) sees them.
+      images: images.map((image) => image.dataUrl),
     });
     setOpeningDiscussion(false);
     if (!res.ok) {
@@ -146,6 +185,8 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
     setDiscussion(null);
     setVerdict(null);
     setAnswer("");
+    setImages([]);
+    setImageError(null);
     setError(null);
   }
 
@@ -187,13 +228,55 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
             disabled={grading}
             placeholder="Type your answer…"
           />
+          {imageError ? (
+            <div
+              className="mb-3 flex items-center gap-3 rounded-lg border border-destructive/45 bg-destructive/10 px-3 py-2 text-sm"
+              role="alert"
+            >
+              <span className="wrap-anywhere min-w-0 flex-1">{imageError}</span>
+              <Button variant="outline" size="sm" onClick={() => setImageError(null)}>
+                Dismiss
+              </Button>
+            </div>
+          ) : null}
+          {images.length > 0 ? (
+            <AnswerThumbnails
+              images={images}
+              disabled={grading}
+              onRemove={(i) => setImages((prev) => prev.filter((_, j) => j !== i))}
+            />
+          ) : null}
           <div className={ACTIONS}>
             <Button
               onClick={() => handleSubmit(current)}
-              disabled={grading || answer.trim() === ""}
+              disabled={grading || (answer.trim() === "" && images.length === 0)}
             >
               {grading ? "Checking…" : "Submit answer"}
             </Button>
+            {current.imageInput ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={grading || images.length >= MAX_IMAGES_PER_ANSWER}
+                >
+                  Add photo
+                </Button>
+                {/* Hidden picker: `accept` offers the camera directly on phones. */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={IMAGE_ACCEPT}
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    void handleAddImages(event.target.files);
+                    // Allow re-picking the same file after a remove.
+                    event.target.value = "";
+                  }}
+                />
+              </>
+            ) : null}
             <Button variant="outline" onClick={() => setFinished(true)} disabled={grading}>
               Finish
             </Button>
@@ -203,7 +286,10 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
         <>
           <section className={CARD}>
             <span className={LABEL}>Your answer</span>
-            <p className="whitespace-pre-wrap leading-relaxed">{answer}</p>
+            {answer.trim() !== "" ? (
+              <p className="whitespace-pre-wrap leading-relaxed">{answer}</p>
+            ) : null}
+            {images.length > 0 ? <AnswerThumbnails images={images} /> : null}
           </section>
           <section
             className={cn(CARD, "border-l-(--verdict) border-l-4", VERDICT_VARS[verdict.result])}
@@ -252,6 +338,45 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
           />
         </DialogShell>
       ) : null}
+    </div>
+  );
+}
+
+// The picked photos as small thumbnails. With `onRemove` (the editing card) each
+// thumbnail gets an overlaid remove button; without it (the answered card) the
+// photos are display-only.
+function AnswerThumbnails({
+  images,
+  onRemove,
+  disabled = false,
+}: {
+  images: { name: string; dataUrl: string }[];
+  onRemove?: (index: number) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {images.map((image, i) => (
+        <div key={image.dataUrl} className="relative">
+          {/* biome-ignore lint/performance/noImgElement: the src is an in-memory data URL — next/image's optimizer/loader doesn't apply. */}
+          <img
+            src={image.dataUrl}
+            alt={image.name}
+            className="h-20 w-20 rounded-lg border border-foreground/15 object-cover"
+          />
+          {onRemove ? (
+            <button
+              type="button"
+              aria-label={`Remove photo ${image.name}`}
+              className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full border border-foreground/25 bg-background text-foreground/70 text-xs leading-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
+              onClick={() => onRemove(i)}
+              disabled={disabled}
+            >
+              ×
+            </button>
+          ) : null}
+        </div>
+      ))}
     </div>
   );
 }
