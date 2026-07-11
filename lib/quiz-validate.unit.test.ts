@@ -65,6 +65,22 @@ questions:
     if (result.ok) expect(result.provider).toBe("Azure Foundry");
   });
 
+  it("accepts the two-level imageInput flags (llm-level default + per-question override)", async () => {
+    const withImages = `
+id: q
+llm:
+  model: m
+  imageInput: true
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+    imageInput: false
+`;
+    const result = await loadAndCheckQuiz(URL_, fetcherFor(withImages));
+    expect(result.ok).toBe(true);
+  });
+
   it("defaults anonymous to TRUE and title to null when omitted", async () => {
     const minimal = `
 id: q
@@ -153,6 +169,21 @@ llm:
 questions:
   - id: a
     question: "Q?"
+`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_SCHEMA_ERROR");
+  });
+
+  it("rejects a non-boolean imageInput", () => {
+    const result = check(`
+id: q
+llm:
+  model: m
+  imageInput: "yes"
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
 `);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_SCHEMA_ERROR");

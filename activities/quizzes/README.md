@@ -116,6 +116,7 @@ anonymous: false # optional: omit for default true; false attributes each attemp
 shuffle: true # optional: omit for default true; false keeps the authored order
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model grades + discusses
+  imageInput: true # optional: omit for default false; students may attach photos
 discussion: # optional: guidance for the per-question follow-up chat
   instructions: |
     ...
@@ -167,6 +168,19 @@ The `llm:` values are the **default**: when a teacher mints a code for this
 activity, the code's create/edit form can **override provider + model per
 code** (always both together) — the YAML file itself stays unchanged.
 
+### `llm.imageInput`
+
+Optional, **default `false`**. When `true`, students can attach **photos** to
+their answers — for example a picture of a handwritten calculation — and the
+model grades the photo together with (or instead of) the typed text. Up to
+3 photos per answer, 5 MB each; an answer may even be photo-only.
+
+The model must be **vision-capable** (able to look at images). This also
+applies to a per-code model override on such a quiz.
+
+The quiz-level flag is the default for all questions; an `imageInput` on a
+single question overrides it in either direction (see below).
+
 ### `discussion.instructions`
 
 Optional. Guidance appended to the system prompt of the follow-up **discussion
@@ -188,6 +202,7 @@ a sensible default.
 | `question`    | yes      | The **Markdown** shown to the student (math via `$…$` and code fences render).    |
 | `evaluation`  | yes      | The **grading prompt**. SERVER-ONLY — never sent to the browser.                  |
 | `image`       | no       | An optional content image shown above the question (see below).                  |
+| `imageInput`  | no       | Overrides the quiz-level `llm.imageInput` for this question only (photo answers on/off). |
 
 The `evaluation` is the heart of a question. Because it never reaches the browser,
 it can freely state the expected answer and the criteria for each verdict. Write

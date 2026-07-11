@@ -189,6 +189,48 @@ questions:
     expect(result.quiz.questions[1]?.image).toBeUndefined();
   });
 
+  it("defaults imageInput to false and carries the two-level flags", () => {
+    const defaulted = parseQuiz(VALID);
+    expect(defaulted.ok && defaulted.quiz.imageInput).toBe(false);
+    expect(defaulted.ok && defaulted.quiz.questions[0]?.imageInput).toBeUndefined();
+
+    const result = parseQuiz(`
+llm:
+  model: m
+  imageInput: true
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+  - id: b
+    question: Q2
+    evaluation: E2
+    imageInput: false
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.imageInput).toBe(true);
+    expect(result.quiz.questions[0]?.imageInput).toBeUndefined();
+    expect(result.quiz.questions[1]?.imageInput).toBe(false);
+  });
+
+  it("falls back on malformed imageInput values instead of failing the quiz", () => {
+    const result = parseQuiz(`
+llm:
+  model: m
+  imageInput: "yes"
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+    imageInput: 1
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.imageInput).toBe(false);
+    expect(result.quiz.questions[0]?.imageInput).toBeUndefined();
+  });
+
   it("skips incomplete and duplicate-id questions", () => {
     const result = parseQuiz(`
 llm:
@@ -238,6 +280,7 @@ describe("toPublicQuiz", () => {
       shuffle: true,
       model: "m",
       provider: "SCCH",
+      imageInput: false,
       questions: [{ id: "a", question: "Q", evaluation: "E" }],
     };
     expect(toPublicQuiz(quiz)).not.toHaveProperty("anonymous");
@@ -251,9 +294,34 @@ describe("toPublicQuiz", () => {
       shuffle: true,
       model: "m",
       provider: "SCCH",
+      imageInput: false,
       questions: [{ id: "a", question: "Q", evaluation: "E", image }],
     };
     const pub = toPublicQuiz(quiz);
     expect(pub.questions[0]?.image).toEqual(image);
+  });
+
+  it("resolves each question's EFFECTIVE imageInput (override beats quiz level)", () => {
+    const quiz: Quiz = {
+      id: "x",
+      anonymous: true,
+      shuffle: true,
+      model: "m",
+      provider: "SCCH",
+      imageInput: true,
+      questions: [
+        { id: "inherits", question: "Q", evaluation: "E" },
+        { id: "opts-out", question: "Q", evaluation: "E", imageInput: false },
+      ],
+    };
+    const pub = toPublicQuiz(quiz);
+    expect(pub.questions.map((q) => q.imageInput)).toEqual([true, false]);
+
+    const optIn = toPublicQuiz({
+      ...quiz,
+      imageInput: false,
+      questions: [{ id: "opts-in", question: "Q", evaluation: "E", imageInput: true }],
+    });
+    expect(optIn.questions[0]?.imageInput).toBe(true);
   });
 });

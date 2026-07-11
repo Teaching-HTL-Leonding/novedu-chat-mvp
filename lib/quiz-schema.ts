@@ -32,6 +32,8 @@ const QuizQuestionSchema = z.strictObject({
   question: z.string().min(1),
   evaluation: z.string().min(1),
   image: ImageRefSchema.optional(),
+  // Overrides the quiz-level `llm.imageInput` for this question only.
+  imageInput: z.boolean().optional(),
 });
 
 export const QuizYamlSchema = z.strictObject({
@@ -46,8 +48,14 @@ export const QuizYamlSchema = z.strictObject({
   // Random question order per attempt, default true.
   shuffle: z.boolean().optional(),
   // `provider` selects which LLM endpoint serves `model` (default SCCH); the one
-  // model grades answers AND drives the discussion chat.
-  llm: z.strictObject({ model: z.string().min(1), provider: providerSchema }),
+  // model grades answers AND drives the discussion chat. `imageInput` (default
+  // false) lets students attach photos to their answers — the model must be
+  // vision-capable; a per-question `imageInput` overrides it.
+  llm: z.strictObject({
+    model: z.string().min(1),
+    provider: providerSchema,
+    imageInput: z.boolean().optional(),
+  }),
   // Optional guidance for the per-question follow-up discussion chat.
   discussion: z.strictObject({ instructions: z.string().min(1) }).optional(),
   questions: z.array(QuizQuestionSchema).min(1),

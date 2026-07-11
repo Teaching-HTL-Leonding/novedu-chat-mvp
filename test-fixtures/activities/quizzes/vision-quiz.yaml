@@ -1,0 +1,23 @@
+id: vision-test-quiz
+name: "Vision Test Quiz"
+title: "Vision Test Quiz"
+# A REAL vision model: the quiz-image e2e spec submits a photo answer to the
+# live SCCH endpoint, unlike the hermetic fixtures which use a fake `test-model`.
+anonymous: true
+shuffle: false
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+  imageInput: true
+discussion:
+  instructions: |
+    Be a friendly tutor. Keep it short.
+questions:
+  - id: red-image
+    title: "Solid red image"
+    question: |
+      Provide a **solid red** image as your answer.
+    evaluation: |
+      The answer is correct if and only if the student's attached image is a
+      solid red image. Grade "correct" when the attached image is entirely (or
+      almost entirely) red; otherwise "incorrect". If no image is attached,
+      grade "incorrect".

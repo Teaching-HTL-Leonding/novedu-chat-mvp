@@ -32,6 +32,8 @@ export const VALID_CODING_URL = `${FIXTURES_BASE}/coding/test-coding.yaml`;
 export const LIVE_CODING_URL = `${FIXTURES_BASE}/coding/live-coding.yaml`;
 // A valid QUIZ activity URL, used by the teacher quiz-detail page.
 export const VALID_QUIZ_URL = `${FIXTURES_BASE}/quizzes/test-quiz.yaml`;
+// A REAL-model quiz with photo answers enabled for the @live-llm image round-trip.
+export const VISION_QUIZ_URL = `${FIXTURES_BASE}/quizzes/vision-quiz.yaml`;
 // A valid WRITING activity URL (attributed, real model) for the full round-trip.
 export const VALID_WRITING_URL = `${FIXTURES_BASE}/writings/test-writing.yaml`;
 
