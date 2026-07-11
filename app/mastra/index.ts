@@ -1,5 +1,6 @@
 import { Mastra } from "@mastra/core/mastra";
 import { SamplingStrategyType } from "@mastra/core/observability";
+import { InMemoryDB, WorkflowsInMemory } from "@mastra/core/storage";
 import { PinoLogger } from "@mastra/loggers";
 import { MSSQLStore } from "@mastra/mssql";
 import { Observability } from "@mastra/observability";
@@ -21,7 +22,17 @@ const logger = new PinoLogger({ name: "Mastra", level: "info" });
 // place (`lib/azure-credential.ts`); see the invariant there.
 function buildMssqlStore(connectionString: string): MSSQLStore {
   const config = buildMssqlConnectionConfig(connectionString);
-  return new MSSQLStore({ id: "mastra-storage", pool: new sql.ConnectionPool(config) });
+  const store = new MSSQLStore({ id: "mastra-storage", pool: new sql.ConnectionPool(config) });
+  // Keep agentic-loop workflow snapshots OUT of SQL: every agent run persists a
+  // "pending" snapshot at start (and deletes it at the end), and that snapshot
+  // inlines the full input — with photo answers that's megabytes of base64,
+  // which times out the write on the small Azure SQL tier before the LLM is
+  // even called. Nothing here resumes workflows (no suspend/approval flows), so
+  // the snapshots are transient scratch state; swapping the workflows domain to
+  // Mastra's in-memory store is the same substitution Mastra itself makes when
+  // a composite store lacks the domain. Threads/messages stay in SQL untouched.
+  store.stores.workflows = new WorkflowsInMemory({ db: new InMemoryDB() });
+  return store;
 }
 
 // Reuse a single store (and its connection pool) across Next.js HMR reloads in dev,

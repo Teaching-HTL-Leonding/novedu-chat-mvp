@@ -50,6 +50,20 @@ describe("buildMssqlConnectionConfig — SQL user/password auth", () => {
   });
 });
 
+describe("buildMssqlConnectionConfig — request timeout", () => {
+  it("raises the default 15 s requestTimeout to 60 s (large writes on a small tier)", () => {
+    const config = buildMssqlConnectionConfig(HOST);
+
+    expect(config.requestTimeout).toBe(60_000);
+  });
+
+  it("does not override a Request Timeout the connection string already set", () => {
+    const config = buildMssqlConnectionConfig(`${HOST};Request Timeout=30000`);
+
+    expect(config.requestTimeout).toBe(30_000);
+  });
+});
+
 describe("buildMssqlConnectionConfig — passwordless Entra ID", () => {
   it("attaches a real TokenCredential via tedious's token-credential auth", () => {
     const config = buildMssqlConnectionConfig(HOST);

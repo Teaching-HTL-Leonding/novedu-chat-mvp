@@ -67,6 +67,11 @@ export function buildMssqlConnectionConfig(
   connectionString: string,
 ): ReturnType<typeof sql.ConnectionPool.parseConnectionString> {
   const config = sql.ConnectionPool.parseConnectionString(connectionString);
+  // node-mssql's default requestTimeout is 15 s — too tight for this app's
+  // largest writes (Mastra messages carrying base64 photo attachments) on a
+  // small Azure SQL tier, whose capped log-write rate makes a multi-hundred-KB
+  // INSERT crawl. 60 s rides out the throttling instead of failing the request.
+  config.requestTimeout ??= 60_000;
   // SQL auth wins only when the string supplies BOTH a username and a password;
   // otherwise fall back to passwordless Entra ID.
   if (!config.user || !config.password) {

@@ -25,6 +25,12 @@ helper); never re-implement the parse/override at a call site. It parses
 The choice is purely "are `User ID` + `Password` present in the string?" — there is
 no separate env flag.
 
+The builder also raises node-mssql's default 15 s `requestTimeout` to **60 s**
+(a `Request Timeout=...` in the connection string wins): the app's largest
+writes — Mastra messages carrying base64 photo attachments — can exceed 15 s on
+a small Azure SQL tier, whose capped log-write rate makes a multi-hundred-KB
+INSERT crawl.
+
 ### When to use which (policy)
 
 - **Production is ALWAYS passwordless Entra / Managed Identity.** A prod
@@ -76,7 +82,13 @@ connection and tokens auto-refresh:
 
 1. **Mastra** (`app/mastra/index.ts`): `MSSQLStore` (`@mastra/mssql`) owns the
    `mastra_*` tables and **auto-creates/migrates its own schema** on first use.
-   We never touch that schema.
+   We never touch that schema. One domain is deliberately swapped out: the
+   **workflows domain runs in-memory** (`WorkflowsInMemory`), because every
+   agent run persists a transient agentic-loop snapshot that inlines the full
+   input — with photo answers that is megabytes of base64, which times out the
+   SQL write on a small tier before the LLM is even called. Nothing in this app
+   suspends/resumes workflows, so the snapshots never need to survive a
+   restart. Threads/messages (Mastra Memory) stay in SQL.
 2. **The app's Drizzle handle** (`lib/db/index.ts`, `getDb()`): owns the
    `novedu_*` tables, defined in `lib/db/schema.ts`. Separate pool on purpose —
    no lifecycle coupling with Mastra's.
