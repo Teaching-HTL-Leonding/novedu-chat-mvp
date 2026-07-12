@@ -1,0 +1,18 @@
+# Hermetic CLI test fixture: a quiz that pulls a document-level fragment block from a
+# local library via a RELATIVE ref (resolved against this file's directory). NOT a
+# demo — see test-fixtures/ for the fixture policy. Exercised by cli `validate --kind quiz`.
+id: fragments-quiz
+llm:
+  model: test-model
+fragment_files:
+  - id: shared
+    url: ../tutors/test-fragments-a.yaml
+fragments:
+  - file: shared
+    id: persona
+    variables:
+      subject: geometry
+questions:
+  - id: q1
+    question: "Name the parts of a right triangle."
+    evaluation: "The hypotenuse and the two legs. correct|partial|incorrect."

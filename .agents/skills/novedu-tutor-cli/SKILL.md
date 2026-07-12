@@ -50,8 +50,14 @@ the **same** validation pipeline the app uses. What it checks depends on the kin
   undeclared variables). This verifies a library a fragment author maintains, without
   needing a tutor.
 - **quiz** / **writing** / **coding**: parse YAML → strict schema-check the activity
-  document (the same gate the app applies at save / code-create time). A quiz also
-  checks that question ids are unique.
+  document (the same gate the app applies at save / code-create time) → if the
+  activity declares a document-level **prompt-fragment block** (`fragment_files:` +
+  `fragments:`, the same shape a tutor's `prompt:` uses), fetch every referenced
+  library, check the references + variables, and **strict-render every fragment in
+  every referenced library** — exactly like a tutor. A quiz also checks that question
+  ids are unique. Prompt fragments are cross-cutting: all four kinds can pull them in
+  (a quiz block feeds both the grader and the discussion chat; writing/coding prepend
+  it to `instructions`).
 
 An activity that passes here is the same one the app will accept — so this is the
 authoritative way to check one, not a re-implementation to second-guess. Note that
@@ -82,9 +88,10 @@ npm run cli -- validate <pathOrUrl> [--kind <kind>] [--json]
 ```
 
 Use this form in the repo because it runs the live workspace code, so it reflects
-any local edits to the validation core (`lib/tutors`, `lib/quiz-validate`,
-`lib/writing-validate`, `lib/coding-validate`) — and there's nothing to install. (The
-`--` passes the rest of the arguments through to the CLI.)
+any local edits to the validation core (`lib/prompt-fragments` — the shared fetch /
+consistency / render / assemble pipeline all kinds use — plus `lib/tutors`,
+`lib/quiz-validate`, `lib/writing-validate`, `lib/coding-validate`) — and there's
+nothing to install. (The `--` passes the rest of the arguments through to the CLI.)
 
 **Outside the repo** — any other folder, e.g. a teacher authoring activities in their
 own directory. Use the published package via `npx`:
@@ -113,13 +120,17 @@ validate <pathOrUrl> [--kind tutor|fragment|quiz|writing|coding] [--json]
 - **`--kind`** — what the file is: `tutor` (the default), `fragment`, `quiz`,
   `writing`, or `coding`. The CLI does **not** auto-detect; pass the right `--kind`
   for anything other than a tutor. Rough tell-tales: a tutor has top-level `prompt`;
-  a fragment library has top-level `fragments`; a quiz has top-level `questions`; a
-  writing or coding activity has top-level `instructions` (writing may also have
-  `placeholder`; coding is the endpoint kind with no in-app chat).
-- **Relative `fragment_files`** in a tutor resolve against the tutor's own
-  location: a sibling file for a local tutor, a sibling URL for a remote one. So
-  validate the tutor where its fragment files actually sit. (Fragment, quiz, writing,
-  and coding files are self-contained — those kinds fetch nothing else.)
+  a quiz has top-level `questions`; a writing or coding activity has top-level
+  `instructions` (writing may also have `placeholder`; coding is the endpoint kind
+  with no in-app chat); a fragment library has top-level `fragments` **and none of
+  `prompt` / `questions` / `instructions`** (note: quiz/writing/coding may ALSO carry
+  a top-level `fragments:` — their document-level fragment block — so `fragments` alone
+  no longer means "library"; disambiguate by the presence of `questions`/`instructions`).
+- **Relative `fragment_files`** resolve against the activity's own location — for
+  ANY kind that can declare them (tutor, quiz, writing, coding): a sibling file for a
+  local activity, a sibling URL for a remote one. So validate the activity where its
+  fragment files actually sit. (A fragment library is self-contained — it fetches
+  nothing else. An activity with no `fragment_files` fetches nothing either.)
 - **`--json`** — print the raw result object instead of the formatted report.
   Use this when you need to inspect specifics programmatically (drill into the
   exact failing variable/fragment/field, feed CI, etc.). Without it you get a
@@ -140,14 +151,15 @@ the specific error code rather than just relaying it:
 | `DUPLICATE_QUIZ_QUESTION_ID` | Two quiz questions share an `id` (the per-question stats key must be unique). |
 | `WRITING_SCHEMA_ERROR` | The writing document is wrong/missing a field — usually a missing `instructions` or `llm.model` (`--kind writing`). |
 | `CODING_SCHEMA_ERROR` | The coding document is wrong/missing a field — usually a missing `instructions` or `llm.model`, or an unsupported field like `anonymous`/`description`/`placeholder` (`--kind coding`). |
-| `FRAGMENT_NOT_FOUND` | The tutor references a fragment id that doesn't exist in the file. |
-| `MISSING_REQUIRED_VARIABLE` | A fragment needs a variable the tutor didn't supply. |
+| `FRAGMENT_NOT_FOUND` | The activity references a fragment id that doesn't exist in the file. |
+| `MISSING_REQUIRED_VARIABLE` | A fragment needs a variable the activity didn't supply. |
 | `VARIABLE_TYPE_MISMATCH` | A supplied variable is the wrong type for what the fragment declares. |
-| `FRAGMENT_TEMPLATE_ERROR` | A fragment's `content` template failed to render — a Handlebars syntax error, or a reference to a variable the fragment never declares in its `input_schema`. Reported by `--kind fragment` and by the thorough tutor check (whole-library). The `fragment`/`file` context points at the offender. |
+| `FRAGMENT_TEMPLATE_ERROR` | A fragment's `content` template failed to render — a Handlebars syntax error, or a reference to a variable the fragment never declares in its `input_schema`. Reported by `--kind fragment` and by the thorough whole-library check any kind runs when it declares a fragment block (tutor, quiz, writing, coding). The `fragment`/`file` context points at the offender. |
 | `FETCH_FAILED` | A file/URL couldn't be read (missing local file, bad URL, network). |
 
-For the full set, the codes come from `lib/tutors/errors.ts` in the repo. When a
-schema error is vague, re-run with `--json` to see the underlying issue detail.
+For the full set, the codes come from `lib/prompt-fragments/errors.ts` in the repo
+(the shared fragment core). When a schema error is vague, re-run with `--json` to see
+the underlying issue detail.
 
 ## Authentication: `login`, `logout`, `whoami`
 

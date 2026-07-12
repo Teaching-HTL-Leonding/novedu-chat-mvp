@@ -5,7 +5,7 @@ import type { CodeModule } from "@/lib/code-modules/types";
 import type { CodeEntry } from "@/lib/code-store";
 import type { FileKind } from "@/lib/file-name";
 import { type FileValidationResult, fileValidators } from "@/lib/file-validators";
-import type { Fetcher } from "@/lib/tutors";
+import type { Fetcher } from "@/lib/prompt-fragments";
 import { codingModule } from "./coding";
 import { quizModule } from "./quiz";
 import { tutorModule } from "./tutor";

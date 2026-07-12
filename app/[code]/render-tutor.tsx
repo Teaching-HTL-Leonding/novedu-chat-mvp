@@ -2,8 +2,9 @@ import { Notice } from "@/components/notice";
 import { Main } from "@/components/page-main";
 import { ErrorList, WarningList } from "@/components/validation-result";
 import type { CodeEntry } from "@/lib/code-store";
+import { defaultFetcher } from "@/lib/prompt-fragments";
 import { buildRuntimeHeaders } from "@/lib/runtime-headers";
-import { defaultFetcher, loadAndBuildTutorPrompt, sampleExampleQuestions } from "@/lib/tutors";
+import { loadAndBuildTutorPrompt, sampleExampleQuestions } from "@/lib/tutors";
 import { TutorChat } from "../tutor-chat";
 
 // The tutor module's student render: load + build the tutor prompt from the

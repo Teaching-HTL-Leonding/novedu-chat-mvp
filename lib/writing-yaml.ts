@@ -1,5 +1,7 @@
 import { parse as parseYamlText } from "yaml";
 import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "./llm/provider";
+import type { FragmentBlock } from "./prompt-fragments";
+import { readFragmentBlock } from "./prompt-fragments/block";
 import type { WritingPublic } from "./writing-types";
 
 // LENIENT runtime parse of a writing YAML — the STUDENT path. Writing activities
@@ -32,8 +34,19 @@ export interface Writing {
   model: string;
   /** The LLM provider serving `model` (`llm.provider`, default SCCH). SERVER-ONLY. */
   provider: LlmProvider;
-  /** The teacher-provided system prompt for the feedback chat. SERVER-ONLY. */
+  /**
+   * The teacher-provided system prompt for the feedback chat. SERVER-ONLY. `loadWriting`
+   * prepends the assembled document-level fragment block ahead of it; `parseWriting`
+   * alone leaves it as authored.
+   */
   instructions: string;
+  /**
+   * The unresolved document-level fragment block (server-only, transient). `parseWriting`
+   * leaves it here for `loadWriting` to fetch + assemble and prepend to `instructions`;
+   * `loadWriting` then clears it (`EMPTY_FRAGMENT_BLOCK`) so no stale block lingers on the
+   * loaded activity. Never reaches the browser (`toPublicWriting` drops it).
+   */
+  fragmentBlock: FragmentBlock;
   /** Optional starter text prefilled into the editor. */
   placeholder?: string;
 }
@@ -108,6 +121,8 @@ export function parseWriting(content: string): WritingParseResult {
       model,
       provider,
       instructions,
+      // Carried through for `loadWriting` to resolve + prepend to `instructions`.
+      fragmentBlock: readFragmentBlock(root),
       placeholder: asString(root.placeholder),
     },
   };
@@ -115,7 +130,9 @@ export function parseWriting(content: string): WritingParseResult {
 
 /**
  * The student-facing projection — strips every server-only field, above all the
- * teacher's `instructions` and the `model`, before anything reaches the browser.
+ * teacher's `instructions` (fragment preamble included), the `fragmentBlock`, and the
+ * `model`, before anything reaches the browser (it copies only the whitelisted public
+ * fields below, so the server-only ones can never leak).
  */
 export function toPublicWriting(writing: Writing): WritingPublic {
   return {

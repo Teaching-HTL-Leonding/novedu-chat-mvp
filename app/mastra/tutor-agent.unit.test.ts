@@ -20,7 +20,11 @@ vi.mock("@mastra/core/agent", () => ({
   },
 }));
 vi.mock("@mastra/memory", () => ({ Memory: class {} }));
-vi.mock("@/lib/tutors", () => ({ loadAndBuildTutorPrompt, defaultFetcher: {} }));
+vi.mock("@/lib/tutors", () => ({ loadAndBuildTutorPrompt }));
+vi.mock("@/lib/prompt-fragments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/prompt-fragments")>()),
+  defaultFetcher: {},
+}));
 vi.mock("@/lib/llm/model", () => ({ resolveLanguageModel }));
 
 import {

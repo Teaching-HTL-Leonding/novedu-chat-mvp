@@ -8,10 +8,12 @@ prompt — comes from the YAML, not from the app.
 
 Four modules share one generic "codes" pipeline (access, storage, attribution):
 
-- **tutor** — a chat with an LLM configured entirely by a *tutor-definition YAML* (assembled into a system prompt from fragments).
+- **tutor** — a chat with an LLM configured entirely by a *tutor-definition YAML*.
 - **quiz** — LLM-graded open-ended questions, with an opt-in follow-up discussion chat. The grader is server-only.
 - **writing** — a split-screen Markdown editor where an AI assistant gives feedback (it can *read* the draft but never edit it) and the student saves their text.
 - **coding** — an OpenAI-compatible Chat Completions endpoint an external coding agent (e.g. little-coder) points at; the code is the bearer API key, and the teacher's system prompt + model are injected server-side.
+
+All four kinds share **prompt fragments** — reusable, parameterized system-prompt pieces (persona, safety, ground rules) assembled from **fragment libraries**. Written once, they are pulled into any activity and prepended to its instructions (for a quiz, to both the grader and the discussion chat). See [`docs/prompt-fragments.md`](docs/prompt-fragments.md).
 
 It is a prototype: access is gated behind Microsoft Entra ID sign-in, and agent
 memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL password).
@@ -21,7 +23,7 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 | Area | Description |
 | --- | --- |
 | **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the code-entry page; `app/[code]/page.tsx` checks the code and **dispatches by its `module`** to the tutor/quiz/writing/coding renderer. Teachers create, list, and edit **codes** under `/codes` (new at `/codes/new`, edit at `/codes/edit/<code>`), author **app-hosted YAML files** under `/files` and **images** under `/images`, and see usage on the `/usage` dashboard. See [`docs/codes.md`](docs/codes.md). Lists filter in the DB — see [`docs/filtered-lists.md`](docs/filtered-lists.md). |
-| **Tutor core** (`lib/tutors/`) | Framework-agnostic pipeline: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. Returns a structured `BuildResult` (never throws). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the tutor YAML, and fragment inputs may declare **defaults**. See [`activities/tutors/README.md`](activities/tutors/README.md) for the authoring guide. |
+| **Prompt-fragment core** (`lib/prompt-fragments/`) | The shared, framework-agnostic pipeline every activity kind builds on: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. `assembleFragmentPrompt` resolves a document-level fragment block into a prompt string (a structured result, never throws); tutor, quiz, writing, and coding all call it. Handlebars is confined to this module (grep-guard enforced). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the activity YAML, and fragment inputs may declare **defaults**. See [`docs/prompt-fragments.md`](docs/prompt-fragments.md) and [`activities/tutors/README.md`](activities/tutors/README.md) (the authoring guide). |
 | **Mastra agents** (`app/mastra/`) | The `tutor`, `quizDiscussion`, and `writing` agents resolve their instructions + model per request and persist conversations via Mastra `Memory`; the server-only `quizEvaluator` grader is never web-reachable. Agents are registered in `app/mastra/index.ts`. Storage is **Azure SQL** via `@mastra/mssql`, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). (The `coding` module has **no** Mastra agent — it is a thin proxy.) |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. See [`docs/chat.md`](docs/chat.md). |
 | **Coding proxy** (`app/api/coding/**`, `lib/coding-proxy.ts`) | A **public**, OpenAI-compatible `POST /api/coding/v1/chat/completions` that authenticates with the code as the bearer key, appends the teacher's system prompt, pins the model, and streams SCCH's response straight back. See [`docs/coding.md`](docs/coding.md). |
@@ -246,7 +248,8 @@ the same coding-workshop flow.
 ## Documentation
 
 Per-subsystem deep references live in [`docs/`](docs/): codes & modules
-([`codes.md`](docs/codes.md)), [`writing.md`](docs/writing.md), [`coding.md`](docs/coding.md),
+([`codes.md`](docs/codes.md)), the shared [`prompt-fragments.md`](docs/prompt-fragments.md),
+[`writing.md`](docs/writing.md), [`coding.md`](docs/coding.md),
 the chat surface ([`chat.md`](docs/chat.md)), app-hosted [`files.md`](docs/files.md) and
 [`images.md`](docs/images.md), usage [`usage-metering.md`](docs/usage-metering.md) +
 [`dashboard.md`](docs/dashboard.md), [`auth.md`](docs/auth.md), the CLI/API bearer

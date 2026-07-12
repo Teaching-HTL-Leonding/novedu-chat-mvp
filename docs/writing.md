@@ -94,6 +94,14 @@ are SERVER-ONLY.** The client-safe projection — `toPublicWriting` →
 `placeholder`; the render component MUST call it before sending anything to the
 browser, so the prompt and model never cross the wire.
 
+A writing YAML may also carry the document-level **fragment block** (top-level
+`fragment_files`/`fragments`, the shared prompt-fragment core —
+`docs/prompt-fragments.md`) alongside the still-required `instructions`. `loadWriting`
+assembles the block (`assembleFragmentPrompt`, `validateLibraries: false` — the hot
+path) and **prepends** the fragments (in `priority` order) ahead of `instructions`; a
+fetch / consistency / assembly failure fails the load closed. A YAML with no fragments
+declared leaves `instructions` unchanged and does not fetch.
+
 `lib/writing-fetch.ts` (`loadWriting`) is the single loader shared by the render
 component, the save action, the runtime descriptor's `buildRequestContext`, and
 `readAnonymousFlag`, so they all read the same activity the same way. Like the quiz

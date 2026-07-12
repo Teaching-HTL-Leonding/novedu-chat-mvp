@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Fetcher } from "./fetcher";
-import { loadAndBuildTutorPrompt, resolveFragmentUrl } from "./load";
+import { type Fetcher, resolveFragmentUrl } from "@/lib/prompt-fragments";
+import { loadAndBuildTutorPrompt } from "./load";
 import {
   fixtureFetcher,
   fixtureResponse,

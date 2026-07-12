@@ -180,6 +180,44 @@ describe("novedu-cli validate — local files", () => {
     expect(stdout).toContain("CODING_SCHEMA_ERROR");
   });
 
+  // Document-level prompt fragments over a `file:` scheme with a RELATIVE ref, proving
+  // the shared orchestrator + LoadOptions flow through each --kind on disk.
+  it("exits 0 for a quiz with a local fragment block (--kind quiz)", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${quizzesDir}fragments-quiz.yaml`,
+      "--kind",
+      "quiz",
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("Valid quiz");
+  });
+
+  it("exits 0 for a writing activity with a local fragment block (--kind writing)", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${writingsDir}fragments-writing.yaml`,
+      "--kind",
+      "writing",
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("Valid writing activity");
+  });
+
+  it("exits 0 for a coding activity with a local fragment block (--kind coding)", async () => {
+    const { code, stdout } = await runCli([
+      "validate",
+      `${codingDir}fragments-coding.yaml`,
+      "--kind",
+      "coding",
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("Valid coding activity");
+  });
+
   it("rejects an invalid --kind", async () => {
     const { code, stderr } = await runCli([
       "validate",

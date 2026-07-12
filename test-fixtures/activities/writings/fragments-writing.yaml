@@ -1,0 +1,15 @@
+# Hermetic CLI test fixture: a writing activity that pulls a document-level fragment
+# block from a local library via a RELATIVE ref. NOT a demo — see test-fixtures/ for
+# the fixture policy. Exercised by cli `validate --kind writing`.
+id: fragments-writing
+llm:
+  model: test-model
+fragment_files:
+  - id: shared
+    url: ../tutors/test-fragments-a.yaml
+fragments:
+  - file: shared
+    id: persona
+    variables:
+      subject: essay writing
+instructions: "Read the student's draft and coach it, one suggestion at a time."

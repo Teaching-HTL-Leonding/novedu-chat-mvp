@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import type { BuildResult, FragmentCheckResult } from "@/lib/prompt-fragments";
 import type { QuizCheckResult } from "@/lib/quiz-validate";
-import type { BuildResult, FragmentCheckResult } from "@/lib/tutors";
 import type { WritingCheckResult } from "@/lib/writing-validate";
 import {
   formatFragmentResult,

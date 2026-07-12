@@ -40,6 +40,22 @@
     "discussion": {
       "$ref": "#/$defs/discussion"
     },
+    "fragment_files": {
+      "type": "array",
+      "description": "Optional fragment libraries this quiz pulls shared prompt fragments from.",
+      "items": {
+        "$ref": "#/$defs/fragmentFileRef"
+      },
+      "default": []
+    },
+    "fragments": {
+      "type": "array",
+      "description": "Optional fragments selected from fragment_files. Assembled in priority order and prepended to BOTH the grader prompt and the discussion chat's system prompt.",
+      "items": {
+        "$ref": "#/$defs/fragmentRef"
+      },
+      "default": []
+    },
     "questions": {
       "type": "array",
       "minItems": 1,
@@ -141,6 +157,72 @@
           "description": "Optional attribution (\"Content Credentials\") shown small below the image."
         }
       }
+    },
+    "fragmentFileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "url"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Local alias used by fragments[].file."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "HTTP(S) URL or relative path to the fragment library.",
+          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$"
+        }
+      }
+    },
+    "fragmentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "id"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Alias from fragment_files[].id."
+        },
+        "id": {
+          "type": "string",
+          "description": "Fragment id inside the referenced library."
+        },
+        "variables": {
+          "type": "object",
+          "description": "Literal values passed into the fragment template.",
+          "additionalProperties": {
+            "$ref": "#/$defs/variableValue"
+          }
+        },
+        "bind": {
+          "type": "object",
+          "description": "Accepted for compatibility but ignored by the current assembler.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Marker for important fragments. Accepted but not currently enforced."
+        }
+      }
+    },
+    "variableValue": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
     }
   }
 }

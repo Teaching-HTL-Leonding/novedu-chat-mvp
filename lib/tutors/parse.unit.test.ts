@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseYaml, validate } from "./parse";
-import { FragmentFileSchema, TutorSchema } from "./schemas";
+import { FragmentFileSchema, parseYaml, validate } from "@/lib/prompt-fragments";
+import { TutorSchema } from "./schemas";
 import { LIB_A_YAML, LIB_B_YAML, TUTOR_YAML } from "./test-fixtures";
 
 describe("parseYaml", () => {

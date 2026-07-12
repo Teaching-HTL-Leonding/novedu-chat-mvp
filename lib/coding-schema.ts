@@ -17,6 +17,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
+import { FragmentFileRefSchema, FragmentRefSchema } from "@/lib/prompt-fragments";
 
 export const CodingYamlSchema = z.strictObject({
   id: z.string().min(1),
@@ -27,6 +28,12 @@ export const CodingYamlSchema = z.strictObject({
   // whatever model the coding agent sends; required. `provider` selects which LLM
   // endpoint serves it (default SCCH).
   llm: z.strictObject({ model: z.string().min(1), provider: providerSchema }),
+  // Optional document-level prompt-fragment block (the tutor `prompt` shape flattened
+  // to the root, identical to writing). The assembled fragments are prepended to
+  // `instructions` in `loadCoding` (never in `endpoint.ts`) — fragments first,
+  // `instructions` last — and the proxy folds that one finished string into each request.
+  fragment_files: z.array(FragmentFileRefSchema).default([]),
+  fragments: z.array(FragmentRefSchema).default([]),
   // The teacher's system prompt, appended after the coding tool's own. SERVER-ONLY;
   // required.
   instructions: z.string().min(1),

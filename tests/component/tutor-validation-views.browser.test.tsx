@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-react";
 import { ErrorList, WarningList } from "@/components/validation-result";
-import type { ValidationError, ValidationWarning } from "@/lib/tutors";
+import type { ValidationError, ValidationWarning } from "@/lib/prompt-fragments";
 
 // Pure prop rendering of a broken tutor's structured errors/warnings. This is
 // what a student saw via the @live e2e/tutor-chat.spec.ts (a valid code for a

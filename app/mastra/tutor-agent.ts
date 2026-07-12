@@ -4,7 +4,8 @@ import { Memory } from "@mastra/memory";
 import { providerUnavailableReason } from "@/lib/llm/availability";
 import { resolveLanguageModel } from "@/lib/llm/model";
 import { type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
-import { defaultFetcher, loadAndBuildTutorPrompt } from "@/lib/tutors";
+import { defaultFetcher } from "@/lib/prompt-fragments";
+import { loadAndBuildTutorPrompt } from "@/lib/tutors";
 
 // A single agent that is configured entirely by a tutor-definition YAML. The
 // tutor's URL arrives per request via `requestContext` (set by the CopilotKit

@@ -37,8 +37,27 @@ anonymous: false
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 
+# Shared rules from ../shared/general-fragments.yaml — the SAME library the companion
+# tutor (./review-writing-tutor.yaml) pulls in. The assembled block is prepended AHEAD of
+# the instructions below, so the safety net and language policy lead the coach's prompt.
+fragment_files:
+  - id: general_fragments
+    url: "../shared/general-fragments.yaml"
+
+fragments:
+  - file: general_fragments
+    id: language_policy
+    variables:
+      natural_language: "English — simple and clear, suitable for B1–B2 learners; briefly explain difficult words when you use them"
+      code_language: "English"
+
+  - file: general_fragments
+    id: teenager_safety
+    required: true
+
 # The writing coach's system prompt. SERVER-ONLY — never sent to the browser —
-# so it may freely describe the assessment criteria and coaching strategy.
+# so it may freely describe the assessment criteria and coaching strategy. The shared
+# fragments above are assembled ahead of it.
 instructions: |
   You are a warm, encouraging English writing coach for a 16-year-old
   vocational-college student (English level roughly B1–B2). The assignment is

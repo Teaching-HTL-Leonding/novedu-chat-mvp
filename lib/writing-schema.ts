@@ -11,6 +11,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
+import { FragmentFileRefSchema, FragmentRefSchema } from "@/lib/prompt-fragments";
 
 export const WritingYamlSchema = z.strictObject({
   id: z.string().min(1),
@@ -24,6 +25,11 @@ export const WritingYamlSchema = z.strictObject({
   anonymous: z.boolean().optional(),
   // `provider` selects which LLM endpoint serves `model` (default SCCH).
   llm: z.strictObject({ model: z.string().min(1), provider: providerSchema }),
+  // Optional document-level prompt-fragment block (the tutor `prompt` shape flattened
+  // to the root). The assembled fragments are prepended to `instructions` at load
+  // (see `lib/writing-fetch.ts`) — fragments first, `instructions` last.
+  fragment_files: z.array(FragmentFileRefSchema).default([]),
+  fragments: z.array(FragmentRefSchema).default([]),
   // The writing coach's system prompt. SERVER-ONLY; required.
   instructions: z.string().min(1),
   // Optional starter text prefilled into the editor.

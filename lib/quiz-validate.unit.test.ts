@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
+import type { Fetcher } from "@/lib/prompt-fragments";
 import { checkQuizValue, loadAndCheckQuiz } from "@/lib/quiz-validate";
-import type { Fetcher } from "@/lib/tutors";
 
 // The quiz AUTHORING validator: the strict schema gate + the duplicate-question-id
 // pass. Pure, no network — a fixture Fetcher returns YAML text in-process.
@@ -230,5 +230,144 @@ questions:
       expect(result.errors[0]?.code).toBe("DUPLICATE_QUIZ_QUESTION_ID");
       expect(result.errors[0]?.questionId).toBe("dup");
     }
+  });
+});
+
+// --- document-level prompt fragments (the authoring gate for quiz fragments) -------
+
+const LIB_URL = "https://example.com/lib.yaml";
+const LIB_YAML = `id: lib
+fragments:
+  - id: safety
+    version: 1
+    priority: 900
+    content: |
+      Always be safe and kind.
+  - id: lang
+    version: 1
+    priority: 400
+    input_schema:
+      type: object
+      required: [language]
+      properties:
+        language:
+          type: string
+    content: |
+      Respond in {{language}}.
+`;
+
+// A fetcher serving distinct bodies per URL (quiz + its fragment library).
+const fetcherMap =
+  (bodies: Record<string, string>): Fetcher =>
+  async (url) => {
+    const text = bodies[url];
+    return text === undefined
+      ? { ok: false, status: 404, text: async () => "" }
+      : { ok: true, status: 200, text: async () => text };
+  };
+
+const quizWithFragments = (fragmentsBlock: string) => `
+id: q
+llm:
+  model: m
+fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+${fragmentsBlock}
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+`;
+
+describe("loadAndCheckQuiz — fragments", () => {
+  it("accepts a quiz that pulls in valid fragments", async () => {
+    const quiz = quizWithFragments(`fragments:
+  - file: lib
+    id: safety
+  - file: lib
+    id: lang
+    variables:
+      language: German`);
+    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
+    expect(result.ok).toBe(true);
+  });
+
+  it("a plain quiz (no fragments) is still valid and does no fetch", async () => {
+    const plain = `
+id: q
+llm:
+  model: m
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+`;
+    // Fetcher that throws if asked for anything but the quiz proves no library fetch happens.
+    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: plain }));
+    expect(result.ok).toBe(true);
+  });
+
+  it("FRAGMENT_NOT_FOUND for a reference to a missing fragment id", async () => {
+    const quiz = quizWithFragments(`fragments:
+  - file: lib
+    id: nope`);
+    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("FRAGMENT_NOT_FOUND");
+  });
+
+  it("UNKNOWN_FRAGMENT_FILE_ALIAS for a reference to an undeclared file alias", async () => {
+    const quiz = quizWithFragments(`fragments:
+  - file: other
+    id: safety`);
+    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.errors.map((e) => e.code)).toContain("UNKNOWN_FRAGMENT_FILE_ALIAS");
+  });
+
+  it("MISSING_REQUIRED_VARIABLE when a required fragment variable is not supplied", async () => {
+    const quiz = quizWithFragments(`fragments:
+  - file: lib
+    id: lang`);
+    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("MISSING_REQUIRED_VARIABLE");
+  });
+
+  it("VARIABLE_TYPE_MISMATCH when a fragment variable has the wrong type", async () => {
+    const quiz = quizWithFragments(`fragments:
+  - file: lib
+    id: lang
+    variables:
+      language: [not, a, string]`);
+    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("VARIABLE_TYPE_MISMATCH");
+  });
+
+  it("still catches duplicate question ids alongside a valid fragment block", async () => {
+    const quiz = `
+id: q
+llm:
+  model: m
+fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+fragments:
+  - file: lib
+    id: safety
+questions:
+  - id: dup
+    question: "Q1?"
+    evaluation: "grade"
+  - id: dup
+    question: "Q2?"
+    evaluation: "grade"
+`;
+    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("DUPLICATE_QUIZ_QUESTION_ID");
   });
 });

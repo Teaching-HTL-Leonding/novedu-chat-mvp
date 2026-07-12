@@ -8,7 +8,10 @@ it before touching the entry points (`app/page.tsx`, `app/[code]/**`), the
 teacher surfaces (`app/codes/**`), the runtime route
 (`app/api/copilotkit/[[...slug]]/route.ts`), the validator/module seams
 (`lib/file-validators.ts`, `lib/code-modules/**`), the create pipeline
-(`lib/code-service.ts`), or the `novedu_*` stores in `lib/code-*.ts`. The
+(`lib/code-service.ts`), the quiz libs (`lib/quiz-*.ts`, incl. `lib/quiz-fetch.ts`),
+or the `novedu_*` stores in `lib/code-*.ts`. The document-level fragment block every
+activity kind embeds is the shared prompt-fragment core (`lib/prompt-fragments/**`,
+`docs/prompt-fragments.md`). The
 bearer API channel (`GET`/`POST /api/codes`, `novedu-cli codes`) is documented
 in `docs/api.md`.
 
@@ -396,7 +399,19 @@ in-page discussion live in `app/[code]/_quiz/`.
   (photo answers, below), optional `discussion.instructions`, and
   `questions[]` each with `id`, optional `title`, `question` (markdown), an
   optional content `image` (below), an optional `imageInput` override, and
-  `evaluation` (the SERVER-ONLY grading prompt).
+  `evaluation` (the SERVER-ONLY grading prompt). It may also carry the
+  document-level **fragment block** (top-level `fragment_files`/`fragments`, the
+  shared prompt-fragment core — `docs/prompt-fragments.md`).
+- **Fragments feed BOTH grader and discussion.** The block is resolved **once** at
+  load (`loadQuiz`, `lib/quiz-fetch.ts`, `validateLibraries: false` — the hot path)
+  into a server-only `Quiz.fragmentPreamble` (fragments in `priority` order; a fetch
+  / consistency / assembly failure fails the load closed). `buildGradingPrompt`
+  (`lib/quiz-actions.ts`) prepends it ahead of the fixed grading frame + the
+  question's `evaluation`, and `buildDiscussionInstructions`
+  (`lib/code-modules/quiz.ts`) prepends it ahead of the discussion system prompt —
+  so a shared safety/persona fragment governs both. `evaluation` stays a plain
+  per-question string and `discussion.instructions` a plain string;
+  `fragmentPreamble` is server-only and `toPublicQuiz` never copies it.
 - **An optional question `image`** is an
   `ImageRef` from the **image subsystem** (`docs/images.md`) — it carries no
   secret (unlike `evaluation`), so it survives `toPublicQuiz` and is resolved

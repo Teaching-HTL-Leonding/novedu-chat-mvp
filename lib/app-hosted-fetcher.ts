@@ -1,6 +1,6 @@
 import { getActiveFile } from "@/lib/file-store";
 import { filesUrlPrefix } from "@/lib/file-url";
-import { defaultFetcher, type Fetcher } from "@/lib/tutors";
+import { defaultFetcher, type Fetcher } from "@/lib/prompt-fragments";
 
 // The ONE definition of how an app-hosted file URL (`<origin>/api/files/<name>`)
 // resolves: from the DATABASE (via getActiveFile) instead of a network round-trip
