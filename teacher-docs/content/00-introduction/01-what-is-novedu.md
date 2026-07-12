@@ -41,7 +41,7 @@ A tutor is a conversation with an AI that follows your teaching instructions. Yo
 
 ### Quiz
 
-A quiz asks open-ended questions that students answer in their own words. The AI assesses each answer against guidance you provide and gives the student feedback. Students can also discuss a question after receiving the feedback.
+A quiz asks open-ended questions that students answer in their own words. If you allow it, students can also attach a photo of handwritten work. The AI assesses each answer against guidance you provide and gives the student feedback. Students can also discuss a question after receiving the feedback.
 
 ### Writing
 

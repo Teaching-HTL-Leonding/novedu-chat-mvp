@@ -49,6 +49,11 @@ the teacher, not a manual.
   miss. Plain and literal reads clearly for everyone.
 - **Spell out Latin abbreviations.** "For example", not "e.g."; "that is", not "i.e.";
   "and so on", not "etc." where you can.
+- **British English, consistently.** The audience is Austrian schools, which teach
+  British English, so use British spelling ("behaviour", "colour", "organise",
+  "practise" the verb) and never mix in American forms ("behavior", "practicing")
+  within or across chapters. Keep proper nouns and code (model ids, field names, CLI
+  flags) exactly as written in the source.
 - **Introduce a term clearly the first time it matters**, so a section still makes
   sense on its own (for example, "a code, the short link you hand to a class").
   Expand an acronym the first time it appears.
