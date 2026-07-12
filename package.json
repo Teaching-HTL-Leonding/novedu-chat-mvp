@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "cli"
+    "cli",
+    "teacher-docs-site"
   ],
   "scripts": {
     "dev": "next dev",
@@ -27,6 +28,9 @@
     "cli": "tsx cli/src/main.ts",
     "cli:build": "npm --workspace @novedu/cli run build",
     "test:cli": "npm run cli:build && vitest run --config cli/vitest.config.mts",
+    "docs:dev": "npm run dev --workspace teacher-docs-site",
+    "docs:build": "npm run build --workspace teacher-docs-site",
+    "docs:preview": "npm run preview --workspace teacher-docs-site",
     "qa": "npm run check && npm run typecheck && npm run test && npm run build",
     "qa:e2e": "npm run qa && npm run test:e2e"
   },
