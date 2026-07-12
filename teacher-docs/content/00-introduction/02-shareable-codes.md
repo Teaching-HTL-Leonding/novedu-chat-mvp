@@ -19,8 +19,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/02-shareable-codes.prompt.md and regenerate.
 -->
 
-# What is a shareable code
-
 When an [[activity]] is ready for your class, you hand it out as a [[code]]. A code is a short link that opens exactly one activity. You share the link (or just the code itself), students open it, and they see the experience you built.
 
 ## One code, one activity

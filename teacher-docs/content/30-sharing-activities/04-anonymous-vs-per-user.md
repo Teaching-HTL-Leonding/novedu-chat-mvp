@@ -18,8 +18,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/04-anonymous-vs-per-user.prompt.md and regenerate.
 -->
 
-# Anonymous or per-user: what an activity records
-
 Every [[activity]] runs in one of two modes: [[anonymous vs. per-user|anonymous]], where the app never links work to a student, or per-user, where it records who did what. The mode decides what you can see afterwards, so it's worth choosing deliberately, especially for graded work.
 
 Students sign in with their school account either way. The mode isn't about who can open the activity; it's about whether their work is linked to their name.

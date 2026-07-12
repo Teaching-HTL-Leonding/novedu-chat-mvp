@@ -18,8 +18,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/05-writing.prompt.md and regenerate.
 -->
 
-# Building a writing activity
-
 A writing [[activity]] gives each student a split screen: an editor on the left where they write, and an AI writing coach on the right that gives feedback on their draft. The coach can read the draft at any time, but it has no way to change it. It only advises; the student writes every sentence. When students are happy with their text, they press **Save**, and you can review one saved text per student later.
 
 You describe the task and how the coach should behave in a [[YAML]] file. The editor, the coach's read access to the draft, and the Save button are all built in.

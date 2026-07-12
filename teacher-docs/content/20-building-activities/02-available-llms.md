@@ -16,8 +16,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/02-available-llms.prompt.md and regenerate.
 -->
 
-# Choosing an AI model for your activity
-
 Every [[activity]] tells Novedu which AI model should run it. You set that in the `llm:` block of the activity's [[YAML]] file. The block is small: a required `model` and an optional `provider`.
 
 ```yaml

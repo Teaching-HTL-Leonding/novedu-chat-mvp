@@ -17,8 +17,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/05-writing-overview.prompt.md and regenerate.
 -->
 
-# Writing: students draft, a coach advises
-
 A writing [[activity]] puts a student's own text at the centre. The student writes in an editor on one side of the screen, and an AI writing coach sits on the other side, reads the draft, and gives feedback. The student does all the writing; the coach helps them make it better.
 
 Think of an essay, a formal letter, a report, or any text students should produce themselves. Instead of handing in a first draft and waiting days for comments, they get feedback the moment they ask for it, while they can still act on it.

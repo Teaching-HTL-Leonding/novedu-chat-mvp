@@ -17,8 +17,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/05-deleting-codes.prompt.md and regenerate.
 -->
 
-# Deleting a code
-
 A [[code]] never disappears on its own. Even after its time window closes, it stays in your **Codes** list (marked **expired**) with all of its data, until a teacher deletes it. Deleting is how you tidy up after a unit is finished, and it's permanent: the code and everything recorded under it are gone for good.
 
 ## How to delete codes

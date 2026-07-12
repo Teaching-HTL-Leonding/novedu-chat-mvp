@@ -18,8 +18,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/04-quizzes.prompt.md and regenerate.
 -->
 
-# Building a quiz
-
 A quiz is an [[activity]] made of **open-ended questions**. There is deliberately no multiple choice: students answer in their own words, and the AI grades each answer against a grading guide you write. The student immediately sees a verdict (**correct**, **partial**, or **incorrect**) and written feedback, and can then open a short discussion chat about that question.
 
 You define a quiz in one [[YAML]] file. The core is simple: an `id`, a model, and a list of questions.

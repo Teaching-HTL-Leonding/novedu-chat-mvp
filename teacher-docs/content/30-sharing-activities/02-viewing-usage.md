@@ -17,8 +17,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/02-viewing-usage.prompt.md and regenerate.
 -->
 
-# Seeing how a code is used
-
 Novedu gives you two views on how your [[activity|activities]] are being used: each [[code]] has its own statistics page, and a separate usage view sums up all AI use across the school. Both are visible to teachers only.
 
 ## What counts as a use

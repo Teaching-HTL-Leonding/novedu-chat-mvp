@@ -53,7 +53,7 @@ chapter's git history is its own "last written" baseline.
 
 ## The banner
 
-Immediately after the frontmatter, before the first heading:
+Immediately after the frontmatter, before the first body content:
 
 ```markdown
 <!--
@@ -65,3 +65,11 @@ Immediately after the frontmatter, before the first heading:
 This makes the build-artifact decision social: anyone opening the file sees that
 edits belong in the prompt. (An HTML comment is not shown when the markdown is
 rendered to a page.)
+
+## Body structure
+
+The body carries **no `#` (h1) heading**: the page title renders from the
+frontmatter `title`, so a body `# Title` would show up twice. After the banner, go
+straight into the first body content (prose or a `##` section), separated by one
+blank line. Body headings start at `##`. (Lines beginning with `# ` inside a fenced
+code block are code, not headings, and are fine.)

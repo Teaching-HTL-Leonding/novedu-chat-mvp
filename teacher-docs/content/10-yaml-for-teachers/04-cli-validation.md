@@ -17,8 +17,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/10-yaml-for-teachers/04-cli-validation.prompt.md and regenerate.
 -->
 
-# Check your activity with the CLI
-
 Before you hand an [[activity]] to a class, you can check it with the Novedu CLI, a small command-line tool. Its `validate` command runs the same checks the app itself runs when it loads your file, so any problem shows up on your screen instead of in front of your students. If the CLI says your file is valid, the app will accept it.
 
 You don't need to install anything permanently. With Node.js (version 20 or newer) on your machine, `npx` fetches and runs the CLI on demand.

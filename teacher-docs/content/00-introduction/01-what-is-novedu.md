@@ -19,8 +19,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/01-what-is-novedu.prompt.md and regenerate.
 -->
 
-# What is Novedu
-
 Novedu helps you create AI-supported learning experiences for your students. You decide the subject, the task, the teaching approach, and the boundaries. Students then use the experience you designed.
 
 In Novedu, one experience you create for students is called an [[activity]]. An activity can be a tutor, a quiz, a writing task, or a coding activity. You don't need to be a programmer to create one.

@@ -18,8 +18,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/01-creating-codes.prompt.md and regenerate.
 -->
 
-# Creating a shared code
-
 Once an [[activity]] is ready, you hand it to a class as a [[code]]: a short link that opens the activity for anyone who has it. Creating one takes a minute, and you can create as many codes for the same activity as you like, for example one per class.
 
 ## What you need first

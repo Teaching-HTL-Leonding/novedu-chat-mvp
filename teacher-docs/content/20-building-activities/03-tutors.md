@@ -18,8 +18,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/03-tutors.prompt.md and regenerate.
 -->
 
-# Building a tutor
-
 A tutor is one [[YAML]] file. At its core it needs three things: an id, an AI model, and your instructions, the free-text guidance that makes the tutor behave the way you want. Everything else is optional polish. This chapter walks through the fields using the sorting-algorithms sample tutor, a real, validated file you can copy from.
 
 ## The required fields

@@ -17,8 +17,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/03-tutors-overview.prompt.md and regenerate.
 -->
 
-# Tutors: a chat that teaches your way
-
 A tutor is the simplest kind of [[activity]] in Novedu: a chat with an AI that follows your instructions, on a topic you choose. You decide what it teaches, how it talks to students, and where it draws the line. A well-written tutor explains ideas, asks guiding questions, and nudges students forward instead of doing the work for them.
 
 You don't train an AI model to get this behaviour. You write a [[prompt]], a set of plain-language instructions, and the tutor follows it. If the tutor answers in a way you don't like, you change the instructions and try again.

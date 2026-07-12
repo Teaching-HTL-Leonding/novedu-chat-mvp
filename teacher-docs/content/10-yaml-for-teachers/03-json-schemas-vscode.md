@@ -17,8 +17,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/10-yaml-for-teachers/03-json-schemas-vscode.prompt.md and regenerate.
 -->
 
-# JSON schemas in your editor
-
 Writing an [[activity]] file by hand is much easier when your editor knows which fields exist. A short one-time setup gives you suggestions as you type, warnings when something is wrong, and a short explanation of every field, all before you upload anything to Novedu.
 
 ## What the editor gives you

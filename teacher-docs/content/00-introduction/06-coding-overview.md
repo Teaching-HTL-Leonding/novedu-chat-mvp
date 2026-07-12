@@ -17,8 +17,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/06-coding-overview.prompt.md and regenerate.
 -->
 
-# Coding: an AI assistant inside the student's editor
-
 A coding [[activity]] gives every student an AI coding assistant that follows your rules while they program in a real editor. The student works in their own coding environment with an external coding assistant, for example [little-coder](https://github.com/itayinbarr/little-coder), and that assistant gets its answers through Novedu. You decide how it behaves: which language it uses, which concepts it may touch, and how it teaches.
 
 As with every other kind of activity, you don't train an AI model. You write a [[prompt]], plain-language instructions for the assistant, and pick the model that answers.

@@ -17,8 +17,6 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/01-handling-yaml.prompt.md and regenerate.
 -->
 
-# Publishing your YAML file
-
 You've written an [[activity]] in [[YAML]]. Before you can hand it to a class, Novedu has to be able to read it. Novedu doesn't store your activity inside a [[code]]; it reads the file from a public web address every time students use it. So the last authoring step is giving your file such an address.
 
 There are two ways to do that, and both work equally well:
