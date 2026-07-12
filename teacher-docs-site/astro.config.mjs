@@ -6,6 +6,11 @@ import starlightThemeRapide from "starlight-theme-rapide";
 import { remarkGlossaryTerms } from "./src/lib/remark-glossary-terms.ts";
 
 export default defineConfig({
+  // The corpus has no index chapter (and is read-only for the site), so the site
+  // root goes straight to the guide's first chapter.
+  redirects: {
+    "/": "/00-introduction/01-what-is-novedu/",
+  },
   markdown: {
     // Astro 7: top-level markdown.remarkPlugins is deprecated; Starlight detects the
     // unified() processor and appends its own plugins, so asides/anchors keep working.

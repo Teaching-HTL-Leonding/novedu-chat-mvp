@@ -33,6 +33,10 @@ warning).
 
 ## Caveats
 
+- **The site root `/` redirects to the first chapter** — the corpus has no index
+  chapter and is read-only, so there is no landing page (`redirects` in
+  `astro.config.mjs`; the static build emits a meta-refresh `index.html`).
+
 - **Search (Pagefind) only works in `build`/`preview`**, not in `dev` — a Starlight
   limitation.
 - Editing a chapter live-reloads the running dev server (the loader watches the
