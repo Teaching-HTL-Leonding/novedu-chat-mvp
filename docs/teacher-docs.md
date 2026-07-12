@@ -1,0 +1,114 @@
+# Teacher docs: the generated guide corpus & its docs site
+
+Two coupled pieces: the **corpus** (`teacher-docs/`) — the teacher-facing guide as
+generated Markdown — and the **site** (`teacher-docs-site/`) — an Astro Starlight
+workspace that renders it. The corpus is authoritative and site-agnostic; the site
+adapts to the corpus's conventions, never the reverse. Nothing in the Next.js app
+imports either.
+
+> TL;DR: to change a chapter, edit its prompt in `teacher-docs/prompts/` and
+> regenerate via the `novedu-teacher-docs` skill — never hand-edit
+> `teacher-docs/content/`. To see the guide, `npm run docs:dev`. The site build
+> (`npm run docs:build`) doubles as the corpus's consistency check.
+
+## The corpus (`teacher-docs/`)
+
+**doc = f(chapter-prompt, source code, engineer docs)** — every chapter in
+`content/` is generated, marked by a banner comment and `generated: true`
+frontmatter. The durable, human-owned artifact is the chapter prompt.
+
+| Path | Owner | What |
+| --- | --- | --- |
+| `prompts/` | human | one `*.prompt.md` per chapter, the real IP |
+| `CHAPTERS.md` | human | chapter manifest = the information architecture authority |
+| `style.md` | human | project voice / reading level |
+| `glossary.md` | human | teacher-word → app-word map, `- **Term**: definition` bullets |
+| `content/` | generated | the Markdown corpus (never hand-edit) |
+| `assets/` | generated/curated | images (currently empty) |
+
+The generation rules (cold generate vs. diff-driven patch, frontmatter contract,
+scope rule) live in the **`novedu-teacher-docs` skill**. Note: `.claude` is a
+symlink to `.agents`, so the skill exists once on disk at
+`.agents/skills/novedu-teacher-docs/` and git tracks only that path.
+
+### Chapter file contract
+
+- Frontmatter: `title`, `description`, `sidebar.order`, `audience`, `keywords`,
+  `related` (**optional** — content-relative slugs like
+  `30-sharing-activities/03-time-limitation`, no leading slash, no extension),
+  `generated: true`.
+- After the frontmatter: the "GENERATED FILE" banner comment, then the body.
+- The body carries **no `#` H1** — the title renders from frontmatter; body
+  headings start at `##`. (`# ` lines inside fenced code blocks are code, not
+  headings.)
+- Glossary terms are marked inline as `[[term]]` / `[[term|shown text]]`, in body
+  text only, matched case-insensitively against `glossary.md`.
+
+## The site (`teacher-docs-site/`)
+
+Astro 7 + Starlight + `starlight-theme-rapide`, an npm workspace next to `cli`.
+**Local-only in v1**: `docs:dev` / `docs:build` / `docs:preview` root scripts; no
+deployment, no CI job, no `base` path. No custom CSS.
+
+### Content pipeline
+
+- `src/content.config.ts` defines the `docs` collection with a **glob loader
+  reading `../teacher-docs/content` directly** — no copy step, no symlink.
+  Regenerating a chapter live-reloads a running dev server. Caveat: a wrong glob
+  `base` silently yields an *empty* collection, so `src/pages/glossary.astro`
+  (always built) throws when `getCollection("docs")` is empty.
+- The schema extends Starlight's `docsSchema` with the corpus fields; `audience`,
+  `keywords`, `generated` are required, `related` defaults to `[]`. A chapter
+  violating the contract fails the build with a zod error naming the file.
+- URL slugs keep the numeric prefixes (`/30-sharing-activities/01-creating-codes`)
+  so they match `related:` slugs exactly. Revisit before public hosting.
+
+### Glossary mechanics
+
+- `src/lib/slug.ts` is the **single slugifier** ("Module / kind" → `module-kind`);
+  the remark plugin and the glossary page both use it, so anchors cannot drift.
+- `src/lib/glossary.ts` parses `glossary.md` bullets (display-only qualifiers like
+  `**Prompt** (LLM sense)` stay out of keys and slugs) and builds a lookup whose
+  keys include each `/`-separated part of a composite term — that is what makes
+  `[[module|kind]]` resolve against "Module / kind". Ambiguous aliases throw.
+- `src/lib/remark-glossary-terms.ts` rewrites `[[term]]` markers in `text` mdast
+  nodes into links to `/glossary#<slug>` (code blocks/inline code untouched by
+  construction). Unknown term ⇒ **build warning + plain text**, never a broken
+  link. Registered via `markdown.processor: unified({ remarkPlugins })` — Astro 7
+  deprecates top-level `remarkPlugins`; Starlight detects the unified processor and
+  appends its own plugins, so asides/heading anchors keep working.
+- `src/pages/glossary.astro` renders one `<h2 id=<slug>>` per term via
+  `<StarlightPage>`. Note: `<StarlightPage>` validates its `frontmatter` prop
+  against the **extended** schema, so the page supplies `audience`/`keywords`/
+  `generated` values itself.
+
+### Related chapters
+
+`src/components/MarkdownContent.astro` (a Starlight component override) appends a
+"Related chapters" `<LinkCard>` grid after the chapter body, resolving each
+`related:` slug against the collection by entry id and showing the target's real
+title. An unresolvable slug **throws, failing the build** — this is the corpus's
+dead-link check. Non-collection pages (the glossary) have no `related` and render
+nothing.
+
+### Verification
+
+`npm run docs:build` is the acceptance check: schema validation, dead-slug build
+failure, glossary warnings, Pagefind index. Pure logic (slugifier, parser, plugin)
+is unit-tested in `teacher-docs-site/src/lib/glossary.unit.test.ts` — picked up by
+the root vitest `unit` project (`**/*.unit.test.ts`), so it runs in `npm test` and
+`qa` with no extra wiring. The site workspace is excluded from the root
+`tsconfig.json` (same pattern as `cli`), and `biome.json` carries an `.astro`
+override (Biome only parses Astro frontmatter, so template-only imports would
+false-positive as unused).
+
+## Deployment sketch (NOT built)
+
+Recorded so v1 decisions keep it possible; v1 deliberately ends at local preview:
+
+- The docs will be **public for everybody** — no Entra sign-in in front of them.
+- Likely shape: `base: '/docs'`, build during the Docker image build, copy `dist/`
+  into the Next.js app's `public/docs/` — same origin, no second deployment.
+- Requires a deliberate, documented `proxy.ts` exclusion for `/docs/**`.
+- Nothing in v1 depends on this; the output is self-contained static files, so a
+  separate static host works just as well.

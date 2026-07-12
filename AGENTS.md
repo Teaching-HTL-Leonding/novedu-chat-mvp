@@ -170,3 +170,10 @@ Read before adding a test or tagging one `@live`.
 Read before touching: `cli/package.json`, `.github/workflows/publish-cli.yml`, or cutting a CLI release.
 
 - Publishes as `@novedu/cli` via OIDC trusted publishing on a `cli-v*` tag — no `NPM_TOKEN`; the workflow fails fast unless the tag matches `cli/package.json`.
+
+### Teacher docs & docs site → `docs/teacher-docs.md`
+
+Read before touching: `teacher-docs/**`, `teacher-docs-site/**`, `.agents/skills/novedu-teacher-docs/**`.
+
+- `teacher-docs/content/` is **generated** — edit the chapter prompt in `teacher-docs/prompts/` and regenerate via the `novedu-teacher-docs` skill, never the output. Chapter bodies carry no `#` H1 (title renders from frontmatter).
+- The corpus is authoritative and site-agnostic; `teacher-docs-site/` (Astro Starlight, local-only v1) adapts to it and never modifies it. `npm run docs:build` doubles as the corpus's consistency check (frontmatter schema, dead `related:` slugs fail the build, unknown `[[term]]`s warn).

@@ -10,10 +10,12 @@ markdown in `content/` is a **regenerable build artifact**. To fix a chapter, ed
 its prompt and regenerate, do not hand-edit the output (every generated file says
 so in a banner).
 
-It's a **teacher handbook**, written independently of whatever consumes it later (a
-docs website, a search index, an assistant; that choice is undecided and not this
-corpus's concern). Aim for correct and useful; a human reviews each change before it
-lands, so the odd rough edge is fine and gets fixed on the next regeneration.
+It's a **teacher handbook**, written independently of whatever consumes it. The
+first consumer exists — the Astro Starlight site in `teacher-docs-site/` renders the
+corpus (see `docs/teacher-docs.md`) — but the corpus stays site-agnostic: the site
+adapts to the conventions here, never the other way round. Aim for correct and
+useful; a human reviews each change before it lands, so the odd rough edge is fine
+and gets fixed on the next regeneration.
 
 ## Layout
 

@@ -2,8 +2,9 @@
 
 The single source of truth for recurring terms. In a chapter, mark a term with
 `[[term]]` on first use (see the style rules); this file supplies the definition a
-renderer shows. It is an authoring reference and term source, not itself a linked
-page. Seed entries below; grow it as chapters are written.
+renderer shows. The docs site (`teacher-docs-site/`) renders it as the guide's
+glossary page, one anchor per term, and links every `[[term]]` marker to it. Seed
+entries below; grow it as chapters are written.
 
 - **Activity**: one thing you build for students: a tutor, a quiz, a writing task,
   or a coding endpoint. Defined by a YAML file.

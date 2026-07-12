@@ -9,7 +9,7 @@ prompt — comes from the YAML, not from the app.
 Four modules share one generic "codes" pipeline (access, storage, attribution):
 
 - **tutor** — a chat with an LLM configured entirely by a *tutor-definition YAML* (assembled into a system prompt from fragments).
-- **quiz** — LLM-graded open-ended questions, with an opt-in follow-up discussion chat. The grader is server-only.
+- **quiz** — LLM-graded open-ended questions, with an opt-in follow-up discussion chat; questions can let students answer with photos (`imageInput`, e.g. handwritten work). The grader is server-only.
 - **writing** — a split-screen Markdown editor where an AI assistant gives feedback (it can *read* the draft but never edit it) and the student saves their text.
 - **coding** — an OpenAI-compatible Chat Completions endpoint an external coding agent (e.g. little-coder) points at; the code is the bearer API key, and the teacher's system prompt + model are injected server-side.
 
@@ -29,6 +29,7 @@ memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL pas
 | **Usage metering** (`lib/usage-store.ts`, `app/mastra/usage-exporter.ts`) | Per-hour token / tool-call / activity counts written off the response path into two anonymity-preserving tables (`novedu_usage_by_code`, `novedu_usage_by_user`), surfaced on the teacher `/usage` dashboard. See [`docs/usage-metering.md`](docs/usage-metering.md) and [`docs/dashboard.md`](docs/dashboard.md). |
 | **LLM providers** (`lib/llm/`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | Two OpenAI-compatible upstreams behind one server-only seam: a self-hosted vLLM GPU server ("SCCH", the default) and — optionally, when `AZURE_FOUNDRY_ENDPOINT` is set — **Azure Foundry** (passwordless Entra auth, no API key). The activity YAML's `llm:` block picks provider + model, and a code can override the pair; endpoints, keys, and tokens stay server-side. See [`docs/ai-models.md`](docs/ai-models.md). |
 | **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate (Next 16 renamed `middleware` → `proxy.ts`). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). JWT sessions, no DB adapter. See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: Entra **bearer tokens** (the CLI is a public client of the same app registration), validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
+| **Teacher docs** (`teacher-docs/`, `teacher-docs-site/`) | The teacher-facing guide as a **generated Markdown corpus** (`teacher-docs/` — chapters are regenerated from human-owned prompts via the `novedu-teacher-docs` skill, never hand-edited) and an **Astro Starlight site** that renders it (`teacher-docs-site/`, an npm workspace; local preview only for now — `npm run docs:dev`). The site build doubles as the corpus's consistency check. See [`docs/teacher-docs.md`](docs/teacher-docs.md). |
 | **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text; **bearer** PUT: upsert for `novedu-cli files upload`), `files` + `codes` (**bearer**, teacher-only: list/create for the CLI — see [`docs/api.md`](docs/api.md)), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
 
 ### Request flow
@@ -157,7 +158,7 @@ Notes:
   conversation content is ever sent. See `docs/telemetry.md`.
 - `MSSQL_CONNECTION_STRING` is **required to chat**: codes and the agents' memory live
   in the database, so creating/opening an activity fails if it is unset (the rest of the
-  app — e.g. tutor validation — still boots). When set, the Mastra schema (`mastra_*`
+  app still boots; activity validation without the app is the CLI's `validate` command). When set, the Mastra schema (`mastra_*`
   tables) is created automatically on first use and the app's own `novedu_*` tables are
   migrated by Drizzle at startup (`instrumentation.ts`), so the configured SQL login or
   Entra identity needs table-creation rights (e.g. `db_owner`).
@@ -206,6 +207,7 @@ npm run start
 | `npm run test:e2e:ci` | Hermetic + `@live-db` (against a SQL container); skips `@live-llm` and `@live-storage`. (`test:e2e:db` / `test:e2e:storage` run one live group.) |
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
 | `npm run qa` | `check` + `typecheck` + `test` + `build`. (`qa:e2e` adds the e2e suite.) |
+| `npm run docs:dev` | Serve the teacher guide locally (Astro Starlight; `docs:build` / `docs:preview` for the static build). |
 | `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, `login` / `logout` / `whoami` for Entra ID sign-in, and the teacher management commands `codes create/list` + `files upload/list` (JSON in/out) against the app's bearer-protected APIs. |
 
 > Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
@@ -252,7 +254,8 @@ the chat surface ([`chat.md`](docs/chat.md)), app-hosted [`files.md`](docs/files
 [`dashboard.md`](docs/dashboard.md), [`auth.md`](docs/auth.md), the CLI/API bearer
 channel ([`api.md`](docs/api.md)), LLM providers ([`ai-models.md`](docs/ai-models.md)),
 [`database.md`](docs/database.md), [`telemetry.md`](docs/telemetry.md),
-[`testing.md`](docs/testing.md), and [`filtered-lists.md`](docs/filtered-lists.md).
+[`testing.md`](docs/testing.md), [`filtered-lists.md`](docs/filtered-lists.md), and the
+teacher guide corpus + docs site ([`teacher-docs.md`](docs/teacher-docs.md)).
 `AGENTS.md` is the slim router that ties them together.
 
 ## Notes & caveats (prototype)
