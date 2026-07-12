@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
+import { FragmentFileRefSchema, FragmentRefSchema } from "@/lib/prompt-fragments";
 
 /** An optional content image attached to a question (carries no secret). */
 const ImageRefSchema = z.strictObject({
@@ -58,6 +59,12 @@ export const QuizYamlSchema = z.strictObject({
   }),
   // Optional guidance for the per-question follow-up discussion chat.
   discussion: z.strictObject({ instructions: z.string().min(1) }).optional(),
+  // Optional document-level prompt-fragment block (the tutor `prompt` shape flattened
+  // to the root). The assembled block is prepended to BOTH the grader prompt and the
+  // discussion chat's system prompt (see `lib/quiz-fetch.ts`); `evaluation` and
+  // `discussion.instructions` stay plain strings.
+  fragment_files: z.array(FragmentFileRefSchema).default([]),
+  fragments: z.array(FragmentRefSchema).default([]),
   questions: z.array(QuizQuestionSchema).min(1),
 });
 export type QuizYaml = z.infer<typeof QuizYamlSchema>;

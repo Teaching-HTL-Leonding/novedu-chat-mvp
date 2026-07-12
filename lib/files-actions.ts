@@ -17,13 +17,13 @@ import {
   softDeleteFiles,
   validateFileName,
 } from "@/lib/file-store";
-import { requireTeacherUserId } from "@/lib/student-mode";
 import {
   defaultFetcher,
   type Fetcher,
   type ValidationError,
   type ValidationWarning,
-} from "@/lib/tutors";
+} from "@/lib/prompt-fragments";
+import { requireTeacherUserId } from "@/lib/student-mode";
 
 // Teacher-only server actions for app-hosted YAML files: thin auth + FormData
 // shells around the shared validate-then-store pipeline in `lib/file-service.ts`

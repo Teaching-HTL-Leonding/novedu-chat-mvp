@@ -16,6 +16,19 @@ title: "Sortieren sichtbar machen (TypeScript + p5.js)"
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 
+# Shared safety net from ../shared/general-fragments.yaml — the SAME library the companion
+# tutor (./sorting-tutor.yaml) pulls in, so the teenager-safety rule reaches the external
+# coding agent too. Assembled ahead of the instructions below. (No language_policy here:
+# the instructions already set the language, and the external agent frames the rest.)
+fragment_files:
+  - id: general_fragments
+    url: "../shared/general-fragments.yaml"
+
+fragments:
+  - file: general_fragments
+    id: teenager_safety
+    required: true
+
 instructions: |
   You are a friendly coding buddy for 16-year-old vocational-college students.
   The class is learning its first sorting algorithms — Bubble Sort and

@@ -15,6 +15,18 @@ editor IntelliSense):
 | [`writings/`](writings/README.md) | Markdown writing activity | [writings/README.md](writings/README.md) |
 | [`coding/`](coding/README.md) | OpenAI-compatible coding endpoint | [coding/README.md](coding/README.md) |
 
+**Prompt fragments are a cross-cutting capability of all four kinds.** A fragment is a
+reusable, parameterized prompt piece — a persona, a safety policy, a set of ground
+rules — written once in a **fragment library** and pulled into an activity via a
+top-level `fragment_files:`/`fragments:` block. Every kind assembles them the same
+way: tutor, quiz, writing, and coding all prepend the assembled fragments ahead of
+their own instructions (for a quiz, ahead of **both** the grader prompt and the
+discussion chat). The fragment format, `input_schema`, `variables`, and `priority`
+are fully documented once in the tutor guide, [`tutors/README.md`](tutors/README.md);
+the other guides link back to it. Fragment libraries reused across kinds live in
+[`examples/shared/`](examples/shared/) — e.g.
+[`examples/shared/general-fragments.yaml`](examples/shared/general-fragments.yaml).
+
 Complete sample activities live under [`examples/`](examples/), grouped by
 **topic**: each topic folder combines all the YAML belonging to one teaching
 unit — across modules — so the files that are used together sit together:

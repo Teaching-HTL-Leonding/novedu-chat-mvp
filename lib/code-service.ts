@@ -4,7 +4,7 @@ import { validateCodeFile } from "@/lib/code-modules/registry";
 import { isCodeModule } from "@/lib/code-modules/types";
 import { type CodeEntry, createCode, getCode, validateCodeRequest } from "@/lib/code-store";
 import { providerUnavailableReason } from "@/lib/llm/availability";
-import type { ValidationError } from "@/lib/tutors";
+import type { ValidationError } from "@/lib/prompt-fragments";
 
 // The transport-agnostic "create a code" pipeline, shared by the web form's
 // server action (lib/code-actions.ts, cookie session) and the bearer API route

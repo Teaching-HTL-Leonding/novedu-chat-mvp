@@ -23,8 +23,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ getDb: () => ({}) }));
 vi.mock("@/lib/app-origin", () => ({ resolveAppOrigin: mocks.resolveAppOrigin }));
 vi.mock("@/lib/tutors", () => ({
-  defaultFetcher: vi.fn(),
   loadAndBuildTutorPrompt: mocks.loadAndBuildTutorPrompt,
+}));
+vi.mock("@/lib/prompt-fragments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/prompt-fragments")>()),
+  defaultFetcher: vi.fn(),
   loadAndCheckFragmentFile: mocks.loadAndCheckFragmentFile,
 }));
 // The quiz/writing validators are real (file-validators is not mocked), but their

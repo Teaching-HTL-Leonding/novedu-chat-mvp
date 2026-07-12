@@ -1,0 +1,15 @@
+# Hermetic CLI test fixture: a coding activity that pulls a document-level fragment
+# block from a local library via a RELATIVE ref. NOT a demo — see test-fixtures/ for
+# the fixture policy. Exercised by cli `validate --kind coding`.
+id: fragments-coding
+llm:
+  model: test-model
+fragment_files:
+  - id: shared
+    url: ../tutors/test-fragments-a.yaml
+fragments:
+  - file: shared
+    id: persona
+    variables:
+      subject: TypeScript
+instructions: "Review the student's code and suggest small, beginner-friendly improvements."

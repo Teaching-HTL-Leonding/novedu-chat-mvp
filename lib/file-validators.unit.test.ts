@@ -17,8 +17,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/tutors", () => ({
-  defaultFetcher: {},
   loadAndBuildTutorPrompt: mocks.loadAndBuildTutorPrompt,
+}));
+vi.mock("@/lib/prompt-fragments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/prompt-fragments")>()),
+  defaultFetcher: {},
   loadAndCheckFragmentFile: mocks.loadAndCheckFragmentFile,
 }));
 vi.mock("@/lib/quiz-fetch", () => ({ loadQuiz: mocks.loadQuiz }));

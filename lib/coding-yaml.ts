@@ -1,5 +1,7 @@
 import { parse as parseYamlText } from "yaml";
 import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "./llm/provider";
+import type { FragmentBlock } from "./prompt-fragments";
+import { readFragmentBlock } from "./prompt-fragments/block";
 
 // LENIENT runtime parse of a coding YAML — the path the OpenAI-compatible proxy
 // uses to read the activity behind a (verified) code's file_url. Coding activities
@@ -24,8 +26,19 @@ export interface Coding {
   model: string;
   /** The LLM provider serving `model` (`llm.provider`, default SCCH). SERVER-ONLY. */
   provider: LlmProvider;
-  /** The teacher's system prompt, prepended ahead of the client's. SERVER-ONLY. */
+  /**
+   * The teacher's system prompt, prepended ahead of the client's. SERVER-ONLY.
+   * `loadCoding` prepends the assembled document-level fragment block ahead of it;
+   * `parseCoding` alone leaves it as authored.
+   */
   instructions: string;
+  /**
+   * The unresolved document-level fragment block (server-only, transient). `parseCoding`
+   * leaves it here for `loadCoding` to fetch + assemble and prepend to `instructions`;
+   * `loadCoding` then clears it (`EMPTY_FRAGMENT_BLOCK`) so no stale block lingers on the
+   * loaded activity. Never reaches the browser (only `title` is public).
+   */
+  fragmentBlock: FragmentBlock;
 }
 
 export type CodingParseResult = { ok: true; coding: Coding } | { ok: false; message: string };
@@ -89,6 +102,8 @@ export function parseCoding(content: string): CodingParseResult {
       model,
       provider,
       instructions,
+      // Carried through for `loadCoding` to resolve + prepend to `instructions`.
+      fragmentBlock: readFragmentBlock(root),
     },
   };
 }

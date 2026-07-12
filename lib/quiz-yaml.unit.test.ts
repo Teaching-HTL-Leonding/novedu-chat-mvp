@@ -281,6 +281,8 @@ describe("toPublicQuiz", () => {
       model: "m",
       provider: "SCCH",
       imageInput: false,
+      fragmentBlock: { fragment_files: [], fragments: [] },
+      fragmentPreamble: "",
       questions: [{ id: "a", question: "Q", evaluation: "E" }],
     };
     expect(toPublicQuiz(quiz)).not.toHaveProperty("anonymous");
@@ -295,6 +297,8 @@ describe("toPublicQuiz", () => {
       model: "m",
       provider: "SCCH",
       imageInput: false,
+      fragmentBlock: { fragment_files: [], fragments: [] },
+      fragmentPreamble: "",
       questions: [{ id: "a", question: "Q", evaluation: "E", image }],
     };
     const pub = toPublicQuiz(quiz);
@@ -309,6 +313,8 @@ describe("toPublicQuiz", () => {
       model: "m",
       provider: "SCCH",
       imageInput: true,
+      fragmentBlock: { fragment_files: [], fragments: [] },
+      fragmentPreamble: "",
       questions: [
         { id: "inherits", question: "Q", evaluation: "E" },
         { id: "opts-out", question: "Q", evaluation: "E", imageInput: false },

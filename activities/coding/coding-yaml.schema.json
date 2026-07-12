@@ -23,6 +23,22 @@
     "llm": {
       "$ref": "#/$defs/llm"
     },
+    "fragment_files": {
+      "type": "array",
+      "description": "Optional fragment libraries this activity pulls shared prompt fragments from.",
+      "items": {
+        "$ref": "#/$defs/fragmentFileRef"
+      },
+      "default": []
+    },
+    "fragments": {
+      "type": "array",
+      "description": "Optional fragments selected from fragment_files. Assembled in priority order and prepended AHEAD of instructions.",
+      "items": {
+        "$ref": "#/$defs/fragmentRef"
+      },
+      "default": []
+    },
     "instructions": {
       "type": "string",
       "minLength": 1,
@@ -46,6 +62,72 @@
           "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name."
         }
       }
+    },
+    "fragmentFileRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "url"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Local alias used by fragments[].file."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "HTTP(S) URL or relative path to the fragment library.",
+          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$"
+        }
+      }
+    },
+    "fragmentRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "id"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Alias from fragment_files[].id."
+        },
+        "id": {
+          "type": "string",
+          "description": "Fragment id inside the referenced library."
+        },
+        "variables": {
+          "type": "object",
+          "description": "Literal values passed into the fragment template.",
+          "additionalProperties": {
+            "$ref": "#/$defs/variableValue"
+          }
+        },
+        "bind": {
+          "type": "object",
+          "description": "Accepted for compatibility but ignored by the current assembler.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Marker for important fragments. Accepted but not currently enforced."
+        }
+      }
+    },
+    "variableValue": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
     }
   }
 }

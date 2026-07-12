@@ -10,8 +10,11 @@ vi.mock("@/lib/db", () => ({
   getDb: () => ({ insert: () => ({ values: mocks.insertValues }) }),
 }));
 vi.mock("@/lib/tutors", () => ({
-  defaultFetcher: vi.fn(),
   loadAndBuildTutorPrompt: mocks.loadAndBuildTutorPrompt,
+}));
+vi.mock("@/lib/prompt-fragments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/prompt-fragments")>()),
+  defaultFetcher: vi.fn(),
 }));
 vi.mock("@/lib/quiz-fetch", () => ({ loadQuiz: mocks.loadQuiz }));
 

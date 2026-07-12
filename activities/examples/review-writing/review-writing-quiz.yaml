@@ -21,6 +21,25 @@ description: |
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 
+# Shared rules from ../shared/general-fragments.yaml — the SAME library the companion
+# tutor (./review-writing-tutor.yaml) pulls in. The assembled block is prepended to BOTH
+# the grader prompt and the discussion chat, so the safety net and language policy cover
+# grading and the follow-up conversation alike.
+fragment_files:
+  - id: general_fragments
+    url: "../shared/general-fragments.yaml"
+
+fragments:
+  - file: general_fragments
+    id: language_policy
+    variables:
+      natural_language: "English — simple and clear, suitable for B1–B2 learners; briefly explain difficult words when you use them"
+      code_language: "English"
+
+  - file: general_fragments
+    id: teenager_safety
+    required: true
+
 discussion:
   instructions: |
     You are a friendly English tutor helping the student understand THIS quiz

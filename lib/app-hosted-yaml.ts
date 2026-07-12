@@ -1,5 +1,6 @@
 import { appHostedFetcher } from "@/lib/app-hosted-fetcher";
 import { resolveAppOriginOr } from "@/lib/app-origin";
+import type { Fetcher } from "@/lib/prompt-fragments";
 
 // Loads + leniently parses the YAML behind a (verified) activity URL — the single
 // definition every module's loader (coding / writing / quiz) shares, so they all read
@@ -20,16 +21,31 @@ export async function loadAppHostedYaml<R extends { ok: boolean }>(
   url: string,
   parse: (content: string) => R,
   noun: string,
+  // Optional async post-parse step, run only when `parse` succeeds. It receives the
+  // SAME origin-baked `appHostedFetcher` used for the activity itself (so a fragment
+  // ref that is app-hosted resolves from the database, never a loopback fetch —
+  // preserving the docs/files.md invariant) and the activity `url` as the base for
+  // resolving relative fragment refs. Used by the quiz/writing/coding loaders to
+  // fetch + assemble the document-level fragment block into the runtime activity.
+  resolve?: (
+    parsed: Extract<R, { ok: true }>,
+    ctx: { url: string; fetcher: Fetcher },
+  ) => Promise<R | { ok: false; message: string }>,
 ): Promise<R | { ok: false; message: string }> {
   try {
     const origin = await resolveAppOriginOr("");
-    const res = await appHostedFetcher(origin)(url);
+    const fetcher = appHostedFetcher(origin);
+    const res = await fetcher(url);
     if (!res.ok) {
       return res.status === 404
         ? { ok: false, message: `This ${noun} could not be found.` }
         : { ok: false, message: `This ${noun} could not be loaded (HTTP ${res.status}).` };
     }
-    return parse(await res.text());
+    const parsed = parse(await res.text());
+    if (resolve && parsed.ok) {
+      return resolve(parsed as Extract<R, { ok: true }>, { url, fetcher });
+    }
+    return parsed;
   } catch {
     return { ok: false, message: `This ${noun} could not be loaded. Try again.` };
   }

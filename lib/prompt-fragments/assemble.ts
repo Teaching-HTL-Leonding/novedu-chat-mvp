@@ -3,7 +3,6 @@
 
 import Handlebars from "handlebars";
 import type { ResolvedFragment } from "./consistency";
-import type { Tutor } from "./schemas";
 
 // `noEscape`: the output is a markdown/LLM prompt, not HTML — ASCII diagrams
 //   (`<-`, `->`), ampersands, and quotes must pass through verbatim.
@@ -16,15 +15,27 @@ import type { Tutor } from "./schemas";
 export const COMPILE_OPTIONS = { strict: true, noEscape: true } as const;
 
 /**
- * Render each fragment in priority order and append the tutor-specific
- * instructions last (they carry no priority, so "after everything" is the only
- * deterministic position). May throw if a template references a missing variable.
+ * Render each fragment in priority order and, when provided, append the caller's
+ * trailing instructions last (they carry no priority, so "after everything" is the
+ * only deterministic position — the exact role `tutor_instructions` plays for a
+ * tutor, and the activity frame / `instructions` play for quiz / writing / coding).
+ * May throw if a template references a missing variable.
+ *
+ * `trailingInstructions` is optional so a consumer can assemble a fragment-only
+ * PREAMBLE (quiz / writing / coding) and concatenate its own frame afterwards. An
+ * empty plan with no trailing text renders to the empty string (so an activity that
+ * declares no fragments gets no stray whitespace); every non-empty result ends in a
+ * single trailing newline, byte-identical to the historic tutor output.
  */
-export function assembleSystemPrompt(plan: ResolvedFragment[], tutor: Tutor): string {
+export function assembleSystemPrompt(
+  plan: ResolvedFragment[],
+  trailingInstructions?: string,
+): string {
   const parts = plan.map((fragment) => {
     const template = Handlebars.compile(fragment.content, COMPILE_OPTIONS);
     return template(fragment.variables).trimEnd();
   });
-  parts.push(tutor.prompt.tutor_instructions.trimEnd());
+  if (trailingInstructions !== undefined) parts.push(trailingInstructions.trimEnd());
+  if (parts.length === 0) return "";
   return `${parts.join("\n\n")}\n`;
 }

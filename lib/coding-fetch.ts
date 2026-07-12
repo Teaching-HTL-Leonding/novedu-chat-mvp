@@ -6,6 +6,11 @@ import {
   DEFAULT_CODING_MODEL_NAME,
 } from "@/lib/coding-connection";
 import { type Coding, parseCoding } from "@/lib/coding-yaml";
+import {
+  EMPTY_FRAGMENT_BLOCK,
+  prependPreamble,
+  resolveFragmentPreamble,
+} from "@/lib/prompt-fragments";
 
 // Loads + leniently parses the coding YAML behind a (verified) code's file_url, via the
 // shared `loadAppHostedYaml`, and derives the non-secret connection props the three
@@ -16,7 +21,33 @@ import { type Coding, parseCoding } from "@/lib/coding-yaml";
 export type LoadCodingResult = { ok: true; coding: Coding } | { ok: false; message: string };
 
 export function loadCoding(url: string): Promise<LoadCodingResult> {
-  return loadAppHostedYaml(url, parseCoding, "coding activity");
+  return loadAppHostedYaml(
+    url,
+    parseCoding,
+    "coding activity",
+    async (parsed, { url, fetcher }) => {
+      // Per-request streaming hot path: consistency over the referenced fragments only
+      // (`validateLibraries: false`, inside `resolveFragmentPreamble`); no extra passes.
+      // Assembly lives in this load layer, never in `lib/llm/endpoint.ts` (which stays
+      // provider-blind + side-effect-free).
+      const resolved = await resolveFragmentPreamble(parsed.coding.fragmentBlock, url, fetcher);
+      if (!resolved.ok) {
+        // Fail closed — the proxy surfaces this as its existing upstream-load error.
+        return {
+          ok: false,
+          message: "This coding activity's prompt fragments could not be loaded.",
+        };
+      }
+      return {
+        ok: true,
+        coding: {
+          ...parsed.coding,
+          fragmentBlock: EMPTY_FRAGMENT_BLOCK,
+          instructions: prependPreamble(resolved.preamble, parsed.coding.instructions),
+        },
+      };
+    },
+  );
 }
 
 /**

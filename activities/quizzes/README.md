@@ -189,6 +189,40 @@ already gives the assistant full context (the question, the expected answer, the
 student's answer, and the verdict), so this is only extra steering. Omit it to use
 a sensible default.
 
+### `fragment_files` and `fragments` (reusable prompt pieces)
+
+Optional. A quiz may pull in **prompt fragments** — the same reusable, parameterized
+pieces tutors use (a persona, a safety policy, a set of ground rules). Declare them
+at the **top level** of the quiz file, exactly as a tutor declares them under
+`prompt:`:
+
+```yaml
+fragment_files:
+  - id: shared # the alias you refer to below
+    url: "../shared/general-fragments.yaml" # relative to this quiz file, or a full http(s) URL
+
+fragments:
+  - file: shared
+    id: safety
+  - file: shared
+    id: persona
+    variables:
+      subject: "sorting algorithms"
+```
+
+The fragments are assembled once (in `priority` order) and **prepended to BOTH** the
+private grading prompt and the follow-up discussion chat — so a shared safety or
+persona rule applies to how the model grades **and** how it discusses. Your
+per-question `evaluation` and your `discussion.instructions` stay **plain text** (no
+templating); the fragments come first, your text follows. Omit both fields when the
+quiz uses no fragments.
+
+The full fragment mechanics — fragment libraries, `input_schema`, `variables`,
+`priority`, and how a shared library is written — are documented in the tutor guide,
+[`../tutors/README.md`](../tutors/README.md). The shared library
+[`../examples/shared/general-fragments.yaml`](../examples/shared/general-fragments.yaml)
+is reused across activity kinds.
+
 ---
 
 ## 5. Questions and grading

@@ -10,7 +10,7 @@ import {
 } from "@/lib/file-store";
 import { filePublicUrl, filesUrlPrefix } from "@/lib/file-url";
 import { fileValidators } from "@/lib/file-validators";
-import type { Fetcher, ValidationError, ValidationWarning } from "@/lib/tutors";
+import type { Fetcher, ValidationError, ValidationWarning } from "@/lib/prompt-fragments";
 
 // The transport-agnostic validate-then-store pipeline for app-hosted YAML
 // files, shared by the web editor's server actions (lib/files-actions.ts,

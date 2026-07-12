@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { defaultFetcher, type Fetcher } from "@/lib/tutors";
+import { defaultFetcher, type Fetcher } from "@/lib/prompt-fragments";
 
 // A composite `Fetcher` (the tutor core's single network seam): `file://` URLs are
 // read from disk, everything else delegates to the app's production fetcher. This

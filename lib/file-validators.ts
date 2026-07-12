@@ -2,16 +2,16 @@ import { loadAndCheckCoding } from "@/lib/coding-validate";
 import type { FileKind } from "@/lib/file-name";
 import { providerUnavailableReason } from "@/lib/llm/availability";
 import type { LlmProvider } from "@/lib/llm/provider";
-import { loadQuiz } from "@/lib/quiz-fetch";
-import { loadAndCheckQuiz } from "@/lib/quiz-validate";
 import {
   defaultFetcher,
   type Fetcher,
-  loadAndBuildTutorPrompt,
   loadAndCheckFragmentFile,
   type ValidationError,
   type ValidationWarning,
-} from "@/lib/tutors";
+} from "@/lib/prompt-fragments";
+import { loadQuiz } from "@/lib/quiz-fetch";
+import { loadAndCheckQuiz } from "@/lib/quiz-validate";
+import { loadAndBuildTutorPrompt } from "@/lib/tutors";
 import { loadWriting } from "@/lib/writing-fetch";
 import { loadAndCheckWriting } from "@/lib/writing-validate";
 

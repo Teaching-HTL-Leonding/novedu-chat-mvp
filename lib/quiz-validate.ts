@@ -10,6 +10,7 @@
 // `parseQuiz` (`lib/quiz-yaml.ts`) is unchanged and separate.
 
 import {
+  assembleFragmentPrompt,
   error,
   type Fetcher,
   type LoadOptions,
@@ -17,7 +18,7 @@ import {
   type ValidationError,
   type ValidationWarning,
   validate,
-} from "@/lib/tutors";
+} from "@/lib/prompt-fragments";
 import type { LlmProvider } from "./llm/provider";
 import { type QuizYaml, QuizYamlSchema } from "./quiz-schema";
 
@@ -65,15 +66,11 @@ function findDuplicateQuestionIds(quiz: QuizYaml): ValidationError[] {
 }
 
 /**
- * Validate an already-parsed quiz value: schema → unique question ids → metadata.
- * Pure (the parsed value is passed in); `loadAndCheckQuiz` wraps it with fetch +
- * YAML parse.
+ * Check an already-schema-validated quiz: unique question ids → metadata. Split from
+ * `checkQuizValue` so `loadAndCheckQuiz` can reuse the single `validate` it already ran
+ * (no second parse of the same document against the same schema).
  */
-export function checkQuizValue(parsed: unknown, url?: string): QuizCheckResult {
-  const valid = validate<QuizYaml>(parsed, QuizYamlSchema, "QUIZ_SCHEMA_ERROR", url);
-  if (!valid.ok) return { ok: false, errors: [valid.error], warnings: [] };
-  const quiz = valid.data;
-
+function checkQuizParsed(quiz: QuizYaml): QuizCheckResult {
   const errors = findDuplicateQuestionIds(quiz);
   if (errors.length > 0) return { ok: false, errors, warnings: [] };
 
@@ -90,9 +87,22 @@ export function checkQuizValue(parsed: unknown, url?: string): QuizCheckResult {
 }
 
 /**
- * Validate a quiz FILE: scheme-gate + fetch + parse (shared `loadYaml`), then the
- * pure `checkQuizValue`. The web app passes the default http(s)-only schemes; the
- * CLI adds `file:` so a local quiz YAML on disk validates too.
+ * Validate an already-parsed quiz value: schema → unique question ids → metadata.
+ * Pure (the parsed value is passed in); `loadAndCheckQuiz` wraps it with fetch +
+ * YAML parse.
+ */
+export function checkQuizValue(parsed: unknown, url?: string): QuizCheckResult {
+  const valid = validate<QuizYaml>(parsed, QuizYamlSchema, "QUIZ_SCHEMA_ERROR", url);
+  if (!valid.ok) return { ok: false, errors: [valid.error], warnings: [] };
+  return checkQuizParsed(valid.data);
+}
+
+/**
+ * Validate a quiz FILE: scheme-gate + fetch + parse (shared `loadYaml`), the pure
+ * `checkQuizValue`, then the document-level fragment block's authoring gate — fetch
+ * every referenced library, run the THOROUGH whole-library check, consistency, and an
+ * assembly dry-run (the strict-Handlebars backstop). The web app passes the default
+ * http(s)-only schemes; the CLI adds `file:` so a local quiz YAML on disk validates too.
  */
 export async function loadAndCheckQuiz(
   url: string,
@@ -101,5 +111,24 @@ export async function loadAndCheckQuiz(
 ): Promise<QuizCheckResult> {
   const yaml = await loadYaml(url, fetchImpl, opts);
   if (!yaml.ok) return { ok: false, errors: [yaml.error], warnings: [] };
-  return checkQuizValue(yaml.value, url);
+
+  // Validate the schema ONCE, then reuse the typed value for both the question-id check
+  // and the fragment block below (no second parse of the same document).
+  const valid = validate<QuizYaml>(yaml.value, QuizYamlSchema, "QUIZ_SCHEMA_ERROR", url);
+  if (!valid.ok) return { ok: false, errors: [valid.error], warnings: [] };
+
+  const checked = checkQuizParsed(valid.data);
+  if (!checked.ok) return checked;
+
+  // The fragment block's authoring gate: fetch + consistency + assembly dry-run
+  // (authoring default: `validateLibraries: true`).
+  const assembled = await assembleFragmentPrompt(
+    { fragment_files: valid.data.fragment_files, fragments: valid.data.fragments },
+    url,
+    fetchImpl,
+    { allowedSchemes: opts.allowedSchemes, validateLibraries: opts.validateLibraries ?? true },
+  );
+  const warnings = [...checked.warnings, ...assembled.warnings];
+  if (!assembled.ok) return { ok: false, errors: assembled.errors, warnings };
+  return { ...checked, warnings };
 }

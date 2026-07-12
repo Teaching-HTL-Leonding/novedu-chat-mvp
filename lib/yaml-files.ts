@@ -44,23 +44,23 @@ export type {
   ValidationError,
   ValidationWarning,
   WarningCode,
-} from "@/lib/tutors/errors";
-export { formatZodIssues } from "@/lib/tutors/errors";
+} from "@/lib/prompt-fragments/errors";
+export { formatZodIssues } from "@/lib/prompt-fragments/errors";
 // The pure fragment-parameter helper — its own module so this barrel never has to
-// reach into the Handlebars-based tutor core. See `lib/tutors/fragment-inputs.ts`.
-export { getFragmentInputSchema } from "@/lib/tutors/fragment-inputs";
+// reach into the Handlebars-based fragment core. See `lib/prompt-fragments/fragment-inputs.ts`.
+export { getFragmentInputSchema } from "@/lib/prompt-fragments/fragment-inputs";
 // --- Parse + schemas + formatting (pure runtime helpers) --------------------
-// Imported from the tutor-core SUBMODULES (not the `@/lib/tutors` barrel) so the
+// Imported from the prompt-fragment / tutor-core SUBMODULES (not the barrels) so the
 // Handlebars-based URL validators never get pulled into the client bundle.
-export { parseYaml } from "@/lib/tutors/parse";
+export { parseYaml } from "@/lib/prompt-fragments/parse";
 // --- Types describing the YAML and the validation results (pure, erased) ----
 export type {
-  ExampleQuestion,
   Fragment,
   FragmentFile,
   FragmentRef,
   InputSchema,
-  Tutor,
   VariableValue,
-} from "@/lib/tutors/schemas";
-export { FragmentFileSchema, TutorSchema } from "@/lib/tutors/schemas";
+} from "@/lib/prompt-fragments/schemas";
+export { FragmentFileSchema } from "@/lib/prompt-fragments/schemas";
+export type { ExampleQuestion, Tutor } from "@/lib/tutors/schemas";
+export { TutorSchema } from "@/lib/tutors/schemas";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
 import { checkCodingValue, loadAndCheckCoding } from "@/lib/coding-validate";
-import type { Fetcher } from "@/lib/tutors";
+import type { Fetcher } from "@/lib/prompt-fragments";
 
 // The coding AUTHORING validator: the strict schema gate. Pure, no network — a
 // fixture Fetcher returns YAML text in-process. Coding is ALWAYS anonymous (the API
@@ -140,5 +140,85 @@ instructions: "Help."
 `);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors[0]?.code).toBe("CODING_SCHEMA_ERROR");
+  });
+});
+
+// --- document-level prompt fragments (identical machinery to quiz/writing) ---------
+
+const LIB_URL = "https://example.com/lib.yaml";
+const LIB_YAML = `id: lib
+fragments:
+  - id: safety
+    version: 1
+    priority: 900
+    content: |
+      Always be safe and kind.
+  - id: lang
+    version: 1
+    priority: 400
+    input_schema:
+      type: object
+      required: [language]
+      properties:
+        language:
+          type: string
+    content: |
+      Respond in {{language}}.
+`;
+
+const fetcherMap =
+  (bodies: Record<string, string>): Fetcher =>
+  async (url) => {
+    const text = bodies[url];
+    return text === undefined
+      ? { ok: false, status: 404, text: async () => "" }
+      : { ok: true, status: 200, text: async () => text };
+  };
+
+describe("loadAndCheckCoding — fragments", () => {
+  it("accepts an activity that pulls in valid fragments", async () => {
+    const coding = `
+id: buddy
+llm:
+  model: m
+fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+fragments:
+  - file: lib
+    id: safety
+instructions: "Help beginners."
+`;
+    const result = await loadAndCheckCoding(
+      URL_,
+      fetcherMap({ [URL_]: coding, [LIB_URL]: LIB_YAML }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("a plain activity (no fragments) is still valid", async () => {
+    const result = await loadAndCheckCoding(URL_, fetcherMap({ [URL_]: VALID }));
+    expect(result.ok).toBe(true);
+  });
+
+  it("surfaces a fragment consistency error (missing required variable)", async () => {
+    const coding = `
+id: buddy
+llm:
+  model: m
+fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+fragments:
+  - file: lib
+    id: lang
+instructions: "Help beginners."
+`;
+    const result = await loadAndCheckCoding(
+      URL_,
+      fetcherMap({ [URL_]: coding, [LIB_URL]: LIB_YAML }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("MISSING_REQUIRED_VARIABLE");
   });
 });
