@@ -82,8 +82,11 @@ You know React. Here is the Next.js-specific vocabulary for this task — that's
 ## 4. The YAML you edit
 
 The authoritative schema is Zod, in **`lib/tutors/schemas.ts`** (read it — it is the
-source of truth). A machine-readable JSON Schema is in
-**`activities/tutors/tutor-yaml.schema.json`**. Example files to open and learn from:
+source of truth). A machine-readable JSON Schema is **generated from it** into
+**`activities/tutors/tutor-yaml.schema.json`** via `npm run generate:schemas` (do not
+hand-edit; a drift-guard test fails CI if it is stale). Fragment-library files use a
+**separate** generated schema, **`activities/fragments/fragment-yaml.schema.json`**
+(source: `lib/prompt-fragments/schemas.ts`). Example files to open and learn from:
 
 | File | What it is |
 | --- | --- |

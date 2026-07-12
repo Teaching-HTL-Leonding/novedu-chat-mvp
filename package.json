@@ -15,6 +15,7 @@
     "check:fix": "biome check --write .",
     "typecheck": "tsc --noEmit && tsc -p cli --noEmit",
     "db:generate": "drizzle-kit generate",
+    "generate:schemas": "tsx scripts/generate-activity-schemas.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run --project unit",

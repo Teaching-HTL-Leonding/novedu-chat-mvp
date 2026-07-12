@@ -101,8 +101,9 @@ instructions: |
   rejects fields coding does not have — including `anonymous` (coding is always
   anonymous), `description`, and `placeholder`. The seam (`lib/file-validators.ts`)
   freezes `anonymous: true` onto the row regardless. `activities/coding/coding-yaml.schema.json`
-  is the hand-maintained JSON-Schema mirror for editor IntelliSense (a modeline
-  points each coding YAML at its raw GitHub URL).
+  is **generated from the zod schema** (`lib/coding-schema.ts`) via `npm run generate:schemas`
+  for editor IntelliSense (a modeline points each coding YAML at its raw GitHub URL);
+  do not hand-edit it — a drift-guard test fails CI if it is stale.
 - `activities/examples/sorting-algorithms/sorting-visualizer.yaml` is the shipped
   sample: a sorting-visualizer project buddy constrained to a beginner's knowledge
   (plain loops + `function` declarations, explicit types, no classes/arrow

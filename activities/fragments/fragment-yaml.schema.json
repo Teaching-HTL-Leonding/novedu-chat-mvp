@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/fragments/fragment-yaml.schema.json",
+  "$comment": "Generated from lib/prompt-fragments/schemas.ts by `npm run generate:schemas` — do not edit by hand.",
+  "title": "Fragment Library YAML",
+  "description": "Schema for a reusable fragment library: a named collection of parameterized prompt fragments shared across activities.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Machine-readable id of this fragment library."
+    },
+    "fragments": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fragment"
+      },
+      "description": "The reusable fragments this library provides (at least one)."
+    }
+  },
+  "required": [
+    "id",
+    "fragments"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "fragment": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique fragment id within this library."
+        },
+        "version": {
+          "type": "number",
+          "description": "Fragment version number."
+        },
+        "priority": {
+          "type": "number",
+          "description": "Assembly order. Lower priorities appear earlier."
+        },
+        "input_schema": {
+          "$ref": "#/$defs/inputSchema"
+        },
+        "classification": {
+          "$ref": "#/$defs/classification"
+        },
+        "content": {
+          "type": "string",
+          "description": "Prompt text as a Handlebars template."
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "priority",
+        "content"
+      ],
+      "additionalProperties": false,
+      "description": "One reusable, parameterized prompt fragment."
+    },
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "object",
+          "description": "Always \"object\"."
+        },
+        "required": {
+          "default": [],
+          "description": "Names of the variables that must be supplied.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "properties": {
+          "default": {},
+          "description": "The declared variables, keyed by variable name.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/inputProperty"
+          }
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "A constrained mini JSON-schema declaring the variables a fragment accepts."
+    },
+    "inputProperty": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/stringProperty"
+        },
+        {
+          "$ref": "#/$defs/booleanProperty"
+        },
+        {
+          "$ref": "#/$defs/stringArrayProperty"
+        }
+      ],
+      "description": "A declared variable: a string, a boolean, or an array of strings, each with an optional matching default."
+    },
+    "stringProperty": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "string",
+          "description": "Declares a string variable."
+        },
+        "default": {
+          "description": "Default string used when the activity omits this variable.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "A string variable, with an optional default."
+    },
+    "booleanProperty": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "boolean",
+          "description": "Declares a boolean variable."
+        },
+        "default": {
+          "description": "Default boolean used when the activity omits this variable.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "A boolean variable, with an optional default."
+    },
+    "stringArrayProperty": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "array",
+          "description": "Declares an array-of-strings variable."
+        },
+        "items": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "string",
+              "description": "Array elements are strings."
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "description": "The element type of the array (always string)."
+        },
+        "default": {
+          "description": "Default string array used when the activity omits this variable.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "type",
+        "items"
+      ],
+      "additionalProperties": false,
+      "description": "An array-of-strings variable, with an optional default."
+    },
+    "classification": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Classification label for this fragment."
+        },
+        "override_allowed": {
+          "description": "Whether an activity may override this classification.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "Optional classification metadata for a fragment."
+    }
+  }
+}

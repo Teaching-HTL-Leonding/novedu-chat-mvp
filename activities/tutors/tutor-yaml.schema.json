@@ -1,62 +1,57 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json",
-  "title": "Tutor YAML or Fragment Library",
-  "description": "Schema for tutor definition YAML files and reusable fragment library YAML files.",
-  "oneOf": [
-    {
-      "$ref": "#/$defs/tutorFile"
+  "$comment": "Generated from lib/tutors/schemas.ts by `npm run generate:schemas` — do not edit by hand.",
+  "title": "Tutor YAML",
+  "description": "Schema for a tutor definition: an AI chat tutor with an assembled system prompt.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Short machine-readable tutor id, e.g. fractions-de."
     },
-    {
-      "$ref": "#/$defs/fragmentLibrary"
-    }
-  ],
-  "$defs": {
-    "tutorFile": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "name", "description", "llm", "prompt"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Short machine-readable tutor id, e.g. fractions-de."
-        },
-        "name": {
-          "type": "string",
-          "description": "Human-readable tutor title."
-        },
-        "title": {
-          "type": "string",
-          "description": "Optional greeting shown to students on the empty chat instead of the default welcome message."
-        },
-        "description": {
-          "type": "string",
-          "description": "Short description of what this tutor does. Shown to students below the welcome greeting."
-        },
-        "exampleQuestions": {
-          "type": "array",
-          "description": "Optional example questions shown to students below the description on the empty chat. Clicking one puts the question text into the chat input. At most 5 are shown; with more, a random 5 are picked per page load.",
-          "items": {
-            "$ref": "#/$defs/exampleQuestion"
-          }
-        },
-        "anonymous": {
-          "type": "boolean",
-          "default": true,
-          "description": "Chats are anonymous by default: no link between the signed-in student and their chat is stored. Set to false to record which student each chat belongs to."
-        },
-        "llm": {
-          "$ref": "#/$defs/llm"
-        },
-        "prompt": {
-          "$ref": "#/$defs/prompt"
-        }
+    "name": {
+      "type": "string",
+      "description": "Human-readable tutor title."
+    },
+    "title": {
+      "description": "Optional greeting shown to students on the empty chat instead of the default welcome message.",
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description of what this tutor does. Shown to students below the welcome greeting."
+    },
+    "exampleQuestions": {
+      "description": "Optional example questions shown to students below the description on the empty chat. Clicking one puts the question text into the chat input. At most 5 are shown; with more, a random 5 are picked per page load.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exampleQuestion"
       }
     },
+    "anonymous": {
+      "default": true,
+      "description": "Chats are anonymous by default: no link between the signed-in student and their chat is stored. Set to false to record which student each chat belongs to.",
+      "type": "boolean"
+    },
+    "llm": {
+      "$ref": "#/$defs/llm"
+    },
+    "prompt": {
+      "$ref": "#/$defs/prompt"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "description",
+    "llm",
+    "prompt"
+  ],
+  "additionalProperties": false,
+  "$defs": {
     "exampleQuestion": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["title", "question"],
       "properties": {
         "title": {
           "type": "string",
@@ -68,108 +63,138 @@
           "minLength": 1,
           "description": "Full question text. Shown as a tooltip and placed into the chat input on click."
         }
-      }
+      },
+      "required": [
+        "title",
+        "question"
+      ],
+      "additionalProperties": false,
+      "description": "An example question shown on the welcome screen."
     },
     "llm": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["model"],
       "properties": {
         "model": {
           "type": "string",
           "description": "Model used for this tutor."
         },
         "provider": {
-          "enum": ["SCCH", "Azure Foundry"],
           "default": "SCCH",
-          "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name."
+          "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name.",
+          "type": "string",
+          "enum": [
+            "SCCH",
+            "Azure Foundry"
+          ]
         },
         "imageInput": {
-          "type": "boolean",
           "default": true,
-          "description": "Image uploads are enabled by default. Set to false to hide the upload UI for text-only tutors or non-vision-capable models."
+          "description": "Image uploads are enabled by default. Set to false to hide the upload UI for text-only tutors or non-vision-capable models.",
+          "type": "boolean"
         }
-      }
+      },
+      "required": [
+        "model"
+      ],
+      "additionalProperties": false,
+      "description": "The model and provider that back this tutor."
     },
     "prompt": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["tutor_instructions"],
       "properties": {
         "fragment_files": {
-          "type": "array",
+          "default": [],
           "description": "Optional fragment libraries used by this tutor.",
+          "type": "array",
           "items": {
             "$ref": "#/$defs/fragmentFileRef"
-          },
-          "default": []
+          }
         },
         "fragments": {
-          "type": "array",
+          "default": [],
           "description": "Optional fragments selected from fragment_files.",
+          "type": "array",
           "items": {
             "$ref": "#/$defs/fragmentRef"
-          },
-          "default": []
+          }
         },
         "tutor_instructions": {
           "type": "string",
           "description": "Final tutor-specific system-prompt instructions. For single-file tutors, this can be the whole prompt."
         }
-      }
+      },
+      "required": [
+        "tutor_instructions"
+      ],
+      "additionalProperties": false,
+      "description": "The assembled system prompt: fragments plus tutor instructions."
     },
     "fragmentFileRef": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "url"],
       "properties": {
         "id": {
           "type": "string",
-          "description": "Local alias used by prompt.fragments[].file."
+          "description": "Local alias for this library, referenced by each fragment's `file`."
         },
         "url": {
           "type": "string",
           "minLength": 1,
-          "description": "HTTP(S) URL or relative path to the fragment library.",
-          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$"
+          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$",
+          "description": "HTTP(S) URL or relative path to the fragment library."
         }
-      }
+      },
+      "required": [
+        "id",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "A reference to a fragment library by alias + URL."
     },
     "fragmentRef": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["file", "id"],
       "properties": {
         "file": {
           "type": "string",
-          "description": "Alias from prompt.fragment_files[].id."
+          "description": "The alias of the fragment library this fragment is drawn from."
         },
         "id": {
           "type": "string",
           "description": "Fragment id inside the referenced library."
         },
         "variables": {
-          "type": "object",
           "description": "Literal values passed into the fragment template.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
           "additionalProperties": {
             "$ref": "#/$defs/variableValue"
           }
         },
         "bind": {
-          "type": "object",
           "description": "Accepted for compatibility but ignored by the current assembler.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
           "additionalProperties": {
             "type": "string"
           }
         },
         "required": {
-          "type": "boolean",
-          "description": "Marker for important fragments. Accepted but not currently enforced."
+          "description": "Marker for important fragments. Accepted but not currently enforced.",
+          "type": "boolean"
         }
-      }
+      },
+      "required": [
+        "file",
+        "id"
+      ],
+      "additionalProperties": false,
+      "description": "Selects one fragment from a referenced library."
     },
     "variableValue": {
-      "oneOf": [
+      "anyOf": [
         {
           "type": "string"
         },
@@ -182,156 +207,8 @@
             "type": "string"
           }
         }
-      ]
-    },
-    "fragmentLibrary": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "fragments"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Machine-readable id of this fragment library."
-        },
-        "fragments": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/fragment"
-          }
-        }
-      }
-    },
-    "fragment": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "version", "priority", "content"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique fragment id within this library."
-        },
-        "version": {
-          "type": "number",
-          "description": "Fragment version number."
-        },
-        "priority": {
-          "type": "number",
-          "description": "Assembly order. Lower priorities appear earlier."
-        },
-        "input_schema": {
-          "$ref": "#/$defs/inputSchema"
-        },
-        "classification": {
-          "$ref": "#/$defs/classification"
-        },
-        "content": {
-          "type": "string",
-          "description": "Prompt text as a Handlebars template."
-        }
-      }
-    },
-    "inputSchema": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type"],
-      "properties": {
-        "type": {
-          "const": "object"
-        },
-        "required": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": []
-        },
-        "properties": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/inputProperty"
-          },
-          "default": {}
-        }
-      }
-    },
-    "inputProperty": {
-      "oneOf": [
-        {
-          "$ref": "#/$defs/stringProperty"
-        },
-        {
-          "$ref": "#/$defs/booleanProperty"
-        },
-        {
-          "$ref": "#/$defs/stringArrayProperty"
-        }
-      ]
-    },
-    "stringProperty": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type"],
-      "properties": {
-        "type": {
-          "const": "string"
-        },
-        "default": {
-          "type": "string"
-        }
-      }
-    },
-    "booleanProperty": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type"],
-      "properties": {
-        "type": {
-          "const": "boolean"
-        },
-        "default": {
-          "type": "boolean"
-        }
-      }
-    },
-    "stringArrayProperty": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type", "items"],
-      "properties": {
-        "type": {
-          "const": "array"
-        },
-        "items": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["type"],
-          "properties": {
-            "type": {
-              "const": "string"
-            }
-          }
-        },
-        "default": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "classification": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type"],
-      "properties": {
-        "type": {
-          "type": "string"
-        },
-        "override_allowed": {
-          "type": "boolean"
-        }
-      }
+      ],
+      "description": "A literal variable value: a string, a boolean, or an array of strings."
     }
   }
 }
