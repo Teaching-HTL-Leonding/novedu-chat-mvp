@@ -73,6 +73,8 @@ to write.
 ## 3. Editor support
 
 This folder includes a JSON Schema for coding YAML files: `coding-yaml.schema.json`.
+It is **generated from the zod schema** in `lib/coding-schema.ts` via
+`npm run generate:schemas` — do not edit it by hand.
 
 Editors that use the YAML Language Server, including VS Code with YAML support, can
 pick up the schema from a modeline comment at the top of a coding file:

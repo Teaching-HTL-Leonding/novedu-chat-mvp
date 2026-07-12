@@ -68,7 +68,8 @@ This repository ships a complete example you can copy from:
 ## 3. Editor support
 
 This folder includes a JSON Schema for writing YAML files:
-`writing-yaml.schema.json`.
+`writing-yaml.schema.json`. It is **generated from the zod schema** in
+`lib/writing-schema.ts` via `npm run generate:schemas` — do not edit it by hand.
 
 Editors that use the YAML Language Server, including VS Code with YAML support,
 can pick up the schema from a modeline comment at the top of a writing file:

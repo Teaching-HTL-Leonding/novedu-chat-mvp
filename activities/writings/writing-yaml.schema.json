@@ -1,11 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/writings/writing-yaml.schema.json",
+  "$comment": "Generated from lib/writing-schema.ts by `npm run generate:schemas` — do not edit by hand.",
   "title": "Writing Activity YAML",
-  "description": "Schema for a writing activity: a split-screen Markdown editor with an AI writing coach. Kept in sync by hand with the Zod schema in lib/writing-schema.ts, which is the source of truth for validation.",
+  "description": "Schema for a writing activity: a split-screen Markdown editor with an AI writing coach.",
   "type": "object",
-  "additionalProperties": false,
-  "required": ["id", "llm", "instructions"],
   "properties": {
     "id": {
       "type": "string",
@@ -13,40 +12,40 @@
       "description": "Short machine-readable activity id, e.g. human-animal-short-story."
     },
     "name": {
-      "type": "string",
-      "description": "Optional human-readable title (used as a label)."
+      "description": "Optional human-readable title (used as a label).",
+      "type": "string"
     },
     "title": {
-      "type": "string",
-      "description": "Optional greeting shown to students on the welcome screen instead of the default message."
+      "description": "Optional greeting shown to students on the welcome screen instead of the default message.",
+      "type": "string"
     },
     "description": {
-      "type": "string",
-      "description": "Optional description shown to students below the welcome greeting (Markdown)."
+      "description": "Optional description shown to students below the welcome greeting (Markdown).",
+      "type": "string"
     },
     "anonymous": {
-      "type": "boolean",
       "default": false,
-      "description": "Writing DIVERGES: it defaults to false (attributed), because review and the Save feature need to know whose text it is. Set to true for ephemeral, unattributed writing — which also disables saving."
+      "description": "Writing DIVERGES: it defaults to false (attributed), because review and the Save feature need to know whose text it is. Set to true for ephemeral, unattributed writing — which also disables saving.",
+      "type": "boolean"
     },
     "llm": {
       "$ref": "#/$defs/llm"
     },
     "fragment_files": {
-      "type": "array",
+      "default": [],
       "description": "Optional fragment libraries this activity pulls shared prompt fragments from.",
+      "type": "array",
       "items": {
         "$ref": "#/$defs/fragmentFileRef"
-      },
-      "default": []
+      }
     },
     "fragments": {
-      "type": "array",
+      "default": [],
       "description": "Optional fragments selected from fragment_files. Assembled in priority order and prepended AHEAD of instructions.",
+      "type": "array",
       "items": {
         "$ref": "#/$defs/fragmentRef"
-      },
-      "default": []
+      }
     },
     "instructions": {
       "type": "string",
@@ -54,15 +53,19 @@
       "description": "The writing coach's system prompt. SERVER-ONLY: never sent to the browser, so it may describe the assessment criteria and coaching strategy."
     },
     "placeholder": {
-      "type": "string",
-      "description": "Optional starter text prefilled into the editor. Empty for a blank page."
+      "description": "Optional starter text prefilled into the editor. Empty for a blank page.",
+      "type": "string"
     }
   },
+  "required": [
+    "id",
+    "llm",
+    "instructions"
+  ],
+  "additionalProperties": false,
   "$defs": {
     "llm": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["model"],
       "properties": {
         "model": {
           "type": "string",
@@ -70,64 +73,87 @@
           "description": "The model that drives the feedback chat."
         },
         "provider": {
-          "enum": ["SCCH", "Azure Foundry"],
           "default": "SCCH",
-          "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name."
+          "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name.",
+          "type": "string",
+          "enum": [
+            "SCCH",
+            "Azure Foundry"
+          ]
         }
-      }
+      },
+      "required": [
+        "model"
+      ],
+      "additionalProperties": false,
+      "description": "The model and provider that back the writing coach."
     },
     "fragmentFileRef": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "url"],
       "properties": {
         "id": {
           "type": "string",
-          "description": "Local alias used by fragments[].file."
+          "description": "Local alias for this library, referenced by each fragment's `file`."
         },
         "url": {
           "type": "string",
           "minLength": 1,
-          "description": "HTTP(S) URL or relative path to the fragment library.",
-          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$"
+          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$",
+          "description": "HTTP(S) URL or relative path to the fragment library."
         }
-      }
+      },
+      "required": [
+        "id",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "A reference to a fragment library by alias + URL."
     },
     "fragmentRef": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["file", "id"],
       "properties": {
         "file": {
           "type": "string",
-          "description": "Alias from fragment_files[].id."
+          "description": "The alias of the fragment library this fragment is drawn from."
         },
         "id": {
           "type": "string",
           "description": "Fragment id inside the referenced library."
         },
         "variables": {
-          "type": "object",
           "description": "Literal values passed into the fragment template.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
           "additionalProperties": {
             "$ref": "#/$defs/variableValue"
           }
         },
         "bind": {
-          "type": "object",
           "description": "Accepted for compatibility but ignored by the current assembler.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
           "additionalProperties": {
             "type": "string"
           }
         },
         "required": {
-          "type": "boolean",
-          "description": "Marker for important fragments. Accepted but not currently enforced."
+          "description": "Marker for important fragments. Accepted but not currently enforced.",
+          "type": "boolean"
         }
-      }
+      },
+      "required": [
+        "file",
+        "id"
+      ],
+      "additionalProperties": false,
+      "description": "Selects one fragment from a referenced library."
     },
     "variableValue": {
-      "oneOf": [
+      "anyOf": [
         {
           "type": "string"
         },
@@ -140,7 +166,8 @@
             "type": "string"
           }
         }
-      ]
+      ],
+      "description": "A literal variable value: a string, a boolean, or an array of strings."
     }
   }
 }

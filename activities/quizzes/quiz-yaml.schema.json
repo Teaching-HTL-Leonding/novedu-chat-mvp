@@ -1,11 +1,10 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json",
+  "$comment": "Generated from lib/quiz-schema.ts by `npm run generate:schemas` — do not edit by hand.",
   "title": "Quiz YAML",
-  "description": "Schema for an LLM-graded, open-ended quiz definition. Kept in sync by hand with the Zod schema in lib/quiz-schema.ts, which is the source of truth for validation.",
+  "description": "Schema for an LLM-graded, open-ended quiz definition.",
   "type": "object",
-  "additionalProperties": false,
-  "required": ["id", "llm", "questions"],
   "properties": {
     "id": {
       "type": "string",
@@ -13,26 +12,26 @@
       "description": "Short machine-readable quiz id, e.g. countries-basics. Used as the per-quiz identity."
     },
     "name": {
-      "type": "string",
-      "description": "Optional human-readable quiz title (used as a label)."
+      "description": "Optional human-readable quiz title (used as a label).",
+      "type": "string"
     },
     "title": {
-      "type": "string",
-      "description": "Optional greeting shown to students on the welcome screen instead of the default message."
+      "description": "Optional greeting shown to students on the welcome screen instead of the default message.",
+      "type": "string"
     },
     "description": {
-      "type": "string",
-      "description": "Optional description shown to students below the welcome greeting (Markdown)."
+      "description": "Optional description shown to students below the welcome greeting (Markdown).",
+      "type": "string"
     },
     "anonymous": {
-      "type": "boolean",
       "default": true,
-      "description": "Quizzes are anonymous by default: answers are recorded for aggregate stats but not linked to a student. Set to false to attribute each attempt to the signed-in student."
+      "description": "Quizzes are anonymous by default: answers are recorded for aggregate stats but not linked to a student. Set to false to attribute each attempt to the signed-in student.",
+      "type": "boolean"
     },
     "shuffle": {
-      "type": "boolean",
       "default": true,
-      "description": "Present questions in a random order per attempt. Set to false to keep the authored order."
+      "description": "Present questions in a random order per attempt. Set to false to keep the authored order.",
+      "type": "boolean"
     },
     "llm": {
       "$ref": "#/$defs/llm"
@@ -41,35 +40,39 @@
       "$ref": "#/$defs/discussion"
     },
     "fragment_files": {
-      "type": "array",
+      "default": [],
       "description": "Optional fragment libraries this quiz pulls shared prompt fragments from.",
+      "type": "array",
       "items": {
         "$ref": "#/$defs/fragmentFileRef"
-      },
-      "default": []
+      }
     },
     "fragments": {
-      "type": "array",
+      "default": [],
       "description": "Optional fragments selected from fragment_files. Assembled in priority order and prepended to BOTH the grader prompt and the discussion chat's system prompt.",
+      "type": "array",
       "items": {
         "$ref": "#/$defs/fragmentRef"
-      },
-      "default": []
+      }
     },
     "questions": {
-      "type": "array",
       "minItems": 1,
-      "description": "The quiz questions. Each is open-ended and graded by the LLM via its evaluation prompt.",
+      "type": "array",
       "items": {
         "$ref": "#/$defs/question"
-      }
+      },
+      "description": "The quiz questions. Each is open-ended and graded by the LLM via its evaluation prompt."
     }
   },
+  "required": [
+    "id",
+    "llm",
+    "questions"
+  ],
+  "additionalProperties": false,
   "$defs": {
     "llm": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["model"],
       "properties": {
         "model": {
           "type": "string",
@@ -77,33 +80,124 @@
           "description": "The model that grades answers and drives the per-question discussion chat."
         },
         "provider": {
-          "enum": ["SCCH", "Azure Foundry"],
           "default": "SCCH",
-          "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name."
+          "description": "The LLM provider serving the model. For Azure Foundry, model is the deployment name.",
+          "type": "string",
+          "enum": [
+            "SCCH",
+            "Azure Foundry"
+          ]
         },
         "imageInput": {
-          "type": "boolean",
           "default": false,
-          "description": "Default for all questions: students may attach photos (up to 3, 5 MB each) to their answers. The model must be vision-capable. A per-question imageInput overrides it."
+          "description": "Default for all questions: students may attach photos (up to 3, 5 MB each) to their answers. The model must be vision-capable. A per-question imageInput overrides it.",
+          "type": "boolean"
         }
-      }
+      },
+      "required": [
+        "model"
+      ],
+      "additionalProperties": false,
+      "description": "The single model + provider that grades and discusses answers."
     },
     "discussion": {
+      "description": "Optional guidance for the per-question follow-up discussion chat.",
       "type": "object",
-      "additionalProperties": false,
-      "required": ["instructions"],
       "properties": {
         "instructions": {
           "type": "string",
           "minLength": 1,
           "description": "Optional guidance appended to the per-question follow-up discussion chat's system prompt."
         }
-      }
+      },
+      "required": [
+        "instructions"
+      ],
+      "additionalProperties": false
+    },
+    "fragmentFileRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Local alias for this library, referenced by each fragment's `file`."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$",
+          "description": "HTTP(S) URL or relative path to the fragment library."
+        }
+      },
+      "required": [
+        "id",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "A reference to a fragment library by alias + URL."
+    },
+    "fragmentRef": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "The alias of the fragment library this fragment is drawn from."
+        },
+        "id": {
+          "type": "string",
+          "description": "Fragment id inside the referenced library."
+        },
+        "variables": {
+          "description": "Literal values passed into the fragment template.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/variableValue"
+          }
+        },
+        "bind": {
+          "description": "Accepted for compatibility but ignored by the current assembler.",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "required": {
+          "description": "Marker for important fragments. Accepted but not currently enforced.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "file",
+        "id"
+      ],
+      "additionalProperties": false,
+      "description": "Selects one fragment from a referenced library."
+    },
+    "variableValue": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ],
+      "description": "A literal variable value: a string, a boolean, or an array of strings."
     },
     "question": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "question", "evaluation"],
       "properties": {
         "id": {
           "type": "string",
@@ -111,8 +205,8 @@
           "description": "Stable question id, unique within the quiz (the per-question stats key)."
         },
         "title": {
-          "type": "string",
-          "description": "Optional short label for the stats table and progress display."
+          "description": "Optional short label for the stats table and progress display.",
+          "type": "string"
         },
         "question": {
           "type": "string",
@@ -128,20 +222,25 @@
           "$ref": "#/$defs/image"
         },
         "imageInput": {
-          "type": "boolean",
-          "description": "Overrides the quiz-level llm.imageInput for this question only (photo answers on/off)."
+          "description": "Overrides the quiz-level llm.imageInput for this question only (photo answers on/off).",
+          "type": "boolean"
         }
-      }
+      },
+      "required": [
+        "id",
+        "question",
+        "evaluation"
+      ],
+      "additionalProperties": false,
+      "description": "One open-ended, LLM-graded quiz question."
     },
     "image": {
       "type": "object",
-      "additionalProperties": false,
-      "required": ["src"],
       "properties": {
         "hosted": {
-          "type": "boolean",
           "default": false,
-          "description": "When true, src is an app-hosted image NAME resolved server-side; otherwise src is an absolute URL or a path relative to the quiz's own URL."
+          "description": "When true, src is an app-hosted image NAME resolved server-side; otherwise src is an absolute URL or a path relative to the quiz's own URL.",
+          "type": "boolean"
         },
         "src": {
           "type": "string",
@@ -149,80 +248,19 @@
           "description": "The hosted image name (when hosted) or the image URL / relative path."
         },
         "alt": {
-          "type": "string",
-          "description": "Accessible description shown if the image cannot be loaded."
-        },
-        "credit": {
-          "type": "string",
-          "description": "Optional attribution (\"Content Credentials\") shown small below the image."
-        }
-      }
-    },
-    "fragmentFileRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "url"],
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Local alias used by fragments[].file."
-        },
-        "url": {
-          "type": "string",
-          "minLength": 1,
-          "description": "HTTP(S) URL or relative path to the fragment library.",
-          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$"
-        }
-      }
-    },
-    "fragmentRef": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["file", "id"],
-      "properties": {
-        "file": {
-          "type": "string",
-          "description": "Alias from fragment_files[].id."
-        },
-        "id": {
-          "type": "string",
-          "description": "Fragment id inside the referenced library."
-        },
-        "variables": {
-          "type": "object",
-          "description": "Literal values passed into the fragment template.",
-          "additionalProperties": {
-            "$ref": "#/$defs/variableValue"
-          }
-        },
-        "bind": {
-          "type": "object",
-          "description": "Accepted for compatibility but ignored by the current assembler.",
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "required": {
-          "type": "boolean",
-          "description": "Marker for important fragments. Accepted but not currently enforced."
-        }
-      }
-    },
-    "variableValue": {
-      "oneOf": [
-        {
+          "description": "Accessible description shown if the image cannot be loaded.",
           "type": "string"
         },
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
+        "credit": {
+          "description": "Optional attribution (\"Content Credentials\") shown small below the image.",
+          "type": "string"
         }
-      ]
+      },
+      "required": [
+        "src"
+      ],
+      "additionalProperties": false,
+      "description": "An optional content image attached to a question."
     }
   }
 }
