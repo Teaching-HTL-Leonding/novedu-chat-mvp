@@ -4,12 +4,12 @@ import { getCollection } from "astro:content";
 import { micromark } from "micromark";
 import { loadGlossary } from "../lib/glossary.ts";
 
-// Guard: the glob loader silently yields an empty collection if its base path is
-// wrong. This page always builds, so the whole build fails loudly instead.
+// Guard: docsLoader silently yields an empty collection when src/content/docs is
+// missing or broken. This page always builds, so the whole build fails loudly.
 const docs = await getCollection("docs");
 if (docs.length === 0) {
   throw new Error(
-    "[teacher-docs-site] the docs collection is empty — check the glob base in src/content.config.ts",
+    "[teacher-docs-site] the docs collection is empty — is the src/content/docs symlink intact? It must point at ../teacher-docs/content (on Windows, enable Developer Mode or `git config core.symlinks true` and re-checkout)",
   );
 }
 

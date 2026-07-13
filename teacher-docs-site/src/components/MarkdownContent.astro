@@ -1,28 +1,26 @@
 ---
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 import Default from "@astrojs/starlight/components/MarkdownContent.astro";
-import { getCollection } from "astro:content";
+import { getEntry } from "astro:content";
+import { withBase } from "../lib/paths.ts";
 
 // Renders the frontmatter `related:` slugs as link cards after the chapter body.
 // Non-collection pages (e.g. the glossary) carry no `related` and render nothing.
 const { entry } = Astro.locals.starlightRoute;
 const related: string[] = entry?.data?.related ?? [];
 
-let cards: { title: string; href: string }[] = [];
-if (related.length > 0) {
-  const docs = await getCollection("docs");
-  const byId = new Map(docs.map((doc) => [doc.id, doc]));
-  cards = related.map((slug) => {
-    const target = byId.get(slug);
+const cards = await Promise.all(
+  related.map(async (slug) => {
+    const target = await getEntry("docs", slug);
     if (!target) {
-      // The corpus's dead-link check: an unresolvable related: slug fails the build.
+      // Backstop for dev — the corpus-contract unit test is the primary check.
       throw new Error(
         `[teacher-docs-site] related: slug "${slug}" in chapter "${entry.id}" matches no chapter`,
       );
     }
-    return { title: target.data.title, href: `/${target.id}/` };
-  });
-}
+    return { title: target.data.title, href: withBase(import.meta.env.BASE_URL, `${target.id}/`) };
+  }),
+);
 ---
 
 <Default {...Astro.props}>

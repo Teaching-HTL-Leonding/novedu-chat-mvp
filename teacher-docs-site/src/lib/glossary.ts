@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { slugifyTerm } from "./slug.ts";
@@ -20,7 +20,9 @@ const BULLET = /^-\s+\*\*(.+?)\*\*\s*(\([^)]*\))?\s*:\s*(.*)$/;
 /**
  * Parses teacher-docs/glossary.md: prose preamble is skipped, each
  * `- **Term**: definition` bullet becomes an entry, indented continuation
- * lines extend the current definition.
+ * lines extend the current definition. A line that starts like a bullet but
+ * doesn't match the contract throws — a malformed entry must never silently
+ * vanish from the glossary (its term markers would degrade to plain text).
  */
 export function parseGlossary(markdown: string): GlossaryEntry[] {
   const entries: GlossaryEntry[] = [];
@@ -36,10 +38,15 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
       });
       continue;
     }
+    if (/^-\s/.test(line)) {
+      throw new Error(
+        `glossary bullet does not match \`- **Term**: definition\` (or \`- **Term** (qualifier): definition\`): "${line.trim()}" — fix teacher-docs/glossary.md`,
+      );
+    }
     const current = entries[entries.length - 1];
     const continuation = line.trim();
     // Indented, non-bullet lines are hard-wrapped continuations of the definition.
-    if (current && continuation && /^\s/.test(line) && !continuation.startsWith("- ")) {
+    if (current && continuation && /^\s/.test(line)) {
       current.definition = `${current.definition} ${continuation}`;
     }
   }
@@ -50,10 +57,21 @@ export function parseGlossary(markdown: string): GlossaryEntry[] {
  * Lookup keys per entry: the lowercased canonical term plus each lowercased
  * `/`-separated part — so `[[module|kind]]` resolves against "Module / kind".
  * "vs."-style terms are NOT split; chapter markers use them verbatim.
+ * Throws on an ambiguous alias AND on two terms slugifying to the same anchor
+ * (e.g. "Check-in" vs "Check in") — either would silently misdirect links.
  */
 export function buildLookup(entries: GlossaryEntry[]): Map<string, GlossaryEntry> {
   const lookup = new Map<string, GlossaryEntry>();
+  const bySlug = new Map<string, GlossaryEntry>();
   for (const entry of entries) {
+    const slugOwner = bySlug.get(entry.slug);
+    if (slugOwner) {
+      throw new Error(
+        `glossary terms "${slugOwner.term}" and "${entry.term}" produce the same anchor "#${entry.slug}" — rename one in teacher-docs/glossary.md`,
+      );
+    }
+    bySlug.set(entry.slug, entry);
+
     const aliases = new Set([entry.term.toLowerCase()]);
     if (entry.term.includes("/")) {
       for (const part of entry.term.split("/")) {
@@ -75,24 +93,12 @@ export function buildLookup(entries: GlossaryEntry[]): Map<string, GlossaryEntry
 }
 
 /**
- * The corpus glossary, relative to this repo. Candidates cover the contexts this
- * module runs in: as a real Vite/vitest module (import.meta.url = this file) and
- * inlined into the esbuild-bundled astro.config (import.meta.url = bundle in the
- * site root), plus cwd fallbacks for either the site or the repo root.
+ * Normalizes a chapter's `[[term]]` key for lookup: case-insensitive and
+ * whitespace-collapsed, so a marker hard-wrapped across source lines still
+ * resolves.
  */
-function resolveGlossaryPath(): string {
-  const candidates = [
-    fileURLToPath(new URL("../../../teacher-docs/glossary.md", import.meta.url)),
-    fileURLToPath(new URL("../teacher-docs/glossary.md", import.meta.url)),
-    resolve(process.cwd(), "../teacher-docs/glossary.md"),
-    resolve(process.cwd(), "teacher-docs/glossary.md"),
-  ];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  throw new Error(
-    `teacher-docs/glossary.md not found (tried: ${candidates.join(", ")}) — is the teacher-docs corpus checked out next to teacher-docs-site?`,
-  );
+export function normalizeTermKey(raw: string): string {
+  return raw.trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 export interface Glossary {
@@ -100,18 +106,39 @@ export interface Glossary {
   lookup: Map<string, GlossaryEntry>;
 }
 
-let cache: { path: string; mtimeMs: number; glossary: Glossary } | undefined;
+/**
+ * This module runs in three contexts with different `import.meta.url` shapes:
+ * as a real file under src/lib (the remark plugin imported by astro.config via
+ * Node, the dev server, vitest) — where the relative hop resolves correctly —
+ * and bundled into a prerender chunk under dist/.prerender/ when the built
+ * glossary page renders, where only the cwd candidates work (astro runs with
+ * cwd = teacher-docs-site via the npm workspace scripts). The repo-root cwd
+ * candidate is checked BEFORE the parent-dir one so resolution can never
+ * escape the repository.
+ */
+function resolveGlossaryPath(): string {
+  const candidates: string[] = [];
+  const fromModule = new URL("../../../teacher-docs/glossary.md", import.meta.url);
+  if (fromModule.protocol === "file:") candidates.push(fileURLToPath(fromModule));
+  candidates.push(
+    resolve(process.cwd(), "teacher-docs/glossary.md"),
+    resolve(process.cwd(), "../teacher-docs/glossary.md"),
+  );
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (!found) {
+    throw new Error(
+      `teacher-docs/glossary.md not found (tried: ${candidates.join(", ")}) — is the teacher-docs corpus checked out next to teacher-docs-site?`,
+    );
+  }
+  return found;
+}
 
 /**
- * Reads and parses the glossary with an mtime cache, so a dev-server rebuild
- * after editing glossary.md picks up the change without a restart.
+ * Reads and parses the corpus glossary. No caching: the file is 8 bullets and
+ * this runs ~once per chapter transform, so a fresh read keeps dev rebuilds
+ * exact and leaves no staleness edge cases.
  */
 export function loadGlossary(): Glossary {
-  const path = cache?.path ?? resolveGlossaryPath();
-  const mtimeMs = statSync(path).mtimeMs;
-  if (!cache || cache.mtimeMs !== mtimeMs) {
-    const entries = parseGlossary(readFileSync(path, "utf8"));
-    cache = { path, mtimeMs, glossary: { entries, lookup: buildLookup(entries) } };
-  }
-  return cache.glossary;
+  const entries = parseGlossary(readFileSync(resolveGlossaryPath(), "utf8"));
+  return { entries, lookup: buildLookup(entries) };
 }
