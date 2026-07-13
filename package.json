@@ -32,7 +32,7 @@
     "docs:build": "npm run build --workspace teacher-docs-site",
     "docs:preview": "npm run preview --workspace teacher-docs-site",
     "docs:stage": "npm run docs:build && rm -rf public/docs && mkdir -p public && cp -r teacher-docs-site/dist public/docs",
-    "qa": "npm run check && npm run typecheck && npm run test && npm run build",
+    "qa": "npm run check && npm run typecheck && npm run test && npm run build && npm run docs:build",
     "qa:e2e": "npm run qa && npm run test:e2e"
   },
   "dependencies": {

@@ -13,8 +13,9 @@ Four modules share one generic "codes" pipeline (access, storage, attribution):
 - **writing** — a split-screen Markdown editor where an AI assistant gives feedback (it can *read* the draft but never edit it) and the student saves their text.
 - **coding** — an OpenAI-compatible Chat Completions endpoint an external coding agent (e.g. little-coder) points at; the code is the bearer API key, and the teacher's system prompt + model are injected server-side.
 
-It is a prototype: access is gated behind Microsoft Entra ID sign-in, and agent
-memory/storage is persisted to Azure SQL (authenticated via Entra — no SQL password).
+It is a prototype: access is gated behind Microsoft Entra ID sign-in (the teacher
+guide at `/docs` is deliberately public), and agent memory/storage is persisted to
+Azure SQL (authenticated via Entra — no SQL password).
 
 ## What's in here
 
@@ -193,6 +194,10 @@ npm run build
 npm run start
 ```
 
+To serve the teacher guide at `/docs` locally too, run `npm run docs:stage` first —
+it builds the docs site into `public/docs/`. (The Docker image build does this
+automatically; a plain local build without staging simply 404s on `/docs`.)
+
 ## Scripts
 
 | Script | What it does |
@@ -201,12 +206,12 @@ npm run start
 | `npm run build` / `npm run start` | Production build / serve. |
 | `npm run check` | Biome lint + format check. (`check:fix` to auto-fix.) |
 | `npm run lint` / `npm run format` | Biome lint only / format-write only. |
-| `npm run typecheck` | `tsc --noEmit`. |
+| `npm run typecheck` | All three workspaces: `tsc --noEmit` (app) + `tsc -p cli` + `astro check` (docs site). |
 | `npm run test` | Vitest (unit + component). (`test:unit` / `test:component` for one project.) |
 | `npm run test:e2e` | Playwright end-to-end tests (all specs, incl. `@live`). |
 | `npm run test:e2e:ci` | Hermetic + `@live-db` (against a SQL container); skips `@live-llm` and `@live-storage`. (`test:e2e:db` / `test:e2e:storage` run one live group.) |
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
-| `npm run qa` | `check` + `typecheck` + `test` + `build`. (`qa:e2e` adds the e2e suite.) |
+| `npm run qa` | `check` + `typecheck` + `test` + `build` + `docs:build`. (`qa:e2e` adds the e2e suite.) |
 | `npm run docs:dev` | Serve the teacher guide locally at `:4321/docs/` (Astro Starlight; `docs:build` / `docs:preview` for the static build, `docs:stage` to stage it into `public/docs` so the app serves `/docs` locally). |
 | `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, `login` / `logout` / `whoami` for Entra ID sign-in, and the teacher management commands `codes create/list` + `files upload/list` (JSON in/out) against the app's bearer-protected APIs. |
 
@@ -288,4 +293,6 @@ teacher guide corpus + docs site ([`teacher-docs.md`](docs/teacher-docs.md)).
   usage dashboard) are gated by membership in `TEACHER_GROUP_ID`, surfaced as
   `session.user.isTeacher` and enforced server-side via `requireEffectiveTeacher()`
   (`lib/student-mode.ts`, which also honors "view as student" mode). The public coding
-  endpoint instead authenticates with the code as its bearer key. See `docs/auth.md`.
+  endpoint instead authenticates with the code as its bearer key, and the static
+  teacher guide under `/docs` is public by intent (no handler, plain files — see
+  `docs/teacher-docs.md`). See `docs/auth.md`.
