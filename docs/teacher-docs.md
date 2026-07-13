@@ -101,10 +101,16 @@ nothing.
 failure, glossary warnings, Pagefind index. Pure logic (slugifier, parser, plugin)
 is unit-tested in `teacher-docs-site/src/lib/glossary.unit.test.ts` — picked up by
 the root vitest `unit` project (`**/*.unit.test.ts`), so it runs in `npm test` and
-`qa` with no extra wiring. The site workspace is excluded from the root
-`tsconfig.json` (same pattern as `cli`), and `biome.json` carries an `.astro`
-override (Biome only parses Astro frontmatter, so template-only imports would
-false-positive as unused).
+`qa` with no extra wiring. Typechecking follows the `cli` pattern — every
+workspace is excluded from the root `tsc` program but gets its own leg in the
+root `typecheck` script: `tsc --noEmit` (app) + `tsc -p cli` + `astro check`
+(site, via `@astrojs/check`; covers `.astro` files and runs its own content
+sync). CI's `npm run typecheck` therefore gates all three workspaces. Biome
+needs no per-workspace wiring — the root `biome check .` sweeps everything —
+except a `teacher-docs-site/**/*.astro`-scoped override in `biome.json`
+(Biome only parses Astro frontmatter, so template-only imports would
+false-positive as unused; the scope keeps the rules live for any future
+`.astro` files elsewhere).
 
 ## Deployment sketch (NOT built)
 

@@ -13,6 +13,7 @@ never the other way round.
 npm run docs:dev       # dev server, http://localhost:4321
 npm run docs:build     # static build to teacher-docs-site/dist/
 npm run docs:preview   # serve the build output
+npm run typecheck      # includes this workspace's `astro check` leg
 ```
 
 The build doubles as the corpus's consistency check: frontmatter schema validation,

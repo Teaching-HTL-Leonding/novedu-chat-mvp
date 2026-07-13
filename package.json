@@ -14,7 +14,7 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "typecheck": "tsc --noEmit && tsc -p cli --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p cli --noEmit && npm run typecheck --workspace teacher-docs-site",
     "db:generate": "drizzle-kit generate",
     "test": "vitest run",
     "test:watch": "vitest",
