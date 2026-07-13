@@ -1,0 +1,26 @@
+# Validating with the CLI
+
+Output: teacher-docs/content/10-yaml-for-teachers/04-cli-validation.md · order 4
+
+Job: A teacher who wants to check an activity before sharing it. After this chapter
+they can run the validate command with the right kind, read a pass or fail result, and
+know they can ask the bundled AI skill for help with an error.
+
+Cover:
+- What validation does and why: it runs the same checks the app runs, so problems show
+  up before students do.
+- The command: the validate command with a file path or URL, and the --kind option
+  (tutor is the default; fragment, quiz, writing, and coding are the others). Quote the
+  real commands.
+- Reading the result: success versus a failure that names the specific problem.
+- The bundled AI skill: teachers can ask it to run validation and explain an error.
+
+Get right:
+- --kind is required for everything except a tutor; leaving it off validates the file
+  as a tutor and fails confusingly.
+- Validating a URL checks the published file, so commit and push first.
+- Setting a provider needs a recent CLI version (activities/README.md names the floor);
+  state the requirement, verify the version against the current source.
+- Use verbatim commands from cli/README.md, not invented ones.
+
+Look: cli/README.md, .agents/skills/novedu-tutor-cli/SKILL.md.

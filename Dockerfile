@@ -5,7 +5,12 @@
 
 FROM node:24-alpine AS deps
 WORKDIR /app
+# The teacher-docs-site workspace manifest comes along so `npm ci` also installs
+# the docs site's deps (astro/starlight) — the builder stage builds the teacher
+# guide into public/docs. The cli workspace stays out: nothing in the image
+# needs it.
 COPY package.json package-lock.json ./
+COPY teacher-docs-site/package.json ./teacher-docs-site/package.json
 RUN npm ci
 
 FROM node:24-alpine AS builder
@@ -21,9 +26,15 @@ ENV AZURE_CLIENT_ID=build-placeholder \
     AUTH_SECRET=build-placeholder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-# public/ is empty and not git-tracked, so it is absent in CI checkouts;
-# the runner stage COPYs it unconditionally.
-RUN mkdir -p public && npm run build
+# public/ is not git-tracked, so it is absent in CI checkouts; the runner stage
+# COPYs it unconditionally. The teacher guide (teacher-docs-site, an Astro
+# static export with base '/docs') is built here and staged into public/docs —
+# the standalone server serves it as plain static files, public by intent
+# (proxy.ts excludes /docs; see docs/teacher-docs.md).
+RUN mkdir -p public \
+    && npm run docs:build \
+    && cp -r teacher-docs-site/dist public/docs \
+    && npm run build
 
 FROM node:24-alpine AS runner
 WORKDIR /app

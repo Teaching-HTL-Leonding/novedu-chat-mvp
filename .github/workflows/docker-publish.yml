@@ -5,11 +5,16 @@ on:
     branches: [main]
     # A doc-only or sample-spec push doesn't change the image — skip the
     # build/publish/deploy entirely. Mixed pushes (code + docs) still publish.
+    # EXCEPTION: teacher-docs/** is re-included (last matching pattern wins) —
+    # the teacher guide ships INSIDE the image at /docs, so a corpus change must
+    # trigger a publish or production docs go stale.
     # Manual runs (workflow_dispatch) always build regardless of what changed.
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'activities/**'
+    paths:
+      - '**'
+      - '!**.md'
+      - '!docs/**'
+      - '!activities/**'
+      - 'teacher-docs/**'
   workflow_dispatch:
 
 concurrency:

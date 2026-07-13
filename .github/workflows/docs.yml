@@ -1,0 +1,47 @@
+name: Docs
+
+# Teacher-guide gate for PRs that qa.yml skips: corpus regenerations and other
+# markdown-only changes under teacher-docs/ match qa.yml's `**.md` paths-ignore,
+# but they can still break the docs site (frontmatter schema, dead related:
+# slugs, unknown [[term]] markers, body-H1 regressions). This light workflow
+# runs the corpus-contract/site unit tests and the site build for exactly those
+# paths. Site code changes trigger qa.yml too — the overlap is cheap.
+#
+# SECURITY: secret-free by construction, same rule as qa.yml (this runs on fork
+# pull_request, i.e. untrusted code — see docs/ci-security.md). No secrets, no
+# env, least-privilege token. Never add `pull_request_target` here.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'teacher-docs/**'
+      - 'teacher-docs-site/**'
+      - '.github/workflows/docs.yml'
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # Corpus contract + glossary pipeline tests (teacher-docs-site's unit tests
+      # only — the app's tests need the full qa gate, not this one).
+      - run: npx vitest run --project unit teacher-docs-site
+
+      - run: npm run typecheck --workspace teacher-docs-site
+
+      - run: npm run docs:build
