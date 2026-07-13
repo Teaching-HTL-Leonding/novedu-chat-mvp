@@ -182,8 +182,9 @@ describe("createFile", () => {
       { ...input, title: "T".repeat(600), description: "D".repeat(3000) },
       "teacher-1",
     );
-    expect((fake.state.inserted[0]?.title as string).length).toBe(512);
-    expect((fake.state.inserted[0]?.description as string).length).toBe(2048);
+    const row = fake.state.inserted[0] as { title: string; description: string };
+    expect(row.title.length).toBe(512);
+    expect(row.description.length).toBe(2048);
   });
 });
 

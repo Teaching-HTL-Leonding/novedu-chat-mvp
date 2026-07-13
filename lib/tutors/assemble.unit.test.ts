@@ -1,18 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { assembleSystemPrompt } from "./assemble";
-import { checkConsistency, type ResolvedFragment } from "./consistency";
-import type { Tutor } from "./schemas";
+import {
+  assembleSystemPrompt,
+  checkConsistency,
+  type ResolvedFragment,
+} from "@/lib/prompt-fragments";
 import { loadFixtureFragmentFiles, loadFixtureTutor } from "./test-fixtures";
 
-function fixturePlan(): { plan: ResolvedFragment[]; tutor: Tutor } {
+function fixturePlan(): { plan: ResolvedFragment[]; instructions: string } {
   const tutor = loadFixtureTutor();
-  const { plan, errors } = checkConsistency(tutor, loadFixtureFragmentFiles());
+  const { plan, errors } = checkConsistency(tutor.prompt, loadFixtureFragmentFiles());
   if (errors.length) throw new Error("precondition: fixture must be consistent");
-  return { plan, tutor };
+  return { plan, instructions: tutor.prompt.tutor_instructions };
 }
-
-const minimalTutor = (instructions: string): Tutor =>
-  ({ prompt: { tutor_instructions: instructions } }) as unknown as Tutor;
 
 function frag(content: string, variables: ResolvedFragment["variables"] = {}): ResolvedFragment {
   return { fileAlias: "f", fragmentId: "id", priority: 1, content, variables };
@@ -20,17 +19,14 @@ function frag(content: string, variables: ResolvedFragment["variables"] = {}): R
 
 describe("assembleSystemPrompt — templating", () => {
   it("interpolates {{var}}", () => {
-    const out = assembleSystemPrompt(
-      [frag("Tutor for {{domain}}.", { domain: "trees" })],
-      minimalTutor(""),
-    );
+    const out = assembleSystemPrompt([frag("Tutor for {{domain}}.", { domain: "trees" })], "");
     expect(out).toContain("Tutor for trees.");
   });
 
   it("expands {{#each}} into one line per item", () => {
     const out = assembleSystemPrompt(
       [frag("Items:\n{{#each xs}}\n- {{this}}\n{{/each}}", { xs: ["a", "b", "c"] })],
-      minimalTutor(""),
+      "",
     );
     expect(out).toContain("- a");
     expect(out).toContain("- b");
@@ -39,16 +35,16 @@ describe("assembleSystemPrompt — templating", () => {
 
   it("honors {{#unless bool}} in both directions", () => {
     const tpl = "{{#unless allow}}Do not provide a solution.{{/unless}}";
-    expect(assembleSystemPrompt([frag(tpl, { allow: false })], minimalTutor(""))).toContain(
+    expect(assembleSystemPrompt([frag(tpl, { allow: false })], "")).toContain(
       "Do not provide a solution.",
     );
-    expect(assembleSystemPrompt([frag(tpl, { allow: true })], minimalTutor(""))).not.toContain(
+    expect(assembleSystemPrompt([frag(tpl, { allow: true })], "")).not.toContain(
       "Do not provide a solution.",
     );
   });
 
   it("does NOT HTML-escape output (noEscape) — ASCII diagrams survive", () => {
-    const out = assembleSystemPrompt([frag("null <- [ A ] -> [ B ] & done")], minimalTutor(""));
+    const out = assembleSystemPrompt([frag("null <- [ A ] -> [ B ] & done")], "");
     expect(out).toContain("<-");
     expect(out).toContain("->");
     expect(out).toContain("&");
@@ -57,27 +53,32 @@ describe("assembleSystemPrompt — templating", () => {
   });
 
   it("throws when a template references a missing variable (strict backstop)", () => {
-    expect(() => assembleSystemPrompt([frag("{{missing}}")], minimalTutor(""))).toThrow();
+    expect(() => assembleSystemPrompt([frag("{{missing}}")], "")).toThrow();
+  });
+
+  it("renders a fragment-only preamble (no trailing text) and an empty plan to the empty string", () => {
+    expect(assembleSystemPrompt([frag("Just a fragment.")])).toContain("Just a fragment.");
+    expect(assembleSystemPrompt([])).toBe("");
   });
 });
 
 describe("assembleSystemPrompt — fixture", () => {
-  it("orders fragments by priority and appends tutor_instructions last", () => {
-    const { plan, tutor } = fixturePlan();
-    const out = assembleSystemPrompt(plan, tutor);
+  it("orders fragments by priority and appends the trailing instructions last", () => {
+    const { plan, instructions } = fixturePlan();
+    const out = assembleSystemPrompt(plan, instructions);
 
     const first = out.indexOf("FIRST-MARKER");
     const last = out.indexOf("LAST-MARKER");
-    const instructions = out.indexOf("TUTOR-INSTRUCTIONS-MARKER");
+    const trailing = out.indexOf("TUTOR-INSTRUCTIONS-MARKER");
 
     expect(first).toBeGreaterThanOrEqual(0);
     expect(last).toBeGreaterThan(first); // priority 60 after priority 10
-    expect(instructions).toBeGreaterThan(last); // tutor_instructions last
+    expect(trailing).toBeGreaterThan(last); // trailing instructions last
   });
 
   it("renders the supplied items and ASCII diagram verbatim", () => {
-    const { plan, tutor } = fixturePlan();
-    const out = assembleSystemPrompt(plan, tutor);
+    const { plan, instructions } = fixturePlan();
+    const out = assembleSystemPrompt(plan, instructions);
     expect(out).toContain("ITEM-ALPHA");
     expect(out).toContain("[head] -> [ A");
   });
@@ -92,8 +93,10 @@ describe("assembleSystemPrompt — fixture", () => {
       frag.input_schema.properties.greeting = { type: "string", default: "Hello from default" };
       frag.content = `${frag.content}\n\nGreeting: {{greeting}}`;
     }
-    const { plan, errors } = checkConsistency(tutor, files);
+    const { plan, errors } = checkConsistency(tutor.prompt, files);
     expect(errors).toEqual([]);
-    expect(assembleSystemPrompt(plan, tutor)).toContain("Greeting: Hello from default");
+    expect(assembleSystemPrompt(plan, tutor.prompt.tutor_instructions)).toContain(
+      "Greeting: Hello from default",
+    );
   });
 });

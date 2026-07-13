@@ -1,12 +1,12 @@
 import type { CodingCheckResult } from "@/lib/coding-validate";
-import type { QuizCheckResult } from "@/lib/quiz-validate";
 import {
   type BuildResult,
   type FragmentCheckResult,
   formatZodIssues,
   type ValidationError,
   type ValidationWarning,
-} from "@/lib/tutors";
+} from "@/lib/prompt-fragments";
+import type { QuizCheckResult } from "@/lib/quiz-validate";
 import type { WritingCheckResult } from "@/lib/writing-validate";
 
 // Pure presentation: turn a `BuildResult` into a human-readable terminal report.

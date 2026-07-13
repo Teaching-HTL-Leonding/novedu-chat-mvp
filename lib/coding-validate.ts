@@ -14,13 +14,14 @@
 // the file-validator seam freezes `anonymous: true` onto the code row.
 
 import {
+  assembleFragmentPrompt,
   type Fetcher,
   type LoadOptions,
   loadYaml,
   type ValidationError,
   type ValidationWarning,
   validate,
-} from "@/lib/tutors";
+} from "@/lib/prompt-fragments";
 import { type CodingYaml, CodingYamlSchema } from "./coding-schema";
 import type { LlmProvider } from "./llm/provider";
 
@@ -42,15 +43,11 @@ export type CodingCheckResult =
   | { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] };
 
 /**
- * Validate an already-parsed coding value against its schema, then extract metadata.
- * Pure (the parsed value is passed in); `loadAndCheckCoding` wraps it with fetch +
- * YAML parse.
+ * Extract metadata from an already-schema-validated coding value. Split from
+ * `checkCodingValue` so `loadAndCheckCoding` can reuse the single `validate` it already
+ * ran (no second parse of the same document against the same schema).
  */
-export function checkCodingValue(parsed: unknown, url?: string): CodingCheckResult {
-  const valid = validate<CodingYaml>(parsed, CodingYamlSchema, "CODING_SCHEMA_ERROR", url);
-  if (!valid.ok) return { ok: false, errors: [valid.error], warnings: [] };
-  const coding = valid.data;
-
+function checkCodingParsed(coding: CodingYaml): CodingCheckResult {
   return {
     ok: true,
     codingId: coding.id,
@@ -59,6 +56,17 @@ export function checkCodingValue(parsed: unknown, url?: string): CodingCheckResu
     title: coding.title ?? null,
     warnings: [],
   };
+}
+
+/**
+ * Validate an already-parsed coding value against its schema, then extract metadata.
+ * Pure (the parsed value is passed in); `loadAndCheckCoding` wraps it with fetch +
+ * YAML parse.
+ */
+export function checkCodingValue(parsed: unknown, url?: string): CodingCheckResult {
+  const valid = validate<CodingYaml>(parsed, CodingYamlSchema, "CODING_SCHEMA_ERROR", url);
+  if (!valid.ok) return { ok: false, errors: [valid.error], warnings: [] };
+  return checkCodingParsed(valid.data);
 }
 
 /**
@@ -73,5 +81,24 @@ export async function loadAndCheckCoding(
 ): Promise<CodingCheckResult> {
   const yaml = await loadYaml(url, fetchImpl, opts);
   if (!yaml.ok) return { ok: false, errors: [yaml.error], warnings: [] };
-  return checkCodingValue(yaml.value, url);
+
+  // Validate the schema ONCE, then reuse the typed value for both metadata and the
+  // fragment block below (no second parse of the same document).
+  const valid = validate<CodingYaml>(yaml.value, CodingYamlSchema, "CODING_SCHEMA_ERROR", url);
+  if (!valid.ok) return { ok: false, errors: [valid.error], warnings: [] };
+
+  const checked = checkCodingParsed(valid.data);
+  if (!checked.ok) return checked;
+
+  // The fragment block's authoring gate: fetch + consistency + assembly dry-run
+  // (authoring default: `validateLibraries: true`).
+  const assembled = await assembleFragmentPrompt(
+    { fragment_files: valid.data.fragment_files, fragments: valid.data.fragments },
+    url,
+    fetchImpl,
+    { allowedSchemes: opts.allowedSchemes, validateLibraries: opts.validateLibraries ?? true },
+  );
+  const warnings = [...checked.warnings, ...assembled.warnings];
+  if (!assembled.ok) return { ok: false, errors: assembled.errors, warnings };
+  return { ...checked, warnings };
 }

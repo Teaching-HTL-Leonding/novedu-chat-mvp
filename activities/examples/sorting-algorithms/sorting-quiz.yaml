@@ -20,6 +20,25 @@ shuffle: false
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 
+# Shared rules from ../shared/general-fragments.yaml — the SAME library the companion
+# tutor (./sorting-tutor.yaml) pulls in, so the quiz stays internally consistent. The
+# assembled block is prepended to BOTH the grader prompt and the discussion chat, so the
+# safety net and language policy cover grading and the follow-up conversation alike.
+fragment_files:
+  - id: general_fragments
+    url: "../shared/general-fragments.yaml"
+
+fragments:
+  - file: general_fragments
+    id: language_policy
+    variables:
+      natural_language: "German"
+      code_language: "English (TypeScript and p5.js terms)"
+
+  - file: general_fragments
+    id: teenager_safety
+    required: true
+
 discussion:
   instructions: |
     You are a friendly programming tutor helping the student understand THIS

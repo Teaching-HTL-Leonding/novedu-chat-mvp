@@ -2,13 +2,13 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Command } from "commander";
 import { type CodingCheckResult, loadAndCheckCoding } from "@/lib/coding-validate";
-import { loadAndCheckQuiz, type QuizCheckResult } from "@/lib/quiz-validate";
 import {
   type BuildResult,
   type FragmentCheckResult,
-  loadAndBuildTutorPrompt,
   loadAndCheckFragmentFile,
-} from "@/lib/tutors";
+} from "@/lib/prompt-fragments";
+import { loadAndCheckQuiz, type QuizCheckResult } from "@/lib/quiz-validate";
+import { loadAndBuildTutorPrompt } from "@/lib/tutors";
 import { loadAndCheckWriting, type WritingCheckResult } from "@/lib/writing-validate";
 import { cliFetcher } from "../file-fetcher";
 import {

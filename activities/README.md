@@ -4,9 +4,9 @@ Authoring documentation and sample activity YAML for the chat app, with a clear
 separation between **schema/docs** (one folder per module) and **examples**
 (one folder per topic).
 
-Each module folder holds that module's authoring guide plus a hand-maintained
-JSON-Schema mirror (referenced by a `# yaml-language-server:` modeline for
-editor IntelliSense):
+Each module folder holds that module's authoring guide plus a JSON Schema
+**generated from the zod schema** (via `npm run generate:schemas`; do not hand-edit)
+and referenced by a `# yaml-language-server:` modeline for editor IntelliSense:
 
 | Folder | Module | Guide |
 | --- | --- | --- |
@@ -14,6 +14,20 @@ editor IntelliSense):
 | [`quizzes/`](quizzes/README.md) | LLM-graded open-ended quiz | [quizzes/README.md](quizzes/README.md) |
 | [`writings/`](writings/README.md) | Markdown writing activity | [writings/README.md](writings/README.md) |
 | [`coding/`](coding/README.md) | OpenAI-compatible coding endpoint | [coding/README.md](coding/README.md) |
+| [`fragments/`](fragments/README.md) | Reusable prompt-fragment libraries (cross-cutting) | [fragments/README.md](fragments/README.md) |
+
+**Prompt fragments are a cross-cutting capability of all four kinds.** A fragment is a
+reusable, parameterized prompt piece — a persona, a safety policy, a set of ground
+rules — written once in a **fragment library** and pulled into an activity via a
+top-level `fragment_files:`/`fragments:` block. Every kind assembles them the same
+way: tutor, quiz, writing, and coding all prepend the assembled fragments ahead of
+their own instructions (for a quiz, ahead of **both** the grader prompt and the
+discussion chat). The fragment format, `input_schema`, `variables`, and `priority`
+are fully documented once in the tutor guide, [`tutors/README.md`](tutors/README.md);
+the other guides link back to it, and the fragment-library **editor schema** lives in
+[`fragments/`](fragments/README.md). Fragment libraries reused across kinds live in
+[`examples/shared/`](examples/shared/) — e.g.
+[`examples/shared/general-fragments.yaml`](examples/shared/general-fragments.yaml).
 
 Complete sample activities live under [`examples/`](examples/), grouped by
 **topic**: each topic folder combines all the YAML belonging to one teaching

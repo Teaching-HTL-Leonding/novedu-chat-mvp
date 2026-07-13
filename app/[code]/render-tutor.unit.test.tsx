@@ -12,8 +12,11 @@ const loadAndBuildTutorPrompt = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/tutors", () => ({
   loadAndBuildTutorPrompt,
-  defaultFetcher: {},
   sampleExampleQuestions: (q: unknown) => q ?? [],
+}));
+vi.mock("@/lib/prompt-fragments", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/prompt-fragments")>()),
+  defaultFetcher: {},
 }));
 // Stub the chat so the happy path needs no CopilotKit/runtime.
 vi.mock("../tutor-chat", () => ({

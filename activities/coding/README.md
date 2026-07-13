@@ -73,6 +73,8 @@ to write.
 ## 3. Editor support
 
 This folder includes a JSON Schema for coding YAML files: `coding-yaml.schema.json`.
+It is **generated from the zod schema** in `lib/coding-schema.ts` via
+`npm run generate:schemas` — do not edit it by hand.
 
 Editors that use the YAML Language Server, including VS Code with YAML support, can
 pick up the schema from a modeline comment at the top of a coding file:
@@ -146,6 +148,37 @@ your class has learned (a
 language, a subset of features, a teaching style). See
 [`../examples/sorting-algorithms/sorting-visualizer.yaml`](../examples/sorting-algorithms/sorting-visualizer.yaml)
 for a thorough example.
+
+### `fragment_files` and `fragments` (reusable prompt pieces)
+
+Optional. A coding activity may pull in **prompt fragments** — the same reusable,
+parameterized pieces tutors use (a persona, a safety policy, a set of ground rules).
+Declare them at the **top level** of the coding file, exactly as a tutor declares them
+under `prompt:`:
+
+```yaml
+fragment_files:
+  - id: shared # the alias you refer to below
+    url: "../shared/general-fragments.yaml" # relative to this coding file, or a full http(s) URL
+
+fragments:
+  - file: shared
+    id: safety
+  - file: shared
+    id: persona
+    variables:
+      subject: "beginner TypeScript"
+```
+
+The fragments are assembled once (in `priority` order) and **prepended ahead of** your
+`instructions` — identical to the writing activity — the fragments come first, your
+system prompt follows. Omit both fields when the activity uses no fragments.
+
+The full fragment mechanics — fragment libraries, `input_schema`, `variables`,
+`priority`, and how a shared library is written — are documented in the tutor guide,
+[`../tutors/README.md`](../tutors/README.md). The shared library
+[`../examples/shared/general-fragments.yaml`](../examples/shared/general-fragments.yaml)
+is reused across activity kinds.
 
 > There is **no** `anonymous` field — coding activities are always anonymous — and
 > **no** `placeholder` or `description` field (those are for other modules). The

@@ -1,10 +1,10 @@
-// Consistency checking: given a validated tutor and the fetched fragment files,
-// confirm every referenced fragment exists and every required input is supplied
-// (variables-only — `bind` is intentionally ignored), then produce an ordered
-// render plan. Pure: no network, no YAML, no Handlebars.
+// Consistency checking: given a validated document-level fragment block and the
+// fetched fragment files, confirm every referenced fragment exists and every
+// required input is supplied (variables-only — `bind` is intentionally ignored),
+// then produce an ordered render plan. Pure: no network, no YAML, no Handlebars.
 
 import { error, type ValidationError, type ValidationWarning, warning } from "./errors";
-import type { Fragment, FragmentFile, InputSchema, Tutor, VariableValue } from "./schemas";
+import type { Fragment, FragmentBlock, FragmentFile, InputSchema, VariableValue } from "./schemas";
 
 export interface ResolvedFragment {
   fileAlias: string;
@@ -42,7 +42,7 @@ function typeMismatch(
 }
 
 export function checkConsistency(
-  tutor: Tutor,
+  block: FragmentBlock,
   fragmentFilesByAlias: Map<string, FragmentFile>,
 ): ConsistencyResult {
   const errors: ValidationError[] = [];
@@ -50,7 +50,7 @@ export function checkConsistency(
 
   // 1. Duplicate fragment-file aliases (read from the raw declaration list).
   const aliasCounts = new Map<string, number>();
-  for (const ref of tutor.prompt.fragment_files) {
+  for (const ref of block.fragment_files) {
     aliasCounts.set(ref.id, (aliasCounts.get(ref.id) ?? 0) + 1);
   }
   for (const [alias, count] of aliasCounts) {
@@ -90,7 +90,7 @@ export function checkConsistency(
   // 3-5. Resolve each tutor fragment reference and validate its inputs.
   const resolved: ResolvedFragment[] = [];
   const seenRefs = new Set<string>();
-  for (const ref of tutor.prompt.fragments) {
+  for (const ref of block.fragments) {
     const refKey = `${ref.file}::${ref.id}`;
     if (seenRefs.has(refKey)) {
       warnings.push(

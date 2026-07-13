@@ -11,8 +11,12 @@ export type LlmProvider = "SCCH" | "Azure Foundry";
 export const DEFAULT_PROVIDER: LlmProvider = "SCCH";
 
 // The `llm.provider` field of every activity YAML: optional, defaulting to SCCH,
-// so all existing YAML keeps its meaning without migration.
-export const providerSchema = z.enum(["SCCH", "Azure Foundry"]).default(DEFAULT_PROVIDER);
+// so all existing YAML keeps its meaning without migration. The `.meta()` teacher
+// prose is emitted into every generated activity JSON Schema (all four `llm` blocks).
+export const providerSchema = z.enum(["SCCH", "Azure Foundry"]).default(DEFAULT_PROVIDER).meta({
+  description:
+    "The LLM provider serving the model. For Azure Foundry, model is the deployment name.",
+});
 
 // ai-sdk provider names, passed as `createOpenAI({ name })`. They are the METERING
 // contract: Mastra stamps `<name>.chat` as `attributes.provider` on every

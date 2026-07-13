@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parse as parseYamlText } from "yaml";
-import type { Fetcher } from "@/lib/tutors";
+import type { Fetcher } from "@/lib/prompt-fragments";
 import { checkWritingValue, loadAndCheckWriting } from "@/lib/writing-validate";
 
 // The writing AUTHORING validator: the strict schema gate. Pure, no network — a
@@ -132,5 +132,89 @@ instructons: "typo — should be instructions"
       expect(result.errors[0]?.code).toBe("WRITING_SCHEMA_ERROR");
       expect(result.errors[0]?.zodIssues).toBeTruthy();
     }
+  });
+});
+
+// --- document-level prompt fragments (identical machinery to quiz/coding) ----------
+
+const LIB_URL = "https://example.com/lib.yaml";
+const LIB_YAML = `id: lib
+fragments:
+  - id: safety
+    version: 1
+    priority: 900
+    content: |
+      Always be safe and kind.
+  - id: lang
+    version: 1
+    priority: 400
+    input_schema:
+      type: object
+      required: [language]
+      properties:
+        language:
+          type: string
+    content: |
+      Respond in {{language}}.
+`;
+
+const fetcherMap =
+  (bodies: Record<string, string>): Fetcher =>
+  async (url) => {
+    const text = bodies[url];
+    return text === undefined
+      ? { ok: false, status: 404, text: async () => "" }
+      : { ok: true, status: 200, text: async () => text };
+  };
+
+describe("loadAndCheckWriting — fragments", () => {
+  it("accepts an activity that pulls in valid fragments", async () => {
+    const writing = `
+id: essay
+llm:
+  model: m
+fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+fragments:
+  - file: lib
+    id: safety
+  - file: lib
+    id: lang
+    variables:
+      language: English
+instructions: "Coach the draft."
+`;
+    const result = await loadAndCheckWriting(
+      URL_,
+      fetcherMap({ [URL_]: writing, [LIB_URL]: LIB_YAML }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("a plain activity (no fragments) is still valid", async () => {
+    const result = await loadAndCheckWriting(URL_, fetcherMap({ [URL_]: VALID }));
+    expect(result.ok).toBe(true);
+  });
+
+  it("surfaces a fragment consistency error (missing required variable)", async () => {
+    const writing = `
+id: essay
+llm:
+  model: m
+fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+fragments:
+  - file: lib
+    id: lang
+instructions: "Coach the draft."
+`;
+    const result = await loadAndCheckWriting(
+      URL_,
+      fetcherMap({ [URL_]: writing, [LIB_URL]: LIB_YAML }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("MISSING_REQUIRED_VARIABLE");
   });
 });

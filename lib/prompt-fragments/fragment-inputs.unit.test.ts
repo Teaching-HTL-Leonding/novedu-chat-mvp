@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getFragmentInputSchema } from "@/lib/tutors/fragment-inputs";
-import { FragmentFileSchema } from "@/lib/tutors/schemas";
+import { getFragmentInputSchema } from "./fragment-inputs";
+import { FragmentFileSchema } from "./schemas";
 
 // `getFragmentInputSchema` is the helper the student GUI uses to discover a
 // fragment's variables. Build a real (schema-validated) fragment file so the test

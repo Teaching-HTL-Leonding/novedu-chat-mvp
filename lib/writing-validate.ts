@@ -10,13 +10,14 @@
 // `parseWriting` (`lib/writing-yaml.ts`) is unchanged and separate.
 
 import {
+  assembleFragmentPrompt,
   type Fetcher,
   type LoadOptions,
   loadYaml,
   type ValidationError,
   type ValidationWarning,
   validate,
-} from "@/lib/tutors";
+} from "@/lib/prompt-fragments";
 import type { LlmProvider } from "./llm/provider";
 import { type WritingYaml, WritingYamlSchema } from "./writing-schema";
 
@@ -43,15 +44,11 @@ export type WritingCheckResult =
 const DEFAULT_ANONYMOUS = false;
 
 /**
- * Validate an already-parsed writing value against its schema, then extract metadata.
- * Pure (the parsed value is passed in); `loadAndCheckWriting` wraps it with fetch +
- * YAML parse.
+ * Extract metadata from an already-schema-validated writing value. Split from
+ * `checkWritingValue` so `loadAndCheckWriting` can reuse the single `validate` it already
+ * ran (no second parse of the same document against the same schema).
  */
-export function checkWritingValue(parsed: unknown, url?: string): WritingCheckResult {
-  const valid = validate<WritingYaml>(parsed, WritingYamlSchema, "WRITING_SCHEMA_ERROR", url);
-  if (!valid.ok) return { ok: false, errors: [valid.error], warnings: [] };
-  const writing = valid.data;
-
+function checkWritingParsed(writing: WritingYaml): WritingCheckResult {
   return {
     ok: true,
     writingId: writing.id,
@@ -61,6 +58,17 @@ export function checkWritingValue(parsed: unknown, url?: string): WritingCheckRe
     title: writing.title ?? null,
     warnings: [],
   };
+}
+
+/**
+ * Validate an already-parsed writing value against its schema, then extract metadata.
+ * Pure (the parsed value is passed in); `loadAndCheckWriting` wraps it with fetch +
+ * YAML parse.
+ */
+export function checkWritingValue(parsed: unknown, url?: string): WritingCheckResult {
+  const valid = validate<WritingYaml>(parsed, WritingYamlSchema, "WRITING_SCHEMA_ERROR", url);
+  if (!valid.ok) return { ok: false, errors: [valid.error], warnings: [] };
+  return checkWritingParsed(valid.data);
 }
 
 /**
@@ -75,5 +83,24 @@ export async function loadAndCheckWriting(
 ): Promise<WritingCheckResult> {
   const yaml = await loadYaml(url, fetchImpl, opts);
   if (!yaml.ok) return { ok: false, errors: [yaml.error], warnings: [] };
-  return checkWritingValue(yaml.value, url);
+
+  // Validate the schema ONCE, then reuse the typed value for both metadata and the
+  // fragment block below (no second parse of the same document).
+  const valid = validate<WritingYaml>(yaml.value, WritingYamlSchema, "WRITING_SCHEMA_ERROR", url);
+  if (!valid.ok) return { ok: false, errors: [valid.error], warnings: [] };
+
+  const checked = checkWritingParsed(valid.data);
+  if (!checked.ok) return checked;
+
+  // The fragment block's authoring gate: fetch + consistency + assembly dry-run
+  // (authoring default: `validateLibraries: true`).
+  const assembled = await assembleFragmentPrompt(
+    { fragment_files: valid.data.fragment_files, fragments: valid.data.fragments },
+    url,
+    fetchImpl,
+    { allowedSchemes: opts.allowedSchemes, validateLibraries: opts.validateLibraries ?? true },
+  );
+  const warnings = [...checked.warnings, ...assembled.warnings];
+  if (!assembled.ok) return { ok: false, errors: assembled.errors, warnings };
+  return { ...checked, warnings };
 }

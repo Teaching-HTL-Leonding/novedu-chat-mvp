@@ -3,7 +3,7 @@ import {
   formatZodIssues,
   type ValidationError,
   type ValidationWarning,
-} from "@/lib/tutors";
+} from "@/lib/prompt-fragments";
 
 // Pure presentational views for a validation result's errors, warnings, and (for
 // a fragment library) its successful summary. Shared by the tutor-code form and

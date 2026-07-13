@@ -139,6 +139,7 @@ describe("toPublicWriting", () => {
       model: "m",
       provider: "SCCH",
       instructions: "secret system prompt",
+      fragmentBlock: { fragment_files: [], fragments: [] },
     };
     const pub = toPublicWriting(writing);
     expect(pub).not.toHaveProperty("anonymous");

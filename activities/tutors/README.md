@@ -160,8 +160,9 @@ which pulls its fragments from the shared library
 
 ## 4. Editor support
 
-This folder includes a JSON Schema for tutor and fragment-library YAML files:
-`tutor-yaml.schema.json`.
+This folder includes a JSON Schema for tutor YAML files: `tutor-yaml.schema.json`.
+It is **generated from the zod schema** in `lib/tutors/schemas.ts` via
+`npm run generate:schemas` — do not edit it by hand.
 
 Editors that use the YAML Language Server, including VS Code with YAML support,
 can pick up the schema from a modeline comment at the top of a YAML file:
@@ -170,11 +171,12 @@ can pick up the schema from a modeline comment at the top of a YAML file:
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 ```
 
-The **same** schema covers both tutor files and fragment-library files, so use this
-line on either. The sample files in [`../examples/`](../examples/) use this **full raw GitHub URL** so
-that validation, completion, and hover help work in your editor **whether or not**
-the schema file happens to sit next to the YAML you are editing. (If your file _is_
-next to the schema, the relative path `./tutor-yaml.schema.json` works too.)
+Fragment-**library** files use a **separate** schema — see
+[`../fragments/README.md`](../fragments/README.md). The sample files in
+[`../examples/`](../examples/) use the **full raw GitHub URL** so that validation,
+completion, and hover help work in your editor **whether or not** the schema file
+happens to sit next to the YAML you are editing. (If your file _is_ next to the
+schema, the relative path `./tutor-yaml.schema.json` works too.)
 
 In VS Code, install the Red Hat YAML extension to get this schema support:
 <https://marketplace.visualstudio.com/items?itemName=redhat.vscode-yaml>.

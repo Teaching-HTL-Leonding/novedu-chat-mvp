@@ -54,12 +54,20 @@ Read before touching: `lib/api-auth.ts`, `app/api/me/**`, `app/api/codes/**`, th
 
 ### Codes → `docs/codes.md`
 
-Read before touching: `app/[code]/**`, `app/codes/**`, `app/api/copilotkit/**`, `lib/code-*.ts`, `lib/code-modules/**`, `lib/file-validators.ts`, `lib/quiz-*.ts`, `lib/thread-token.ts`.
+Read before touching: `app/[code]/**`, `app/codes/**`, `app/api/copilotkit/**`, `lib/code-*.ts`, `lib/code-modules/**`, `lib/file-validators.ts`, `lib/quiz-*.ts`, `lib/thread-token.ts`. The document-level fragment block each activity embeds is the shared prompt-fragment core (`lib/prompt-fragments/**`, `docs/prompt-fragments.md`).
 
 - Every shareable activity is a `novedu_codes` row at `/<code>`; `module` dispatches renderer + agent. `checkCode()` gates **three** sites that must stay in sync: the `/[code]` dispatcher, the CopilotKit route, and the public coding route.
 - Three fixed layers: **FileKind** → **validator** (`lib/file-validators.ts`, the single source of truth for "valid? + metadata") → **CodeModule** descriptor (`lib/code-modules/`). Adding a module touches only the documented seams; the generic flow (store, runtime route, attribution) never changes.
 - Editing a code changes only note + window + the LLM override pair — never the module, `file_url`, or the frozen `anonymous`. The teacher side is role-gated, not owner-gated; Mastra memory `resourceId` is the code.
 - `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities; the frozen row `anonymous` governs stats display while attribution reads the YAML live.
+
+### Prompt fragments → `docs/prompt-fragments.md`
+
+Read before touching: `lib/prompt-fragments/**`, `lib/tutors/**`, or a consumer's fragment wiring (`lib/quiz-fetch.ts`, `lib/writing-fetch.ts`, `lib/coding-fetch.ts`).
+
+- The shared prompt-fragment core (`lib/prompt-fragments/`) is the ONE home of Handlebars — all four kinds (tutor, quiz, writing, coding) call `assembleFragmentPrompt` on a single document-level block; none touch Handlebars or `COMPILE_OPTIONS`.
+- `handlebars` is imported by EXACTLY two files (`assemble.ts`, `fragment.ts`), enforced by the `isolation.unit.test.ts` grep-guard.
+- Runtime loaders pass `validateLibraries: false` (hot path, fail closed on any fragment error); authoring validators + the CLI pass `true` (thorough whole-library check).
 
 ### Writing → `docs/writing.md`
 
@@ -74,7 +82,7 @@ Read before touching: `lib/writing-*.ts`, `app/[code]/_writing/**`, `app/codes/[
 Read before touching: `app/api/coding/**`, `app/[code]/_coding/**`, `lib/coding-*.ts`, `lib/llm/endpoint.ts`, the `api/coding` matcher in `proxy.ts`.
 
 - An OpenAI-compatible endpoint for external coding agents; **no in-app chat, no Mastra** — a thin pass-through proxy that appends the teacher's prompt, pins the (effective) model, and pipes the stream back unparsed.
-- The route stays provider-blind through the side-effect-free `resolveChatEndpoint` (`lib/llm/endpoint.ts` must NOT import `app/mastra/scch.ts`).
+- The route stays provider-blind through the side-effect-free `resolveChatEndpoint` (`lib/llm/endpoint.ts` must NOT import `app/mastra/scch.ts` or Handlebars/the fragment core — prompt-fragment assembly stays in `loadCoding`, `docs/prompt-fragments.md`).
 - Access/anonymity model: see the security block.
 
 ### AI models & LLM providers → `docs/ai-models.md`

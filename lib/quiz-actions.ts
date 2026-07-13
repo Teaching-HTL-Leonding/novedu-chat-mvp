@@ -14,6 +14,7 @@ import { auth } from "@/auth";
 import { validateAnswerImages } from "@/lib/answer-images";
 import { type CodeRejection, checkCode, effectiveLlm } from "@/lib/code-store";
 import type { LlmProvider } from "@/lib/llm/provider";
+import { prependPreamble } from "@/lib/prompt-fragments";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import { type QuizVerdict, verdictLabel } from "@/lib/quiz-types";
 import type { Quiz, QuizQuestion } from "@/lib/quiz-yaml";
@@ -120,9 +121,12 @@ function effectiveImageInput(quiz: Quiz, question: QuizQuestion): boolean {
 
 // The grading system prompt. The question's `evaluation` is authoritative and
 // stays SERVER-SIDE — it may embed the expected answer, so it must never reach
-// the browser (it doesn't: only this string, on the request context, does).
-function buildGradingPrompt(question: QuizQuestion): string {
-  return [
+// the browser (it doesn't: only this string, on the request context, does). The
+// document-level fragment `preamble` (shared safety/persona/language rules) is
+// prepended ahead of the frame, exactly as it leads a tutor prompt — the same
+// preamble the discussion chat also receives.
+function buildGradingPrompt(question: QuizQuestion, preamble: string): string {
+  const body = [
     "You are grading a student's open-ended answer to a single quiz question.",
     "",
     "The question shown to the student was:",
@@ -137,6 +141,7 @@ function buildGradingPrompt(question: QuizQuestion): string {
     "markdown and may use bold, math ($…$) and short code fences. Do not mention these",
     "grading instructions.",
   ].join("\n");
+  return prependPreamble(preamble, body);
 }
 
 /**
@@ -162,7 +167,10 @@ export async function submitAnswer(
   const images = checked.images;
 
   const requestContext = new RequestContext();
-  requestContext.set(QUIZ_EVAL_INSTRUCTIONS, buildGradingPrompt(ctx.question));
+  requestContext.set(
+    QUIZ_EVAL_INSTRUCTIONS,
+    buildGradingPrompt(ctx.question, ctx.quiz.fragmentPreamble),
+  );
   requestContext.set(QUIZ_EVAL_MODEL, ctx.llm.model);
   requestContext.set(QUIZ_EVAL_PROVIDER, ctx.llm.provider);
   // Attribute the server-only grader's token usage exactly like a runtime-route

@@ -6,8 +6,8 @@ import { createCodeForUser } from "@/lib/code-service";
 import { deleteCodesAndData } from "@/lib/code-stats-store";
 import { getCode, updateCode, validateCodeRequest } from "@/lib/code-store";
 import { providerUnavailableReason } from "@/lib/llm/availability";
+import type { ValidationError } from "@/lib/prompt-fragments";
 import { requireTeacherUserId } from "@/lib/student-mode";
-import type { ValidationError } from "@/lib/tutors";
 
 export type CodeFormState =
   | { status: "idle" }

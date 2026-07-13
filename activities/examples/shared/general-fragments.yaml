@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/fragments/fragment-yaml.schema.json
 # Reusable fragment library for school tutors.
 #
 # Building blocks every subject tutor can pull in:

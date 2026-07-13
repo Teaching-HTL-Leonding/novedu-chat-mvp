@@ -1,0 +1,306 @@
+// Shared load/resolve/assemble infrastructure for the document-level fragment
+// block every activity kind embeds. The fetcher is injected so this entire pipeline
+// is unit-testable without touching the network.
+//
+// `assembleFragmentPrompt` is the ONE orchestrator: given a `{ fragment_files,
+// fragments }` block, a base URL, a `Fetcher`, and `LoadOptions`, it fetches every
+// declared library in parallel, (optionally) runs the thorough whole-library check,
+// checks consistency, and assembles — returning the finished prompt text or the
+// structured errors. Tutor, quiz, writing, and coding each call it with a single
+// block; none of them touch Handlebars or `COMPILE_OPTIONS` themselves.
+
+import { resolveRelativeUrl } from "@/lib/relative-url";
+import { assembleSystemPrompt } from "./assemble";
+import { checkConsistency } from "./consistency";
+import {
+  error,
+  type FragmentCheckResult,
+  type ValidationError,
+  type ValidationWarning,
+} from "./errors";
+import type { Fetcher } from "./fetcher";
+import { checkFragmentFileValue, checkFragmentTemplates } from "./fragment";
+import { parseYaml, validate } from "./parse";
+import { type FragmentBlock, type FragmentFile, FragmentFileSchema } from "./schemas";
+
+/**
+ * Resolve a fragment-file reference to an absolute URL. An absolute http(s) ref is used
+ * as-is; anything else is treated as relative to the activity URL — standard URL resolution
+ * drops the activity's filename and appends the relative path (so `my-fragments.yaml`
+ * next to `.../tutors/my-tutor.yaml` becomes `.../tutors/my-fragments.yaml`,
+ * and `./` / `../` segments work too). Throws if a relative ref is unparseable; the schema
+ * already guarantees the only inputs here are http(s) URLs or relative paths.
+ */
+export function resolveFragmentUrl(ref: string, baseUrl: string): string {
+  return resolveRelativeUrl(ref, baseUrl);
+}
+
+async function fetchText(
+  url: string,
+  fetchImpl: Fetcher,
+): Promise<{ ok: true; text: string } | { ok: false; error: ValidationError }> {
+  try {
+    const res = await fetchImpl(url);
+    if (!res.ok) {
+      return {
+        ok: false,
+        error: error("FETCH_FAILED", `Failed to fetch ${url} (HTTP ${res.status})`, {
+          url,
+          status: res.status,
+        }),
+      };
+    }
+    return { ok: true, text: await res.text() };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      error: error("FETCH_FAILED", `Failed to fetch ${url}: ${message}`, { url }),
+    };
+  }
+}
+
+/**
+ * Options for {@link assembleFragmentPrompt}, {@link loadYaml} and
+ * {@link loadAndCheckFragmentFile}.
+ *
+ * `allowedSchemes` constrains which URL schemes the activity (and its fragment files)
+ * may use, defaulting to http(s) only — the server's SSRF guard. The CLI passes
+ * `file:` as well so it can validate an activity/fragment YAML on disk (handed in as a
+ * `file://` URL); see `resolveFragmentUrl` for how relative fragment refs then
+ * resolve against that local path.
+ *
+ * `validateLibraries` opts a build INTO the thorough whole-library check: every
+ * fragment in every referenced file is strict-rendered against its own `input_schema`
+ * (not just the fragments this activity uses). It defaults to `false` because it runs
+ * on the HOT PATH (chat start, quiz grading, the coding proxy) where only the assembled
+ * prompt is needed; the authoring gates that should be strict — share time, the validate
+ * page/API, and the CLI — pass `true`.
+ */
+export interface LoadOptions {
+  allowedSchemes?: string[];
+  validateLibraries?: boolean;
+}
+
+const DEFAULT_ALLOWED_SCHEMES = ["http:", "https:"];
+
+/**
+ * The SSRF scheme gate shared by the top-level activity load (`loadYaml`) and every
+ * fragment-file fetch (`assembleFragmentPrompt`): a URL is allowed only if its scheme
+ * is in `allowedSchemes` (default http(s); the CLI adds `file:` for on-disk validation).
+ * Returns the structured error to surface, or `null` when the scheme is allowed.
+ */
+function schemeGate(url: string, allowedSchemes: string[]): ValidationError | null {
+  let scheme: string;
+  try {
+    scheme = new URL(url).protocol;
+  } catch {
+    scheme = "";
+  }
+  if (allowedSchemes.includes(scheme)) return null;
+  const allowed = allowedSchemes.map((s) => s.replace(/:$/, "")).join("/");
+  return error("INVALID_URL", `Provide a valid ${allowed} URL`, { url });
+}
+
+/**
+ * The shared front of every load: enforce the URL scheme allow-list (SSRF guard),
+ * fetch the document, and parse it as YAML — returning the parsed-but-not-yet-schema-
+ * validated value or the first structured error. Reused by the activity builders, the
+ * standalone fragment checker, and the quiz/writing/coding validators so they all gate
+ * schemes identically.
+ */
+export async function loadYaml(
+  url: string,
+  fetchImpl: Fetcher,
+  opts: LoadOptions = {},
+): Promise<{ ok: true; value: unknown } | { ok: false; error: ValidationError }> {
+  const schemeError = schemeGate(url, opts.allowedSchemes ?? DEFAULT_ALLOWED_SCHEMES);
+  if (schemeError) return { ok: false, error: schemeError };
+
+  const fetched = await fetchText(url, fetchImpl);
+  if (!fetched.ok) return { ok: false, error: fetched.error };
+
+  const parsed = parseYaml(fetched.text, url);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+
+  return { ok: true, value: parsed.value };
+}
+
+/** The result of resolving one document-level fragment block into prompt text. */
+export type AssembleResult =
+  | { ok: true; prompt: string; warnings: ValidationWarning[] }
+  | { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] };
+
+/**
+ * Resolve a document-level fragment block to a finished prompt string: fetch every
+ * declared fragment file in parallel (relative refs resolved against `baseUrl`),
+ * schema-validate each, (optionally) run the thorough whole-library check, check
+ * consistency, and assemble the priority-ordered plan followed by the optional
+ * `trailingInstructions`.
+ *
+ * The single seam every activity kind shares — the sole owner of the fetch → validate
+ * → consistency → assemble pipeline. Consumers concatenate their own frame only when
+ * they pass no `trailingInstructions` (a fragment-only preamble); tutors pass their
+ * `tutor_instructions` and get a complete prompt.
+ */
+export async function assembleFragmentPrompt(
+  block: FragmentBlock,
+  baseUrl: string,
+  fetchImpl: Fetcher,
+  opts: LoadOptions = {},
+  trailingInstructions?: string,
+): Promise<AssembleResult> {
+  const warnings: ValidationWarning[] = [];
+  const allowedSchemes = opts.allowedSchemes ?? DEFAULT_ALLOWED_SCHEMES;
+
+  // A block that declares nothing resolves to just the trailing text (or the empty
+  // string) without a single fetch — the common case for a plain quiz/writing/coding
+  // activity, kept off the network entirely.
+  if (block.fragment_files.length === 0 && block.fragments.length === 0) {
+    return { ok: true, prompt: assembleSystemPrompt([], trailingInstructions), warnings };
+  }
+
+  // --- fragment files (fetched in parallel; surface every failing file at once) ---
+  const settled = await Promise.all(
+    block.fragment_files.map(
+      async (
+        ref,
+      ): Promise<
+        | { alias: string; file: FragmentFile; url: string }
+        | { alias: string; error: ValidationError }
+      > => {
+        // Relative refs are resolved against the base URL; absolute http(s) refs pass
+        // through. Report errors against the resolved URL (the thing actually fetched).
+        let fragmentUrl: string;
+        try {
+          fragmentUrl = resolveFragmentUrl(ref.url, baseUrl);
+        } catch {
+          return {
+            alias: ref.id,
+            error: error("INVALID_URL", `Invalid fragment URL: ${ref.url}`, {
+              url: ref.url,
+              fileAlias: ref.id,
+            }),
+          };
+        }
+        // SSRF scheme gate — identical to the top-level `loadYaml`. The runtime lenient
+        // readers (quiz/writing/coding) skip the Zod URL refine that guards the tutor
+        // path, so this is the single structural guard keeping a fragment ref from
+        // targeting a non-http(s) scheme.
+        const schemeError = schemeGate(fragmentUrl, allowedSchemes);
+        if (schemeError) return { alias: ref.id, error: { ...schemeError, fileAlias: ref.id } };
+        const fetched = await fetchText(fragmentUrl, fetchImpl);
+        if (!fetched.ok) return { alias: ref.id, error: fetched.error };
+        const parsed = parseYaml(fetched.text, fragmentUrl);
+        if (!parsed.ok) return { alias: ref.id, error: parsed.error };
+        const valid = validate<FragmentFile>(
+          parsed.value,
+          FragmentFileSchema,
+          "FRAGMENT_FILE_SCHEMA_ERROR",
+          fragmentUrl,
+        );
+        if (!valid.ok) return { alias: ref.id, error: { ...valid.error, fileAlias: ref.id } };
+        return { alias: ref.id, file: valid.data, url: fragmentUrl };
+      },
+    ),
+  );
+
+  const fragmentFilesByAlias = new Map<string, FragmentFile>();
+  const fragmentUrlByAlias = new Map<string, string>();
+  const fileErrors: ValidationError[] = [];
+  for (const result of settled) {
+    if ("error" in result) fileErrors.push(result.error);
+    else {
+      fragmentFilesByAlias.set(result.alias, result.file);
+      fragmentUrlByAlias.set(result.alias, result.url);
+    }
+  }
+  if (fileErrors.length > 0) return { ok: false, errors: fileErrors, warnings };
+
+  // --- thorough whole-library check (opt-in; OFF on the hot path) ---
+  // Strict-render EVERY fragment in every referenced library against its own
+  // input_schema, catching bugs even in fragments this activity never uses. Duplicate
+  // ids are NOT checked here — `checkConsistency` below already reports them.
+  const libraryErrors: ValidationError[] = [];
+  if (opts.validateLibraries) {
+    for (const [alias, file] of fragmentFilesByAlias) {
+      const checked = checkFragmentTemplates(file, {
+        fileAlias: alias,
+        url: fragmentUrlByAlias.get(alias),
+      });
+      libraryErrors.push(...checked.errors);
+      warnings.push(...checked.warnings);
+    }
+  }
+
+  // --- consistency ---
+  const consistency = checkConsistency(block, fragmentFilesByAlias);
+  warnings.push(...consistency.warnings);
+  const preAssemblyErrors = [...libraryErrors, ...consistency.errors];
+  if (preAssemblyErrors.length > 0) return { ok: false, errors: preAssemblyErrors, warnings };
+
+  // --- assemble (strict Handlebars backstop) ---
+  try {
+    return {
+      ok: true,
+      prompt: assembleSystemPrompt(consistency.plan, trailingInstructions),
+      warnings,
+    };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return {
+      ok: false,
+      errors: [error("ASSEMBLY_ERROR", `Failed to render system prompt: ${message}`)],
+      warnings,
+    };
+  }
+}
+
+/**
+ * Resolve a document-level fragment block to a server-only *preamble* string — the
+ * shared front of the quiz/writing/coding runtime loaders. Assembles with
+ * `validateLibraries: false` (the hot path; the thorough whole-library pass runs at
+ * authoring time) and trims the assembler's trailing newline in ONE place, so callers
+ * prepend the preamble ahead of their own frame with {@link prependPreamble}. An empty
+ * block resolves to `""` with no fetch. On any fetch/consistency/assembly failure it
+ * returns `ok: false` so the caller fails closed — a safety fragment that cannot resolve
+ * blocks the activity rather than silently vanishing.
+ */
+export async function resolveFragmentPreamble(
+  block: FragmentBlock,
+  baseUrl: string,
+  fetchImpl: Fetcher,
+): Promise<{ ok: true; preamble: string } | { ok: false; errors: ValidationError[] }> {
+  const assembled = await assembleFragmentPrompt(block, baseUrl, fetchImpl, {
+    validateLibraries: false,
+  });
+  if (!assembled.ok) return { ok: false, errors: assembled.errors };
+  return { ok: true, preamble: assembled.prompt.trimEnd() };
+}
+
+/**
+ * Prepend a resolved fragment preamble ahead of a body, matching the tutor ordering
+ * (fragments first, the activity's own frame last). An empty preamble leaves the body
+ * untouched. The ONE definition of how a preamble joins its frame — shared by the quiz
+ * grader prompt, the quiz discussion prompt, and the writing/coding instruction loaders.
+ */
+export function prependPreamble(preamble: string, body: string): string {
+  return preamble ? `${preamble}\n\n${body}` : body;
+}
+
+/**
+ * Validate a fragment FILE on its own (the `--kind fragment` / "Fragment library"
+ * path): scheme-gate + fetch + parse, then the pure `checkFragmentFileValue`. A
+ * fragment library is self-contained, so — unlike an activity — there are no further
+ * files to fetch. The caller already knows it asked for a fragment, so this returns
+ * a `FragmentCheckResult` directly (no activity `BuildResult`, no kind discriminator).
+ */
+export async function loadAndCheckFragmentFile(
+  url: string,
+  fetchImpl: Fetcher,
+  opts: LoadOptions = {},
+): Promise<FragmentCheckResult> {
+  const yaml = await loadYaml(url, fetchImpl, opts);
+  if (!yaml.ok) return { ok: false, errors: [yaml.error], warnings: [] };
+  return checkFragmentFileValue(yaml.value, url);
+}

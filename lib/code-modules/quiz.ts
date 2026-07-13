@@ -7,23 +7,28 @@ import {
 } from "@/app/mastra/quiz-agents";
 import { effectiveLlm } from "@/lib/code-store";
 import { providerUnavailableReason } from "@/lib/llm/availability";
+import { prependPreamble } from "@/lib/prompt-fragments";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import type { Quiz } from "@/lib/quiz-yaml";
 import type { CodeModuleDef } from "./registry";
 
 // The quiz module: the per-question discussion chat (the grader runs only inside
 // submitAnswer, never through the runtime route). The discussion agent's system
-// prompt is the quiz's optional `discussionInstructions` on top of a default
-// frame; the question/answer/verdict are the thread's seed messages, recalled
-// from memory, NOT repeated here. The teacher detail is the shared conversation
-// stats (labelled "Discussions").
+// prompt is the document-level fragment `fragmentPreamble` (shared safety/persona/
+// language rules — the SAME preamble the grader receives) followed by a default
+// frame and the quiz's optional `discussionInstructions`; the question/answer/verdict
+// are the thread's seed messages, recalled from memory, NOT repeated here. The
+// teacher detail is the shared conversation stats (labelled "Discussions").
 function buildDiscussionInstructions(quiz: Quiz): string {
   const base =
     "You are helping a student understand a single quiz question. The conversation " +
     "already contains the question, the student's submitted answer, and the verdict " +
     "with feedback — use that context. Be concise and encouraging, and stay on this " +
     "question.";
-  return quiz.discussionInstructions ? `${base}\n\n${quiz.discussionInstructions.trim()}` : base;
+  const frame = quiz.discussionInstructions
+    ? `${base}\n\n${quiz.discussionInstructions.trim()}`
+    : base;
+  return prependPreamble(quiz.fragmentPreamble, frame);
 }
 
 export const quizModule: CodeModuleDef = {

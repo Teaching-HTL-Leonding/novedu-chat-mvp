@@ -80,6 +80,19 @@ instructions: |
   only `llm.model` + `instructions` and returns `{ title?, model, provider, instructions }`
   (`provider` defaults to SCCH when missing; a present-but-invalid value is
   rejected). `model`, `provider` and `instructions` are **server-only**.
+- **Fragments**: a coding YAML may carry the document-level **fragment block**
+  (top-level `fragment_files`/`fragments`, the shared prompt-fragment core —
+  `docs/prompt-fragments.md`). `loadCoding` (`lib/coding-fetch.ts`) assembles it
+  (`assembleFragmentPrompt`, `validateLibraries: false`) and **prepends** the
+  fragments (in `priority` order) ahead of `instructions`, identical to writing; a
+  YAML with no fragments does not fetch, and a fetch / consistency / assembly failure
+  fails the load closed. TWO coding-specific constraints hold. **(1)** Assembly happens
+  in this load/parse layer, **never** in `lib/llm/endpoint.ts` — `resolveChatEndpoint`
+  stays provider-blind and side-effect-free (no Handlebars / `Fetcher` /
+  `app/mastra/scch.ts` import). **(2)** The proxy loads YAML **per completion request**,
+  so fragment fetches land on the streaming hot path — hence `validateLibraries: false`
+  and no extra passes; the proxy still consumes one finished `instructions` string, so
+  the route is unchanged.
 - **Authoring validation** is the strict `CodingYamlSchema` gate
   (`lib/coding-schema.ts` is the source of truth) run by `loadAndCheckCoding`
   (`lib/coding-validate.ts`): bad YAML, a missing/misspelled field, no `llm.model`, or
@@ -88,8 +101,9 @@ instructions: |
   rejects fields coding does not have — including `anonymous` (coding is always
   anonymous), `description`, and `placeholder`. The seam (`lib/file-validators.ts`)
   freezes `anonymous: true` onto the row regardless. `activities/coding/coding-yaml.schema.json`
-  is the hand-maintained JSON-Schema mirror for editor IntelliSense (a modeline
-  points each coding YAML at its raw GitHub URL).
+  is **generated from the zod schema** (`lib/coding-schema.ts`) via `npm run generate:schemas`
+  for editor IntelliSense (a modeline points each coding YAML at its raw GitHub URL);
+  do not hand-edit it — a drift-guard test fails CI if it is stale.
 - `activities/examples/sorting-algorithms/sorting-visualizer.yaml` is the shipped
   sample: a sorting-visualizer project buddy constrained to a beginner's knowledge
   (plain loops + `function` declarations, explicit types, no classes/arrow
@@ -114,8 +128,10 @@ instructions: |
    — docs/ai-models.md) so the token round trip overlaps the body read; a missing env
    var or a failed acquisition is a distinct `500` (a real misconfiguration) rather
    than a misleading `502`. `lib/llm/endpoint.ts` is side-effect-free — it does
-   **not** import `app/mastra/scch.ts`, whose top-level model fetch must not run on
-   this lean public path.
+   **not** import `app/mastra/scch.ts` (whose top-level model fetch must not run on
+   this lean public path) nor Handlebars / the fragment core: prompt-fragment
+   assembly happens in `loadCoding` (step 3), so `resolveChatEndpoint` stays
+   provider-blind.
 5. `buildUpstreamChatBody` (`lib/coding-proxy.ts`) **appends** the teacher's
    `instructions` to the **end** of the client's own system message (so the teacher
    has the final word; if the client sent no system message, a leading one carrying

@@ -1,6 +1,8 @@
 import { parse as parseYamlText } from "yaml";
 import type { ImageRef } from "./image-ref";
 import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "./llm/provider";
+import type { FragmentBlock } from "./prompt-fragments";
+import { readFragmentBlock } from "./prompt-fragments/block";
 import type { QuizPublic, QuizQuestionPublic } from "./quiz-types";
 
 // LENIENT runtime parse of a quiz YAML — the STUDENT path. Quizzes are stored in
@@ -50,6 +52,20 @@ export interface Quiz {
   imageInput: boolean;
   /** Optional guidance appended to the discussion chat's system prompt. */
   discussionInstructions?: string;
+  /**
+   * The unresolved document-level fragment block (server-only, transient). `parseQuiz`
+   * leaves it here for `loadQuiz` to fetch + assemble into `fragmentPreamble`; `loadQuiz`
+   * then clears it (`EMPTY_FRAGMENT_BLOCK`) so the resolved preamble is the single source
+   * of truth and no stale block lingers on the loaded quiz.
+   */
+  fragmentBlock: FragmentBlock;
+  /**
+   * The assembled fragment preamble (server-only), prepended to BOTH the grader prompt
+   * and the discussion chat's system prompt. Empty until `loadQuiz` resolves it, and
+   * empty when the quiz declares no fragments. Never reaches the browser (`toPublicQuiz`
+   * drops it, exactly like the per-question `evaluation` prompts).
+   */
+  fragmentPreamble: string;
   questions: QuizQuestion[];
 }
 
@@ -176,6 +192,10 @@ export function parseQuiz(content: string): QuizParseResult {
       discussionInstructions: asString(
         (root.discussion as Record<string, unknown> | undefined)?.instructions,
       ),
+      // The unresolved fragment block is carried through for `loadQuiz` to resolve;
+      // `parseQuiz` leaves the assembled preamble empty (resolution needs the network).
+      fragmentBlock: readFragmentBlock(root),
+      fragmentPreamble: "",
       questions,
     },
   };
@@ -183,7 +203,9 @@ export function parseQuiz(content: string): QuizParseResult {
 
 /**
  * The student-facing projection — strips every server-only field, above all the
- * `evaluation` grading prompts, before anything reaches the browser.
+ * `evaluation` grading prompts, the `fragmentBlock`, and the assembled
+ * `fragmentPreamble`, before anything reaches the browser (it copies only the
+ * whitelisted public fields below, so the server-only ones can never leak).
  */
 export function toPublicQuiz(quiz: Quiz): QuizPublic {
   const questions: QuizQuestionPublic[] = quiz.questions.map((q) => ({
