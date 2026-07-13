@@ -19,8 +19,9 @@ runs don't have to rediscover the setup:
   `proxy`; the matcher protects everything except the public paths `api/auth`
   (sign-in), `api/version` (build-identity probe), `api/files` (the public YAML GET
   endpoint — see `docs/files.md`), `api/coding` (code-as-bearer-key — see
-  `docs/coding.md`), `api/me` (Entra-bearer probe — see `docs/api.md`),
-  `_next/static`, `_next/image`, `favicon.ico`.
+  `docs/coding.md`), `api/me` and `api/codes` (Entra-bearer CLI routes — see
+  `docs/api.md`), `docs` (the static teacher guide, public by intent — see
+  `docs/teacher-docs.md`), `_next/static`, `_next/image`, `favicon.ico`.
 - **Route handler:** `app/api/auth/[[...nextauth]]/route.ts` re-exports `handlers`.
 - **Default sign-in/out pages** are Auth.js built-ins at `/api/auth/signin` and
   `/api/auth/signout` (no custom UI). An existing valid cookie won't re-prompt, so to

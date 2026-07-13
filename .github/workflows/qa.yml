@@ -82,6 +82,11 @@ jobs:
 
       - run: npm run build
 
+      # Teacher guide (Astro static export) — fails fast on schema violations and
+      # dead related: slugs in the corpus. Corpus-only (.md) PRs skip this whole
+      # workflow via paths-ignore; docs.yml covers those.
+      - run: npm run docs:build
+
   e2e:
     runs-on: ubuntu-latest
     # Ephemeral SQL Server so the DB-backed @live-db tests run here via SQL auth (a

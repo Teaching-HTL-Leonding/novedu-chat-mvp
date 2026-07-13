@@ -5,14 +5,18 @@ The corpus is authoritative and read-only for this site — the site adapts to t
 corpus's conventions (see `teacher-docs/README.md` and `docs/teacher-docs.md`),
 never the other way round.
 
-**Local preview only for v1** — no hosting/deployment, no CI wiring.
+Ships **publicly at `/docs` inside the Novedu web app**: the Docker image build
+compiles this site (Astro `base: '/docs'`) and stages `dist/` into the app's
+`public/docs/`; `proxy.ts` deliberately excludes the prefix from the Entra gate.
+See `docs/teacher-docs.md` for the full serving + CI/CD mechanics.
 
 ## Commands (from the repo root)
 
 ```bash
-npm run docs:dev       # dev server, http://localhost:4321
+npm run docs:dev       # dev server, http://localhost:4321/docs/
 npm run docs:build     # static build to teacher-docs-site/dist/
 npm run docs:preview   # serve the build output
+npm run docs:stage     # build + copy into public/docs so next dev/start serve /docs
 npm run typecheck      # includes this workspace's `astro check` leg
 ```
 

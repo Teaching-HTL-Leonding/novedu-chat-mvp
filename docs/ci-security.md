@@ -22,6 +22,7 @@ run untrusted PR code.**
 | Workflow | Trigger | Runs PR (untrusted) code? | Has secrets? |
 | --- | --- | --- | --- |
 | **`qa.yml`** | `pull_request` to `main`, `workflow_call` | **Yes** | **No** — secret-free |
+| **`docs.yml`** | `pull_request` to `main` (teacher-docs paths) | **Yes** | **No** — secret-free |
 | **`docker-publish.yml`** | `push` to `main`, `workflow_dispatch` | No | Yes |
 
 - **`qa.yml`** is the per-PR quality gate (biome, typecheck, unit + component
@@ -47,6 +48,11 @@ run untrusted PR code.**
     export — write is restricted for fork PR tokens). On a `main` push
     (`workflow_call`) this job is skipped because `docker-publish.yml` does the real
     build+push.
+- **`docs.yml`** is the light teacher-guide gate for PRs `qa.yml` skips via its
+  `**.md` paths-ignore (corpus regenerations under `teacher-docs/`): site unit
+  tests, workspace typecheck, `docs:build`. It runs untrusted fork code like
+  `qa.yml`, so the same rule applies: **no secrets, no env, `contents: read`** —
+  and none are needed, the docs build touches no app code.
 - **`docker-publish.yml`** holds the real secrets (`DOCKER_USERNAME` /
   `DOCKER_PASSWORD`, `AZURE_WEBAPP_CI_CD_URL`). It triggers **only** on `push` to
   `main` (a maintainer merge) and manual `workflow_dispatch`. A fork PR cannot

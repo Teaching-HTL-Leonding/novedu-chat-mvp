@@ -1,6 +1,10 @@
 .git
 .github
 node_modules
+**/node_modules
+teacher-docs-site/dist
+teacher-docs-site/.astro
+public/docs
 .next
 out
 build

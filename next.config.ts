@@ -31,6 +31,21 @@ const nextConfig: NextConfig = {
       { source: "/share-quiz", destination: "/codes/new", permanent: true },
     ];
   },
+  // The teacher guide is a static Astro export in public/docs/ (built with
+  // base '/docs' — see teacher-docs-site/ and docs/teacher-docs.md). Next's
+  // public/ serving is exact-path only, so these afterFiles rewrites supply the
+  // directory-index resolution a static host would: they run only when no real
+  // file matched, so /docs/_astro/*.css and friends are untouched, while
+  // /docs/<chapter> lands on the exported <chapter>/index.html. (Astro's
+  // trailing-slash links first hit Next's own /docs/x/ → /docs/x 308.)
+  async rewrites() {
+    return {
+      afterFiles: [
+        { source: "/docs", destination: "/docs/index.html" },
+        { source: "/docs/:path+", destination: "/docs/:path+/index.html" },
+      ],
+    };
+  },
 };
 
 export default nextConfig;

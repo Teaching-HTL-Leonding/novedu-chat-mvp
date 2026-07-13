@@ -8,8 +8,10 @@ imports either.
 
 > TL;DR: to change a chapter, edit its prompt in `teacher-docs/prompts/` and
 > regenerate via the `novedu-teacher-docs` skill — never hand-edit
-> `teacher-docs/content/`. To see the guide, `npm run docs:dev`. The site build
-> (`npm run docs:build`) doubles as the corpus's consistency check.
+> `teacher-docs/content/`. To see the guide, `npm run docs:dev`
+> (http://localhost:4321/docs/). In production it ships **publicly at `/docs`
+> inside the web app**. The corpus-contract unit test and the site build
+> (`npm run docs:build`) are the corpus's consistency checks.
 
 ## The corpus (`teacher-docs/`)
 
@@ -47,8 +49,9 @@ symlink to `.agents`, so the skill exists once on disk at
 ## The site (`teacher-docs-site/`)
 
 Astro 7 + Starlight + `starlight-theme-rapide`, an npm workspace next to `cli`.
-**Local-only in v1**: `docs:dev` / `docs:build` / `docs:preview` root scripts; no
-deployment, no CI job, no `base` path. No custom CSS.
+Root scripts: `docs:dev` / `docs:build` / `docs:preview` / `docs:stage` (stage
+into the app's `public/docs/` for local end-to-end testing). Ships at **`/docs`
+inside the web app** — see "Serving at `/docs`" below. No custom CSS.
 
 ### Content pipeline
 
@@ -64,8 +67,12 @@ deployment, no CI job, no `base` path. No custom CSS.
 - The schema extends Starlight's `docsSchema` with the corpus fields; `audience`,
   `keywords`, `generated` are required, `related` defaults to `[]`. A chapter
   violating the contract fails the build with a zod error naming the file.
-- URL slugs keep the numeric prefixes (`/30-sharing-activities/01-creating-codes`)
-  so they match `related:` slugs exactly. Revisit before public hosting.
+- URL slugs keep the numeric prefixes (`/docs/30-sharing-activities/01-creating-codes`)
+  so they match `related:` slugs exactly.
+- Every internal link derives from the **single `base` constant in
+  `astro.config.mjs`** (`/docs`): the remark plugin gets it as an option, the
+  `.astro` components use `import.meta.env.BASE_URL`, and both join through
+  `src/lib/paths.ts` `withBase()`.
 
 ### Glossary mechanics
 
@@ -97,11 +104,15 @@ nothing.
 
 ### Verification
 
-`npm run docs:build` is the acceptance check: schema validation, dead-slug build
-failure, glossary warnings, Pagefind index. Pure logic (slugifier, parser, plugin)
-is unit-tested in `teacher-docs-site/src/lib/glossary.unit.test.ts` — picked up by
-the root vitest `unit` project (`**/*.unit.test.ts`), so it runs in `npm test` and
-`qa` with no extra wiring. Typechecking follows the `cli` pattern — every
+The **corpus contract is pinned by
+`teacher-docs-site/src/lib/corpus-contract.unit.test.ts`** over the real corpus:
+required frontmatter, resolvable `related:` slugs, no body H1, every `[[term]]`
+resolves, glossary parses with unambiguous aliases and unique anchors. Together
+with the pipeline tests in `glossary.unit.test.ts` it is picked up by the root
+vitest `unit` project (`**/*.unit.test.ts`), so it runs in `npm test` and `qa`
+with no extra wiring (both files declare the `node` vitest environment).
+`npm run docs:build` is the build-level check on top: schema validation,
+dead-slug build failure, glossary warnings, Pagefind index. Typechecking follows the `cli` pattern — every
 workspace is excluded from the root `tsc` program but gets its own leg in the
 root `typecheck` script: `tsc --noEmit` (app) + `tsc -p cli` + `astro check`
 (site, via `@astrojs/check`; covers `.astro` files and runs its own content
@@ -112,13 +123,39 @@ except a `teacher-docs-site/**/*.astro`-scoped override in `biome.json`
 false-positive as unused; the scope keeps the rules live for any future
 `.astro` files elsewhere).
 
-## Deployment sketch (NOT built)
+## Serving at `/docs` inside the web app
 
-Recorded so v1 decisions keep it possible; v1 deliberately ends at local preview:
+The guide is **public for everybody** at `https://<host>/docs` — deliberately no
+Entra sign-in in front of it. The moving parts:
 
-- The docs will be **public for everybody** — no Entra sign-in in front of them.
-- Likely shape: `base: '/docs'`, build during the Docker image build, copy `dist/`
-  into the Next.js app's `public/docs/` — same origin, no second deployment.
-- Requires a deliberate, documented `proxy.ts` exclusion for `/docs/**`.
-- Nothing in v1 depends on this; the output is self-contained static files, so a
-  separate static host works just as well.
+- **Astro `base: '/docs'`** (the single constant in `astro.config.mjs`); local
+  `docs:dev` therefore serves at `http://localhost:4321/docs/`.
+- **The Docker image build compiles the site**: the `deps` stage copies
+  `teacher-docs-site/package.json` so `npm ci` installs the workspace, and the
+  `builder` stage runs `npm run docs:build` and copies `dist/` to `public/docs/`
+  before `next build`. The standalone runner serves it as plain static files —
+  same origin, no second deployment.
+- **`proxy.ts` excludes `docs(?:/|$)`** — the deliberate, path-bounded public
+  exclusion (see the AGENTS.md security block and `docs/auth.md`).
+- **`next.config.ts` `rewrites.afterFiles`** supply directory-index resolution
+  (Next's `public/` serving is exact-path only): `/docs` → `/docs/index.html`,
+  `/docs/:path+` → `/docs/:path+/index.html`. They run only when no real file
+  matched, so `_astro/*` and Pagefind assets are untouched; Astro's
+  trailing-slash links first hit Next's own `/x/` → `/x` 308.
+- **Local**: `npm run docs:stage` builds the site and copies it into
+  `public/docs/` (gitignored) so `next dev`/`next start` serve `/docs` like
+  production does.
+
+### CI/CD
+
+- `qa.yml` runs `npm run docs:build` (and the corpus-contract test rides
+  `test:unit`); the `prod-build` job exercises the full image build including
+  the docs stage.
+- `.github/workflows/docs.yml` is the light, **secret-free** gate for the PRs
+  `qa.yml` skips via its `**.md` paths-ignore (corpus regenerations): site unit
+  tests + workspace typecheck + `docs:build` on `teacher-docs/**` /
+  `teacher-docs-site/**` changes.
+- `docker-publish.yml` re-includes `teacher-docs/**` in its push paths (last
+  matching pattern wins), so a merged corpus change publishes a fresh image —
+  otherwise production `/docs` would go stale. The `novedu-publish` skill notes
+  this.
