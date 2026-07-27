@@ -15,6 +15,9 @@ Cover:
   that activity's kind.
 - What a code carries: an optional availability window and whether it records who did
   what. Point forward to the sharing chapters for the detail.
+- One sentence: while working, students can flag a notable AI answer to you with a
+  small report button; those reports land on your Reports page. Point forward to the
+  student-reports chapter for the detail.
 
 Get right:
 - You do not choose the code text; it is generated (short, random).

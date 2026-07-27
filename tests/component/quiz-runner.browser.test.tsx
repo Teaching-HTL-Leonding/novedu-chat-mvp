@@ -18,6 +18,10 @@ vi.mock("@/app/[code]/_quiz/quiz-discussion", () => ({
   QuizDiscussion: () => <div data-testid="quiz-discussion">chat</div>,
 }));
 
+// The verdict card mounts the shared ReportButton, which statically imports the
+// report server actions; mock them so the browser bundle doesn't pull next/cache.
+vi.mock("@/lib/report-actions", () => ({ submitChatReport: vi.fn(), submitQuizReport: vi.fn() }));
+
 import { QuizRunner } from "@/app/[code]/_quiz/quiz-runner";
 
 const CODE = "a1b2c3d4e5";

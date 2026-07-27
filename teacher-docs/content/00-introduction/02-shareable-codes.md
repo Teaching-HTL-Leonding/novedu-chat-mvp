@@ -11,6 +11,7 @@ related:
   - 30-sharing-activities/03-time-limitation
   - 30-sharing-activities/04-anonymous-vs-per-user
   - 30-sharing-activities/06-coding-special-case
+  - 30-sharing-activities/07-student-reports
 generated: true
 ---
 
@@ -36,6 +37,8 @@ You create a code from an activity you have already written. In the Codes area y
 Students open the link in a browser and sign in with their school account. They then land directly in the activity: a tutor chat, a quiz, or a writing editor, depending on the kind.
 
 If a student only has the code text, they can open the Novedu start page and type or paste it there. The start page also remembers codes a student used recently, so returning to yesterday's activity is one click.
+
+While they're working, students can flag a notable AI answer to you with a small report button. Those reports land on your Reports page, and the student-reports chapter covers what you see and how to handle them.
 
 ### Coding activities work differently
 

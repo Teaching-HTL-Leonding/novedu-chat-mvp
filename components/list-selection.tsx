@@ -217,3 +217,74 @@ export function DeleteSelectedButton({
     </>
   );
 }
+
+/**
+ * A generic toolbar bulk-action button for the shared selection layer — the same
+ * disabled-until-selection / pending-Spinner / FieldError-on-failure behavior as
+ * `DeleteSelectedButton`, but for any non-delete bulk action (e.g. the reports
+ * inbox's "Mark resolved" / "Reopen"). It reuses the provider's existing
+ * `runDelete` machinery (which clears the selection + `router.refresh()`es on
+ * success), so a successful action behaves identically to a bulk delete.
+ *
+ * `confirmMessage` is optional: when given, it must return the `window.confirm`
+ * text for the current count (a destructive action passes one); when omitted the
+ * action runs immediately with no confirm (mark-resolved / reopen need none).
+ */
+export function BulkActionButton({
+  action,
+  label,
+  pendingLabel,
+  icon,
+  variant = "outline",
+  confirmMessage,
+}: {
+  action: BulkDeleteAction;
+  label: string;
+  pendingLabel: string;
+  icon?: ReactNode;
+  variant?: "outline" | "destructiveOutline";
+  confirmMessage?: (count: number) => string;
+}) {
+  const { selectedCount, pending, runDelete } = useSelection();
+  const [error, setError] = useState<string | null>(null);
+
+  async function onClick() {
+    if (selectedCount === 0) return;
+    if (confirmMessage && !window.confirm(confirmMessage(selectedCount))) return;
+    setError(null);
+    const result = await runDelete(action);
+    if (!result.ok) {
+      setError(result.message ?? "The action could not be completed. Try again.");
+    }
+  }
+
+  return (
+    <>
+      <Button
+        variant={variant}
+        onClick={onClick}
+        disabled={selectedCount === 0 || pending}
+        aria-label={
+          pending
+            ? `${pendingLabel} ${selectedCount} selected…`
+            : selectedCount > 0
+              ? `${label} ${selectedCount} selected`
+              : label
+        }
+      >
+        {pending ? (
+          <>
+            <Spinner /> {pendingLabel}…
+          </>
+        ) : (
+          <>
+            {icon}
+            {label}
+            {selectedCount > 0 ? ` (${selectedCount})` : ""}
+          </>
+        )}
+      </Button>
+      {error ? <FieldError>{error}</FieldError> : null}
+    </>
+  );
+}

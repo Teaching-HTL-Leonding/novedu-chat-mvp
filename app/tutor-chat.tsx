@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { ReportButton } from "@/components/report-button";
 import { Button } from "@/components/ui/button";
 import { IMAGE_ACCEPT, MAX_IMAGE_BYTES } from "@/lib/answer-images";
-import type { RuntimeHeaders } from "@/lib/runtime-headers";
+import { RUNTIME_THREAD_TOKEN_HEADER, type RuntimeHeaders } from "@/lib/runtime-headers";
 import type { ExampleQuestion } from "@/lib/tutors";
 import { useTutorWelcomeView } from "./_tutor/welcome-view";
 import { ModuleChat } from "./module-chat";
@@ -64,6 +65,20 @@ export function TutorChat({
           </Button>
         </div>
       ) : null}
+
+      {/* Report the conversation to the teacher. The thread-ownership token
+          travels in the runtime headers already handed to this surface — no prop
+          drilling — and the server action re-verifies it over (code, oid, threadId). */}
+      <div className="mx-5 mb-2 flex shrink-0 justify-end">
+        <ReportButton
+          target={{
+            kind: "chat",
+            code,
+            threadId,
+            threadToken: runtimeHeaders[RUNTIME_THREAD_TOKEN_HEADER],
+          }}
+        />
+      </div>
 
       <ModuleChat
         agentId="tutor"

@@ -14,10 +14,13 @@ import { ConversationView } from "./conversation-view";
 // live chat renders the transcript, nothing more.
 export default async function ConversationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ code: string; threadId: string }>;
+  searchParams: Promise<{ from?: string | string[] }>;
 }) {
   const { code, threadId } = await params;
+  const { from } = await searchParams;
 
   const denied = await requireTeacherPage();
   if (denied) return denied;
@@ -46,12 +49,18 @@ export default async function ConversationPage({
   }
 
   const messages = await getConversationMessages(code, threadId);
-  const backHref = `/codes/${entry.code}`;
+
+  // The back link is a CLOSED enum, never a caller-supplied URL: only the
+  // whitelisted literal `from=reports` (teacher arriving from the /reports inbox)
+  // switches the target; anything else falls back to the code's stats page.
+  const fromReports = from === "reports";
+  const backHref = fromReports ? "/reports" : `/codes/${entry.code}`;
+  const backLabel = fromReports ? "Back to reports" : "Back to stats";
 
   return (
     <Main>
       <div className="flex min-h-0 flex-1 flex-col px-5 pt-4 pb-6">
-        <BackLink href={backHref}>Back to stats</BackLink>
+        <BackLink href={backHref}>{backLabel}</BackLink>
         {/* Title is in the status bar ("Conversation"); this is just context. */}
         <p className="mb-4 text-foreground/70 text-sm">
           {entry.note || entry.code} · read-only transcript

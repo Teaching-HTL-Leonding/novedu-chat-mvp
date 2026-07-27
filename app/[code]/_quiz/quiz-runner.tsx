@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ContentImage } from "@/components/content-image";
+import { ReportButton } from "@/components/report-button";
 import { Button } from "@/components/ui/button";
 import { DialogShell } from "@/components/ui/dialog-shell";
 import { FieldError } from "@/components/ui/field";
@@ -294,9 +295,26 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
           <section
             className={cn(CARD, "border-l-(--verdict) border-l-4", VERDICT_VARS[verdict.result])}
           >
-            <h3 className="mb-2 font-bold text-(--verdict) text-base capitalize">
-              {verdictLabel(verdict.result)}
-            </h3>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h3 className="font-bold text-(--verdict) text-base capitalize">
+                {verdictLabel(verdict.result)}
+              </h3>
+              {/* Report this graded answer. The quiz grade persists nothing, so
+                  the report carries its own snapshot: the answer/verdict/feedback
+                  just graded (still held in state until Next). The server re-loads
+                  the authoritative question text (see lib/report-actions.ts). */}
+              <ReportButton
+                target={{
+                  kind: "quiz-answer",
+                  code,
+                  questionId: current.id,
+                  answer,
+                  result: verdict.result,
+                  feedback: verdict.feedback,
+                  hadImages: images.length > 0,
+                }}
+              />
+            </div>
             <MarkdownRenderer content={verdict.feedback} />
           </section>
           <div className={ACTIONS}>

@@ -39,8 +39,11 @@ function entry() {
   return { code: CODE, createdBy: "teacher-sub-1", note: "My Class", anonymous: true };
 }
 
-async function render(code = CODE, threadId = THREAD) {
-  const element = await ConversationPage({ params: Promise.resolve({ code, threadId }) });
+async function render(code = CODE, threadId = THREAD, from?: string) {
+  const element = await ConversationPage({
+    params: Promise.resolve({ code, threadId }),
+    searchParams: Promise.resolve(from === undefined ? {} : { from }),
+  });
   return renderToStaticMarkup(element);
 }
 
@@ -93,4 +96,24 @@ it("renders the transcript and a back link to the code's stats", async () => {
   expect(html).toContain("2 messages");
   // Back button is a deterministic link to the parent (stats) route.
   expect(html).toContain(`href="/codes/${CODE}"`);
+  expect(html).toContain("Back to stats");
+});
+
+it("switches the back link to the reports inbox for the whitelisted from=reports", async () => {
+  getCode.mockResolvedValue(entry());
+  getConversationMessages.mockResolvedValue([{ id: "m1", role: "user", content: "Hi" }]);
+  const html = await render(CODE, THREAD, "reports");
+  expect(html).toContain('href="/reports"');
+  expect(html).toContain("Back to reports");
+  expect(html).not.toContain("Back to stats");
+});
+
+it("ignores an unrecognized from value and keeps the stats back link", async () => {
+  getCode.mockResolvedValue(entry());
+  getConversationMessages.mockResolvedValue([{ id: "m1", role: "user", content: "Hi" }]);
+  // A non-whitelisted value (e.g. an attacker-supplied path) never becomes the href.
+  const html = await render(CODE, THREAD, "/evil.example.com");
+  expect(html).toContain(`href="/codes/${CODE}"`);
+  expect(html).toContain("Back to stats");
+  expect(html).not.toContain("evil.example.com");
 });

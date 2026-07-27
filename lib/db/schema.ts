@@ -26,6 +26,8 @@ import {
 //
 //   novedu_codes.code = novedu_user_chats.code = mastra_threads.resourceId
 //   novedu_user_chats.thread_id = mastra_threads.id = mastra_messages.thread_id
+//   novedu_reports.code = novedu_codes.code (report → code note/creator)
+//   novedu_reports.user_id = novedu_users.user_id (report → reporter name)
 //
 // so user → user-chat → chat-history joins work in plain SQL without FKs.
 
@@ -169,6 +171,72 @@ export const writingSubmissions = mssqlTable(
   // The PK enforces "one saved text per student per code" and doubles as the
   // per-code lookup index (code prefix) for the teacher review.
   (t) => [primaryKey({ columns: [t.code, t.userId] })],
+);
+
+// Student-submitted reports on an AI interaction (GH issue #24) — a student
+// flags exceptional behavior (good or bad) in a chat or a graded quiz answer to
+// the teacher, with a reaction and an optional description. `kind` discriminates
+// the two shapes into ONE table (a single merged, filterable, bulk-resolvable
+// teacher inbox), the same trade `novedu_codes.module` makes: the discriminator
+// costs only nullable snapshot columns.
+//
+// SECOND user↔activity link, sanctioned: `user_id` (the reporting student's
+// Entra `oid`) is ALWAYS set, even under an anonymous code. This is the ONE
+// deliberate exception to the "novedu_user_chats is the only user↔chat link"
+// invariant — a voluntary waiver of anonymity, created only by an explicit
+// student action behind an on-form "reports are not anonymous" notice, never
+// implicitly. The store never joins novedu_user_chats or surfaces any student
+// but the reporter (docs/reports.md, docs/codes.md).
+//
+// A chat report proves thread ownership via the stateless HMAC thread token (no
+// snapshot needed — the transcript is re-readable at /codes/<code>/c/<thread>).
+// A quiz report must carry its OWN snapshot: quiz grading persists nothing
+// (the memory-less `quizEvaluator`), so `question_text` (the SERVER's
+// authoritative copy) / `answer_text` / `verdict` / `feedback_text` are stored
+// on the row; photos are flagged (`had_images`) but NEVER stored.
+//
+// `resolved_at` is the single source of truth for resolution (resolved ⇔ NOT
+// NULL); `resolved_by` is the oid of the teacher who resolved it. Surrogate
+// uuid PK like novedu_files/novedu_images; NO foreign keys (same rule as the
+// other novedu_* tables) — reports are dropped explicitly when their code is
+// deleted (lib/code-stats-store.ts).
+export const reports = mssqlTable(
+  "novedu_reports",
+  {
+    // Surrogate id (randomUUID).
+    id: varchar("id", { length: 36 }).primaryKey(),
+    // "chat" | "quiz-answer" — picks which snapshot columns are populated.
+    kind: varchar("kind", { length: 16 }).notNull(),
+    // The reported activity's code (by value; widened to match novedu_codes.code).
+    code: varchar("code", { length: 32 }).notNull(),
+    // The reporting student's Entra `oid` — ALWAYS set (see the block above).
+    userId: nvarchar("user_id", { length: 64 }).notNull(),
+    reaction: varchar("reaction", { length: 16 }).notNull(),
+    // Optional free text; empty string when the student gave none.
+    description: nvarchar("description", { length: 2000 }).notNull().default(""),
+    createdAt: datetime2("created_at").notNull(),
+    // chat only: the reported Mastra thread (null for quiz-answer reports).
+    threadId: varchar("thread_id", { length: 64 }),
+    // quiz only (all null for chat reports): the snapshot the teacher reviews.
+    questionId: nvarchar("question_id", { length: 450 }),
+    // The SERVER's authoritative question text (immune to client tampering and
+    // later YAML edits); the answer/feedback are the student's own graded turn.
+    questionText: nvarchar("question_text", { length: "max" }),
+    answerText: nvarchar("answer_text", { length: "max" }),
+    feedbackText: nvarchar("feedback_text", { length: "max" }),
+    verdict: varchar("verdict", { length: 16 }),
+    // Whether the graded answer carried photos — flagged, never stored.
+    hadImages: bit("had_images").notNull().default(false),
+    // Resolution: resolved ⇔ resolved_at IS NOT NULL; resolved_by = teacher oid.
+    resolvedAt: datetime2("resolved_at"),
+    resolvedBy: nvarchar("resolved_by", { length: 64 }),
+  },
+  (t) => [
+    // The inbox lists by code (per-code drill-down) …
+    index("ix_novedu_reports_code").on(t.code),
+    // … and filters open vs. resolved (open rows are the working set).
+    index("ix_novedu_reports_resolved_at").on(t.resolvedAt),
+  ],
 );
 
 // App-hosted YAML files (tutor definitions and fragment libraries) that teachers

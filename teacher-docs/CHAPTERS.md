@@ -57,6 +57,7 @@ _Turning an activity into a code and handing it to a class._
 | 04 | Anonymous vs. per-user | ✎ `30-sharing-activities/04-anonymous-vs-per-user.prompt.md` | `docs/codes.md` (anonymity), `docs/writing.md` (writing default) |
 | 05 | Deleting a code | ✎ `30-sharing-activities/05-deleting-codes.prompt.md` | `docs/codes.md`, `docs/usage-metering.md` (behavior: deletion removes stats) |
 | 06 | Special case: coding codes | ✎ `30-sharing-activities/06-coding-special-case.prompt.md` | `docs/coding.md` (behavior), `activities/coding/README.md` |
+| 07 | Student reports | ✎ `30-sharing-activities/07-student-reports.prompt.md` | `docs/reports.md` (behavior), `docs/codes.md` (anonymity) |
 
 > Scope reminder for every chapter: the "Where to look" entries are engineer
 > references. Document only teacher-facing behavior, not how the app works inside

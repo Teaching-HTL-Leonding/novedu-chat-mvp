@@ -21,6 +21,10 @@ vi.mock("@/app/module-chat", () => ({
   },
 }));
 
+// QuizDiscussion mounts the shared ReportButton, which statically imports the
+// report server actions; mock them so the browser bundle doesn't pull next/cache.
+vi.mock("@/lib/report-actions", () => ({ submitChatReport: vi.fn(), submitQuizReport: vi.fn() }));
+
 import { QuizDiscussion } from "@/app/[code]/_quiz/quiz-discussion";
 
 const THREAD_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
