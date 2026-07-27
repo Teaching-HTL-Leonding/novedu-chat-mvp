@@ -31,7 +31,10 @@ runs don't have to rediscover the setup:
   callback exposes it as `session.user.id` (falling back to `sub` only if a token
   ever lacks `oid`). This is the key everything user-scoped joins on: code
   ownership (`novedu_codes.created_by`), the user↔chat link
-  (`novedu_user_chats.user_id`), and the `x-thread-token` signature. **Why `oid` and
+  (`novedu_user_chats.user_id`), the report attribution
+  (`novedu_reports.user_id` the reporting student, `novedu_reports.resolved_by`
+  the teacher who resolved it — `docs/reports.md`), and the `x-thread-token`
+  signature. **Why `oid` and
   not `sub`:** Entra's `sub` is a *pairwise* subject id scoped to the redirect-URI
   host, so the SAME user receives a DIFFERENT `sub` on `localhost:3000` vs. the Azure
   hostname (and would get a new one if the prod hostname ever changed) — which
@@ -104,16 +107,22 @@ Entra `name` claim, i.e. exactly what the nav bar shows). The pieces:
   out of the static import graph is still the lean choice.)
 - **Read — by LEFT JOIN, with oid fallback.** Every surface that shows a student id
   resolves it in the SAME query that loads the rows: `listSavers`
-  (`lib/writing-store.ts`) and `getCodeStats` (`lib/code-stats-store.ts`) LEFT-JOIN
-  `novedu_users` BY VALUE (no FK), and the writing student page reads the name off
-  the savers row it already loads. A missing row (a user who hasn't signed in since
+  (`lib/writing-store.ts`), `getCodeStats` (`lib/code-stats-store.ts`), and
+  `listReports` (`lib/report-store.ts`, backing the teacher **reports inbox** at
+  `/reports` — `docs/reports.md`) LEFT-JOIN `novedu_users` BY VALUE (no FK), and the
+  writing student page reads the name off the savers row it already loads. A missing
+  row (a user who hasn't signed in since
   the table existed) ⇒ `null` ⇒ the raw oid is shown, kept as the element `title` so
   it's still visible on hover. The savers filter matches name **or** oid.
 - **No backfill, no history, no GC.** Names populate **gradually** as each user next
   signs in (no Microsoft Graph backfill). The upsert overwrites (no history), and
   rows are never garbage-collected — module-agnostic, so a deleted code never
   touches them. Anonymity is respected for free: a name is only ever shown where the
-  oid already is (`getCodeStats` nulls both for anonymous codes).
+  oid already is (`getCodeStats` nulls both for anonymous codes). The **one
+  deliberate exception** is the reports inbox: a student who files a report waives
+  their own anonymity by an explicit, on-form action, so `novedu_reports.user_id`
+  (and the name resolved from it) is surfaced to the teacher even on an anonymous
+  code — the store never reveals any *other* student, though (`docs/reports.md`).
 
 ## Student mode
 

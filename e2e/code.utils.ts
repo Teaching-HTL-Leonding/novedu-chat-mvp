@@ -183,6 +183,21 @@ export async function deleteCode(code: string): Promise<void> {
 }
 
 /**
+ * Deletes every `novedu_reports` row for a code — cleanup for the reports spec.
+ * The `deleteCode` util drops only the `novedu_codes` row (the app's own
+ * `deleteCodeRows` cascades to reports inside its transaction, but a raw
+ * `DELETE FROM novedu_codes` does not), so a spec that mints reports tidies them
+ * here so a mid-test failure leaves no strays in the shared dev database.
+ */
+export async function deleteReportsByCode(code: string): Promise<void> {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("code", sql.VarChar(32), code)
+    .query(`DELETE FROM novedu_reports WHERE code = @code`);
+}
+
+/**
  * Hard-deletes ALL versions of an app-hosted file — cleanup for files a spec
  * created via the API. Test-only: the app itself never hard-deletes (the table
  * is append-only history); a leftover e2e row is the only reason to.

@@ -10,14 +10,11 @@ import {
   QUIZ_EVAL_PROVIDER,
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
-import { auth } from "@/auth";
 import { validateAnswerImages } from "@/lib/answer-images";
-import { type CodeRejection, checkCode, effectiveLlm } from "@/lib/code-store";
-import type { LlmProvider } from "@/lib/llm/provider";
 import { prependPreamble } from "@/lib/prompt-fragments";
-import { loadQuiz } from "@/lib/quiz-fetch";
 import { type QuizVerdict, verdictLabel } from "@/lib/quiz-types";
-import type { Quiz, QuizQuestion } from "@/lib/quiz-yaml";
+import { effectiveImageInput, type QuizCodeInput, verifyAndLoadQuestion } from "@/lib/quiz-verify";
+import type { QuizQuestion } from "@/lib/quiz-yaml";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
 import { recordQuizAnswer } from "@/lib/usage-store";
@@ -34,9 +31,13 @@ import { recordQuizAnswer } from "@/lib/usage-store";
 // with the `quizDiscussion` agent. resourceId = the CODE throughout (see
 // docs/codes.md), exactly like every other module.
 
-export interface QuizCodeInput {
-  code: string;
-}
+// The verification preamble (`verifyAndLoadQuestion`, `QuizCodeInput`,
+// `effectiveImageInput`, and the rejection-message map) lives in the non-`"use
+// server"` `lib/quiz-verify.ts` — exporting it from THIS file would mint a public
+// endpoint returning the loaded quiz's server-only `evaluation` prompts. Do NOT
+// re-export even the types from here: Next's `"use server"` transform emits a
+// runtime reference for a type-only re-export, which crashes the module at load
+// (import `QuizCodeInput` from `@/lib/quiz-verify` instead).
 
 export type SubmitAnswerResult =
   | { ok: true; result: QuizVerdict; feedback: string }
@@ -56,67 +57,6 @@ interface QuizSeedMessage {
   role: "assistant" | "user";
   text: string;
   images?: string[];
-}
-
-type LoadedQuestion = {
-  ok: true;
-  userId: string;
-  code: string;
-  fileUrl: string;
-  quiz: Quiz;
-  question: QuizQuestion;
-  /** The provider+model to grade with: the code's LLM override or the quiz YAML's. */
-  llm: { provider: LlmProvider; model: string };
-};
-
-const CODE_REJECTION_MESSAGES: Record<CodeRejection, string> = {
-  "unknown-code": "This quiz code is not valid.",
-  "not-started": "This quiz's availability window has not started yet.",
-  expired: "This quiz's availability window has ended.",
-  "lookup-failed": "Quiz codes cannot be checked right now — try again in a moment.",
-};
-
-// Shared preamble for both actions: authenticated session + valid, in-window quiz
-// code + the (server-authoritative) quiz question by id. Returns a ready-to-show
-// message on any failure.
-async function verifyAndLoadQuestion(
-  input: QuizCodeInput & { questionId: string },
-): Promise<LoadedQuestion | { ok: false; message: string }> {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) return { ok: false, message: "Please sign in to continue." };
-
-  const verification = await checkCode(input.code);
-  if (!verification.ok) {
-    return { ok: false, message: CODE_REJECTION_MESSAGES[verification.reason] };
-  }
-  const { entry } = verification;
-  if (entry.module !== "quiz") {
-    return { ok: false, message: "This code is not a quiz." };
-  }
-
-  const loaded = await loadQuiz(entry.fileUrl);
-  if (!loaded.ok) return { ok: false, message: loaded.message };
-
-  const question = loaded.quiz.questions.find((q) => q.id === input.questionId);
-  if (!question) return { ok: false, message: "That question is no longer part of this quiz." };
-
-  return {
-    ok: true,
-    userId,
-    code: input.code,
-    fileUrl: entry.fileUrl,
-    quiz: loaded.quiz,
-    question,
-    llm: effectiveLlm(entry, loaded.quiz),
-  };
-}
-
-// The question's EFFECTIVE photo-answers flag: the per-question override when
-// set, the quiz-level `llm.imageInput` otherwise. Re-derived server-side on
-// every action — the client's resolved copy is never trusted.
-function effectiveImageInput(quiz: Quiz, question: QuizQuestion): boolean {
-  return question.imageInput ?? quiz.imageInput;
 }
 
 // The grading system prompt. The question's `evaluation` is authoritative and

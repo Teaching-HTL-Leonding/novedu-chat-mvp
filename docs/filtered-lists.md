@@ -146,6 +146,20 @@ return (
 );
 ```
 
+**Non-delete bulk actions — `BulkActionButton`.** The same selection layer drives
+bulk actions that aren't deletes. `BulkActionButton({ action, label, pendingLabel,
+icon?, variant?, confirmMessage? })` (`components/list-selection.tsx`) reuses the
+provider's existing `runDelete` machinery (the same disabled-until-selection /
+pending-`Spinner` / `FieldError`-on-failure behavior, and the same clear-selection +
+`router.refresh()` on success as `DeleteSelectedButton`), but for any action taking
+the selected ids and returning a `BulkDeleteResult`. `confirmMessage` is optional:
+given, it returns the `window.confirm` text for the current count (a destructive
+action passes one); omitted, the action runs immediately with no confirm. It is
+**additive** — `DeleteSelectedButton` is untouched. The **`/reports`** inbox
+(`docs/reports.md`) is the first user: its toolbar pairs two confirm-less
+`BulkActionButton`s ("Mark resolved" / "Reopen") alongside the standard
+`DeleteSelectedButton`, all over the same selected report ids.
+
 Fast tests cover the pure interaction (`tests/component/list-selection.browser.test.tsx`);
 the wired DB delete is the `@live-db` case in `e2e/file-and-tutor-code-crud.spec.ts`.
 

@@ -1,7 +1,12 @@
 "use client";
 
 import { ModuleChat } from "@/app/module-chat";
-import type { RuntimeHeaders } from "@/lib/runtime-headers";
+import { ReportButton } from "@/components/report-button";
+import {
+  RUNTIME_CODE_HEADER,
+  RUNTIME_THREAD_TOKEN_HEADER,
+  type RuntimeHeaders,
+} from "@/lib/runtime-headers";
 import { MarkdownRenderer } from "../../markdown-renderer";
 
 // The opt-in per-question discussion chat, mounted in a modal dialog over the
@@ -35,6 +40,19 @@ export function QuizDiscussion({
   // root either way.
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="discussion-body">
+      {/* Report this discussion thread. Code + thread-ownership token come from
+          the runtime headers this surface already carries; the server action
+          re-verifies the token over (code, oid, threadId). */}
+      <div className="flex shrink-0 justify-end px-4 pt-3">
+        <ReportButton
+          target={{
+            kind: "chat",
+            code: headers[RUNTIME_CODE_HEADER],
+            threadId,
+            threadToken: headers[RUNTIME_THREAD_TOKEN_HEADER],
+          }}
+        />
+      </div>
       <ModuleChat
         agentId="quizDiscussion"
         providerKey={threadId}

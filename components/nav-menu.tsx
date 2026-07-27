@@ -21,6 +21,7 @@ const NAV_ITEMS = [
     heading: "Codes",
     teacherOnly: true,
   },
+  { href: "/reports", label: "Reports", heading: "Reports", teacherOnly: true },
   { href: "/files", label: "YAML Files", heading: "YAML Files", teacherOnly: true },
   { href: "/images", label: "Images", heading: "Images", teacherOnly: true },
   { href: "/usage", label: "Usage", heading: "Usage Dashboard", teacherOnly: true },

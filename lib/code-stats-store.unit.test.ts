@@ -70,7 +70,7 @@ import {
   getConversationMessages,
   getInteractionCounts,
 } from "@/lib/code-stats-store";
-import { codes, recentCodes, userChats, writingSubmissions } from "@/lib/db/schema";
+import { codes, recentCodes, reports, userChats, writingSubmissions } from "@/lib/db/schema";
 
 // Convenience: the stored v2 message envelope, JSON-stringified into a row.
 function row(id: string, role: string, content: unknown): Record<string, unknown> {
@@ -331,10 +331,12 @@ describe("deleteCodesAndData", () => {
       userChats,
       recentCodes,
       writingSubmissions,
+      reports,
       codes,
       userChats,
       recentCodes,
       writingSubmissions,
+      reports,
       codes,
     ]);
   });
@@ -355,10 +357,12 @@ describe("deleteCodesAndData", () => {
       userChats,
       recentCodes,
       writingSubmissions,
+      reports,
       codes,
       userChats,
       recentCodes,
       writingSubmissions,
+      reports,
       codes,
     ]);
   });
@@ -368,7 +372,13 @@ describe("deleteCodesAndData", () => {
     const result = await deleteCodesAndData(["aaaaaaaaaa"]);
     expect(result).toEqual({ ok: false, deleted: 1 });
     expect(mastra.state.deletedThreadIds).toEqual([]);
-    expect(fake.state.deletedTables).toEqual([userChats, recentCodes, writingSubmissions, codes]);
+    expect(fake.state.deletedTables).toEqual([
+      userChats,
+      recentCodes,
+      writingSubmissions,
+      reports,
+      codes,
+    ]);
   });
 
   it("short-circuits an empty selection without touching Mastra or the database", async () => {

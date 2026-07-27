@@ -24,6 +24,10 @@ vi.mock("@copilotkit/react-core/v2", () => ({
   },
 }));
 
+// WritingChat mounts the shared ReportButton, which statically imports the report
+// server actions; mock them so the browser bundle doesn't pull next/cache.
+vi.mock("@/lib/report-actions", () => ({ submitChatReport: vi.fn(), submitQuizReport: vi.fn() }));
+
 import { WritingChat } from "@/app/[code]/_writing/writing-chat";
 
 const CODE = "a1b2c3d4e5";

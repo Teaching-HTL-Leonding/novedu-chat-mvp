@@ -2,7 +2,8 @@
 
 import { useFrontendTool } from "@copilotkit/react-core/v2";
 import type { RefObject } from "react";
-import type { RuntimeHeaders } from "@/lib/runtime-headers";
+import { ReportButton } from "@/components/report-button";
+import { RUNTIME_THREAD_TOKEN_HEADER, type RuntimeHeaders } from "@/lib/runtime-headers";
 import { computeTextStats } from "@/lib/writing-stats";
 import { ModuleChat } from "../../module-chat";
 
@@ -75,6 +76,19 @@ export function WritingChat({
       className="flex flex-col px-3"
     >
       <GetCurrentTextTool currentTextRef={currentTextRef} />
+      {/* Report the feedback conversation. Rendered inside the provider (a
+          ModuleChat child) but uses no CopilotKit hooks, so it is safe here; the
+          thread-ownership token rides the runtime headers this surface holds. */}
+      <div className="flex shrink-0 justify-end px-1 pt-1">
+        <ReportButton
+          target={{
+            kind: "chat",
+            code,
+            threadId,
+            threadToken: runtimeHeaders[RUNTIME_THREAD_TOKEN_HEADER],
+          }}
+        />
+      </div>
     </ModuleChat>
   );
 }

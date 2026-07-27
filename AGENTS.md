@@ -59,7 +59,15 @@ Read before touching: `app/[code]/**`, `app/codes/**`, `app/api/copilotkit/**`, 
 - Every shareable activity is a `novedu_codes` row at `/<code>`; `module` dispatches renderer + agent. `checkCode()` gates **three** sites that must stay in sync: the `/[code]` dispatcher, the CopilotKit route, and the public coding route.
 - Three fixed layers: **FileKind** → **validator** (`lib/file-validators.ts`, the single source of truth for "valid? + metadata") → **CodeModule** descriptor (`lib/code-modules/`). Adding a module touches only the documented seams; the generic flow (store, runtime route, attribution) never changes.
 - Editing a code changes only note + window + the LLM override pair — never the module, `file_url`, or the frozen `anonymous`. The teacher side is role-gated, not owner-gated; Mastra memory `resourceId` is the code.
-- `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities; the frozen row `anonymous` governs stats display while attribution reads the YAML live.
+- `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities; the frozen row `anonymous` governs stats display while attribution reads the YAML live. The **one sanctioned exception** is `novedu_reports` — a voluntary, student-initiated report that stores the reporter's oid even on an anonymous code, behind an explicit on-form "reports are not anonymous" notice (`docs/reports.md`).
+
+### Reports → `docs/reports.md`
+
+Read before touching: `lib/report-types.ts`, `lib/report-store.ts`, `lib/report-actions.ts`, `lib/quiz-verify.ts`, `components/report-button.tsx` + its four mounts (`app/tutor-chat.tsx`, `app/[code]/_quiz/{quiz-discussion,quiz-runner}.tsx`, `app/[code]/_writing/writing-chat.tsx`), `app/reports/**`, or the `novedu_reports` table.
+
+- A student flags a chat or a graded quiz answer with a reaction + optional note; the teacher-only `/reports` inbox triages them (`isEffectiveTeacher()`-gated, filtered-list pattern, bulk resolve/reopen/delete; resolved ⇔ `resolved_at` non-null).
+- ALWAYS attributed to the reporter's oid even on anonymous codes (the sanctioned exception above) — the store never joins `novedu_user_chats`; telemetry is content-free (`kind`/`reaction`/`code` only).
+- Chat reports prove thread ownership via `verifyThreadToken`; quiz reports carry a server-authoritative question snapshot via `verifyAndLoadQuestion`. **`lib/quiz-verify.ts` must never gain the `"use server"` directive** (it would mint an endpoint leaking the quiz `evaluation` prompts).
 
 ### Prompt fragments → `docs/prompt-fragments.md`
 

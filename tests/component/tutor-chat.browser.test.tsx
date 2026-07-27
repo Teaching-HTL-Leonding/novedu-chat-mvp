@@ -38,6 +38,10 @@ vi.mock("@copilotkit/react-core/v2", () => {
   return { CopilotChat };
 });
 
+// TutorChat mounts the shared ReportButton, which statically imports the report
+// server actions; mock them so the browser bundle doesn't pull next/cache.
+vi.mock("@/lib/report-actions", () => ({ submitChatReport: vi.fn(), submitQuizReport: vi.fn() }));
+
 import { TutorChat } from "@/app/tutor-chat";
 
 const TUTOR_CODE = "a1b2c3d4e5";

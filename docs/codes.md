@@ -281,6 +281,8 @@ novedu_codes.code        = novedu_user_chats.code = mastra_threads.resourceId
 novedu_user_chats.thread_id = mastra_threads.id   = mastra_messages.thread_id
 novedu_user_chats.user_id   = Entra oid (the student)
 novedu_codes.created_by     = Entra oid (the teacher)
+novedu_reports.code         = novedu_codes.code   (the reported activity)
+novedu_reports.user_id      = Entra oid (the reporting student — see below)
 ```
 
 - **All chats/discussions for a code**: `SELECT * FROM mastra_threads WHERE
@@ -288,7 +290,10 @@ novedu_codes.created_by     = Entra oid (the teacher)
 - **user → userchat → history**: filter `novedu_user_chats` by `user_id`, join
   `mastra_threads`/`mastra_messages` via `thread_id`.
 
-`novedu_user_chats` is the ONLY place tying users to chats, and it is
+`novedu_user_chats` is the ONLY place tying users to chats — with **one
+sanctioned exception**, `novedu_reports`, where a student who files a report
+voluntarily waives anonymity (their oid is stored even under an anonymous code,
+behind an explicit on-form notice; `docs/reports.md`). It is
 privacy-gated by the activity YAML's **`anonymous` flag, whose default is
 module-specific** (tutor/quiz default `true`; **writing defaults `false`** —
 `docs/writing.md`): when anonymous, nothing is written — chats cannot be attributed

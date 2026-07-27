@@ -1,0 +1,255 @@
+# Reports
+
+Deep reference for the **reports** feature (GH issue #24): a student who hits
+exceptional behavior — good or bad — in an AI interaction flags it to a teacher in
+one or two clicks, picking a **reaction** and an optional description; teachers
+triage the flags in a global **`/reports` inbox** and mark them resolved. Two
+surfaces produce reports — the three chat surfaces (tutor chat, quiz discussion,
+writing feedback chat) and each **graded quiz answer**; the coding module has no
+in-app UI and is excluded. The always-on invariants are summarized in `AGENTS.md`;
+this file has the full mechanics. Read it before touching `lib/report-types.ts`,
+`lib/report-store.ts`, `lib/report-actions.ts`, `lib/quiz-verify.ts`,
+`components/report-button.tsx` and its four mounts (`app/tutor-chat.tsx`,
+`app/[code]/_quiz/quiz-discussion.tsx`, `app/[code]/_writing/writing-chat.tsx`,
+`app/[code]/_quiz/quiz-runner.tsx`), the inbox (`app/reports/**`), the
+`BulkActionButton` in `components/list-selection.tsx`, or the `novedu_reports` store.
+
+## The decision that shapes everything: always attributed
+
+A report is **always attributed to the reporting student** — the reporter's Entra
+`oid` is stored on the row **even under an anonymous code**. This is a deliberate,
+student-initiated **waiver of anonymity**, not a leak: the report button carries a
+**mandatory, visually prominent notice** — "Reports are not anonymous — your name
+and this conversation/answer will be shared with your teacher." — so a student only
+ever files a report knowing their identity travels with it. It is created **only**
+by that explicit action, never implicitly.
+
+This is the **one sanctioned exception** to the "`novedu_user_chats` is the only
+user↔chat link" invariant (`AGENTS.md`, `docs/codes.md`, `docs/auth.md`). The
+discipline that keeps it honest: the store surfaces **only the reporter's own**
+identity. It LEFT-JOINs `novedu_users` (for the reporter's display name) and
+`novedu_codes` (for the note/creator), but **never joins `novedu_user_chats`** or
+any path that would reveal a *different* student behind a reported thread — the
+anonymity promise for everyone but the reporter stays intact. `getCodeStats`'
+anonymity zeroing is untouched.
+
+## Data model — `novedu_reports`
+
+**ONE table with a `kind` discriminator** (`"chat"` | `"quiz-answer"`), not two —
+the inbox is a single merged, filterable, bulk-resolvable list, so the
+discriminator costs only nullable snapshot columns (the same trade
+`novedu_codes.module` makes). Surrogate uuid PK like `novedu_files`/`novedu_images`.
+Relationships are **by value**; there are **no foreign keys** between `novedu_*` and
+`mastra_*` (`docs/database.md`), so a report outlives a deleted code unless the
+code-delete path drops it explicitly (it does — see **Lifecycle**).
+
+| column | type | meaning |
+| --- | --- | --- |
+| `id` | `varchar(36)` PK | surrogate `randomUUID` |
+| `kind` | `varchar(16)` | `"chat"` \| `"quiz-answer"` — picks which snapshot columns are populated |
+| `code` | `varchar(32)` | the reported activity's code (= `novedu_codes.code`, same width) |
+| `user_id` | `nvarchar(64)` | the reporting student's Entra `oid` — **ALWAYS set** |
+| `reaction` | `varchar(16)` | one of the four reactions (below), stored verbatim |
+| `description` | `nvarchar(2000)` | optional free text; empty string when none |
+| `created_at` | `datetime2` | when filed, UTC |
+| `thread_id` | `varchar(64)` | **chat only** — the reported Mastra thread (null for quiz) |
+| `question_id` | `nvarchar(450)` | **quiz only** — the reported question's id |
+| `question_text` | `nvarchar(max)` | **quiz only** — the SERVER's authoritative question text |
+| `answer_text` | `nvarchar(max)` | **quiz only** — the student's graded answer (client-sent) |
+| `feedback_text` | `nvarchar(max)` | **quiz only** — the grader's feedback (client-sent) |
+| `verdict` | `varchar(16)` | **quiz only** — `correct` \| `partial` \| `incorrect` |
+| `had_images` | `bit` | **quiz only** — whether the graded answer carried photos; flagged, **never stored** |
+| `resolved_at` | `datetime2` | resolution timestamp — **resolved ⇔ NOT NULL** (single source of truth) |
+| `resolved_by` | `nvarchar(64)` | the resolving teacher's oid (null while open) |
+
+Indexes: `ix_novedu_reports_code` (the per-code drill-down) and
+`ix_novedu_reports_resolved_at` (open vs. resolved — the open rows are the working
+set). The schema header comment restates the sanctioned-exception rule.
+
+### The reaction vocabulary
+
+A fixed **four-level** scale, defined once in the client-safe `lib/report-types.ts`
+(`REPORT_REACTIONS`, in display order best → most urgent) so the button, the store,
+and the inbox share one definition: `good`, `omg`, `bad`, `holysh` ("Holy sh.."),
+the **urgent tier**, styled distinctly. Teacher-UI badge tones (`report-detail-button.tsx`,
+`ReactionBadge`): good→green, omg→purple, bad→orange, **holysh→red solid**. Open
+`holysh` rows also float to the top of the inbox and get a red left stripe.
+
+## Submit flow — chat reports
+
+`submitChatReport({ code, threadId, threadToken, reaction, description })` in
+`lib/report-actions.ts` (`"use server"`). The whole app is behind the Entra gate, so
+the caller is authenticated; the reporter's oid comes from the **session, never from
+input**. Steps:
+
+1. `auth()` → the session `userId` (no session → "Please sign in").
+2. `isReportReaction` narrows the reaction; the description is trimmed and capped at
+   `REPORT_DESCRIPTION_MAX`; `threadId` must match `/^[A-Za-z0-9-]{1,64}$/`.
+3. `checkCode(code)` re-verifies the code is valid and in-window (same rejection
+   wording as the quiz actions, via `CODE_REJECTION_MESSAGES`) — an expired code
+   blocks reporting mid-session, consistent with `submitAnswer`.
+4. **`verifyThreadToken(threadToken, { code, userId, threadId }, getThreadTokenSecret())`**
+   — this is the **first server action to call `verifyThreadToken`**, its designed
+   use. The stateless HMAC over `(code, sessionUserId, threadId)` proves the reporter
+   owns the reported thread; a leaked token+threadId is useless to anyone but its
+   owner. Mismatch → a generic "cannot be reported" message.
+5. The soft cap (`countChatReports`, below).
+6. `insertChatReport` + a **content-free** telemetry event.
+
+A chat report needs **no snapshot** — the transcript is re-readable server-side at
+`/codes/<code>/c/<threadId>` — so it stores just the pointer. A report may reference
+a **zero-message thread** (the transcript page already handles it), so no LLM call is
+required to file or verify one.
+
+## Submit flow — quiz-answer reports
+
+`submitQuizReport({ code, questionId, answer, result, feedback, hadImages,
+reaction, description })`. Quiz grading persists **nothing** (the memory-less
+`quizEvaluator`), so a quiz report must **carry its own snapshot**. Steps 1–2 mirror
+the chat action (reaction + description validation), then:
+
+- **`verifyAndLoadQuestion({ code, questionId })`** from `lib/quiz-verify.ts` does
+  auth + `checkCode` + `module === "quiz"` + `loadQuiz` + find-the-question, all
+  server-side, and returns the **server-authoritative** question.
+- The snapshot mixes **server-trusted** and **client-sent** data — an accepted trust
+  trade, the same one `startDiscussion` makes (nothing server-side exists to check a
+  graded turn against):
+  - `question_text` = **the server's `question.question`** — immune to client
+    tampering and to later YAML edits.
+  - `answer_text` / `feedback_text` = the student's own graded turn, client-sent,
+    trimmed and **size-bounded** (`QUIZ_SNAPSHOT_MAX`, ~32k) so a tampered client
+    can't store an unbounded blob.
+  - `verdict` = `result`, which must be one of `correct` | `partial` | `incorrect`
+    — **rejected, never coerced**, if unknown.
+  - `had_images` flags whether the graded answer carried photos; the bytes are
+    **never** stored.
+- Soft cap (`countQuizReports`), `insertQuizReport`, content-free telemetry.
+
+### Why `lib/quiz-verify.ts` exists (the `"use server"` hazard)
+
+`verifyAndLoadQuestion` used to be private inside `lib/quiz-actions.ts`, a
+`"use server"` module. **Exporting it from there would mint a public server-action
+endpoint** that returns the loaded `Quiz` — which carries the server-only
+`evaluation` grading prompts (they may embed the expected answer). It was extracted
+verbatim into `lib/quiz-verify.ts`, a **server-only module deliberately WITHOUT the
+`"use server"` directive**, so both `quiz-actions.ts` (grading) and
+`report-actions.ts` (quiz reports) import it as plain server code. **`lib/quiz-verify.ts`
+must never gain the `"use server"` directive** — that would re-open the very endpoint
+the extraction closed. (`CODE_REJECTION_MESSAGES` and `effectiveImageInput` moved
+with it.)
+
+## Telemetry — content-free
+
+Both submit actions emit `report.submitted` on success with **metadata only**:
+`{ kind, reaction, code }`. The event **never** carries the description, the quiz
+snapshot, or any student content (`docs/telemetry.md`).
+
+## Soft caps
+
+`MAX_REPORTS_PER_TARGET` (3, in `lib/report-types.ts`) caps how many reports one
+student may file **per target** — per `(thread, user)` for chat, per `(code,
+question, user)` for quiz. `countChatReports` / `countQuizReports` do the check; a DB
+error there returns `undefined` and the action **declines** rather than filing an
+unbounded row. It is a soft, per-student cap (a friendly "your teacher will take a
+look" message), not a global rate limit.
+
+## Store — `lib/report-store.ts` (server-only)
+
+The **only** module that touches `novedu_reports`. Follows the `writing-store.ts`
+conventions: **reads never throw** — a DB error reads as `undefined`, which the
+callers turn into a graceful message; `insert*`/`set*`/`delete*` return `false` on
+error.
+
+- `insertChatReport` / `insertQuizReport` → `boolean`.
+- `countChatReports` / `countQuizReports` → `number | undefined` (the soft-cap checks).
+- `listReports({ status, reaction?, search?, codeCreatedBy? })` → `ReportListRow[] |
+  undefined` — the inbox query, filtered **in the database** (`docs/filtered-lists.md`)
+  by resolution status (`open` = `resolved_at IS NULL`, `resolved` = NOT NULL, `all`),
+  reaction, a `containsAny` free-text search (description, reporter oid + display name,
+  code, code note), and — for "Only my codes" — the code's creating teacher. LEFT-JOINs
+  `novedu_users` (reporter name, oid fallback) and `novedu_codes` (note/creator) **by
+  value**; a report whose code was deleted still lists (both joins yield `null`). It
+  **NEVER joins `novedu_user_chats`**. Ordered so open `holysh` reports float to the
+  top (a raw `sql` CASE), then newest first.
+- `setReportsResolved(ids, resolved, teacherId)` — bulk resolve/reopen. Resolving
+  stamps `resolved_at = now` + `resolved_by = teacherId`; reopening **nulls both**
+  columns (`resolved_at` is the single source of truth). No-op for an empty id list.
+- `deleteReports(ids)` — bulk DELETE, the inbox's "Delete Selected".
+
+## Teacher inbox — `/reports`
+
+A global, **teacher-only** filtered list (`app/reports/page.tsx`) over all reports,
+built on the shared filtered-list concept (`docs/filtered-lists.md`) exactly like
+`/codes` and `/files`: DB-side filtering via URL search params, `DataList` +
+`ListFilterBar`, `SelectionProvider` + `selectionColumn`, bulk-only actions, a
+sibling `loading.tsx`.
+
+- **Gate** — `isEffectiveTeacher()` → `AccessDenied`. It is **role-gated, not
+  owner-gated** (any effective teacher can review any code's reports), and honors
+  student mode: a teacher "viewing as student" is denied like a student.
+- **Params** — `status` (default `open`), `reaction`, `q`, `mine` (default ON →
+  `codeCreatedBy` = the session oid).
+- **Columns** — the multi-select `selectionColumn` (key = **report id**), Reaction
+  badge, Kind badge, Code (note‖code, link to `/codes/<code>`), Student (display name
+  ?? oid, oid as hover title), Created (`LocalTime`), Status badge (open=orange /
+  resolved=green). The **description is not a list column** (it can be long) — it lives
+  only in the detail dialog; the `q` search still matches it DB-side. Actions: chat rows
+  link to the existing transcript `/codes/<code>/c/<threadId>?from=reports` — the
+  **`from`** param is a **closed enum**, only the literal `reports` switches the
+  transcript's back link to "Back to reports" → `/reports` (any other value keeps the
+  default "Back to stats" → `/codes/<code>`; a raw URL is never accepted). Every row
+  also gets a **detail dialog** (`report-detail-button.tsx`, description + its own
+  origin-tagged transcript link) — the whole snapshot already rides on the row, so it is
+  a dialog, not a `/reports/[id]` route. Open `holysh` rows get a red left stripe.
+- **Detail dialog trust boundary** — the quiz **question** (server-authoritative) and
+  **feedback** render through the sanitized `MarkdownRenderer`; the **student's
+  answer** is untrusted free text and renders as plain `whitespace-pre-wrap`, never
+  through markdown.
+- **Toolbar** — two `BulkActionButton`s ("Mark resolved", "Reopen", no confirm) plus
+  `DeleteSelectedButton itemNoun="report"`. `BulkActionButton` is the additive,
+  non-delete generalization of the selection layer (`docs/filtered-lists.md`).
+- **Nav** — `components/nav-menu.tsx` adds `{ href: "/reports", label: "Reports",
+  teacherOnly: true }`.
+
+Per-code report surfacing (a link from `/codes/[code]`) is deferred follow-up.
+
+## Lifecycle
+
+Reports are **not** garbage-collected; a row persists until a teacher deletes it
+("Delete Selected") or the **code** is deleted. On code delete, `deleteCodeRows`
+(`lib/code-stats-store.ts`) drops the code's reports alongside its `user_chats` /
+`recent_codes` / `writing_submissions` **inside the one Drizzle transaction** (the
+code row last), so the list's bulk delete (the only delete path — `docs/filtered-lists.md`)
+cleans up reports with no separate path. There are **no foreign keys**, so this
+explicit drop is what keeps a deleted code's reports from lingering.
+
+## Testing
+
+The overall approach (layers, the `@live` boundary) is in `docs/testing.md`.
+Reports-specifics:
+
+- **`lib/report-actions.unit.test.ts`** (hermetic) — mocks `@/auth`,
+  `@/lib/code-store`, `@/lib/quiz-verify`, `@/lib/report-store`, and telemetry, but
+  keeps **`lib/thread-token` REAL** (the security-critical pure module, per
+  `docs/testing.md`) and signs genuine tokens with a test secret. Covers: missing /
+  invalid / wrong-user token, unknown reaction, over-cap description, soft cap,
+  expired code; and for quiz — the server-authoritative question text (client copy
+  ignored), unknown question, invalid verdict rejected, session-oid attribution,
+  content-free telemetry; plus the teacher bulk actions (resolve / reopen / delete,
+  non-teacher blocked, non-uuid id list rejected).
+- **`lib/report-store.unit.test.ts`** — the insert shapes (chat vs. quiz snapshot),
+  the count helpers, `listReports` filter-building, the resolved-at resolve/reopen
+  semantics, and the never-throw (`undefined` / `false`) error paths, over a mocked
+  `getDb`.
+- **`tests/component/report-button.browser.test.tsx`** — the dialog opens with the
+  reactions, the mandatory attribution notice is present (worded per kind), submit is
+  gated on a reaction, the correct action gets the right payload (chat token / quiz
+  snapshot), success + error states, and the description counter/cap.
+- **`app/reports/page.unit.test.tsx`** — the teacher gate (a non-teacher / student-mode
+  teacher is denied **without** querying), row rendering, the default filters (status
+  `open`, only-my-codes on), the reaction + `mine=0` params, an unknown reaction
+  ignored, and the store-error notice.
+- **`e2e/reports.spec.ts`** — the `@live` + `@live-db` end-to-end (mints a tutor code
+  via `e2e/code.utils.ts`; no LLM needed, since a report can reference a zero-message
+  thread): a student submits a report (asserting the attribution notice), the teacher
+  sees the row in `/reports`, then marks resolved → reopen → delete selected.
