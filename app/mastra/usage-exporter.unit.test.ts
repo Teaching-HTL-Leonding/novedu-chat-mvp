@@ -142,18 +142,17 @@ describe("mapSpanToUsage — attribution", () => {
 });
 
 describe("mapSpanToUsage — tool calls", () => {
-  it.each([
-    SpanType.TOOL_CALL,
-    SpanType.CLIENT_TOOL_CALL,
-    SpanType.MCP_TOOL_CALL,
-  ])("counts +1 tool call with zero tokens for %s", (type) => {
-    expect(mapSpanToUsage(span({ type }))).toMatchObject({
-      code: "code-1",
-      toolCalls: 1,
-      inputNew: 0,
-      output: 0,
-    });
-  });
+  it.each([SpanType.TOOL_CALL, SpanType.CLIENT_TOOL_CALL, SpanType.MCP_TOOL_CALL])(
+    "counts +1 tool call with zero tokens for %s",
+    (type) => {
+      expect(mapSpanToUsage(span({ type }))).toMatchObject({
+        code: "code-1",
+        toolCalls: 1,
+        inputNew: 0,
+        output: 0,
+      });
+    },
+  );
 });
 
 describe("usageExporter.exportTracingEvent", () => {

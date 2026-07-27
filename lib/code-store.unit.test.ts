@@ -172,14 +172,12 @@ describe("validateCodeRequest", () => {
     expect(result).toMatchObject({ ok: false, message: expect.stringContaining("200") });
   });
 
-  it.each([
-    "not a url",
-    "ftp://example.com/t.yaml",
-    "",
-    undefined,
-  ])("rejects file input %j", (file) => {
-    expect(validateCodeRequest({ ...valid, file }).ok).toBe(false);
-  });
+  it.each(["not a url", "ftp://example.com/t.yaml", "", undefined])(
+    "rejects file input %j",
+    (file) => {
+      expect(validateCodeRequest({ ...valid, file }).ok).toBe(false);
+    },
+  );
 
   it("rejects a supplied timestamp that is non-numeric", () => {
     expect(validateCodeRequest({ ...valid, start: "12abc" }).ok).toBe(false);
