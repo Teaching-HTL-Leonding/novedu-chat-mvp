@@ -230,7 +230,7 @@ is allowed. Image *display* needs no CORS — `<img src>` loads cross-origin wit
 
 | Field | Value |
 | --- | --- |
-| Allowed origins | `http://localhost:3000`, `https://novedu-chat-mvp-at.azurewebsites.net` |
+| Allowed origins | `http://localhost:3000`, `https://novedu.at`, `https://novedu-chat-mvp-at.azurewebsites.net` |
 | Allowed methods | `GET,PUT` |
 | Allowed headers | `x-ms-blob-type,content-type` |
 | Exposed headers | `*` |
