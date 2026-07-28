@@ -264,6 +264,55 @@ export async function listReports(opts: {
 }
 
 /**
+ * A single report by id — the single-row twin of `listReports`, with the SAME
+ * LEFT JOINs (`novedu_users` for the reporter's display name, `novedu_codes` for
+ * the note, both BY VALUE) and, like every read here, NEVER a `novedu_user_chats`
+ * join (the only identity surfaced is the reporter's own). Backs the bearer-channel
+ * report detail (`GET /api/reports/<id>`, docs/api.md). Returns `null` when no
+ * report has that id, `undefined` on a database error. Never throws.
+ */
+export async function getReportById(id: string): Promise<ReportListRow | null | undefined> {
+  try {
+    const rows = await getDb()
+      .select({
+        id: reports.id,
+        kind: reports.kind,
+        code: reports.code,
+        codeNote: codes.note,
+        userId: reports.userId,
+        displayName: users.displayName,
+        reaction: reports.reaction,
+        description: reports.description,
+        createdAt: reports.createdAt,
+        threadId: reports.threadId,
+        questionId: reports.questionId,
+        questionText: reports.questionText,
+        answerText: reports.answerText,
+        feedbackText: reports.feedbackText,
+        verdict: reports.verdict,
+        hadImages: reports.hadImages,
+        resolvedAt: reports.resolvedAt,
+        resolvedBy: reports.resolvedBy,
+      })
+      .from(reports)
+      .leftJoin(users, eq(users.userId, reports.userId))
+      .leftJoin(codes, eq(codes.code, reports.code))
+      .where(eq(reports.id, id));
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      ...row,
+      kind: row.kind as ReportKind,
+      reaction: row.reaction as ReportReaction,
+      verdict: (row.verdict as QuizVerdict | null) ?? null,
+    };
+  } catch (error) {
+    console.error("report-store: loading a report failed", error);
+    return undefined;
+  }
+}
+
+/**
  * Bulk-sets the resolution state of the given reports. `resolved: true` stamps
  * `resolvedAt = now` + `resolvedBy = teacherId`; `resolved: false` (reopen) nulls
  * BOTH columns — `resolvedAt` is the single source of truth for resolution.

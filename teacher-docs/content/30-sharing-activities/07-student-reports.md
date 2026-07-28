@@ -4,11 +4,13 @@ description: Let students flag notable AI answers, then work through what comes 
 sidebar:
   order: 7
 audience: teacher
-keywords: [report, flag, feedback, reaction, good, OMG, bad, holy sh, reports page, resolve]
+keywords: [report, flag, feedback, reaction, good, OMG, bad, holy sh, reports page, resolve, CLI, novedu-cli, reports list, command line]
 related:
   - 30-sharing-activities/04-anonymous-vs-per-user
   - 30-sharing-activities/02-viewing-usage
   - 30-sharing-activities/05-deleting-codes
+  - 10-yaml-for-teachers/04-cli-validation
+  - 20-building-activities/01-handling-yaml
 generated: true
 ---
 
@@ -70,6 +72,30 @@ You handle reports in bulk from the Reports page. Tick the reports you want to a
 - **Delete Selected** removes reports you no longer need to keep.
 
 Resolving a report does not delete it. It stays available under the **Resolved** and **All** filters, so you have a record of what was flagged and what you did about it.
+
+## Triaging reports from the command line
+
+If you'd rather work in a terminal, or you'd like an AI coding assistant to help, the Novedu CLI handles reports too. Sign in once with `novedu-cli login`, the same sign-in the other CLI commands use, and then three commands cover triage:
+
+```bash
+# List open reports on your own codes (add --all for every teacher's codes)
+npx @novedu/cli reports list
+npx @novedu/cli reports list --status resolved --reaction holysh --search "linked list"
+
+# Show one report in full; a chat report also prints the whole conversation
+npx @novedu/cli reports show <report-id>
+
+# Mark one or more reports resolved
+npx @novedu/cli reports resolve <report-id> <report-id>
+```
+
+- **`reports list`** starts from the same view as the page: open reports on your own codes. Narrow it with `--status` (`open`, `resolved`, or `all`), `--reaction` (`good`, `omg`, `bad`, or `holysh`), and `--search`, or add `--all` to include other teachers' codes.
+- **`reports show`** prints one report in full. For a chat report it includes the conversation transcript, so you read the flagged exchange without opening a browser.
+- **`reports resolve`** marks reports resolved, one or several at a time. The CLI records the resolve as done by you, the signed-in teacher, exactly as resolving on the page does.
+
+The CLI prints its results as JSON. That reads a little densely for a person, but it's exactly what a script or an AI assistant needs. Reopening and deleting a report are left out of the CLI on purpose: those stay on the Reports page, so an automated helper can never delete a student's report. Reports are always filed by students inside an activity; the CLI never creates one.
+
+This opens up a repair loop you can hand to an AI coding assistant working in a copy of your activities: it reads a report, works out what went wrong, fixes the activity file, publishes the new version, and marks the report resolved, all from the command line. Reports become the to-do list for improving your activities.
 
 ## Deleting a code deletes its reports
 

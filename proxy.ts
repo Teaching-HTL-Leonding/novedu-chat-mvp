@@ -17,7 +17,8 @@ export const config = {
   // app/api/coding/v1/chat/completions/route.ts). It is anchored with a path
   // boundary (`api/coding(?:/|$)`) so the exclusion cannot silently widen to a
   // future, unrelated `/api/coding-*` route.
-  // The /api/me identity probe and the /api/codes list/create endpoints are
+  // The /api/me identity probe, the /api/codes list/create endpoints, and the
+  // /api/reports list/detail/resolve endpoints are
   // CLI/API bearer-token routes: they self-gate via requireBearerUser /
   // requireBearerTeacher (lib/api-auth.ts) and a CLI has no Entra session
   // cookie, so they must not hit the cookie gate (see docs/api.md). Every future
@@ -34,6 +35,6 @@ export const config = {
   // /api/files-export must NOT ride the /api/files exclusion past the cookie
   // gate).
   matcher: [
-    "/((?!api/auth(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|docs(?:/|$)|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|api/reports(?:/|$)|docs(?:/|$)|_next/static|_next/image|favicon.ico).*)",
   ],
 };

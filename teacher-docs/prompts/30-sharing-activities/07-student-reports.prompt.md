@@ -19,6 +19,20 @@ Cover:
   student's answer, and the AI's feedback exactly as the student saw them.
 - Working the list: select reports and mark them resolved (or reopen them), and delete
   the ones you no longer need.
+- Triaging reports from the command line, and letting an AI assistant do it: the Novedu
+  CLI can list reports, show one report in full, and mark reports resolved, so a
+  terminal-comfortable teacher (or an AI coding assistant working in a copy of the
+  repository) can work through reports without the web page. Cover, using the real
+  commands the source names: sign in first with the login command; the list command
+  (same defaults as the page: open reports on your own codes, plus filters for status,
+  reaction, and a search, and a switch to widen to every teacher's codes); the show
+  command for one report by its id, which for a chat report also prints the whole
+  conversation; and the resolve command that marks one or more reports resolved at once.
+  The CLI's output is JSON, made for scripts and AI assistants rather than for reading
+  by eye. The whole point of this is a fix-it loop an AI assistant can run for you: read
+  a report, work out what went wrong, fix the activity file, publish the new version,
+  then mark the report resolved. Cross-link the CLI-introducing chapter (Validating with
+  the CLI) and publishing your YAML, rather than re-explaining login or upload here.
 
 Get right:
 - The four reactions include praise — reports are a feedback channel, not only a
@@ -29,5 +43,16 @@ Get right:
   and the rest of the code's work stays anonymous.
 - Deleting a code deletes its reports.
 - Do not promise notifications; reports show up on the Reports page and nowhere else.
+- The CLI can list, show, and resolve only. Reopening and deleting a report stay in the
+  web Reports page on purpose, so an automated assistant can never delete a student's
+  report; say this plainly.
+- A resolve run from the CLI is recorded as done by whoever signed in, exactly like
+  resolving on the page; it is not anonymous or system-attributed.
+- Reports are filed only by students inside an activity; there is no way to create a
+  report from the CLI, and the CLI never files one.
+- Use only the CLI commands and flags the source actually names (docs/api.md,
+  cli/README.md); do not invent command names, flags, or output shapes.
 
-Look: docs/reports.md (behavior), docs/codes.md (anonymity background).
+Look: docs/reports.md (behavior, including the "Bearer channel" section),
+docs/api.md (the reports routes and CLI command group), cli/README.md (CLI framing,
+login), docs/codes.md (anonymity background).

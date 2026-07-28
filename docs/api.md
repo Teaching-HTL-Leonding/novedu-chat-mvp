@@ -4,12 +4,12 @@ Deep reference for the app's second auth channel: CLI commands (and any other
 non-browser client, e.g. a future MCP server) calling app API routes with an
 Entra **bearer token** instead of a session cookie. Read it before touching
 `lib/api-auth.ts`, `app/api/me/**`, `app/api/codes/**`, `app/api/files/**`
-(the bearer handlers), the services they share with the web actions
-(`lib/code-service.ts`, `lib/file-service.ts`), the CLI commands
+(the bearer handlers), `app/api/reports/**`, the services they share with the
+web actions (`lib/code-service.ts`, `lib/file-service.ts`), the CLI commands
 (`cli/src/auth.ts`, `cli/src/api.ts`,
-`cli/src/commands/{login,logout,whoami,codes,files}.ts`), or when adding a
-bearer-protected endpoint. Cookie sessions, teacher roles and student mode
-live in `docs/auth.md`.
+`cli/src/commands/{login,logout,whoami,codes,files,reports}.ts`), or when
+adding a bearer-protected endpoint. Cookie sessions, teacher roles and student
+mode live in `docs/auth.md`.
 
 ## The model
 
@@ -118,18 +118,55 @@ stored `origin` column, which is operator-only).
   one fails **loudly** with `409` (never silently ignored; a create race on
   the name is 409 too). Body `{ kind?, content }`; `200` with
   `{ name, kind, url, action: "created" | "updated" }`.
+- **`GET /api/reports?status=&reaction=&q=&mine=`** (`app/api/reports/route.ts`,
+  teacher-only) — the `/reports` inbox's exact filters and defaults over
+  `listReports`: `status` `open` (default) | `resolved` | `all`; `reaction` one
+  of `good` | `omg` | `bad` | `holysh` (optional); `q` the inbox's DB-side
+  contains-search (description, reporter oid + display name, code, code note);
+  `mine` defaults **on** (`mine=0` widens to all teachers; `codeCreatedBy` = the
+  token `oid`). An unknown `status` or `reaction` is rejected **`400 { message }`**
+  — scripts fail loudly where the forgiving web UI silently ignores. Bare JSON
+  array in the inbox order (open `holysh` first, then newest first) of the full
+  `ReportListRow` parity shape
+  `{ id, kind, code, codeNote, userId, displayName, reaction, description, createdAt, threadId, questionId, questionText, answerText, feedbackText, verdict, hadImages, resolvedAt, resolvedBy }`.
+  The report is explicitly non-anonymous toward teachers (the sanctioned waiver,
+  `docs/reports.md`); `codeNote`/`displayName` are `null` for a deleted code /
+  unknown user, the quiz-only snapshot columns `null` for a chat report and the
+  chat-only `threadId` `null` for a quiz report.
+- **`GET /api/reports/<id>`** (`app/api/reports/[id]/route.ts`, teacher-only) —
+  the same report object for one id (`getReportById`, the single-row twin of
+  `listReports`). For `kind: "chat"` it additionally embeds the transcript:
+  `{ …report fields…, messages: [{ id, role, content }] }` from
+  `getConversationMessages(code, threadId)` (`lib/code-stats-store.ts`, the same
+  collapsed sequence the web transcript page renders; text messages only). A
+  quiz-answer report has **no** `messages` key — its snapshot is already on the
+  row. A malformed (non-UUID) or unknown id → **`404 { message }`**; a chat
+  report whose code/thread was deleted returns `messages: []` (the report itself
+  still shows); a store/transcript DB error → `503`.
+- **`POST /api/reports/resolve`** (`app/api/reports/resolve/route.ts`,
+  teacher-only) — bulk resolve by id. JSON body `{ ids: ["<uuid>", …] }` —
+  non-empty, every entry UUID-shaped (the web bulk actions' guard); anything
+  else → **`400 { message }`**. Stamps `resolved_at = now` + `resolved_by` = the
+  token `oid` via `setReportsResolved(ids, true, oid)`; unknown / already-resolved
+  ids are silent no-ops (the blanket update). `200` with `{ ok: true }`; store
+  failure → `503`. **Resolve is the only mutation on this channel — reopen and
+  delete stay web-only** (an agent should never destroy a student's report;
+  `docs/reports.md`).
 - **Proxy exclusion, per route:** bearer routes must not hit the cookie gate
   (a CLI has no session), so each one gets its own **path-bounded** entry in
-  the `proxy.ts` matcher (`api/me(?:/|$)`, `api/codes(?:/|$)`) — never a
-  blanket `/api` prefix. The files handlers ride the pre-existing public
-  `api/files` exclusion and self-gate. Adding a bearer endpoint = new route
+  the `proxy.ts` matcher (`api/me(?:/|$)`, `api/codes(?:/|$)`,
+  `api/reports(?:/|$)`) — never a blanket `/api` prefix. The files handlers ride
+  the pre-existing public `api/files` exclusion and self-gate. Adding a bearer endpoint = new route
   file gated by `requireBearerUser`/`requireBearerTeacher` + its own matcher
   exclusion + documentation here.
 - **The service seam:** the bearer write routes and the web server actions
   execute the identical policy pipeline through `lib/code-service.ts` /
   `lib/file-service.ts` (plain server modules; auth never enters them — each
   channel gates itself and passes the verified `userId` in). Listing needs no
-  service: `listCodes` / `listFiles` are already transport-agnostic.
+  service: `listCodes` / `listFiles` are already transport-agnostic, and every
+  `reports` operation is likewise a bare `lib/report-store.ts` call (the added
+  `getReportById` plus the existing `listReports` / `setReportsResolved`) — no
+  service layer, auth never enters the store.
 
 ## CLI: `cli/src/auth.ts` + commands
 
@@ -138,15 +175,28 @@ stored `origin` column, which is operator-only).
   overridable via `NOVEDU_TENANT_ID` / `NOVEDU_CLIENT_ID` for other
   deployments of this teaching repo. Requested scope:
   `api://<client-id>/cli.access` (msal-node adds the OIDC scopes itself).
-- **Management commands** (`cli/src/commands/codes.ts`, `files.ts`; shared
-  plumbing in `cli/src/api.ts`): `codes create/list`, `files upload/list` —
-  thin flag→request mappers over the routes above, **JSON-only** output:
-  success bodies pretty-printed on **stdout** (exit 0), every failure — auth,
-  network, or the server's `{ message }`/`{ errors }` verbatim — as JSON on
-  **stderr** (exit 1); both streams are jq-processable. `files upload <name>`
-  reads YAML from `--file <path>` or stdin; `list` defaults to only-mine
-  (`--all` widens, UI parity). No client-side pre-validation — the server runs
-  the identical pipeline; offline checking stays the `validate` command's job.
+- **Management commands** (`cli/src/commands/codes.ts`, `files.ts`,
+  `reports.ts`; shared plumbing in `cli/src/api.ts`): `codes create/list`,
+  `files upload/list`, `reports list/show/resolve` — thin flag→request mappers
+  over the routes above, **JSON-only** output: success bodies pretty-printed on
+  **stdout** (exit 0), every failure — auth, network, or the server's
+  `{ message }`/`{ errors }` verbatim — as JSON on **stderr** (exit 1); both
+  streams are jq-processable. `files upload <name>` reads YAML from
+  `--file <path>` or stdin; `list` defaults to only-mine (`--all` widens, UI
+  parity). No client-side pre-validation — the server runs the identical
+  pipeline; offline checking stays the `validate` command's job.
+- **The `reports` group** (`cli/src/commands/reports.ts`) drives the three
+  `/api/reports` routes for the report-triage loop
+  (`reports list` → `reports show <id>` → fix the activity YAML →
+  `files upload` → `reports resolve <id…>`; `docs/reports.md`):
+  `reports list [--status <open|resolved|all>] [--reaction <good|omg|bad|holysh>] [--search <q>] [--all]`
+  (defaults to **open** reports on **my** codes, `--all` → `mine=0`, `--search`
+  → `q`, `--status`/`--reaction` pass through verbatim — the server rejects
+  unknown values, no client-side enum check); `reports show <id>` prints the
+  single report, transcript embedded for a chat report so an agent gets
+  everything in one call; `reports resolve <id…>` sends every id in one
+  `POST /api/reports/resolve`. Reopen and delete are deliberately **not** here —
+  they stay web-only.
 - **Token cache** `~/.novedu/token-cache.json` — plain JSON via an MSAL
   `ICachePlugin` (az-CLI model), directory `0700`, file `0600`. It holds the
   refresh token; treat it like a credential.
@@ -176,22 +226,35 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   groups, overage) through the REAL `jwtVerify`.
 - **Route unit tests** (`app/api/codes/route.unit.test.ts`,
   `app/api/files/route.unit.test.ts`, the PUT cases in
-  `app/api/files/[name]/route.unit.test.ts`) keep the auth gate REAL the same
+  `app/api/files/[name]/route.unit.test.ts`, and the three reports routes —
+  `app/api/reports/route.unit.test.ts`,
+  `app/api/reports/[id]/route.unit.test.ts`,
+  `app/api/reports/resolve/route.unit.test.ts`) keep the auth gate REAL the same
   way (local JWKS, minted tokens) and mock the services/stores: the 401/403
   matrix, filter parsing + the `mine` default, naive-timestamp rejection, the
-  400/409/503 mapping, and the wire shapes.
+  400/409/503 mapping, and the wire shapes. The reports specs additionally mock
+  `lib/report-store` + `getConversationMessages` and assert the 400 on unknown
+  enum values / malformed `ids`, the 404 cases, the chat-embeds-`messages` /
+  quiz-doesn't / deleted-code → `[]` shapes, and that resolve passes the token
+  `oid` as `teacherId`.
 - **e2e:** `e2e/api-auth.setup.ts` generates the keypair once into the
   gitignored `e2e/.auth/` (once, not per run — the server caches the JWKS
   after the first bearer request); `playwright.config.ts` injects
-  `API_AUTH_JWKS_PATH` into the dev-server env; `e2e/api-me.spec.ts` and
-  `e2e/api-codes.spec.ts` exercise the routes over HTTP with an empty cookie
-  state, which also proves the proxy-matcher exclusions (a regression turns
-  the expected 401 into a sign-in redirect); the @live-db
-  `e2e/api-management.live.spec.ts` runs the full file-upsert → list →
-  code-create → list lifecycle against the real database. Local caveat: a
-  reused dev server started without the env var fails these specs — restart
-  it with the var or let Playwright start its own.
+  `API_AUTH_JWKS_PATH` into the dev-server env; `e2e/api-me.spec.ts`,
+  `e2e/api-codes.spec.ts` and `e2e/api-reports.spec.ts` exercise the routes over
+  HTTP with an empty cookie state, which also proves the proxy-matcher
+  exclusions (a regression turns the expected 401 into a sign-in redirect); the
+  @live-db `e2e/api-management.live.spec.ts` runs the full file-upsert → list →
+  code-create → list lifecycle against the real database, and the @live-db
+  `e2e/api-reports.live.spec.ts` files a chat report through the real UI (a
+  zero-message thread, no LLM) then drives `GET /api/reports` → `GET
+  /api/reports/<id>` (with `messages`) → `POST /api/reports/resolve` → the
+  `status=resolved` listing. Local caveat: a reused dev server started without
+  the env var fails these specs — restart it with the var or let Playwright
+  start its own.
 - **CLI unit tests** mock `@azure/msal-node` and `fetch`; the cache plugin is
   tested against the real filesystem (permission modes included). The
   `codes`/`files` command tests pin the flag→request mapping, stdin/--file
-  reading, and the stdout/stderr JSON split.
+  reading, and the stdout/stderr JSON split; `cli/src/commands/reports.unit.test.ts`
+  does the same for `reports list/show/resolve` (the defaults, `--all` →
+  `mine=0`, the multi-id resolve body, and the exit codes).
