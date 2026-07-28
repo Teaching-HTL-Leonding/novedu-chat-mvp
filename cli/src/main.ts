@@ -5,6 +5,7 @@ import { registerCodes } from "./commands/codes";
 import { registerFiles } from "./commands/files";
 import { registerLogin } from "./commands/login";
 import { registerLogout } from "./commands/logout";
+import { registerReports } from "./commands/reports";
 import { registerValidate } from "./commands/validate";
 import { registerWhoami } from "./commands/whoami";
 
@@ -32,6 +33,7 @@ registerLogout(program);
 registerWhoami(program);
 registerCodes(program);
 registerFiles(program);
+registerReports(program);
 
 program.parseAsync().catch((err) => {
   console.error(err instanceof Error ? err.message : err);

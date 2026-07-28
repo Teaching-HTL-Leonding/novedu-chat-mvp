@@ -32,6 +32,14 @@ description: >-
   those on phrasings like "create a code for this quiz", "share this activity",
   "upload this YAML to the app", "publish this tutor file", "what codes do I
   have?", or "list my hosted files".
+
+  Teachers can also TRIAGE student reports from the CLI to drive activity
+  enhancements: list reports (`reports list`), inspect one with its chat
+  transcript embedded (`reports show`), and mark reports resolved
+  (`reports resolve`) — all JSON output. Use those on phrasings like "what have
+  students reported?", "show me the open reports", "what's wrong with this
+  activity?", "read report <id>", "fix the issues students flagged", or "mark
+  these reports resolved".
 ---
 
 # Validating activity YAML with `novedu-cli`
@@ -67,9 +75,9 @@ so a latent template bug anywhere in a referenced library fails the tutor.
 - **Exit code `0`** = valid, **`1`** = errors found. That makes it usable as a
   pre-commit / CI gate.
 - Besides `validate`, the CLI has the auth commands `login` / `logout` / `whoami`
-  and the teacher management groups `codes` / `files` (all below); it is built to
-  grow, so check `--help` if a task sounds like it might be covered by a newer
-  command.
+  and the teacher management groups `codes` / `files` / `reports` (all below); it
+  is built to grow, so check `--help` if a task sounds like it might be covered by
+  a newer command.
 
 ## Pick the right invocation: inside the repo vs. outside
 
@@ -244,10 +252,75 @@ files list   [--search <q>] [--all]
 - A non-teacher account gets a generic 403 — verify with `whoami`
   (`Teacher: yes`).
 
+## Triaging student reports: `reports` (teacher, sign-in required)
+
+Students can flag an AI interaction — a chat or a graded quiz answer — with a
+reaction and an optional note (the reports feature). Those flags often point at
+something to fix in the activity YAML, which is exactly the kind of work this CLI
+does. The `reports` group lets a signed-in teacher (or an agent acting for one)
+**find, read, and resolve** reports without leaving the terminal. Like `codes`
+and `files` it accepts `--server <url>` (default: production; or `NOVEDU_SERVER`)
+and is **JSON only** — success objects on stdout (exit 0), failures as JSON on
+stderr (exit 1), both jq-processable.
+
+```
+reports list    [--status <open|resolved|all>] [--reaction <good|omg|bad|holysh>]
+                [--search <q>] [--all]
+reports show    <id>
+reports resolve <id...>
+```
+
+- `reports list` returns a JSON array of reports, newest-urgent first. It
+  **defaults to open reports on your own codes** (web-inbox parity); `--all`
+  widens to every teacher's codes, `--search` is a contains-filter over the
+  description / reporter / code / note, and `--status` / `--reaction` narrow the
+  set. Pass the enum values verbatim — the **server** validates them, so an
+  unknown `--status` or `--reaction` comes back as a `400 { message }` on stderr,
+  not a silent empty list.
+- `reports show <id>` prints one report in full. For a **chat** report the JSON
+  also embeds the conversation transcript (a `messages` array), so a single
+  command gives an agent both the flag and the discussion that triggered it. A
+  **quiz-answer** report has no `messages` — its question / answer / feedback
+  snapshot is already inline on the report.
+- `reports resolve <id...>` marks one or more reports resolved in a single call
+  (attributed to the signed-in teacher). Unknown or already-resolved ids are
+  silently ignored.
+- **The CLI cannot reopen or delete a report, or file one.** Those stay in the
+  web `/reports` inbox on purpose — an agent should never destroy a student's
+  report, and reports are filed by students in the app, never by the CLI. Use
+  `whoami` (`Teacher: yes`) if a call 403s.
+
+### The report-driven enhancement loop
+
+This is the workflow the `reports` group exists for — turning a student flag into
+an improved activity:
+
+1. **`reports list`** — see what students flagged (start with the default open /
+   my-codes view; add `--reaction holysh` to surface the urgent ones first).
+2. **`reports show <id>`** — read the specific report; for a chat report the
+   embedded transcript tells you *why* the student flagged it.
+3. **Fix the activity YAML** — edit the tutor / quiz / writing / coding file the
+   report points at (its `code` identifies the activity), and `validate` your
+   change offline.
+4. **`files upload <name>`** — save the corrected YAML as a new version of the
+   app-hosted file (existing codes keep serving it; no re-share needed).
+5. **`reports resolve <id...>`** — close out the report(s) you addressed.
+
+```bash
+# Read an open report and the chat that triggered it, in one command
+npx @novedu/cli reports show 3f2c… | jq '{reaction, description, messages}'
+
+# …fix and re-upload the activity YAML, then close the report
+npx @novedu/cli files upload sorting-quiz --file ./sorting-quiz.yaml
+npx @novedu/cli reports resolve 3f2c…
+```
+
 ## Scope — what this CLI does NOT do
 
-It does not edit or delete codes, delete files, show stats/conversations, or
-deploy. Those stay in the web app (deletion is deliberately bulk-only there).
+It does not edit or delete codes, delete files, browse arbitrary
+stats/conversations (a reported chat's transcript is visible only via
+`reports show`), reopen or delete reports, or deploy. Those stay in the web app
+(deletion is deliberately bulk-only there).
 
 ## Examples
 

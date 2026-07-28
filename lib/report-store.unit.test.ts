@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fake = vi.hoisted(() => {
   const state = {
     rows: [] as unknown[],
+    joins: [] as unknown[],
     selectError: undefined as unknown,
     inserted: [] as Record<string, unknown>[],
     insertError: undefined as unknown,
@@ -23,7 +24,10 @@ const fake = vi.hoisted(() => {
   // awaiting it directly, for the COUNT selects) resolves the configured rows.
   const builder = {
     from: () => builder,
-    leftJoin: () => builder,
+    leftJoin: (table: unknown) => {
+      state.joins.push(table);
+      return builder;
+    },
     where: () => builder,
     orderBy: () => run(),
     // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
@@ -55,10 +59,12 @@ const fake = vi.hoisted(() => {
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
+import { codes, userChats, users } from "@/lib/db/schema";
 import {
   countChatReports,
   countQuizReports,
   deleteReports,
+  getReportById,
   insertChatReport,
   insertQuizReport,
   listReports,
@@ -72,6 +78,7 @@ const REPORT_ID = "22222222-2222-2222-2222-222222222222";
 
 beforeEach(() => {
   fake.state.rows = [];
+  fake.state.joins = [];
   fake.state.selectError = undefined;
   fake.state.inserted = [];
   fake.state.insertError = undefined;
@@ -205,6 +212,63 @@ describe("listReports", () => {
   it("returns undefined instead of throwing when the database is down", async () => {
     fake.state.selectError = new Error("connection lost");
     await expect(listReports({ status: "open" })).resolves.toBeUndefined();
+  });
+
+  it("LEFT-JOINs novedu_users + novedu_codes and NEVER novedu_user_chats", async () => {
+    fake.state.rows = [rawRow];
+    await listReports({ status: "open" });
+    expect(fake.state.joins).toContain(users);
+    expect(fake.state.joins).toContain(codes);
+    // The sanctioned-exception discipline: the only identity surfaced is the
+    // reporter's own — a `novedu_user_chats` join would reveal a different
+    // student behind a reported thread (docs/reports.md).
+    expect(fake.state.joins).not.toContain(userChats);
+  });
+});
+
+describe("getReportById", () => {
+  const chatRow: ReportListRow = {
+    id: REPORT_ID,
+    kind: "chat",
+    code: CODE,
+    codeNote: "linked lists",
+    userId: USER,
+    displayName: "Alice",
+    reaction: "bad",
+    description: "d",
+    createdAt: new Date("2026-07-01T00:00:00Z"),
+    threadId: "t-1",
+    questionId: null,
+    questionText: null,
+    answerText: null,
+    feedbackText: null,
+    verdict: null,
+    hadImages: false,
+    resolvedAt: null,
+    resolvedBy: null,
+  };
+
+  it("returns the single mapped row when found", async () => {
+    fake.state.rows = [chatRow];
+    await expect(getReportById(REPORT_ID)).resolves.toEqual(chatRow);
+  });
+
+  it("returns null (not undefined) when no report has that id", async () => {
+    fake.state.rows = [];
+    await expect(getReportById(REPORT_ID)).resolves.toBeNull();
+  });
+
+  it("returns undefined instead of throwing on a database error", async () => {
+    fake.state.selectError = new Error("connection lost");
+    await expect(getReportById(REPORT_ID)).resolves.toBeUndefined();
+  });
+
+  it("LEFT-JOINs novedu_users + novedu_codes and NEVER novedu_user_chats", async () => {
+    fake.state.rows = [chatRow];
+    await getReportById(REPORT_ID);
+    expect(fake.state.joins).toContain(users);
+    expect(fake.state.joins).toContain(codes);
+    expect(fake.state.joins).not.toContain(userChats);
   });
 });
 

@@ -171,6 +171,11 @@ error.
   value**; a report whose code was deleted still lists (both joins yield `null`). It
   **NEVER joins `novedu_user_chats`**. Ordered so open `holysh` reports float to the
   top (a raw `sql` CASE), then newest first.
+- `getReportById(id)` → `ReportListRow | null | undefined` — the **single-row twin
+  of `listReports`**, with the same `novedu_users` / `novedu_codes` LEFT JOINs by
+  value and the same `novedu_user_chats` prohibition; `null` = not found,
+  `undefined` = DB error, never throws. Backs the bearer `GET /api/reports/<id>`
+  (below).
 - `setReportsResolved(ids, resolved, teacherId)` — bulk resolve/reopen. Resolving
   stamps `resolved_at = now` + `resolved_by = teacherId`; reopening **nulls both**
   columns (`resolved_at` is the single source of truth). No-op for an empty id list.
@@ -212,6 +217,43 @@ sibling `loading.tsx`.
   teacherOnly: true }`.
 
 Per-code report surfacing (a link from `/codes/[code]`) is deferred follow-up.
+
+## Bearer channel — CLI/API triage
+
+Reports are also reachable over the Entra **bearer** channel (`docs/api.md`), so a
+coding agent driving `novedu-cli` can run the triage-and-fix loop
+(`reports list` → `reports show <id>` → fix the activity YAML → `files upload` →
+`reports resolve <id…>`). Three teacher-only routes under `app/api/reports/**`
+(each self-gated with `requireBearerTeacher()`) back the `reports list/show/resolve`
+CLI group; the full route conventions and wire shapes live in `docs/api.md`. The
+reports-specific invariants:
+
+- **Resolve-only scope.** The channel exposes list, detail, and **resolve** — and
+  nothing else. **Reopen and delete stay web-only, deliberately:** an agent should
+  never destroy a student's report, and a mis-resolution is corrected by a human in
+  the `/reports` inbox. There is no report-submission route either — reports are
+  filed only by authenticated students in the app, never by the CLI.
+- **`resolved_by` is the token oid.** `POST /api/reports/resolve` calls the existing
+  `setReportsResolved(ids, true, oid)` with the verified token `oid`, so a report an
+  agent resolves is attributed exactly like the web action — to the teacher who ran
+  `novedu-cli login`. Unknown / already-resolved ids are silent no-ops (the same
+  blanket update the inbox uses).
+- **The identity discipline carries over.** The API surfaces only the **reporter's
+  own** identity (`userId` + `displayName`), never a different student behind a
+  reported thread — `getReportById` is the single-row twin of `listReports` and, like
+  every read in this store, **never joins `novedu_user_chats`**. The report is
+  explicitly non-anonymous toward teachers (the sanctioned waiver above); the channel
+  is teacher-only, so nothing widens who can see it.
+- **Transcript embedding — chat reports only.** `GET /api/reports/<id>` on a `chat`
+  report embeds the conversation via `getConversationMessages(code, threadId)`
+  (`lib/code-stats-store.ts`), the same collapsed sequence the web transcript page
+  renders and already scoped to the reported thread by its Mastra `resourceId` — so
+  the agent gets the report and its transcript in one call. A **quiz-answer** report
+  carries no `messages`: its server-authoritative snapshot (question text, answer,
+  feedback, verdict) is already on the row, and — as everywhere — that snapshot never
+  contains the server-only quiz `evaluation` prompts. There is **no standalone
+  transcript endpoint by design**: bearer transcript access exists only embedded in a
+  report detail, scoped to reported threads.
 
 ## Lifecycle
 
