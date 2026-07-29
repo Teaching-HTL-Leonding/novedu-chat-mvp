@@ -15,6 +15,8 @@ Four modules share one generic "codes" pipeline (access, storage, attribution):
 
 All four kinds share **prompt fragments** — reusable, parameterized system-prompt pieces (persona, safety, ground rules) assembled from **fragment libraries**. Written once, they are pulled into any activity and prepended to its instructions (for a quiz, to both the grader and the discussion chat). See [`docs/prompt-fragments.md`](docs/prompt-fragments.md).
 
+Students can voluntarily **report** an AI interaction — a chat or a graded quiz answer — with a reaction and an optional note; teachers triage the reports in the `/reports` inbox or via the CLI. See [`docs/reports.md`](docs/reports.md).
+
 It is a prototype: access is gated behind Microsoft Entra ID sign-in (the teacher
 guide at `/docs` is deliberately public), and agent memory/storage is persisted to
 Azure SQL (authenticated via Entra — no SQL password).
@@ -23,7 +25,7 @@ Azure SQL (authenticated via Entra — no SQL password).
 
 | Area | Description |
 | --- | --- |
-| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the code-entry page; `app/[code]/page.tsx` checks the code and **dispatches by its `module`** to the tutor/quiz/writing/coding renderer. Teachers create, list, and edit **codes** under `/codes` (new at `/codes/new`, edit at `/codes/edit/<code>`), author **app-hosted YAML files** under `/files` and **images** under `/images`, and see usage on the `/usage` dashboard. See [`docs/codes.md`](docs/codes.md). Lists filter in the DB — see [`docs/filtered-lists.md`](docs/filtered-lists.md). |
+| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the code-entry page; `app/[code]/page.tsx` checks the code and **dispatches by its `module`** to the tutor/quiz/writing/coding renderer. Teachers create, list, and edit **codes** under `/codes` (new at `/codes/new`, edit at `/codes/edit/<code>`), author **app-hosted YAML files** under `/files` and **images** under `/images`, triage **student reports** under `/reports` ([`docs/reports.md`](docs/reports.md)), and see usage on the `/usage` dashboard. See [`docs/codes.md`](docs/codes.md). Lists filter in the DB — see [`docs/filtered-lists.md`](docs/filtered-lists.md). |
 | **Prompt-fragment core** (`lib/prompt-fragments/`) | The shared, framework-agnostic pipeline every activity kind builds on: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. `assembleFragmentPrompt` resolves a document-level fragment block into a prompt string (a structured result, never throws); tutor, quiz, writing, and coding all call it. Handlebars is confined to this module (grep-guard enforced). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the activity YAML, and fragment inputs may declare **defaults**. See [`docs/prompt-fragments.md`](docs/prompt-fragments.md) and [`activities/tutors/README.md`](activities/tutors/README.md) (the authoring guide). |
 | **Mastra agents** (`app/mastra/`) | The `tutor`, `quizDiscussion`, and `writing` agents resolve their instructions + model per request and persist conversations via Mastra `Memory`; the server-only `quizEvaluator` grader is never web-reachable. Agents are registered in `app/mastra/index.ts`. Storage is **Azure SQL** via `@mastra/mssql`, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). (The `coding` module has **no** Mastra agent — it is a thin proxy.) |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. See [`docs/chat.md`](docs/chat.md). |
@@ -33,7 +35,7 @@ Azure SQL (authenticated via Entra — no SQL password).
 | **LLM providers** (`lib/llm/`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | Two OpenAI-compatible upstreams behind one server-only seam: a self-hosted vLLM GPU server ("SCCH", the default) and — optionally, when `AZURE_FOUNDRY_ENDPOINT` is set — **Azure Foundry** (passwordless Entra auth, no API key). The activity YAML's `llm:` block picks provider + model, and a code can override the pair; endpoints, keys, and tokens stay server-side. See [`docs/ai-models.md`](docs/ai-models.md). |
 | **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate (Next 16 renamed `middleware` → `proxy.ts`). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). JWT sessions, no DB adapter. See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: Entra **bearer tokens** (the CLI is a public client of the same app registration), validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
 | **Teacher docs** (`teacher-docs/`, `teacher-docs-site/`) | The teacher-facing guide as a **generated Markdown corpus** (`teacher-docs/` — chapters are regenerated from human-owned prompts via the `novedu-teacher-docs` skill, never hand-edited) and an **Astro Starlight site** that renders it (`teacher-docs-site/`, an npm workspace). Served **publicly at `/docs`** inside this app — built into `public/docs/` by the Docker image build, deliberately excluded from the Entra gate. `npm run docs:dev` for local authoring; the corpus-contract test + site build are the consistency checks. See [`docs/teacher-docs.md`](docs/teacher-docs.md). |
-| **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text; **bearer** PUT: upsert for `novedu-cli files upload`), `files` + `codes` (**bearer**, teacher-only: list/create for the CLI — see [`docs/api.md`](docs/api.md)), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
+| **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text; **bearer** PUT: upsert for `novedu-cli files upload`), `files` + `codes` (**bearer**, teacher-only: list/create for the CLI — see [`docs/api.md`](docs/api.md)), `reports` + `reports/<id>` + `reports/resolve` (**bearer**, teacher-only: report triage for the CLI; a chat report's detail embeds the conversation transcript), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
 
 ### Request flow
 
@@ -215,7 +217,7 @@ automatically; a plain local build without staging simply 404s on `/docs`.)
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
 | `npm run qa` | `check` + `typecheck` + `test` + `build` + `docs:build`. (`qa:e2e` adds the e2e suite.) |
 | `npm run docs:dev` | Serve the teacher guide locally at `:4321/docs/` (Astro Starlight; `docs:build` / `docs:preview` for the static build, `docs:stage` to stage it into `public/docs` so the app serves `/docs` locally). |
-| `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, `login` / `logout` / `whoami` for Entra ID sign-in, and the teacher management commands `codes create/list` + `files upload/list` (JSON in/out) against the app's bearer-protected APIs. |
+| `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, `login` / `logout` / `whoami` for Entra ID sign-in, and the teacher management commands `codes create/list`, `files upload/list`, and `reports list/show/resolve` (JSON in/out) against the app's bearer-protected APIs. |
 
 > Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
 
@@ -230,8 +232,10 @@ The `activities/` directory contains sample YAML for each module — `tutors/`, 
 [`activities/README.md`](activities/README.md)). The `@novedu/cli` package (`cli/`) validates
 an activity file with the exact checks the app enforces, signs in with Entra ID
 (`login` / `logout` / `whoami`), and lets teachers manage the app over its
-bearer-protected APIs — `codes create/list` and `files upload/list`, JSON in/out
-(`npm run cli` locally; published as `@novedu/cli` — see [`docs/api.md`](docs/api.md)).
+bearer-protected APIs — `codes create/list`, `files upload/list`, and
+`reports list/show/resolve`, JSON in/out
+(`npm run cli` locally; published as `@novedu/cli` — see [`docs/api.md`](docs/api.md) and
+[`cli/README.md`](cli/README.md)).
 
 ## Related projects
 
@@ -256,13 +260,18 @@ the same coding-workshop flow.
 
 Per-subsystem deep references live in [`docs/`](docs/): codes & modules
 ([`codes.md`](docs/codes.md)), the shared [`prompt-fragments.md`](docs/prompt-fragments.md),
-[`writing.md`](docs/writing.md), [`coding.md`](docs/coding.md),
+[`writing.md`](docs/writing.md), [`coding.md`](docs/coding.md), student reports
+([`reports.md`](docs/reports.md)),
 the chat surface ([`chat.md`](docs/chat.md)), app-hosted [`files.md`](docs/files.md) and
 [`images.md`](docs/images.md), usage [`usage-metering.md`](docs/usage-metering.md) +
 [`dashboard.md`](docs/dashboard.md), [`auth.md`](docs/auth.md), the CLI/API bearer
 channel ([`api.md`](docs/api.md)), LLM providers ([`ai-models.md`](docs/ai-models.md)),
 [`database.md`](docs/database.md), [`telemetry.md`](docs/telemetry.md),
-[`testing.md`](docs/testing.md), [`filtered-lists.md`](docs/filtered-lists.md), and the
+[`testing.md`](docs/testing.md), [`filtered-lists.md`](docs/filtered-lists.md),
+[`styling.md`](docs/styling.md), the student YAML GUI module
+([`yaml-gui-student-contribution.md`](docs/yaml-gui-student-contribution.md)),
+CI security ([`ci-security.md`](docs/ci-security.md)), CLI publishing
+([`cli-publish.md`](docs/cli-publish.md)), and the
 teacher guide corpus + docs site ([`teacher-docs.md`](docs/teacher-docs.md)).
 `AGENTS.md` is the slim router that ties them together.
 
@@ -282,7 +291,9 @@ teacher guide corpus + docs site ([`teacher-docs.md`](docs/teacher-docs.md)).
   `resourceId`, so every thread is grouped under it. A user↔chat link is written to
   `novedu_user_chats` **only** for activities that opt out of anonymity
   (`anonymous: false`); the default is module-specific (tutor/quiz default anonymous,
-  writing does not). See `docs/codes.md`.
+  writing does not). See `docs/codes.md`. The one sanctioned exception is a voluntary,
+  student-initiated **report**, which always records the reporter — behind an explicit
+  "reports are not anonymous" notice on the form (`docs/reports.md`).
 - **Anonymity & metering** — usage is metered into two independent hourly tables that
   never link a user to a code (`usage_by_code` has no user, `usage_by_user` has no code),
   so the anonymity invariant holds even though the runtime knows the `oid`. See

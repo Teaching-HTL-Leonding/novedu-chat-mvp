@@ -1,6 +1,6 @@
 {
   "name": "@novedu/cli",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Command-line companion for the Novedu chat app. Validates tutor, fragment, quiz, writing and coding YAML definitions; signs in with Entra ID and manages codes and app-hosted files over the app's API.",
   "type": "module",
   "repository": {
