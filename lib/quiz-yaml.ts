@@ -53,19 +53,27 @@ export interface Quiz {
   /** Optional guidance appended to the discussion chat's system prompt. */
   discussionInstructions?: string;
   /**
+   * The quiz-level host text (server-only, transient): the preamble prepended to both
+   * prompts, and — when the quiz declares `fragment_files` — the Handlebars template
+   * carrying the inline `{{fragment}}` markers. `parseQuiz` leaves it as authored;
+   * `loadQuiz` renders it into `instructionsPreamble`.
+   */
+  instructions?: string;
+  /**
    * The unresolved document-level fragment block (server-only, transient). `parseQuiz`
-   * leaves it here for `loadQuiz` to fetch + assemble into `fragmentPreamble`; `loadQuiz`
-   * then clears it (`EMPTY_FRAGMENT_BLOCK`) so the resolved preamble is the single source
-   * of truth and no stale block lingers on the loaded quiz.
+   * leaves it here for `loadQuiz` to fetch libraries and render `instructions` into
+   * `instructionsPreamble`; `loadQuiz` then clears it (`EMPTY_FRAGMENT_BLOCK`) so the
+   * resolved preamble is the single source of truth and no stale block lingers.
    */
   fragmentBlock: FragmentBlock;
   /**
-   * The assembled fragment preamble (server-only), prepended to BOTH the grader prompt
-   * and the discussion chat's system prompt. Empty until `loadQuiz` resolves it, and
-   * empty when the quiz declares no fragments. Never reaches the browser (`toPublicQuiz`
-   * drops it, exactly like the per-question `evaluation` prompts).
+   * The rendered quiz-level preamble (server-only), prepended to BOTH the grader prompt
+   * and the discussion chat's system prompt. It is the `instructions` host text with any
+   * inline fragments resolved in place. Empty until `loadQuiz` resolves it, and empty
+   * when the quiz has no `instructions`. Never reaches the browser (`toPublicQuiz` drops
+   * it, exactly like the per-question `evaluation` prompts).
    */
-  fragmentPreamble: string;
+  instructionsPreamble: string;
   questions: QuizQuestion[];
 }
 
@@ -192,10 +200,11 @@ export function parseQuiz(content: string): QuizParseResult {
       discussionInstructions: asString(
         (root.discussion as Record<string, unknown> | undefined)?.instructions,
       ),
-      // The unresolved fragment block is carried through for `loadQuiz` to resolve;
-      // `parseQuiz` leaves the assembled preamble empty (resolution needs the network).
+      // The quiz-level host text + unresolved fragment block are carried through for
+      // `loadQuiz` to render; `parseQuiz` leaves the preamble empty (needs the network).
+      instructions: asString(root.instructions),
       fragmentBlock: readFragmentBlock(root),
-      fragmentPreamble: "",
+      instructionsPreamble: "",
       questions,
     },
   };
@@ -203,9 +212,9 @@ export function parseQuiz(content: string): QuizParseResult {
 
 /**
  * The student-facing projection — strips every server-only field, above all the
- * `evaluation` grading prompts, the `fragmentBlock`, and the assembled
- * `fragmentPreamble`, before anything reaches the browser (it copies only the
- * whitelisted public fields below, so the server-only ones can never leak).
+ * `evaluation` grading prompts, the `instructions` host text, the `fragmentBlock`, and
+ * the rendered `instructionsPreamble`, before anything reaches the browser (it copies
+ * only the whitelisted public fields below, so the server-only ones can never leak).
  */
 export function toPublicQuiz(quiz: Quiz): QuizPublic {
   const questions: QuizQuestionPublic[] = quiz.questions.map((q) => ({

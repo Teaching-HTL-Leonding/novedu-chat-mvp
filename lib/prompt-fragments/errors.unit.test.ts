@@ -8,14 +8,14 @@ describe("formatZodIssues", () => {
       properties: {
         prompt: {
           errors: [],
-          properties: { fragments: { errors: ["Too small: expected >=1 items"] } },
+          properties: { fragment_files: { errors: ["Too small: expected >=1 items"] } },
         },
       },
       items: [null, { errors: ["bad item"] }],
     });
 
     expect(lines).toContain("root problem");
-    expect(lines).toContain("prompt.fragments: Too small: expected >=1 items");
+    expect(lines).toContain("prompt.fragment_files: Too small: expected >=1 items");
     expect(lines).toContain("1: bad item");
   });
 

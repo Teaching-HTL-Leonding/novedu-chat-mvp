@@ -1,8 +1,9 @@
 // Zod 4 schemas for the tutor-definition format. The reusable prompt-fragment
-// schemas (fragment files + the `fragment_files:` / `fragments:` reference shapes)
-// live in `@/lib/prompt-fragments` and are composed into the tutor's `prompt` block
-// here; this file adds only the tutor-specific surface (identity, llm, example
-// questions, tutor_instructions).
+// schema (the `fragment_files:` library-reference shape) lives in
+// `@/lib/prompt-fragments` and is composed into the tutor's `prompt` block here;
+// this file adds only the tutor-specific surface (identity, llm, example questions,
+// tutor_instructions). WHICH fragments the tutor uses is expressed by inline
+// `{{fragment "alias.id" …}}` markers inside `tutor_instructions`, not a list.
 //
 // Every object uses `z.strictObject` so typos in the source YAML (e.g. `prioirty:`
 // or `variabels:`) surface as schema errors instead of silently dropping data.
@@ -15,7 +16,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
-import { FragmentFileRefSchema, FragmentRefSchema } from "@/lib/prompt-fragments";
+import { FragmentFileRefSchema } from "@/lib/prompt-fragments";
 
 /**
  * An example question offered to students on the welcome screen: the `title` is
@@ -82,18 +83,14 @@ export const TutorSchema = z.strictObject({
         .array(FragmentFileRefSchema)
         .default([])
         .meta({ description: "Optional fragment libraries used by this tutor." }),
-      fragments: z
-        .array(FragmentRefSchema)
-        .default([])
-        .meta({ description: "Optional fragments selected from fragment_files." }),
       tutor_instructions: z.string().meta({
         description:
-          "Final tutor-specific system-prompt instructions. For single-file tutors, this can be the whole prompt.",
+          'The tutor\'s system prompt. When any fragment_files are declared this is a Handlebars template: place fragments inline with {{fragment "alias.id" key="v"}} markers (escape a literal {{ as \\{{). For single-file tutors it is the whole prompt.',
       }),
     })
     .meta({
       id: "prompt",
-      description: "The assembled system prompt: fragments plus tutor instructions.",
+      description: "The tutor system prompt: a host template with inline fragment markers.",
     }),
 });
 export type Tutor = z.infer<typeof TutorSchema>;

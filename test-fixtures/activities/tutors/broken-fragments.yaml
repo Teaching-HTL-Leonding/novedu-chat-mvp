@@ -2,7 +2,6 @@ id: broken-fragments
 fragments:
   - id: persona
     version: 1
-    priority: 10
     input_schema:
       type: object
       required:

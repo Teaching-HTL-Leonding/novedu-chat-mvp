@@ -44,9 +44,9 @@ const isAllowed = (relPath: string) => relPath.startsWith(ALLOWED_DIR);
 describe("prompt-fragment isolation invariant", () => {
   it("imports `handlebars` ONLY from files under lib/prompt-fragments/", () => {
     const importers = filesMatching(/from ["']handlebars["']|require\(["']handlebars["']\)/);
-    // Sanity: the two real importers (assemble.ts, fragment.ts) must be present, so a
-    // false-negative regex can't make the guard vacuously pass.
-    expect(importers.length).toBeGreaterThanOrEqual(2);
+    // Sanity: the three real importers (assemble.ts, fragment.ts, host-template.ts) must
+    // be present, so a false-negative regex can't make the guard vacuously pass.
+    expect(importers.length).toBeGreaterThanOrEqual(3);
     const offenders = importers.filter((f) => !isAllowed(f));
     expect(
       offenders,

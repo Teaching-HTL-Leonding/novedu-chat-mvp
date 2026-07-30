@@ -10,11 +10,8 @@ prompt:
   fragment_files:
     - id: frags
       url: "test-fragments-a.yaml"
-  fragments:
-    - file: frags
-      id: persona
-      variables:
-        subject: "images"
   tutor_instructions: |
+    {{fragment "frags.persona" subject="images"}}
+
     When the student attaches an image, describe what you see factually. If they
     ask for the dominant color, answer with a single word.

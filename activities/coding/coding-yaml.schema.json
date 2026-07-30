@@ -30,18 +30,10 @@
         "$ref": "#/$defs/fragmentFileRef"
       }
     },
-    "fragments": {
-      "default": [],
-      "description": "Optional fragments selected from fragment_files. Assembled in priority order and prepended AHEAD of instructions.",
-      "type": "array",
-      "items": {
-        "$ref": "#/$defs/fragmentRef"
-      }
-    },
     "instructions": {
       "type": "string",
       "minLength": 1,
-      "description": "The assistant's system prompt. SERVER-ONLY: never sent to the browser or the coding agent, and appended AFTER the coding tool's own prompt (so the teacher has the final word). Constrain the assistant to what your class has learned."
+      "description": "The assistant's system prompt. SERVER-ONLY: never sent to the browser or the coding agent, and appended AFTER the coding tool's own prompt (so the teacher has the final word). Constrain the assistant to what your class has learned. When any fragment_files are declared it is a Handlebars template: place fragments inline with {{fragment \"alias.id\" …}} markers (escape a literal {{ as \\{{)."
     }
   },
   "required": [
@@ -80,7 +72,8 @@
       "properties": {
         "id": {
           "type": "string",
-          "description": "Local alias for this library, referenced by each fragment's `file`."
+          "pattern": "^[^.]+$",
+          "description": "Local alias for this library, used before the dot in `{{fragment \"alias.id\"}}`. Must not contain a dot."
         },
         "url": {
           "type": "string",
@@ -95,66 +88,6 @@
       ],
       "additionalProperties": false,
       "description": "A reference to a fragment library by alias + URL."
-    },
-    "fragmentRef": {
-      "type": "object",
-      "properties": {
-        "file": {
-          "type": "string",
-          "description": "The alias of the fragment library this fragment is drawn from."
-        },
-        "id": {
-          "type": "string",
-          "description": "Fragment id inside the referenced library."
-        },
-        "variables": {
-          "description": "Literal values passed into the fragment template.",
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "$ref": "#/$defs/variableValue"
-          }
-        },
-        "bind": {
-          "description": "Accepted for compatibility but ignored by the current assembler.",
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "type": "string"
-          }
-        },
-        "required": {
-          "description": "Marker for important fragments. Accepted but not currently enforced.",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "file",
-        "id"
-      ],
-      "additionalProperties": false,
-      "description": "Selects one fragment from a referenced library."
-    },
-    "variableValue": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      ],
-      "description": "A literal variable value: a string, a boolean, or an array of strings."
     }
   }
 }

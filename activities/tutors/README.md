@@ -18,22 +18,23 @@ do.
 
 Instead of writing one long prompt by hand, you assemble it from small, reusable
 **fragments**. Each fragment is a self-contained piece of guidance (a persona, a
-set of rules, a safety policy, a topic description …). A **tutor file** picks the
-fragments it wants, fills in their blanks, and the system builds the final prompt
-for you.
+set of rules, a safety policy, a topic description …). You write your tutor's
+instructions as normal and drop a short **marker** wherever you want a fragment to
+appear, filling in that fragment's blanks right there. The system renders the
+markers in place to build the final prompt.
 
 ```
-fragment library (reusable pieces)        tutor file (your selection)
-┌───────────────────────────┐             ┌─────────────────────────────┐
-│ persona                   │  ◀────────  │ use "persona"               │
-│ ground_rules              │  ◀────────  │   subject = "basic arithmetic"
-│ safety                    │             │ use "ground_rules"          │
-│ …                         │             │   rules = […]               │
-└───────────────────────────┘             └─────────────────────────────┘
+fragment library (reusable pieces)        tutor file (your text + markers)
+┌───────────────────────────┐             ┌───────────────────────────────────────┐
+│ persona                   │  ◀────────  │ {{fragment "lib.persona"              │
+│ ground_rules              │             │            subject="arithmetic"}}     │
+│ safety                    │  ◀────────  │ …your own instructions…               │
+│ …                         │             │ {{fragment "lib.ground_rules" …}}     │
+└───────────────────────────┘             └───────────────────────────────────────┘
                        │                                 │
                        └──────────────┬──────────────────┘
                                       ▼
-                          assembled system prompt
+              tutor_instructions rendered as one template → system prompt
 ```
 
 This means policies like a Socratic teaching style or a child-safety rule are
@@ -46,7 +47,7 @@ written **once** in a fragment library and reused by many tutors.
 | File                 | What it is                                                         | Who writes it                        |
 | -------------------- | ------------------------------------------------------------------ | ------------------------------------ |
 | **Fragment library** | A collection of reusable prompt pieces (fragments).                | Usually shared/maintained centrally. |
-| **Tutor file**       | Selects fragments, supplies their values, adds final instructions. | You, per subject.                    |
+| **Tutor file**       | Writes the instructions and drops in fragment markers with their values. | You, per subject.              |
 
 Both are plain YAML. A fragment library is referenced by a tutor file through a
 public URL (see [Hosting](#9-hosting-your-files)).
@@ -61,8 +62,6 @@ A tiny fragment library, `simple-fragments.yaml`:
 id: simple-fragments
 fragments:
   - id: persona
-    version: 1
-    priority: 100
     input_schema:
       type: object
       required:
@@ -70,7 +69,7 @@ fragments:
       properties:
         subject:
           type: string
-        greeting: # optional — a default is used when the tutor omits it
+        greeting: # optional — a default is used when the marker omits it
           type: string
           default: "Hi there!"
     content: |
@@ -81,8 +80,6 @@ fragments:
       Explain ideas simply and check the student's understanding with short questions.
 
   - id: ground_rules
-    version: 1
-    priority: 200
     input_schema:
       type: object
       required:
@@ -99,7 +96,8 @@ fragments:
       {{/each}}
 ```
 
-A tutor file, `simple-tutor.yaml`, that uses it:
+A tutor file, `simple-tutor.yaml`, that uses it — the fragments are placed by
+**markers** inside `tutor_instructions`:
 
 ```yaml
 id: simple-math-tutor
@@ -109,28 +107,25 @@ llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 prompt:
   fragment_files:
-    - id: simple_fragments
+    - id: simple # the alias (no dots) you use in markers
       url: "simple-fragments.yaml" # relative — sits next to this tutor file
 
-  fragments:
-    - file: simple_fragments
-      id: persona
-      variables:
-        subject: "basic arithmetic"
-        # `greeting` is omitted on purpose, so its default ("Hi there!") is used.
-
-    - file: simple_fragments
-      id: ground_rules
-      variables:
-        rules:
-          - "Never give the final answer immediately."
-          - "Encourage the student to try each step themselves."
-          - "Keep explanations short and friendly."
-
   tutor_instructions: |
+    {{fragment "simple.persona" subject="basic arithmetic"}}
+
+    {{fragment "simple.ground_rules" rules=(array
+      "Never give the final answer immediately."
+      "Encourage the student to try each step themselves."
+      "Keep explanations short and friendly.")}}
+
     Always stay positive and patient. If the student is stuck, give a small hint
     rather than the full solution.
 ```
+
+Each `{{fragment "simple.persona" …}}` marker names the library **alias** and the
+fragment **id** joined by a dot (`simple.persona`), and supplies that fragment's
+values as arguments right there. `greeting` is left out on purpose, so its default
+(`"Hi there!"`) is used.
 
 The assembled system prompt becomes:
 
@@ -205,8 +200,7 @@ llm:
   imageInput: false # optional: omit for default true; set false to disable image uploads
 prompt:
   fragment_files: [...] # optional: the libraries you pull fragments from
-  fragments: [...] # optional: the fragments you include, in order
-  tutor_instructions: | # your own final instructions (free text)
+  tutor_instructions: | # your instructions, with inline {{fragment ...}} markers
     ...
 ```
 
@@ -276,11 +270,14 @@ directly in `prompt.tutor_instructions`.
 
 ```yaml
 fragment_files:
-  - id: simple_fragments # the alias (you choose this)
+  - id: simple # the alias (you choose this)
     url: "simple-fragments.yaml" # the library file (relative to this tutor)
 ```
 
-- `id` — the alias used by your fragment entries. Pick something readable.
+- `id` — the alias your markers use (`{{fragment "simple.<id>" …}}`). Pick
+  something readable. An alias **must not contain a dot** — the marker splits the
+  reference at the first dot, so the alias is everything before it and the fragment
+  id everything after.
 - `url` — where the library file lives. Two forms are allowed:
   - **Absolute** — a full `http(s)://…` link (e.g. a "raw" GitHub URL). Use this
     when the library lives somewhere else than your tutor file.
@@ -296,39 +293,56 @@ fragment_files:
   [Hosting](#9-hosting-your-files)). Only `http(s)` is allowed — an absolute URL
   with any other scheme (e.g. `ftp:`) is rejected.
 
-### `prompt.fragments`
+### Placing fragments with markers
 
-Optional. The ordered list of fragments to include. Each entry says **which**
-fragment and supplies its **values**.
+You do not list fragments in a separate field. Instead you write a **marker**
+directly in `tutor_instructions` at the exact spot where the fragment's text
+should appear:
 
-Omit this field when the tutor does not use fragments.
-
-```yaml
-fragments:
-  - file: simple_fragments # must match an alias from fragment_files
-    id: persona # the fragment's id inside that library
-    variables: # values for the fragment's inputs
-      subject: "basic arithmetic"
+```
+{{fragment "<alias>.<fragment-id>" key="text" flag=true items=(array "a" "b")}}
 ```
 
-- `file` — the alias of the library (from `fragment_files`).
-- `id` — the fragment's `id` within that library.
-- `variables` — _(optional)_ the values the fragment needs (see
-  [Inputs and variables](#7-inputs-and-variables)).
-- `required` — _(optional)_ a flag you can set to `true` to mark a fragment as
-  important to keep. It is accepted but does not change validation today.
+- **`"<alias>.<fragment-id>"`** — a **quoted** reference: the library alias (from
+  `fragment_files`), a dot, then the fragment's `id` inside that library. It is
+  split at the **first** dot, so the alias can't contain a dot but a fragment id
+  may. The reference must be a plain quoted string (`FRAGMENT_REF_NOT_LITERAL` if
+  you leave it out or write it unquoted).
+- **The rest are the fragment's values** — one argument per input:
+  - a single line of text as `key="text"`,
+  - a `true`/`false` flag as `flag=true`,
+  - a list of text items as `items=(array "first" "second")`.
+- Any input you omit falls back to its `default` from the fragment's
+  `input_schema` (see [Inputs and variables](#7-inputs-and-variables)).
 
-> The order you list fragments in does **not** decide the final order — `priority`
-> does (see [How the prompt is assembled](#8-how-the-prompt-is-assembled)). It is
-> good practice to list them in priority order anyway, for readability.
+You may place the **same fragment more than once** with different arguments — each
+marker is independent. Put a marker on its own line; the blank lines around it are
+kept as written.
+
+```yaml
+tutor_instructions: |
+  {{fragment "simple.persona" subject="basic arithmetic"}}
+
+  Always stay positive and patient.
+
+  {{fragment "simple.ground_rules" rules=(array
+    "Never give the final answer immediately."
+    "Keep explanations short and friendly.")}}
+```
+
+If you need the literal characters `{{` in your text (not a marker), escape them as
+`\{{`.
 
 ### `prompt.tutor_instructions`
 
-Free-form text appended **after** all fragments. This is where you put the
-concrete, tutor-specific framing in your own words.
+Your instructions in your own words, **with the `{{fragment …}}` markers placed
+wherever you want each fragment**. There is no separate list and no ordering knob:
+a fragment appears exactly where its marker sits, in reading order.
 
-For a one-off tutor whose instructions are unlikely to be reused, it is fine to
-put the whole prompt here and omit `fragment_files` and `fragments`.
+For a one-off tutor that uses no fragments, just write plain instructions and omit
+`fragment_files` — a tutor with **no** `fragment_files` is never treated as a
+template, so any `{{…}}` in it is kept verbatim (handy when your instructions
+mention Handlebars as example text).
 
 ---
 
@@ -340,8 +354,7 @@ A fragment library has an `id` and a list of `fragments`:
 id: simple-fragments
 fragments:
   - id: persona # unique within this library
-    version: 1 # a number you bump when you change it
-    priority: 100 # decides assembly order (lower = earlier)
+    version: 1 # optional: a number you bump when you change it
     input_schema: { ... } # optional: the inputs this fragment expects
     classification: { ... } # optional: metadata, e.g. for safety pieces
     content: | # the prompt text (a Handlebars template)
@@ -350,10 +363,9 @@ fragments:
 
 Field by field:
 
-- `id` — unique name within the library; this is what a tutor refers to.
-- `version` — a number; increase it when you change the fragment meaningfully.
-- `priority` — a number controlling order in the final prompt. **Lower numbers
-  come first.** Keep priorities unique across all fragments a tutor uses.
+- `id` — unique name within the library; this is what a marker refers to.
+- `version` — _(optional)_ a number; increase it when you change the fragment
+  meaningfully. It is accepted but not used by anything today.
 - `input_schema` — _(optional)_ declares the variables the fragment needs. Omit
   it for fragments that take no inputs.
 - `classification` — _(optional)_ metadata. For example a safety fragment may use
@@ -364,8 +376,8 @@ Field by field:
 
 ## 7. Inputs and variables
 
-A fragment declares what it needs with `input_schema`, and a tutor supplies those
-values with `variables`. They must agree.
+A fragment declares what it needs with `input_schema`, and a **marker** supplies
+those values as arguments. They must agree.
 
 ### Declaring inputs (`input_schema`)
 
@@ -384,19 +396,19 @@ input_schema:
         type: string # …of text items
 ```
 
-The supported value types are:
+The supported value types, and how you pass each as a marker argument:
 
-| `type`                | Meaning              | Example value           |
-| --------------------- | -------------------- | ----------------------- |
-| `string`              | A piece of text      | `subject: "fractions"`  |
-| `boolean`             | `true` or `false`    | `allow_solution: false` |
-| `array` (of `string`) | A list of text items | `rules: ["…", "…"]`     |
+| `type`                | Meaning              | Marker argument             |
+| --------------------- | -------------------- | --------------------------- |
+| `string`              | A piece of text      | `subject="fractions"`       |
+| `boolean`             | `true` or `false`    | `allow_solution=false`      |
+| `array` (of `string`) | A list of text items | `rules=(array "…" "…")`     |
 
 ### Optional inputs with a `default`
 
-An input that is **not** in `required` is optional. If its `content` references it, the
-tutor must still supply it — unless the property declares a `default`, which is used
-whenever the tutor omits the value:
+An input that is **not** in `required` is optional. If its `content` references it, a
+marker must still supply it — unless the property declares a `default`, which is used
+whenever the marker omits the value:
 
 ```yaml
 input_schema:
@@ -416,30 +428,31 @@ input_schema:
 
 - A `default` must match its property's `type` (a text default on a `boolean` property
   is rejected).
-- A supplied `variables` value always wins over the default.
+- A value supplied on the marker always wins over the default.
 - Putting a `default` on a `required` input is pointless — the value must be supplied
   anyway, so the default can never apply. The validator flags this with a warning.
 
-### Supplying values (`variables`)
+### Supplying values (marker arguments)
+
+You pass values as arguments on the marker, right where you place the fragment:
 
 ```yaml
-variables:
-  subject: "basic arithmetic"
-  rules:
-    - "Never give the final answer immediately."
-    - "Keep explanations short and friendly."
+tutor_instructions: |
+  {{fragment "simple.persona" subject="basic arithmetic"}}
+
+  {{fragment "simple.ground_rules" rules=(array
+    "Never give the final answer immediately."
+    "Keep explanations short and friendly.")}}
 ```
 
-Rules the validator enforces:
+The **effective** values for a placement are the fragment's `input_schema` defaults
+overridden by that marker's arguments. Rules the validator enforces **per marker**:
 
-- Every input listed under `required` must be present in `variables`.
-- Each value's type must match what `input_schema` declares.
-- Supplying a value the fragment doesn't declare is allowed but produces a
+- Every input listed under `required` must be supplied by the marker (or have a
+  `default`).
+- Each argument's type must match what `input_schema` declares.
+- Supplying an argument the fragment doesn't declare is allowed but produces a
   **warning** (it usually means a typo).
-
-> **Note:** Only literal `variables` are supported. An older `bind:` mechanism
-> (for runtime references) is accepted but **ignored** — always provide concrete
-> values via `variables`.
 
 ---
 
@@ -486,14 +499,19 @@ Notes:
 
 ## 8. How the prompt is assembled
 
-1. Each included fragment's `content` is rendered with its supplied `variables`.
-2. Rendered fragments are ordered by **`priority`, ascending** (lowest first).
-3. `tutor_instructions` is appended **last**. If the tutor uses no fragments, this
-   is the whole system prompt.
-4. The pieces are joined with blank lines into the final system prompt.
+1. If the tutor declares **no** `fragment_files`, `tutor_instructions` is used
+   **exactly as written** — no template processing at all — and that is the whole
+   system prompt.
+2. Otherwise `tutor_instructions` is treated as a template: each `{{fragment …}}`
+   marker is replaced, **in place**, by that fragment's `content` rendered with the
+   placement's effective values (the fragment's defaults overridden by the marker's
+   arguments).
+3. Everything else — your own text and the blank lines around the markers — is kept
+   as written. The result is the final system prompt.
 
-Because order is driven by `priority`, two fragments a tutor uses must not share
-the same priority — otherwise the order would be ambiguous and validation fails.
+There is **no ordering knob** and no priority: a fragment appears exactly where you
+place its marker, in reading order. Place the same fragment twice and it renders
+twice.
 
 ---
 
@@ -539,8 +557,8 @@ The validator checks, in order:
 1. The file is valid YAML.
 2. The tutor file has the correct structure (no missing or misspelled fields).
 3. Every referenced fragment library loads and has the correct structure.
-4. Every fragment reference resolves and every required input is supplied with the
-   right type.
+4. Every `{{fragment …}}` marker parses, resolves to a real fragment, and supplies
+   every required input with the right type.
 5. **Every fragment in every referenced library renders** — its `content` template
    is checked against its own declared inputs, even fragments this tutor doesn't
    use. A template bug anywhere in a library you reference fails validation.
@@ -567,13 +585,15 @@ syntax errors surface before any tutor references the library.
 | `YAML_PARSE_ERROR`                                  | The file isn't valid YAML.                                     | Check indentation and quotes.                    |
 | `TUTOR_SCHEMA_ERROR` / `FRAGMENT_FILE_SCHEMA_ERROR` | A field is missing, has the wrong type, or is misspelled.      | Compare against this guide; fix the named field. |
 | `FETCH_FAILED`                                      | A URL couldn't be loaded.                                      | Check the URL is public and pushed.              |
-| `UNKNOWN_FRAGMENT_FILE_ALIAS`                       | A fragment's `file:` doesn't match any `fragment_files` alias. | Use the exact alias you declared.                |
-| `FRAGMENT_NOT_FOUND`                                | The `id:` isn't in that library.                               | Check the fragment's spelling/existence.         |
-| `MISSING_REQUIRED_VARIABLE`                         | A required input wasn't supplied.                              | Add it under `variables`.                        |
-| `VARIABLE_TYPE_MISMATCH`                            | A value's type is wrong (e.g. text where a list is expected).  | Provide the declared type.                       |
+| `HOST_TEMPLATE_PARSE_ERROR`                         | A marker is malformed, or a literal `{{` was not escaped as `\{{`. | Fix the marker (the message gives a line:column), or escape the stray `{{`. |
+| `FRAGMENT_REF_NOT_LITERAL`                          | A `{{fragment}}` has no reference, or the reference isn't a quoted string. | Write it as `{{fragment "alias.id" …}}`.         |
+| `UNKNOWN_FRAGMENT_FILE_ALIAS`                       | A marker's alias (before the dot) doesn't match any `fragment_files` alias. | Use the exact alias you declared.                |
+| `FRAGMENT_NOT_FOUND`                                | The fragment id (after the dot) isn't in that library.         | Check the fragment's spelling/existence.         |
+| `MISSING_REQUIRED_VARIABLE`                         | A required input wasn't supplied by the marker.                | Add it as a marker argument.                     |
+| `VARIABLE_TYPE_MISMATCH`                            | An argument's type is wrong (e.g. text where a list is expected). | Provide the declared type.                       |
 | `FRAGMENT_TEMPLATE_ERROR`                           | A fragment's `content` uses a `{{variable}}` it never declares, or has a Handlebars syntax error. | Declare the variable in `input_schema`, fix the typo, or correct the template. |
-| `DUPLICATE_PRIORITY`                                | Two included fragments share a priority.                       | Give each a distinct `priority`.                 |
-| `UNDECLARED_VARIABLE` _(warning)_                   | You supplied a value the fragment doesn't use.                 | Usually a typo — remove or correct it.           |
+| `UNUSED_FRAGMENT_FILE` _(warning)_                  | A declared library isn't used by any marker.                   | Remove the unused `fragment_files` entry, or add a marker that uses it. |
+| `UNDECLARED_VARIABLE` _(warning)_                   | A marker passes an argument the fragment doesn't use.          | Usually a typo — remove or correct it.           |
 | `REQUIRED_PROPERTY_HAS_DEFAULT` _(warning)_         | A `required` input also declares a `default` it can never use. | Drop the `default`, or remove it from `required`. |
 
 ---
@@ -581,8 +601,11 @@ syntax errors surface before any tutor references the library.
 ## 11. Checklist before you publish
 
 - [ ] Each fragment has a **unique** `id` within its library.
-- [ ] Priorities are **unique** across the fragments a tutor uses.
-- [ ] Every `required` input is supplied with the **correct type**.
-- [ ] Every `{{variable}}` used in `content` is declared and either supplied or has a `default`.
+- [ ] Every `fragment_files` alias is **dot-free** and used by at least one marker.
+- [ ] Every `{{fragment "alias.id" …}}` marker is well-formed and supplies each
+      `required` input with the **correct type**.
+- [ ] Every `{{variable}}` used in a fragment's `content` is declared and either
+      supplied or has a `default`.
+- [ ] Any literal `{{` in your instructions is escaped as `\{{`.
 - [ ] All `url`s are **public** and **pushed** (relative refs resolve against the tutor's URL).
 - [ ] You validated the tutor and the prompt looks right.

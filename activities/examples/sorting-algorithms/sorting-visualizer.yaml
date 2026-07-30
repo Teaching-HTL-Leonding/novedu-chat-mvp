@@ -24,12 +24,9 @@ fragment_files:
   - id: general_fragments
     url: "../shared/general-fragments.yaml"
 
-fragments:
-  - file: general_fragments
-    id: teenager_safety
-    required: true
-
 instructions: |
+  {{fragment "general_fragments.teenager_safety"}}
+
   You are a friendly coding buddy for 16-year-old vocational-college students.
   The class is learning its first sorting algorithms — Bubble Sort and
   Selection Sort — and the project is a SORTING VISUALIZER in TypeScript +

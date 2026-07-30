@@ -7,9 +7,7 @@ llm:
 fragment_files:
   - id: shared
     url: ../tutors/test-fragments-a.yaml
-fragments:
-  - file: shared
-    id: persona
-    variables:
-      subject: essay writing
-instructions: "Read the student's draft and coach it, one suggestion at a time."
+instructions: |
+  {{fragment "shared.persona" subject="essay writing"}}
+
+  Read the student's draft and coach it, one suggestion at a time.

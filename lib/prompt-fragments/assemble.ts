@@ -1,41 +1,32 @@
-// Handlebars assembly of the final system prompt. Pure: takes the resolved,
-// already-validated render plan and produces the prompt string.
+// Handlebars rendering of ONE fragment's `content` against its resolved variables.
+// Pure: no network, no YAML. This is the default Handlebars instance — it carries NO
+// `fragment` / `array` helpers (those live only in the isolated host-template
+// instance), so a fragment whose content tries to call `{{fragment}}` itself fails
+// closed under strict mode. Nesting fragments is out of scope by design.
 
 import Handlebars from "handlebars";
-import type { ResolvedFragment } from "./consistency";
+import type { VariableValue } from "./schemas";
 
 // `noEscape`: the output is a markdown/LLM prompt, not HTML — ASCII diagrams
 //   (`<-`, `->`), ampersands, and quotes must pass through verbatim.
 // `strict`: referencing an undeclared variable throws instead of silently
-//   rendering empty. Consistency checking already guarantees required inputs, so
-//   a throw here is a backstop that the caller surfaces as `ASSEMBLY_ERROR`.
+//   rendering empty. Placement checking already guarantees required inputs, so a
+//   throw here is a backstop the caller surfaces as `ASSEMBLY_ERROR`.
 // Exported so the standalone fragment check (`fragment.ts`) renders with the EXACT
 // same semantics as real assembly — that identity is what makes "valid as a
-// standalone fragment" mean "will render inside a tutor".
+// standalone fragment" mean "will render inside an activity".
 export const COMPILE_OPTIONS = { strict: true, noEscape: true } as const;
 
 /**
- * Render each fragment in priority order and, when provided, append the caller's
- * trailing instructions last (they carry no priority, so "after everything" is the
- * only deterministic position — the exact role `tutor_instructions` plays for a
- * tutor, and the activity frame / `instructions` play for quiz / writing / coding).
- * May throw if a template references a missing variable.
- *
- * `trailingInstructions` is optional so a consumer can assemble a fragment-only
- * PREAMBLE (quiz / writing / coding) and concatenate its own frame afterwards. An
- * empty plan with no trailing text renders to the empty string (so an activity that
- * declares no fragments gets no stray whitespace); every non-empty result ends in a
- * single trailing newline, byte-identical to the historic tutor output.
+ * Compile and render a single fragment's `content` with the merged variables. Shared
+ * by the host-template `fragment` helper (real render) so the produced text is
+ * byte-identical to what the standalone fragment check exercises. May throw if the
+ * template references a variable not in `variables` (strict mode).
  */
-export function assembleSystemPrompt(
-  plan: ResolvedFragment[],
-  trailingInstructions?: string,
+export function renderFragmentContent(
+  content: string,
+  variables: Record<string, VariableValue>,
 ): string {
-  const parts = plan.map((fragment) => {
-    const template = Handlebars.compile(fragment.content, COMPILE_OPTIONS);
-    return template(fragment.variables).trimEnd();
-  });
-  if (trailingInstructions !== undefined) parts.push(trailingInstructions.trimEnd());
-  if (parts.length === 0) return "";
-  return `${parts.join("\n\n")}\n`;
+  const template = Handlebars.compile(content, COMPILE_OPTIONS);
+  return template(variables);
 }

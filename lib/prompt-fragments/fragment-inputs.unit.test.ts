@@ -12,7 +12,6 @@ const file = FragmentFileSchema.parse({
     {
       id: "persona",
       version: 1,
-      priority: 100,
       input_schema: {
         type: "object",
         required: ["subject"],
@@ -25,8 +24,6 @@ const file = FragmentFileSchema.parse({
     },
     {
       id: "no-vars",
-      version: 1,
-      priority: 200,
       content: "static text",
     },
   ],

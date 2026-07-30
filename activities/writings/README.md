@@ -61,7 +61,7 @@ placeholder: "" # optional starter text; empty = blank page
 This repository ships a complete example you can copy from:
 [`../examples/review-writing/restaurant-review-letter.yaml`](../examples/review-writing/restaurant-review-letter.yaml)
 — a feedback letter to a restaurant, with a formal-letter scaffold as
-`placeholder` and priority-ordered coaching criteria.
+`placeholder` and detailed coaching criteria.
 
 ---
 
@@ -162,34 +162,36 @@ for a thorough example.
 > even if `instructions` asked it to rewrite, it physically cannot. Lean into that:
 > tell it to give directions and guiding questions, not finished sentences.
 
-### `fragment_files` and `fragments` (reusable prompt pieces)
+### `fragment_files` and reusable prompt pieces
 
 Optional. A writing activity may pull in **prompt fragments** — the same reusable,
 parameterized pieces tutors use (a persona, a safety policy, a set of ground rules).
-Declare them at the **top level** of the writing file, exactly as a tutor declares
-them under `prompt:`:
+Declare the libraries under a **top-level `fragment_files:`** and place the fragments
+with inline `{{fragment "alias.id" …}}` markers directly in your `instructions`:
 
 ```yaml
 fragment_files:
-  - id: general_fragments # the alias you refer to below
+  - id: general # the alias (no dots) you use in markers
     url: "../shared/general-fragments.yaml" # relative to this writing file, or a full http(s) URL
 
-fragments:
-  - file: general_fragments
-    id: teenager_safety
-  - file: general_fragments
-    id: language_policy
-    variables:
-      natural_language: "English — simple and clear, suitable for B1–B2 learners"
-      code_language: "English"
+instructions: |
+  {{fragment "general.teenager_safety"}}
+
+  You are an encouraging writing coach. Read the current draft with the
+  `getCurrentText` tool before giving feedback, and advise rather than rewrite.
+
+  {{fragment "general.language_policy"
+    natural_language="English — simple and clear, suitable for B1–B2 learners"
+    code_language="English"}}
 ```
 
-The fragments are assembled once (in `priority` order) and **prepended ahead of** your
-`instructions` — the fragments come first, your coach's system prompt follows. Omit
-both fields when the activity uses no fragments.
+Each fragment renders exactly where its marker sits inside `instructions` — there is
+no separate prepend step and no ordering knob. A writing file with **no**
+`fragment_files` keeps its `instructions` exactly as written (any `{{…}}` in it stays
+literal). Omit `fragment_files` when the activity uses no fragments.
 
-The full fragment mechanics — fragment libraries, `input_schema`, `variables`,
-`priority`, and how a shared library is written — are documented in the tutor guide,
+The full fragment mechanics — fragment libraries, `input_schema`, defaults, and the
+`{{fragment …}}` marker syntax — are documented in the tutor guide,
 [`../tutors/README.md`](../tutors/README.md). The shared library
 [`../examples/shared/general-fragments.yaml`](../examples/shared/general-fragments.yaml)
 is reused across activity kinds.

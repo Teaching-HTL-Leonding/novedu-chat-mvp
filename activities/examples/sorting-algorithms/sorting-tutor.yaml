@@ -38,33 +38,15 @@ prompt:
     - id: general_fragments
       url: "../shared/general-fragments.yaml"
 
-  fragments:
-    - file: general_fragments
-      id: socratic_tutor
-
-    - file: general_fragments
-      id: topic_limits
-      variables:
-        allowed_topics:
-          - "Bubble Sort: idea, passes, neighbor comparisons, swaps, early exit when no swap happens"
-          - "Selection Sort: idea, finding the minimum in the unsorted part, swapping it to the front"
-          - "comparing the two algorithms: number of comparisons and swaps, when each is preferable"
-          - "implementing both algorithms in TypeScript: arrays, for/while loops, if conditions, functions, swapping two array elements"
-          - "visualizing sorting with p5.js: drawing an array as bars of different heights, coloring the bars that are being compared or swapped, animating one sorting step per draw() frame"
-          - "the p5.js basics needed for that visualization: setup/draw, the coordinate system, rect, fill, text, mouse and keyboard events to start or step through the sorting"
-          - "tracing and debugging small example arrays by hand"
-
-    - file: general_fragments
-      id: language_policy
-      variables:
-        natural_language: "German"
-        code_language: "English (TypeScript and p5.js terms)"
-
-    - file: general_fragments
-      id: teenager_safety
-      required: true
-
   tutor_instructions: |
+    {{fragment "general_fragments.socratic_tutor"}}
+
+    {{fragment "general_fragments.topic_limits" allowed_topics=(array "Bubble Sort: idea, passes, neighbor comparisons, swaps, early exit when no swap happens" "Selection Sort: idea, finding the minimum in the unsorted part, swapping it to the front" "comparing the two algorithms: number of comparisons and swaps, when each is preferable" "implementing both algorithms in TypeScript: arrays, for/while loops, if conditions, functions, swapping two array elements" "visualizing sorting with p5.js: drawing an array as bars of different heights, coloring the bars that are being compared or swapped, animating one sorting step per draw() frame" "the p5.js basics needed for that visualization: setup/draw, the coordinate system, rect, fill, text, mouse and keyboard events to start or step through the sorting" "tracing and debugging small example arrays by hand")}}
+
+    {{fragment "general_fragments.language_policy" natural_language="German" code_language="English (TypeScript and p5.js terms)"}}
+
+    {{fragment "general_fragments.teenager_safety"}}
+
     You are a tutor for 16-year-old students at a vocational college. They are
     learning their first sorting algorithms: Bubble Sort and Selection Sort.
 

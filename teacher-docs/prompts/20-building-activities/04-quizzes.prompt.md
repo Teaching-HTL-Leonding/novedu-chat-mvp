@@ -13,13 +13,15 @@ Cover:
 - Options: shuffling the order, letting students attach a photo of their work (needs a
   vision-capable model), and an optional follow-up discussion.
 - Walk a real example (the sorting-algorithms sample quiz).
-- Reusing fragments: a quiz can pull in shared prompt fragments via a top-level
-  `fragment_files:` / `fragments:` block; they apply to both grading and the follow-up
-  discussion. Short section; the reusable-fragments chapter has the detail.
+- Reusing fragments: a quiz declares libraries under a top-level `fragment_files:` and
+  places fragments with inline `{{fragment "alias.id" …}}` markers in a top-level
+  `instructions:` field; that text applies to both grading and the follow-up discussion.
+  Short section; the reusable-fragments chapter has the detail.
 
 Get right:
-- Fragments come before the quiz's own text, and they shape grading AND discussion
-  alike.
+- A quiz's fragment markers live in a top-level `instructions:` field (separate from
+  `discussion.instructions`), and that text shapes grading AND discussion alike. There
+  is no `fragments:` list and no priority; a fragment lands where its marker sits.
 - The grading guide is server-only and never shown to students, so it can state the
   expected answer.
 - Answers are open-ended; there is no multiple choice.

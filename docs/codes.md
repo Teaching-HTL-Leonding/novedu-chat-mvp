@@ -404,19 +404,23 @@ in-page discussion live in `app/[code]/_quiz/`.
   (photo answers, below), optional `discussion.instructions`, and
   `questions[]` each with `id`, optional `title`, `question` (markdown), an
   optional content `image` (below), an optional `imageInput` override, and
-  `evaluation` (the SERVER-ONLY grading prompt). It may also carry the
-  document-level **fragment block** (top-level `fragment_files`/`fragments`, the
-  shared prompt-fragment core — `docs/prompt-fragments.md`).
-- **Fragments feed BOTH grader and discussion.** The block is resolved **once** at
-  load (`loadQuiz`, `lib/quiz-fetch.ts`, `validateLibraries: false` — the hot path)
-  into a server-only `Quiz.fragmentPreamble` (fragments in `priority` order; a fetch
-  / consistency / assembly failure fails the load closed). `buildGradingPrompt`
+  `evaluation` (the SERVER-ONLY grading prompt). It may also carry an optional
+  top-level **`instructions`** host text (rendered once and prepended to both the
+  grader and the discussion) with inline `{{fragment "alias.id" …}}` markers, plus
+  the **`fragment_files:`** declarations the markers draw from (the shared
+  prompt-fragment core — `docs/prompt-fragments.md`).
+- **The rendered `instructions` feed BOTH grader and discussion.** The top-level
+  `instructions` host text is rendered **once** at load (`loadQuiz`,
+  `lib/quiz-fetch.ts`, `validateLibraries: false` — the hot path;
+  `assembleFragmentPrompt` expands each inline `{{fragment}}` marker in textual
+  order) into a server-only `Quiz.instructionsPreamble` (a fetch / consistency /
+  assembly failure fails the load closed). `buildGradingPrompt`
   (`lib/quiz-actions.ts`) prepends it ahead of the fixed grading frame + the
   question's `evaluation`, and `buildDiscussionInstructions`
   (`lib/code-modules/quiz.ts`) prepends it ahead of the discussion system prompt —
   so a shared safety/persona fragment governs both. `evaluation` stays a plain
   per-question string and `discussion.instructions` a plain string;
-  `fragmentPreamble` is server-only and `toPublicQuiz` never copies it.
+  `instructionsPreamble` is server-only and `toPublicQuiz` never copies it.
 - **An optional question `image`** is an
   `ImageRef` from the **image subsystem** (`docs/images.md`) — it carries no
   secret (unlike `evaluation`), so it survives `toPublicQuiz` and is resolved

@@ -57,7 +57,6 @@ export { parseYaml } from "@/lib/prompt-fragments/parse";
 export type {
   Fragment,
   FragmentFile,
-  FragmentRef,
   InputSchema,
   VariableValue,
 } from "@/lib/prompt-fragments/schemas";

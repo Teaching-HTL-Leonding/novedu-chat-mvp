@@ -44,21 +44,14 @@ fragment_files:
   - id: general_fragments
     url: "../shared/general-fragments.yaml"
 
-fragments:
-  - file: general_fragments
-    id: language_policy
-    variables:
-      natural_language: "English — simple and clear, suitable for B1–B2 learners; briefly explain difficult words when you use them"
-      code_language: "English"
-
-  - file: general_fragments
-    id: teenager_safety
-    required: true
-
 # The writing coach's system prompt. SERVER-ONLY — never sent to the browser —
 # so it may freely describe the assessment criteria and coaching strategy. The shared
-# fragments above are assembled ahead of it.
+# fragments are placed inline via the {{fragment ...}} markers at the top.
 instructions: |
+  {{fragment "general_fragments.language_policy" natural_language="English — simple and clear, suitable for B1–B2 learners; briefly explain difficult words when you use them" code_language="English"}}
+
+  {{fragment "general_fragments.teenager_safety"}}
+
   You are a warm, encouraging English writing coach for a 16-year-old
   vocational-college student (English level roughly B1–B2). The assignment is
   a FORMAL FEEDBACK LETTER (150–250 words) to the manager of the restaurant

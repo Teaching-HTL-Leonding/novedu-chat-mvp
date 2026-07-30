@@ -105,19 +105,18 @@ After seeing their feedback, a student can open a short discussion chat about th
 
 ## Reusing fragments in a quiz
 
-A quiz can pull in shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare them at the top level of the quiz file, next to `id` and `questions`:
+A quiz can place shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare the library under a top-level `fragment_files:`, then place each fragment with a marker in a top-level `instructions:` field:
 
 ```yaml
 fragment_files:
   - id: general_fragments
     url: "../shared/general-fragments.yaml"
 
-fragments:
-  - file: general_fragments
-    id: teenager_safety
+instructions: |
+  {{fragment "general_fragments.teenager_safety"}}
 ```
 
-In a quiz the fragments reach further than in other activities: they come before your own text and apply **both** to how answers are graded **and** to the follow-up discussion chat, so a shared safety or persona rule shapes grading and conversation alike. The chapter on reusable fragments covers writing a library and supplying values.
+A quiz's `instructions` field reaches further than the instructions of other activities: it applies **both** to how answers are graded **and** to the follow-up discussion chat, so a shared safety or persona rule shapes grading and conversation alike. It is a separate field from `discussion.instructions`, which only steers the discussion. The chapter on reusable fragments covers writing a library and supplying values.
 
 ## A real example: the sorting-algorithms quiz
 

@@ -1,14 +1,15 @@
 // Zod 4 schemas for the reusable prompt-fragment format: the remote fragment
 // FILES (libraries of reusable, parameterized templates) and the document-level
-// references an activity makes to them (`fragment_files:` + `fragments:`).
+// declaration an activity makes to pull them in (`fragment_files:` only).
 //
 // These are activity-agnostic: tutor / quiz / writing / coding all compose the
-// same `FragmentFileRefSchema` / `FragmentRefSchema` into their own top-level
-// schema, and the loader (`load.ts`) + consistency/assembly stages consume the
-// same `FragmentFile` / `Fragment` shapes. Every object uses `z.strictObject` so
-// typos in the source YAML (e.g. `prioirty:` or `variabels:`) surface as schema
-// errors instead of silently dropping data and causing confusing downstream
-// consistency failures.
+// same `FragmentFileRefSchema` into their own top-level schema, and the loader
+// (`load.ts`) + placement/assembly stages consume the same `FragmentFile` /
+// `Fragment` shapes. WHICH fragments an activity uses, and with which variables,
+// is expressed by inline `{{fragment "alias.id" …}}` markers in the host text — NOT
+// a document-level `fragments:` list (deleted). Every object uses `z.strictObject`
+// so typos in the source YAML (e.g. `variabels:`) surface as schema errors instead
+// of silently dropping data and causing confusing downstream failures.
 //
 // Teacher-facing prose lives in inline `.meta({ description })`; the generator
 // (`lib/schema-gen`) emits it into the JSON Schemas teachers point their editors
@@ -130,8 +131,9 @@ const ClassificationSchema = z
 export const FragmentSchema = z
   .strictObject({
     id: z.string().meta({ description: "Unique fragment id within this library." }),
-    version: z.number().meta({ description: "Fragment version number." }),
-    priority: z.number().meta({ description: "Assembly order. Lower priorities appear earlier." }),
+    // `version` is accepted but consumed by nothing (no versioning semantics exist).
+    // Optional now — a library author may drop it entirely.
+    version: z.number().optional().meta({ description: "Optional fragment version number." }),
     input_schema: InputSchema.optional(),
     classification: ClassificationSchema.optional(),
     content: z.string().meta({ description: "Prompt text as a Handlebars template." }),
@@ -163,7 +165,15 @@ export const FragmentFileRefSchema = z
   .strictObject({
     id: z
       .string()
-      .meta({ description: "Local alias for this library, referenced by each fragment's `file`." }),
+      // The alias is the part BEFORE the first dot in an inline `{{fragment "alias.id"}}`
+      // marker, so it must not itself contain a dot (fragment ids may). The `.regex`
+      // is both the runtime guard and the pattern `z.toJSONSchema` emits for editors.
+      .regex(/^[^.]+$/, { message: "Alias must not contain a dot" })
+      .meta({
+        pattern: "^[^.]+$",
+        description:
+          'Local alias for this library, used before the dot in `{{fragment "alias.id"}}`. Must not contain a dot.',
+      }),
     url: FragmentUrlRef,
   })
   .meta({
@@ -171,38 +181,16 @@ export const FragmentFileRefSchema = z
     description: "A reference to a fragment library by alias + URL.",
   });
 
-export const FragmentRefSchema = z
-  .strictObject({
-    file: z
-      .string()
-      .meta({ description: "The alias of the fragment library this fragment is drawn from." }),
-    id: z.string().meta({ description: "Fragment id inside the referenced library." }),
-    variables: z
-      .record(z.string(), VariableValueSchema)
-      .optional()
-      .meta({ description: "Literal values passed into the fragment template." }),
-    // `bind` (runtime references) is accepted so real activity files validate, but it
-    // is intentionally ignored by the consistency/assembly stages (out of scope).
-    bind: z
-      .record(z.string(), z.string())
-      .optional()
-      .meta({ description: "Accepted for compatibility but ignored by the current assembler." }),
-    required: z.boolean().optional().meta({
-      description: "Marker for important fragments. Accepted but not currently enforced.",
-    }),
-  })
-  .meta({ id: "fragmentRef", description: "Selects one fragment from a referenced library." });
-
 export type FragmentFileRef = z.infer<typeof FragmentFileRefSchema>;
-export type FragmentRef = z.infer<typeof FragmentRefSchema>;
 
 /**
- * The document-level fragment block an activity declares: the shared shape tutor /
- * quiz / writing / coding all embed and hand to the loader's orchestrator. The
- * activity's own trailing text (tutor_instructions / instructions / a grading frame)
- * is NOT part of this block — it is appended after the assembled fragments.
+ * The document-level fragment block an activity declares: just the fragment
+ * LIBRARIES it may pull from (`fragment_files:`). WHICH fragments it actually uses,
+ * where, and with which variables lives in the activity's host text as inline
+ * `{{fragment "alias.id" …}}` markers — not here. The host text itself
+ * (tutor_instructions / instructions) is NOT part of this block; it is passed
+ * alongside it to the loader's orchestrator as the template to render.
  */
 export interface FragmentBlock {
   fragment_files: FragmentFileRef[];
-  fragments: FragmentRef[];
 }

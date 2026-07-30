@@ -1,10 +1,10 @@
 ---
 title: Reusable fragments
-description: Write a fragment library once and reuse the same prompt pieces in tutors, quizzes, writing, and coding activities.
+description: Write a fragment library once and place the same prompt pieces in tutors, quizzes, writing, and coding activities.
 sidebar:
   order: 7
 audience: teacher
-keywords: [fragment, fragment library, fragments, fragment_files, variables, input_schema, priority, default, reuse, prompt]
+keywords: [fragment, fragment library, fragments, fragment_files, marker, input_schema, default, reuse, prompt]
 related:
   - 20-building-activities/03-tutors
   - 20-building-activities/04-quizzes
@@ -20,25 +20,61 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/07-fragments.prompt.md and regenerate.
 -->
 
-A [[fragment]] is a named piece of [[prompt]] (a teaching style, a safety policy, a language rule) that lives in a fragment library, a [[YAML]] file of its own. Write the rule once, pull it into as many activities as you like, and fix it in one place when it needs a change. The chapter on building a tutor shows how to *use* fragments; this chapter shows how to *write* a library of your own, and how the same library serves every kind of [[activity]].
+A [[fragment]] is a named piece of [[prompt]] (a teaching style, a safety policy, a language rule) that lives in a fragment library, a [[YAML]] file of its own. Write the rule once, place it in as many activities as you like, and fix it in one place when it needs a change. The chapter on building a tutor shows how to *use* fragments; this chapter shows how to *write* a library of your own, and how the same library serves every kind of [[activity]].
 
 ## One library, four kinds of activity
 
-Fragments aren't a tutor feature. A tutor, a quiz, a writing activity, and a coding activity can all pull fragments from the same library, so a school-wide safety policy written once really does cover everything you build. Two things differ by kind:
+Fragments aren't a tutor feature. A tutor, a quiz, a writing activity, and a coding activity can all draw fragments from the same library, so a school-wide safety policy written once really does cover everything you build. Using fragments takes two steps in the activity file:
 
-- **Where the block goes.** A tutor declares `fragment_files` and `fragments` inside its `prompt:` section. A quiz, writing, or coding activity declares the same two fields at the top level of the file, next to `id` and `name`.
-- **What the fragments frame.** The assembled fragments always come first, and the activity's own text follows: a tutor's `tutor_instructions`, or the `instructions` of a quiz discussion, writing, or coding activity. In a quiz the fragments reach further than you might expect: they apply both to how answers are graded and to the follow-up discussion chat, so a persona or safety rule shapes grading and conversation alike.
+1. **List the libraries** you want to draw from under `fragment_files:`, each with a short `id` (an alias) and the library's `url`.
+2. **Place each fragment** by writing a marker directly in the activity's own instructions, wherever you want that piece to appear.
 
-Here's a quiz pulling the shared safety fragment from the example library, with the block at the top level of the quiz file:
+Where `fragment_files:` goes depends on the kind. A tutor declares it inside its `prompt:` section. A quiz, writing, or coding activity declares it at the top level of the file, next to `id` and `name`.
+
+The instructions text that holds the markers also depends on the kind: a tutor's `tutor_instructions`, a writing or coding activity's `instructions`, and a quiz's own top-level `instructions`. A quiz's `instructions` field is special: that text applies both to how answers are graded and to the follow-up discussion chat, so a persona or safety rule you place there shapes grading and conversation alike. It is a separate field from `discussion.instructions`.
+
+## Placing a fragment with a marker
+
+You place a fragment by writing a marker in the instructions text:
+
+```text
+{{fragment "general_fragments.socratic_tutor"}}
+```
+
+The part in quotes is split at the first dot: `general_fragments` is the alias you gave the library under `fragment_files:`, and `socratic_tutor` is the fragment's `id` inside that library. The fragment's text drops in exactly where the marker sits, so the order of your prompt is simply the order you write the markers. There is no separate list of fragments and no ordering number to manage.
+
+Here is a tutor placing three fragments from the shared example library, with its own wording in between:
+
+```yaml
+prompt:
+  fragment_files:
+    - id: general_fragments
+      url: "../shared/general-fragments.yaml"
+  tutor_instructions: |
+    {{fragment "general_fragments.socratic_tutor"}}
+
+    You are helping students with Bubble Sort and Selection Sort.
+
+    {{fragment "general_fragments.teenager_safety"}}
+```
+
+A fragment that expects values takes them as arguments on the marker, right where you place it:
+
+```text
+{{fragment "general_fragments.language_policy" natural_language="German" code_language="English"}}
+```
+
+You can place the same fragment more than once with different values, and a marker on its own line keeps the prompt readable. This quiz places two fragments in its top-level `instructions`, so both the grading and the discussion chat get the language policy and the safety net:
 
 ```yaml
 fragment_files:
   - id: general_fragments
     url: "../shared/general-fragments.yaml"
 
-fragments:
-  - file: general_fragments
-    id: teenager_safety
+instructions: |
+  {{fragment "general_fragments.language_policy" natural_language="German" code_language="English (TypeScript and p5.js terms)"}}
+
+  {{fragment "general_fragments.teenager_safety"}}
 ```
 
 ## What a library file looks like
@@ -49,8 +85,6 @@ A fragment library is a YAML file with an `id` and a list of fragments. Here's a
 id: simple-fragments
 fragments:
   - id: persona
-    version: 1
-    priority: 100
     input_schema:
       type: object
       required:
@@ -67,8 +101,6 @@ fragments:
       You are a friendly, encouraging tutor for {{subject}}.
 
   - id: ground_rules
-    version: 1
-    priority: 200
     input_schema:
       type: object
       required:
@@ -85,13 +117,12 @@ fragments:
       {{/each}}
 ```
 
-Each fragment carries five fields:
+Each fragment carries a few fields:
 
-- **`id`** names the fragment; it must be unique within the library, and it's what an activity refers to.
-- **`version`** is a number you raise when you change the fragment meaningfully. It's for you and your colleagues to track changes; it doesn't change how the fragment behaves today.
-- **`priority`** decides where the fragment lands in the final prompt. Lower numbers come first.
+- **`id`** names the fragment; it must be unique within the library, and it's what a marker refers to.
 - **`input_schema`** declares the values the fragment expects. Leave it out for a fragment that takes no values.
 - **`content`** is the prompt text itself, written as a template.
+- **`version`** is optional. It's a number you raise when you change the fragment meaningfully, for you and your colleagues to track changes; it doesn't change how the fragment behaves today.
 
 A fragment may also carry a `classification` label, for example to mark a safety piece. It's a note for readers of the library; it doesn't change validation or behaviour today.
 
@@ -131,36 +162,41 @@ Text is inserted exactly as written: characters like `<`, `>`, and `&` survive, 
 
 ## Declaring values, and defaults
 
-The `input_schema` block declares what a fragment needs. Three value types are supported:
+The `input_schema` block declares what a fragment needs, and a marker supplies those values as arguments. Three value types are supported, each with its own way of writing the argument:
 
-| `type` | Meaning | Example value |
+| `type` | Meaning | Marker argument |
 | --- | --- | --- |
-| `string` | A piece of text | `subject: "fractions"` |
-| `boolean` | `true` or `false` | `allow_solution: false` |
-| `array` (of `string`) | A list of text items | `rules: ["…", "…"]` |
+| `string` | A piece of text | `subject="fractions"` |
+| `boolean` | `true` or `false` | `allow_solution=false` |
+| `array` (of `string`) | A list of text items | `rules=(array "…" "…")` |
 
-Inputs listed under `required` must be supplied by every activity that uses the fragment, with the right type; validation names exactly what's missing or mismatched. Supplying a value the fragment doesn't declare isn't an error, but it draws a warning, because it usually means a typo.
+A list is written with the `array` helper, one quoted item after another: `topics=(array "Bubble Sort" "Selection Sort")`. These three shapes are the only ones a marker accepts, and the reference in quotes is always required.
 
-An optional input can carry a **`default`**, used whenever the activity leaves the value out. In the `persona` fragment above, an activity that sets no `greeting` gets "Hi there!"; an activity that supplies one gets its own text, because a supplied value always wins. Two details worth knowing:
+Inputs listed under `required` must be supplied by every marker that places the fragment, with the right type; validation names exactly what's missing or mismatched. Supplying a value the fragment doesn't declare isn't an error, but it draws a warning, because it usually means a typo.
+
+An optional input can carry a **`default`**, used whenever a marker leaves the value out. In the `persona` fragment above, a marker that sets no `greeting` gets "Hi there!"; a marker that supplies one gets its own text, because a supplied value always wins. Two details worth knowing:
 
 - A default must match its declared type: a text default on a `boolean` input is rejected.
 - A default on a *required* input can never apply, since the value must be supplied anyway. The validator flags that combination with a warning.
 
 Defaults are what make a fragment pleasant to reuse: the common case needs no values at all, and the unusual class overrides just the one value it cares about.
 
-## How the final prompt is ordered
+## Braces that are not markers
 
-The order you list fragments in an activity file doesn't matter. Each included fragment renders with its values, the results are sorted by `priority` (lowest first), and the activity's own instructions are appended last. The pieces are joined with blank lines into one prompt.
+An activity that declares no `fragment_files:` is left exactly as you wrote it, character for character. So a plain activity, or a teaching example whose instructions show `{{ }}` as ordinary text, is safe: nothing tries to read those braces as markers.
 
-Because `priority` alone decides the order, two fragments used by the same activity must not share a priority, and that holds even when the fragments come from two different libraries. Validation rejects the activity as ambiguous. If you maintain a library others combine with theirs, it helps to publish which priority ranges you use, the way the shared example library spaces its fragments at 100, 200, 400, and 900 so tutors can slot their own pieces in between.
+Once an activity does declare a library under `fragment_files:`, its instructions are read as a template. Two things follow:
+
+- If you want a literal `{{` in your own wording (not a marker), write it as `\{{` so it isn't mistaken for one.
+- A marker only works when its library is declared. If you write `{{fragment "…"}}` but forget the matching `fragment_files:` entry, the text is sent to the model as-is instead of being replaced. Declare every library you place a marker from.
 
 ## Validating a library
 
 You can validate a fragment library on its own, before any activity uses it: on the app's Validate page, switch the selector to **Fragment library** and paste the library's address, or run the CLI with `--kind fragment`. The check confirms the file's structure, that fragment ids are unique, and that every fragment's content renders against its own declared inputs, so a typo in a template surfaces before a colleague's activity trips over it.
 
-Validating or sharing an *activity* runs the same thorough check over every fragment in every library the activity references, even fragments it doesn't use. A library that validates once is safe for everyone who builds on it.
+Validating or sharing an *activity* runs the same thorough check over every fragment in every library the activity references, even fragments it doesn't place. A library that validates once is safe for everyone who builds on it.
 
-One safety property to rely on: fragments never vanish silently. If a library can't be loaded or a fragment fails when a student opens the activity, the activity refuses to start rather than running without the missing rules. A safety policy you declared is either in effect or the activity doesn't run.
+One safety property to rely on: fragments never vanish silently. If a library can't be loaded or a fragment fails when a student opens the activity, the activity refuses to start rather than running without the missing rules. A safety policy you placed is either in effect or the activity doesn't run.
 
 ## Hosting a library
 

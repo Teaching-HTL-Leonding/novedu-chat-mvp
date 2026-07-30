@@ -15,9 +15,10 @@ Cover:
 - Note that students connect their own tool separately; link to the coding sharing
   chapter for that side.
 - Walk a real example (the sorting-visualizer).
-- Reusing fragments: a coding activity can pull in shared prompt fragments via a
-  top-level `fragment_files:` / `fragments:` block, assembled ahead of the
-  instructions. Short section; the reusable-fragments chapter has the detail.
+- Reusing fragments: a coding activity declares libraries under a top-level
+  `fragment_files:` and places fragments with inline `{{fragment "alias.id" …}}` markers
+  directly in its `instructions`. Short section; the reusable-fragments chapter has the
+  detail.
 
 Get right:
 - The model is pinned by the teacher; a student's tool cannot change it.

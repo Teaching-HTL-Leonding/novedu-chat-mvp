@@ -240,12 +240,10 @@ const LIB_YAML = `id: lib
 fragments:
   - id: safety
     version: 1
-    priority: 900
     content: |
       Always be safe and kind.
   - id: lang
     version: 1
-    priority: 400
     input_schema:
       type: object
       required: [language]
@@ -266,14 +264,17 @@ const fetcherMap =
       : { ok: true, status: 200, text: async () => text };
   };
 
-const quizWithFragments = (fragmentsBlock: string) => `
+// The quiz declares its fragment library via `fragment_files:` and expresses WHICH
+// fragments it uses with inline `{{fragment}}` markers in the `instructions` host text.
+const quizWithFragments = (instructions: string) => `
 id: q
 llm:
   model: m
 fragment_files:
   - id: lib
     url: ${LIB_URL}
-${fragmentsBlock}
+instructions: |
+${instructions}
 questions:
   - id: a
     question: "Q?"
@@ -282,13 +283,9 @@ questions:
 
 describe("loadAndCheckQuiz — fragments", () => {
   it("accepts a quiz that pulls in valid fragments", async () => {
-    const quiz = quizWithFragments(`fragments:
-  - file: lib
-    id: safety
-  - file: lib
-    id: lang
-    variables:
-      language: German`);
+    const quiz = quizWithFragments(
+      '  {{fragment "lib.safety"}}\n  {{fragment "lib.lang" language="German"}}',
+    );
     const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
     expect(result.ok).toBe(true);
   });
@@ -309,18 +306,14 @@ questions:
   });
 
   it("FRAGMENT_NOT_FOUND for a reference to a missing fragment id", async () => {
-    const quiz = quizWithFragments(`fragments:
-  - file: lib
-    id: nope`);
+    const quiz = quizWithFragments('  {{fragment "lib.nope"}}');
     const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("FRAGMENT_NOT_FOUND");
   });
 
   it("UNKNOWN_FRAGMENT_FILE_ALIAS for a reference to an undeclared file alias", async () => {
-    const quiz = quizWithFragments(`fragments:
-  - file: other
-    id: safety`);
+    const quiz = quizWithFragments('  {{fragment "other.safety"}}');
     const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
     expect(result.ok).toBe(false);
     if (!result.ok)
@@ -328,20 +321,14 @@ questions:
   });
 
   it("MISSING_REQUIRED_VARIABLE when a required fragment variable is not supplied", async () => {
-    const quiz = quizWithFragments(`fragments:
-  - file: lib
-    id: lang`);
+    const quiz = quizWithFragments('  {{fragment "lib.lang"}}');
     const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("MISSING_REQUIRED_VARIABLE");
   });
 
   it("VARIABLE_TYPE_MISMATCH when a fragment variable has the wrong type", async () => {
-    const quiz = quizWithFragments(`fragments:
-  - file: lib
-    id: lang
-    variables:
-      language: [not, a, string]`);
+    const quiz = quizWithFragments('  {{fragment "lib.lang" language=(array "not" "a" "string")}}');
     const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("VARIABLE_TYPE_MISMATCH");
@@ -355,9 +342,8 @@ llm:
 fragment_files:
   - id: lib
     url: ${LIB_URL}
-fragments:
-  - file: lib
-    id: safety
+instructions: |
+  {{fragment "lib.safety"}}
 questions:
   - id: dup
     question: "Q1?"

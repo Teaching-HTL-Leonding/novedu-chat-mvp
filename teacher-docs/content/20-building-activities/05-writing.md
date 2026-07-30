@@ -63,19 +63,20 @@ The coach cannot edit the student's text. Its only access to the draft is a read
 
 ## Reusing fragments in a writing activity
 
-A writing activity can pull in shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare them at the top level of the file, next to `id` and `instructions`:
+A writing activity can place shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare the library under a top-level `fragment_files:`, then place each fragment with a marker in your `instructions`:
 
 ```yaml
 fragment_files:
   - id: general_fragments
     url: "../shared/general-fragments.yaml"
 
-fragments:
-  - file: general_fragments
-    id: teenager_safety
+instructions: |
+  {{fragment "general_fragments.teenager_safety"}}
+
+  You are an encouraging writing coach ...
 ```
 
-The assembled fragments come first and your `instructions` follow, so a school-wide rule frames the coach without you repeating it in every activity. The chapter on reusable fragments covers writing a library and supplying values.
+A fragment lands where its marker sits, so a school-wide rule can frame the coach at the top of your `instructions` without you repeating it in every activity. The chapter on reusable fragments covers writing a library and supplying values.
 
 ## Recording who wrote what
 

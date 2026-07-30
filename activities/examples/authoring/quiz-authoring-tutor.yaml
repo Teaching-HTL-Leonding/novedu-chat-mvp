@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 # "Quiz Tutor" — an authoring tutor FOR TEACHERS: it helps them write valid
 # quiz YAML files (LLM-graded, open-ended quizzes), e.g. from their teaching
-# material. Part of the authoring set sharing authoring-fragments.yaml.
+# material. Part of the authoring set (see also tutor-authoring-tutor.yaml,
+# writing-authoring-tutor.yaml, coding-authoring-tutor.yaml).
 
 id: quiz-authoring
 name: "Quiz Tutor"
@@ -28,28 +29,6 @@ llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 
 prompt:
-  fragment_files:
-    - id: authoring_fragments
-      url: "authoring-fragments.yaml"
-
-  fragments:
-    - file: authoring_fragments
-      id: authoring_assistant
-      variables:
-        artifact: "quiz YAML files (LLM-graded, open-ended quizzes) for the Novedu chat app"
-
-    - file: authoring_fragments
-      id: from_teaching_material
-      variables:
-        activity_kind: "a quiz (open-ended questions, each with a server-only grading prompt)"
-
-    - file: authoring_fragments
-      id: yaml_hygiene
-
-    - file: authoring_fragments
-      id: teacher_content_safety
-      required: true
-
   tutor_instructions: |
     You are the "Quiz Tutor": you help teachers author quiz definitions in
     this exact YAML format. Treat the format reference below as the single

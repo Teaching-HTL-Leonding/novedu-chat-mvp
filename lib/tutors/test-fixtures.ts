@@ -18,6 +18,7 @@ import { type Tutor, TutorSchema } from "./schemas";
 
 export {
   fixtureResponse,
+  HOST_TEXT,
   LIB_A_URL,
   LIB_A_YAML,
   LIB_B_URL,
@@ -45,30 +46,20 @@ prompt:
       url: "lib-a.yaml"
     - id: lib_b
       url: "lib-b.yaml"
-  fragments:
-    - file: lib_a
-      id: str_frag
-      variables:
-        topic: "TEST-TOPIC"
-    - file: lib_a
-      id: list_frag
-      variables:
-        items:
-          - "ITEM-ALPHA"
-          - "ITEM-BETA"
-    - file: lib_a
-      id: flag_frag
-      variables:
-        enabled: false
-    - file: lib_b
-      id: diagram_frag
-    - file: lib_b
-      id: plain_frag
-    - file: lib_a
-      id: safety_frag
-      required: true
   tutor_instructions: |
+    {{fragment "lib_a.str_frag" topic="TEST-TOPIC"}}
+
     TUTOR-INSTRUCTIONS-MARKER stay in test mode.
+
+    {{fragment "lib_a.list_frag" items=(array "ITEM-ALPHA" "ITEM-BETA")}}
+
+    {{fragment "lib_a.flag_frag" enabled=false}}
+
+    {{fragment "lib_b.diagram_frag"}}
+
+    {{fragment "lib_b.plain_frag"}}
+
+    {{fragment "lib_a.safety_frag"}}
 `;
 
 /** A fetcher serving the tutor and its two fragment libraries. Any other URL throws. */
