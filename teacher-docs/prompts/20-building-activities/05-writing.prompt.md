@@ -14,6 +14,9 @@ Cover:
   not finished sentences. The coach cannot edit the text, so write instructions that
   fit a read-only helper.
 - Walk a real example (the restaurant-review letter).
+- Reusing fragments: a writing activity can pull in shared prompt fragments via a
+  top-level `fragment_files:` / `fragments:` block, assembled ahead of the coach's
+  instructions. Short section; the reusable-fragments chapter has the detail.
 
 Get right:
 - The coach reads the draft with a read-only tool and cannot change it; write the

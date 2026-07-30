@@ -171,16 +171,17 @@ them under `prompt:`:
 
 ```yaml
 fragment_files:
-  - id: shared # the alias you refer to below
+  - id: general_fragments # the alias you refer to below
     url: "../shared/general-fragments.yaml" # relative to this writing file, or a full http(s) URL
 
 fragments:
-  - file: shared
-    id: safety
-  - file: shared
-    id: persona
+  - file: general_fragments
+    id: teenager_safety
+  - file: general_fragments
+    id: language_policy
     variables:
-      subject: "persuasive writing"
+      natural_language: "English — simple and clear, suitable for B1–B2 learners"
+      code_language: "English"
 ```
 
 The fragments are assembled once (in `priority` order) and **prepended ahead of** your

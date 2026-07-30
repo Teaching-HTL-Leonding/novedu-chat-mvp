@@ -158,16 +158,17 @@ under `prompt:`:
 
 ```yaml
 fragment_files:
-  - id: shared # the alias you refer to below
+  - id: general_fragments # the alias you refer to below
     url: "../shared/general-fragments.yaml" # relative to this coding file, or a full http(s) URL
 
 fragments:
-  - file: shared
-    id: safety
-  - file: shared
-    id: persona
+  - file: general_fragments
+    id: teenager_safety
+  - file: general_fragments
+    id: language_policy
     variables:
-      subject: "beginner TypeScript"
+      natural_language: "German"
+      code_language: "English (TypeScript terms)"
 ```
 
 The fragments are assembled once (in `priority` order) and **prepended ahead of** your

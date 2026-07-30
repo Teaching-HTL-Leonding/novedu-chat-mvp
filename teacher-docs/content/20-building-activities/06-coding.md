@@ -4,10 +4,11 @@ description: Write a coding activity's YAML with an id, a pinned AI model, and i
 sidebar:
   order: 6
 audience: teacher
-keywords: [coding activity, coding assistant, instructions, model, little-coder, YAML, coding buddy]
+keywords: [coding activity, coding assistant, instructions, model, little-coder, YAML, coding buddy, fragments]
 related:
   - 00-introduction/06-coding-overview
   - 20-building-activities/02-available-llms
+  - 20-building-activities/07-fragments
   - 30-sharing-activities/06-coding-special-case
   - 10-yaml-for-teachers/04-cli-validation
 generated: true
@@ -58,6 +59,22 @@ The most useful thing to write is what your class may use, so the assistant's he
 - **The topic.** Tell the assistant to help only with the current project and to politely decline unrelated homework.
 - **The teaching style.** Small steps, explain why, short runnable fragments, comments that explain the idea.
 - **What the student must do alone.** If the algorithm is the learning goal, forbid generating it whole and ask the assistant to guide instead.
+
+## Reusing fragments in a coding activity
+
+A coding activity can pull in shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare them at the top level of the file, next to `id` and `instructions`:
+
+```yaml
+fragment_files:
+  - id: general_fragments
+    url: "../shared/general-fragments.yaml"
+
+fragments:
+  - file: general_fragments
+    id: teenager_safety
+```
+
+The assembled fragments come first and your `instructions` follow, so a school-wide rule applies to the coding assistant without you repeating it in every activity. The chapter on reusable fragments covers writing a library and supplying values.
 
 ## What a coding file does not have
 
