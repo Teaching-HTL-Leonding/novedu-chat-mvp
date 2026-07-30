@@ -4,10 +4,11 @@ description: Write a quiz file with open-ended questions and private grading gui
 sidebar:
   order: 4
 audience: teacher
-keywords: [quiz, questions, grading, evaluation, rubric, shuffle, photo answer, imageInput, discussion]
+keywords: [quiz, questions, grading, evaluation, rubric, shuffle, photo answer, imageInput, discussion, fragments]
 related:
   - 20-building-activities/01-handling-yaml
   - 20-building-activities/02-available-llms
+  - 20-building-activities/07-fragments
   - 10-yaml-for-teachers/04-cli-validation
   - 30-sharing-activities/04-anonymous-vs-per-user
 generated: true
@@ -101,6 +102,22 @@ Photo answers are **off by default**. A few things to know:
 ## The follow-up discussion
 
 After seeing their feedback, a student can open a short discussion chat about that question. Novedu already gives the assistant full context (the question, the expected answer, the student's answer, and the verdict), so the optional `discussion.instructions` field is only extra steering: tone, language, and didactic style. Omit it to use a sensible default.
+
+## Reusing fragments in a quiz
+
+A quiz can pull in shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare them at the top level of the quiz file, next to `id` and `questions`:
+
+```yaml
+fragment_files:
+  - id: general_fragments
+    url: "../shared/general-fragments.yaml"
+
+fragments:
+  - file: general_fragments
+    id: teenager_safety
+```
+
+In a quiz the fragments reach further than in other activities: they come before your own text and apply **both** to how answers are graded **and** to the follow-up discussion chat, so a shared safety or persona rule shapes grading and conversation alike. The chapter on reusable fragments covers writing a library and supplying values.
 
 ## A real example: the sorting-algorithms quiz
 

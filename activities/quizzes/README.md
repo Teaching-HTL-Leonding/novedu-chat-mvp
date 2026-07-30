@@ -200,16 +200,17 @@ at the **top level** of the quiz file, exactly as a tutor declares them under
 
 ```yaml
 fragment_files:
-  - id: shared # the alias you refer to below
+  - id: general_fragments # the alias you refer to below
     url: "../shared/general-fragments.yaml" # relative to this quiz file, or a full http(s) URL
 
 fragments:
-  - file: shared
-    id: safety
-  - file: shared
-    id: persona
+  - file: general_fragments
+    id: teenager_safety
+  - file: general_fragments
+    id: language_policy
     variables:
-      subject: "sorting algorithms"
+      natural_language: "German"
+      code_language: "English (TypeScript terms)"
 ```
 
 The fragments are assembled once (in `priority` order) and **prepended to BOTH** the

@@ -4,10 +4,11 @@ description: Write the YAML for a writing activity, describe the task, shape a c
 sidebar:
   order: 5
 audience: teacher
-keywords: [writing activity, writing coach, instructions, placeholder, scaffold, feedback, anonymous, getCurrentText]
+keywords: [writing activity, writing coach, instructions, placeholder, scaffold, feedback, anonymous, getCurrentText, fragments]
 related:
   - 00-introduction/05-writing-overview
   - 20-building-activities/02-available-llms
+  - 20-building-activities/07-fragments
   - 30-sharing-activities/04-anonymous-vs-per-user
   - 10-yaml-for-teachers/04-cli-validation
 generated: true
@@ -59,6 +60,22 @@ The coach cannot edit the student's text. Its only access to the draft is a read
 - **Set priorities.** List what to give feedback on, in order, so the coach raises the one or two most important improvements instead of everything at once. Putting grammar last keeps the focus on the writing task.
 - **Set the tone.** Say who the student is (age, language level) and how to talk to them, for example in simple English with difficult words explained.
 - **Cover the empty page.** Tell the coach what to do when the draft is empty or very short: help the student start with questions instead of critiquing.
+
+## Reusing fragments in a writing activity
+
+A writing activity can pull in shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare them at the top level of the file, next to `id` and `instructions`:
+
+```yaml
+fragment_files:
+  - id: general_fragments
+    url: "../shared/general-fragments.yaml"
+
+fragments:
+  - file: general_fragments
+    id: teenager_safety
+```
+
+The assembled fragments come first and your `instructions` follow, so a school-wide rule frames the coach without you repeating it in every activity. The chapter on reusable fragments covers writing a library and supplying values.
 
 ## Recording who wrote what
 

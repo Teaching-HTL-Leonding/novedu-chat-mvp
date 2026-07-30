@@ -45,6 +45,7 @@ _What makes each activity, field by field, the YAML reference backbone._
 | 04 | Building a quiz | ✎ `20-building-activities/04-quizzes.prompt.md` | `activities/quizzes/README.md`, `activities/examples/**` |
 | 05 | Building a writing activity | ✎ `20-building-activities/05-writing.prompt.md` | `activities/writings/README.md`, `activities/examples/**` |
 | 06 | Building a coding activity | ✎ `20-building-activities/06-coding.prompt.md` | `activities/coding/README.md`, `activities/examples/**` |
+| 07 | Reusable fragments | ✎ `20-building-activities/07-fragments.prompt.md` | `activities/tutors/README.md` (fragment sections), `activities/fragments/README.md`, module `README.md`s (fragment sections), `activities/examples/shared/**` |
 
 ## 30: Sharing activities
 _Turning an activity into a code and handing it to a class._

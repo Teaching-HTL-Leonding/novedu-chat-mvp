@@ -5,9 +5,11 @@ handling and the load / resolve / consistency / assemble pipeline that turns a
 document-level fragment block into a finished prompt string. It is not an activity
 module — it is the infrastructure **all four** activity kinds (tutor, quiz, writing,
 coding) build on, so a persona / safety / rules fragment written once in a fragment
-library is reusable by every kind. The teacher-facing authoring guide lives in
-`activities/tutors/README.md`; this file is the code reference. Read it before
-touching `lib/prompt-fragments/**`, or when wiring a new consumer of the block.
+library is reusable by every kind. The teacher-facing authoring guides live in
+`activities/tutors/README.md` (the full fragment format) and
+`activities/fragments/README.md` (the library editor schema); this file is the code
+reference. Read it before touching `lib/prompt-fragments/**`, or when wiring a new
+consumer of the block.
 
 ## The module — `lib/prompt-fragments/`
 
@@ -28,10 +30,18 @@ import from `@/lib/prompt-fragments` and never re-implement any of it.
   optional `trailingInstructions`. Returns `{ ok: true, prompt, warnings }` or
   `{ ok: false, errors, warnings }`. A block that declares nothing resolves to just
   the trailing text (or `""`) with **no** fetch — the common case for a plain
-  quiz/writing/coding activity. Tutor, quiz, writing, and coding all call this ONE
-  function with a single document-level block; tutors pass `tutor_instructions` as
-  the trailing text (a complete prompt), the others pass none and prepend their own
-  frame around a fragment-only preamble.
+  quiz/writing/coding activity. Every kind funnels through this ONE pipeline with a
+  single document-level block — the tutor calls it directly, passing
+  `tutor_instructions` as the trailing text (a complete prompt); quiz / writing /
+  coding call it one wrapper down, via `resolveFragmentPreamble`.
+- **`resolveFragmentPreamble(block, baseUrl, fetchImpl)`** — the seam the
+  quiz/writing/coding runtime loaders actually call: `assembleFragmentPrompt` with
+  no trailing text and `validateLibraries: false`, trailing newline trimmed in one
+  place. Fail closed on any error. Its counterpart **`prependPreamble(preamble,
+  body)`** is the ONE definition of how a preamble joins the activity's own frame
+  (`preamble\n\nbody`; empty preamble leaves the body untouched). After resolving,
+  a loader blanks the consumed block with **`EMPTY_FRAGMENT_BLOCK`** so no stale
+  unresolved block lingers as a second source of truth on the loaded object.
 - **`assembleSystemPrompt(plan, trailingInstructions?)`** — the pure assembly step
   (render in `priority` order, append the trailing text, join with blank lines).
 - **`checkConsistency(block, filesByAlias)`** — the cross-reference / variable /
@@ -59,19 +69,46 @@ can't silently pass on a rename). No consumer touches Handlebars; they all go th
 
 ## The document-level fragment block
 
-Every activity kind embeds the tutor `prompt` shape **flattened to the document
-root**: a top-level `fragment_files:` (each an `id` alias + an http(s)-or-relative
-`url`) and `fragments:` (each a `file` alias, `id`, `variables`, an accepted-but-
-ignored `bind`, and a `required` flag). Fragments render in ascending `priority`
-order; a duplicate priority among the fragments a block uses is a consistency error.
+Every activity kind embeds the same block shape: `fragment_files:` (each an `id`
+alias + an http(s)-or-relative `url`) and `fragments:` (each a `file` alias, `id`,
+`variables`, an accepted-but-ignored `bind`, and a `required` flag). The tutor keeps
+it **nested under `prompt:`** (the `FragmentBlock` IS `tutor.prompt`); quiz /
+writing / coding embed it **flattened to the document root**. Fragments render in
+ascending `priority` order; a duplicate priority among the fragments a block uses —
+including two fragments from *different* libraries — is a consistency error.
 `readFragmentBlock` (`block.ts`, Handlebars-free) is the **lenient** reader the
 runtime `*-yaml.ts` parsers call to lift the block out of a document root without
 imposing a strict schema.
 
+### Variables, defaults, and severity
+
+A fragment's `input_schema` is a constrained mini JSON-schema: properties typed
+`string` / `boolean` / `array`-of-strings, a `required` list, and an optional typed
+**`default`** per property. `checkConsistency` injects a default when the activity
+omits an optional variable (a supplied value always wins); a `default` on a
+*required* property can never apply and draws the `REQUIRED_PROPERTY_HAS_DEFAULT`
+warning. The severity split: missing required variable, type mismatch, unknown
+alias/fragment, and duplicate priority are **errors**; supplying an *undeclared*
+variable and referencing the same fragment twice are **warnings**. The
+whole-library check (`checkFragmentTemplates`) strict-renders against typed
+*placeholders* and deliberately ignores real defaults — it only proves every
+declared variable renders.
+
+### Accepted-but-inert fields
+
+Three schema fields validate but drive nothing: `bind` (runtime references —
+ignored by consistency/assembly, only literal `variables` count), the fragment
+ref's `required` flag, and, on the library side, the per-fragment **`version`**
+(required by `FragmentSchema`, consumed by nothing) and the optional
+**`classification`** block (`type` + `override_allowed`). Don't assume versioning
+or override semantics exist — none do today.
+
 ## Who consumes it, and how
 
-All four kinds resolve one document-level block through `assembleFragmentPrompt`; the
-runtime seam of each is documented in its own doc.
+All four kinds resolve one document-level block through the shared pipeline — the
+tutor via `assembleFragmentPrompt` directly, quiz/writing/coding via
+`resolveFragmentPreamble` + `prependPreamble`; the runtime seam of each is
+documented in its own doc.
 
 - **Tutor** (`lib/tutors/`) — `loadAndBuildTutorPrompt` is now a thin wrapper over
   `assembleFragmentPrompt`, passing `tutor_instructions` as the trailing text.

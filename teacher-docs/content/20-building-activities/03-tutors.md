@@ -8,6 +8,7 @@ keywords: [tutor, tutor_instructions, instructions, fragments, fragment library,
 related:
   - 00-introduction/03-tutors-overview
   - 20-building-activities/02-available-llms
+  - 20-building-activities/07-fragments
   - 20-building-activities/01-handling-yaml
   - 10-yaml-for-teachers/04-cli-validation
 generated: true
@@ -74,16 +75,16 @@ A [[fragment]] is a named piece of prompt (a teaching style, a topic list, a saf
 Using fragments takes two optional fields inside `prompt`:
 
 - **`fragment_files`** declares the libraries and gives each a short alias. The `url` is either a full `https://` link or a relative path, which is resolved next to your tutor file's own published location.
-- **`fragments`** lists which fragments to include and supplies their values under `variables`. A fragment declares which values it needs; required ones must be supplied with the right type, and validation tells you exactly what's missing.
+- **`fragments`** lists which fragments to include and supplies their values under `variables`. A fragment declares which values it needs; required ones must be supplied with the right type, and validation tells you exactly what's missing. An optional value can carry a default set by the library's author: leave the value out to accept it, or supply your own to override it.
 
-The order of the final prompt comes from each fragment's `priority` (set in the library, lower numbers first), not from the order you list them in. Your `tutor_instructions` are appended after all fragments.
+The order of the final prompt comes from each fragment's `priority` (set in the library, lower numbers first), not from the order you list them in. Your `tutor_instructions` are appended after all fragments. Two fragments a tutor uses must not share a priority, even when they come from different libraries; validation rejects the file because the order would be ambiguous.
 
 Two things to know before you rely on a library:
 
-- A fragment library has to be reachable at a public web address, just like the tutor file itself. Publishing works the same way for both.
+- A fragment library is hosted like the tutor file itself: at a public web address, or as a file hosted in the app. Publishing works the same way for both.
 - Validating a tutor also validates every fragment in every library it references, even fragments the tutor doesn't use. A broken template anywhere in the library fails the whole check, which is good news: a shared library that validates once is safe for everyone who uses it.
 
-**When are fragments worth it?** When several tutors should share the same wording: a school-wide safety policy, a Socratic teaching style, a language rule. For a single tutor with instructions nobody else will reuse, plain `tutor_instructions` is simpler and just as good.
+**When are fragments worth it?** When several activities should share the same wording: a school-wide safety policy, a Socratic teaching style, a language rule. Fragments aren't limited to tutors, either: the same library also works in quizzes, writing activities, and coding activities, and the chapter on reusable fragments shows how to write a library of your own. For a single tutor with instructions nobody else will reuse, plain `tutor_instructions` is simpler and just as good.
 
 ## The sample tutor, walked through
 
