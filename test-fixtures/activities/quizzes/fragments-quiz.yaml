@@ -7,11 +7,8 @@ llm:
 fragment_files:
   - id: shared
     url: ../tutors/test-fragments-a.yaml
-fragments:
-  - file: shared
-    id: persona
-    variables:
-      subject: geometry
+instructions: |
+  {{fragment "shared.persona" subject="geometry"}}
 questions:
   - id: q1
     question: "Name the parts of a right triangle."

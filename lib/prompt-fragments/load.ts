@@ -10,8 +10,8 @@
 // block; none of them touch Handlebars or `COMPILE_OPTIONS` themselves.
 
 import { resolveRelativeUrl } from "@/lib/relative-url";
-import { assembleSystemPrompt } from "./assemble";
-import { checkConsistency } from "./consistency";
+import { renderFragmentContent } from "./assemble";
+import { checkPlacements, resolveAndMerge } from "./consistency";
 import {
   error,
   type FragmentCheckResult,
@@ -20,6 +20,7 @@ import {
 } from "./errors";
 import type { Fetcher } from "./fetcher";
 import { checkFragmentFileValue, checkFragmentTemplates } from "./fragment";
+import { parseHostPlacements, renderHostTemplate } from "./host-template";
 import { parseYaml, validate } from "./parse";
 import { type FragmentBlock, type FragmentFile, FragmentFileSchema } from "./schemas";
 
@@ -132,32 +133,36 @@ export type AssembleResult =
   | { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] };
 
 /**
- * Resolve a document-level fragment block to a finished prompt string: fetch every
- * declared fragment file in parallel (relative refs resolved against `baseUrl`),
- * schema-validate each, (optionally) run the thorough whole-library check, check
- * consistency, and assemble the priority-ordered plan followed by the optional
- * `trailingInstructions`.
+ * Render an activity's host text (`tutor_instructions` / `instructions`) into a
+ * finished prompt string, inserting each inline `{{fragment "alias.id" …}}` marker in
+ * place. Fetches every declared fragment library in parallel (relative refs resolved
+ * against `baseUrl`), schema-validates each, (optionally) runs the thorough
+ * whole-library check, extracts + checks the placements, then compiles + renders the
+ * host template under strict Handlebars.
  *
  * The single seam every activity kind shares — the sole owner of the fetch → validate
- * → consistency → assemble pipeline. Consumers concatenate their own frame only when
- * they pass no `trailingInstructions` (a fragment-only preamble); tutors pass their
- * `tutor_instructions` and get a complete prompt.
+ * → check → render pipeline. `hostText` IS the template: fragments appear only where
+ * the author placed a marker; there is no ordering concept and no prepend fallback.
+ *
+ * TEMPLATE-SEMANTICS OPT-IN: an activity that declares no `fragment_files:` is NEVER
+ * compiled — its host text returns byte-verbatim (protecting plain activities and the
+ * authoring tutors whose prose contains sample markers as teaching content).
  */
 export async function assembleFragmentPrompt(
   block: FragmentBlock,
   baseUrl: string,
   fetchImpl: Fetcher,
   opts: LoadOptions = {},
-  trailingInstructions?: string,
+  hostText = "",
 ): Promise<AssembleResult> {
   const warnings: ValidationWarning[] = [];
   const allowedSchemes = opts.allowedSchemes ?? DEFAULT_ALLOWED_SCHEMES;
 
-  // A block that declares nothing resolves to just the trailing text (or the empty
-  // string) without a single fetch — the common case for a plain quiz/writing/coding
-  // activity, kept off the network entirely.
-  if (block.fragment_files.length === 0 && block.fragments.length === 0) {
-    return { ok: true, prompt: assembleSystemPrompt([], trailingInstructions), warnings };
+  // No libraries declared ⇒ the host text is NOT a template. Return it verbatim,
+  // without a single fetch and without ever handing it to Handlebars — a literal
+  // `{{` in plain prose stays untouched.
+  if (block.fragment_files.length === 0) {
+    return { ok: true, prompt: hostText, warnings };
   }
 
   // --- fragment files (fetched in parallel; surface every failing file at once) ---
@@ -219,8 +224,7 @@ export async function assembleFragmentPrompt(
 
   // --- thorough whole-library check (opt-in; OFF on the hot path) ---
   // Strict-render EVERY fragment in every referenced library against its own
-  // input_schema, catching bugs even in fragments this activity never uses. Duplicate
-  // ids are NOT checked here — `checkConsistency` below already reports them.
+  // input_schema, catching bugs even in fragments this activity never places.
   const libraryErrors: ValidationError[] = [];
   if (opts.validateLibraries) {
     for (const [alias, file] of fragmentFilesByAlias) {
@@ -233,19 +237,38 @@ export async function assembleFragmentPrompt(
     }
   }
 
-  // --- consistency ---
-  const consistency = checkConsistency(block, fragmentFilesByAlias);
-  warnings.push(...consistency.warnings);
-  const preAssemblyErrors = [...libraryErrors, ...consistency.errors];
-  if (preAssemblyErrors.length > 0) return { ok: false, errors: preAssemblyErrors, warnings };
+  // --- extract inline placements from the host text ---
+  const parsed = parseHostPlacements(hostText);
+  if (parsed.errors.length > 0) {
+    // A template that does not even parse (malformed marker, unescaped `{{`) or a
+    // marker with a non-literal reference blocks the build — nothing to render.
+    return { ok: false, errors: [...libraryErrors, ...parsed.errors], warnings };
+  }
 
-  // --- assemble (strict Handlebars backstop) ---
+  // --- placement consistency (resolution + per-placement variable validation) ---
+  const placementCheck = checkPlacements(
+    parsed.placements,
+    fragmentFilesByAlias,
+    block.fragment_files,
+  );
+  warnings.push(...placementCheck.warnings);
+  const preRenderErrors = [...libraryErrors, ...placementCheck.errors];
+  if (preRenderErrors.length > 0) return { ok: false, errors: preRenderErrors, warnings };
+
+  // --- render the host template (strict Handlebars backstop) ---
+  // The resolver shares `resolveAndMerge` with the checker above, so what renders is
+  // exactly what was validated. Any resolve error or null content (which should never
+  // happen post-check) throws and fails closed as ASSEMBLY_ERROR — so even an argument
+  // the AST couldn't see (defense in depth) can never render unvalidated.
   try {
-    return {
-      ok: true,
-      prompt: assembleSystemPrompt(consistency.plan, trailingInstructions),
-      warnings,
-    };
+    const prompt = renderHostTemplate(hostText, (ref, args) => {
+      const resolved = resolveAndMerge(ref, args, fragmentFilesByAlias);
+      if (resolved.content === null || resolved.errors.length > 0) {
+        throw new Error(`Fragment "${ref}" could not be resolved`);
+      }
+      return renderFragmentContent(resolved.content, resolved.variables);
+    });
+    return { ok: true, prompt, warnings };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     return {
@@ -254,38 +277,6 @@ export async function assembleFragmentPrompt(
       warnings,
     };
   }
-}
-
-/**
- * Resolve a document-level fragment block to a server-only *preamble* string — the
- * shared front of the quiz/writing/coding runtime loaders. Assembles with
- * `validateLibraries: false` (the hot path; the thorough whole-library pass runs at
- * authoring time) and trims the assembler's trailing newline in ONE place, so callers
- * prepend the preamble ahead of their own frame with {@link prependPreamble}. An empty
- * block resolves to `""` with no fetch. On any fetch/consistency/assembly failure it
- * returns `ok: false` so the caller fails closed — a safety fragment that cannot resolve
- * blocks the activity rather than silently vanishing.
- */
-export async function resolveFragmentPreamble(
-  block: FragmentBlock,
-  baseUrl: string,
-  fetchImpl: Fetcher,
-): Promise<{ ok: true; preamble: string } | { ok: false; errors: ValidationError[] }> {
-  const assembled = await assembleFragmentPrompt(block, baseUrl, fetchImpl, {
-    validateLibraries: false,
-  });
-  if (!assembled.ok) return { ok: false, errors: assembled.errors };
-  return { ok: true, preamble: assembled.prompt.trimEnd() };
-}
-
-/**
- * Prepend a resolved fragment preamble ahead of a body, matching the tutor ordering
- * (fragments first, the activity's own frame last). An empty preamble leaves the body
- * untouched. The ONE definition of how a preamble joins its frame — shared by the quiz
- * grader prompt, the quiz discussion prompt, and the writing/coding instruction loaders.
- */
-export function prependPreamble(preamble: string, body: string): string {
-  return preamble ? `${preamble}\n\n${body}` : body;
 }
 
 /**

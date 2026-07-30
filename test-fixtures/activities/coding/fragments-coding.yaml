@@ -7,9 +7,7 @@ llm:
 fragment_files:
   - id: shared
     url: ../tutors/test-fragments-a.yaml
-fragments:
-  - file: shared
-    id: persona
-    variables:
-      subject: TypeScript
-instructions: "Review the student's code and suggest small, beginner-friendly improvements."
+instructions: |
+  {{fragment "shared.persona" subject="TypeScript"}}
+
+  Review the student's code and suggest small, beginner-friendly improvements.

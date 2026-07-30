@@ -33,12 +33,8 @@
           "description": "Unique fragment id within this library."
         },
         "version": {
-          "type": "number",
-          "description": "Fragment version number."
-        },
-        "priority": {
-          "type": "number",
-          "description": "Assembly order. Lower priorities appear earlier."
+          "description": "Optional fragment version number.",
+          "type": "number"
         },
         "input_schema": {
           "$ref": "#/$defs/inputSchema"
@@ -53,8 +49,6 @@
       },
       "required": [
         "id",
-        "version",
-        "priority",
         "content"
       ],
       "additionalProperties": false,

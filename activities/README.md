@@ -18,13 +18,15 @@ and referenced by a `# yaml-language-server:` modeline for editor IntelliSense:
 
 **Prompt fragments are a cross-cutting capability of all four kinds.** A fragment is a
 reusable, parameterized prompt piece — a persona, a safety policy, a set of ground
-rules — written once in a **fragment library** and pulled into an activity via a
-top-level `fragment_files:`/`fragments:` block. Every kind assembles them the same
-way: tutor, quiz, writing, and coding all prepend the assembled fragments ahead of
-their own instructions (for a quiz, ahead of **both** the grader prompt and the
-discussion chat). The fragment format, `input_schema`, `variables`, and `priority`
-are fully documented once in the tutor guide, [`tutors/README.md`](tutors/README.md);
-the other guides link back to it, and the fragment-library **editor schema** lives in
+rules — written once in a **fragment library**, declared in an activity under
+`fragment_files:`, and placed with inline `{{fragment "alias.id" …}}` markers in the
+activity's own host text: the tutor's `tutor_instructions`, writing's and coding's
+`instructions`, and a quiz's optional top-level `instructions` (rendered once and
+prepended to **both** the grader prompt and the discussion chat). A fragment renders
+exactly where its marker sits — there is no ordering or priority concept. The fragment
+format, `input_schema`, defaults, and marker syntax are fully documented once in the
+tutor guide, [`tutors/README.md`](tutors/README.md); the other guides link back to
+it, and the fragment-library **editor schema** lives in
 [`fragments/`](fragments/README.md). Fragment libraries reused across kinds live in
 [`examples/shared/`](examples/shared/) — e.g.
 [`examples/shared/general-fragments.yaml`](examples/shared/general-fragments.yaml).

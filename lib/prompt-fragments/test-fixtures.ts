@@ -1,15 +1,18 @@
 // Synthetic, in-code fragment-library fixtures shared by the prompt-fragment unit
-// tests (parse / consistency / assemble / fragment / load) and — re-exported — by the
-// tutor tests. These are NOT real activities and are deliberately NOT read from disk:
-// the content is built from explicit MARKER strings and role-named fragments so a
-// reader immediately sees this is test scaffolding, not a demo. No `node:fs`, no
-// dependency on the `activities/` folder.
+// tests (parse / placement / assemble / fragment / load / host-template) and —
+// re-exported — by the tutor tests. These are NOT real activities and are
+// deliberately NOT read from disk: the content is built from explicit MARKER strings
+// and role-named fragments so a reader immediately sees this is test scaffolding, not
+// a demo. No `node:fs`, no dependency on the `activities/` folder.
 //
-// The two libraries pull six fragments spanning every case the consistency/assembly
+// The two libraries pull six fragments spanning every case the placement/assembly
 // tests exercise: a required STRING var (`str_frag`), a required ARRAY var rendered
 // with `{{#each}}` (`list_frag`), a BOOLEAN var in a `{{#unless}}` (`flag_frag`), an
 // unescaped ASCII diagram (`diagram_frag`), a plain fragment (`plain_frag`), and a
-// high-priority "last" fragment (`safety_frag`). Priorities are 10/20/30/40/50/60.
+// no-schema "safety" fragment (`safety_frag`). There is no `priority` — WHERE each
+// fragment lands is decided by the inline `{{fragment}}` markers in the host text
+// (see `HOST_TEXT`). `version` is optional; a couple of fragments keep it to prove it
+// is still accepted.
 
 import type { Fetcher, FetchResponse } from "./fetcher";
 import { parseYaml, validate } from "./parse";
@@ -26,7 +29,6 @@ export const LIB_A_YAML = `id: lib-a
 fragments:
   - id: str_frag
     version: 1
-    priority: 10
     input_schema:
       type: object
       required:
@@ -37,8 +39,6 @@ fragments:
     content: |
       FIRST-MARKER topic={{topic}}
   - id: list_frag
-    version: 1
-    priority: 20
     input_schema:
       type: object
       required:
@@ -54,8 +54,6 @@ fragments:
       - {{this}}
       {{/each}}
   - id: flag_frag
-    version: 1
-    priority: 30
     input_schema:
       type: object
       properties:
@@ -65,7 +63,6 @@ fragments:
       {{#unless enabled}}NO-SOLUTION-MARKER{{/unless}}
   - id: safety_frag
     version: 1
-    priority: 60
     content: |
       LAST-MARKER keep it safe.
 `;
@@ -73,15 +70,33 @@ fragments:
 export const LIB_B_YAML = `id: lib-b
 fragments:
   - id: diagram_frag
-    version: 1
-    priority: 40
     content: |
       [head] -> [ A ] -> [ B ] -> null
   - id: plain_frag
-    version: 1
-    priority: 50
     content: |
       PLAIN-MARKER nothing special.
+`;
+
+/**
+ * A host text that places all six fragments inline, with the activity's own
+ * TUTOR-INSTRUCTIONS-MARKER *between* two of them — so a test can prove fragments land
+ * where they are placed (textual order), not "always first". Uses every arg form:
+ * a string (`topic`), a string array (`(array …)`), a boolean (`enabled=false`), and
+ * bare markers with no args.
+ */
+export const HOST_TEXT = `{{fragment "lib_a.str_frag" topic="TEST-TOPIC"}}
+
+TUTOR-INSTRUCTIONS-MARKER stay in test mode.
+
+{{fragment "lib_a.list_frag" items=(array "ITEM-ALPHA" "ITEM-BETA")}}
+
+{{fragment "lib_a.flag_frag" enabled=false}}
+
+{{fragment "lib_b.diagram_frag"}}
+
+{{fragment "lib_b.plain_frag"}}
+
+{{fragment "lib_a.safety_frag"}}
 `;
 
 // A schema-valid library whose second fragment's template references a variable
@@ -90,8 +105,6 @@ fragments:
 export const BROKEN_TEMPLATE_YAML = `id: broken-template
 fragments:
   - id: ok_frag
-    version: 1
-    priority: 10
     input_schema:
       type: object
       required:
@@ -102,8 +115,6 @@ fragments:
     content: |
       OK topic={{topic}}
   - id: undeclared_frag
-    version: 1
-    priority: 20
     input_schema:
       type: object
       properties:

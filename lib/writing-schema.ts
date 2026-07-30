@@ -15,7 +15,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
-import { FragmentFileRefSchema, FragmentRefSchema } from "@/lib/prompt-fragments";
+import { FragmentFileRefSchema } from "@/lib/prompt-fragments";
 
 export const WritingYamlSchema = z.strictObject({
   id: z
@@ -49,20 +49,17 @@ export const WritingYamlSchema = z.strictObject({
       provider: providerSchema,
     })
     .meta({ id: "llm", description: "The model and provider that back the writing coach." }),
-  // Optional document-level prompt-fragment block (the tutor `prompt` shape flattened
-  // to the root). The assembled fragments are prepended to `instructions` at load
-  // (see `lib/writing-fetch.ts`) — fragments first, `instructions` last.
+  // Optional document-level prompt-fragment libraries (the tutor `prompt` shape
+  // flattened to the root). WHICH fragments are used is expressed by inline
+  // `{{fragment "alias.id" …}}` markers inside `instructions` below, which is rendered
+  // as the host template at load (see `lib/writing-fetch.ts`).
   fragment_files: z.array(FragmentFileRefSchema).default([]).meta({
     description: "Optional fragment libraries this activity pulls shared prompt fragments from.",
-  }),
-  fragments: z.array(FragmentRefSchema).default([]).meta({
-    description:
-      "Optional fragments selected from fragment_files. Assembled in priority order and prepended AHEAD of instructions.",
   }),
   // The writing coach's system prompt. SERVER-ONLY; required.
   instructions: z.string().min(1).meta({
     description:
-      "The writing coach's system prompt. SERVER-ONLY: never sent to the browser, so it may describe the assessment criteria and coaching strategy.",
+      'The writing coach\'s system prompt. SERVER-ONLY: never sent to the browser, so it may describe the assessment criteria and coaching strategy. When any fragment_files are declared it is a Handlebars template: place fragments inline with {{fragment "alias.id" …}} markers (escape a literal {{ as \\{{).',
   }),
   // Optional starter text prefilled into the editor.
   placeholder: z.string().optional().meta({

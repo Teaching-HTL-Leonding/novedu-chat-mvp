@@ -28,16 +28,10 @@ fragment_files:
   - id: general_fragments
     url: "../shared/general-fragments.yaml"
 
-fragments:
-  - file: general_fragments
-    id: language_policy
-    variables:
-      natural_language: "German"
-      code_language: "English (TypeScript and p5.js terms)"
+instructions: |
+  {{fragment "general_fragments.language_policy" natural_language="German" code_language="English (TypeScript and p5.js terms)"}}
 
-  - file: general_fragments
-    id: teenager_safety
-    required: true
+  {{fragment "general_fragments.teenager_safety"}}
 
 discussion:
   instructions: |

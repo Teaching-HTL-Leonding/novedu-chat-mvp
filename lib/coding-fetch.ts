@@ -6,11 +6,7 @@ import {
   DEFAULT_CODING_MODEL_NAME,
 } from "@/lib/coding-connection";
 import { type Coding, parseCoding } from "@/lib/coding-yaml";
-import {
-  EMPTY_FRAGMENT_BLOCK,
-  prependPreamble,
-  resolveFragmentPreamble,
-} from "@/lib/prompt-fragments";
+import { assembleFragmentPrompt, EMPTY_FRAGMENT_BLOCK } from "@/lib/prompt-fragments";
 
 // Loads + leniently parses the coding YAML behind a (verified) code's file_url, via the
 // shared `loadAppHostedYaml`, and derives the non-secret connection props the three
@@ -26,11 +22,17 @@ export function loadCoding(url: string): Promise<LoadCodingResult> {
     parseCoding,
     "coding activity",
     async (parsed, { url, fetcher }) => {
-      // Per-request streaming hot path: consistency over the referenced fragments only
-      // (`validateLibraries: false`, inside `resolveFragmentPreamble`); no extra passes.
-      // Assembly lives in this load layer, never in `lib/llm/endpoint.ts` (which stays
-      // provider-blind + side-effect-free).
-      const resolved = await resolveFragmentPreamble(parsed.coding.fragmentBlock, url, fetcher);
+      // Per-request streaming hot path: render `instructions` as the host template with
+      // consistency over the referenced fragments only (`validateLibraries: false`); no
+      // extra passes. Assembly lives in this load layer, never in `lib/llm/endpoint.ts`
+      // (which stays provider-blind + side-effect-free).
+      const resolved = await assembleFragmentPrompt(
+        parsed.coding.fragmentBlock,
+        url,
+        fetcher,
+        { validateLibraries: false },
+        parsed.coding.instructions,
+      );
       if (!resolved.ok) {
         // Fail closed — the proxy surfaces this as its existing upstream-load error.
         return {
@@ -43,7 +45,7 @@ export function loadCoding(url: string): Promise<LoadCodingResult> {
         coding: {
           ...parsed.coding,
           fragmentBlock: EMPTY_FRAGMENT_BLOCK,
-          instructions: prependPreamble(resolved.preamble, parsed.coding.instructions),
+          instructions: resolved.prompt,
         },
       };
     },

@@ -33,11 +33,9 @@ describe("checkFragmentFileValue", () => {
       "fragments:",
       "  - id: a",
       "    version: 1",
-      "    priority: 100",
       "    content: hi",
       "  - id: a",
       "    version: 1",
-      "    priority: 200",
       "    content: bye",
     ].join("\n");
     const result = checkFragmentFileValue(parse(yaml));
@@ -65,7 +63,6 @@ describe("checkFragmentFileValue", () => {
       "fragments:",
       "  - id: bad",
       "    version: 1",
-      "    priority: 100",
       "    content: |",
       "      {{#each items}}",
       "      - {{this}}",
@@ -83,7 +80,6 @@ describe("checkFragmentFileValue", () => {
       "fragments:",
       "  - id: list",
       "    version: 1",
-      "    priority: 100",
       "    input_schema:",
       "      type: object",
       "      required:",

@@ -18,14 +18,12 @@ const FRAGMENT_V1 = `id: e2e_crud_fragments
 fragments:
   - id: greeting
     version: 1
-    priority: 1
     content: "Hello from version one"
 `;
 const FRAGMENT_V2 = `id: e2e_crud_fragments
 fragments:
   - id: greeting
     version: 2
-    priority: 1
     content: "Hello from version two"
 `;
 
@@ -273,7 +271,7 @@ test("multi-select Delete Selected removes every chosen file in one action", {
   const prefix = `e2e-multi-${stamp}`;
   const names = [`${prefix}-a`, `${prefix}-b`];
   const fragmentYaml = (id: string) =>
-    `id: ${id}\nfragments:\n  - id: greeting\n    version: 1\n    priority: 1\n    content: "Hi"\n`;
+    `id: ${id}\nfragments:\n  - id: greeting\n    version: 1\n    content: "Hi"\n`;
 
   // Create two hosted fragment files (distinct YAML ids).
   for (const [i, name] of names.entries()) {

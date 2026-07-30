@@ -150,12 +150,10 @@ const LIB_YAML = `id: lib
 fragments:
   - id: safety
     version: 1
-    priority: 900
     content: |
       Always be safe and kind.
   - id: lang
     version: 1
-    priority: 400
     input_schema:
       type: object
       required: [language]
@@ -184,10 +182,10 @@ llm:
 fragment_files:
   - id: lib
     url: ${LIB_URL}
-fragments:
-  - file: lib
-    id: safety
-instructions: "Help beginners."
+instructions: |
+  {{fragment "lib.safety"}}
+
+  Help beginners.
 `;
     const result = await loadAndCheckCoding(
       URL_,
@@ -209,10 +207,10 @@ llm:
 fragment_files:
   - id: lib
     url: ${LIB_URL}
-fragments:
-  - file: lib
-    id: lang
-instructions: "Help beginners."
+instructions: |
+  {{fragment "lib.lang"}}
+
+  Help beginners.
 `;
     const result = await loadAndCheckCoding(
       URL_,

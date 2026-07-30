@@ -259,7 +259,6 @@ describe("loadAndBuildTutorPrompt — failures", () => {
       "fragments:",
       "  - id: str_frag",
       "    version: 1",
-      "    priority: 100",
       "    input_schema:",
       "      type: object",
       "      properties:",
@@ -291,6 +290,42 @@ describe("loadAndBuildTutorPrompt — failures", () => {
   });
 });
 
+describe("loadAndBuildTutorPrompt — inline placement", () => {
+  it("renders each fragment where its marker sits (textual order, prose between)", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const first = result.prompt.indexOf("FIRST-MARKER"); // str_frag — placed first
+    const middle = result.prompt.indexOf("TUTOR-INSTRUCTIONS-MARKER"); // tutor prose, in the middle
+    const last = result.prompt.indexOf("LAST-MARKER"); // safety_frag — placed last
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(middle).toBeGreaterThan(first);
+    expect(last).toBeGreaterThan(middle);
+    // Supplied list items and the unescaped ASCII diagram render verbatim.
+    expect(result.prompt).toContain("ITEM-ALPHA");
+    expect(result.prompt).toContain("[head] -> [ A");
+  });
+
+  it("leaves host text byte-verbatim when the tutor declares no fragment_files (never compiled)", async () => {
+    const noFragmentsTutor = [
+      "id: plain",
+      "name: Plain",
+      "description: A plain tutor.",
+      "llm:",
+      "  model: test-model",
+      "prompt:",
+      "  tutor_instructions: |",
+      '    A literal {{fragment "x.y"}} marker and {{unescaped}} braces stay put.',
+    ].join("\n");
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(noFragmentsTutor)]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.prompt).toContain('{{fragment "x.y"}}');
+    expect(result.prompt).toContain("{{unescaped}}");
+  });
+});
+
 describe("loadAndBuildTutorPrompt — validateLibraries (thorough whole-library check)", () => {
   // Append an UNUSED fragment with a broken template (it references a variable its
   // input_schema never declares) to a real referenced library. The tutor never
@@ -298,8 +333,6 @@ describe("loadAndBuildTutorPrompt — validateLibraries (thorough whole-library 
   const libAWithBrokenUnused = () =>
     `${LIB_A_YAML}
   - id: broken_unused
-    version: 1
-    priority: 9999
     content: |
       You forgot to declare {{undeclared_var}}.
 `;

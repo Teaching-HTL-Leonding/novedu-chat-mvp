@@ -1,8 +1,9 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 # "Writing Tutor" — an authoring tutor FOR TEACHERS: it helps them write valid
 # writing-activity YAML files (split-screen Markdown editor + AI writing
-# coach), e.g. from their teaching material. Part of the authoring set sharing
-# authoring-fragments.yaml.
+# coach), e.g. from their teaching material. Part of the authoring set (see
+# also tutor-authoring-tutor.yaml, quiz-authoring-tutor.yaml,
+# coding-authoring-tutor.yaml).
 
 id: writing-authoring
 name: "Writing Tutor"
@@ -29,28 +30,6 @@ llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 
 prompt:
-  fragment_files:
-    - id: authoring_fragments
-      url: "authoring-fragments.yaml"
-
-  fragments:
-    - file: authoring_fragments
-      id: authoring_assistant
-      variables:
-        artifact: "writing activity YAML files for the Novedu chat app"
-
-    - file: authoring_fragments
-      id: from_teaching_material
-      variables:
-        activity_kind: "a writing activity (an assignment, a starter text, and the AI coach's feedback instructions)"
-
-    - file: authoring_fragments
-      id: yaml_hygiene
-
-    - file: authoring_fragments
-      id: teacher_content_safety
-      required: true
-
   tutor_instructions: |
     You are the "Writing Tutor": you help teachers author writing activities
     in this exact YAML format. Treat the format reference below as the single

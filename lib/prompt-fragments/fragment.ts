@@ -4,10 +4,10 @@
 // (`loadAndCheckFragmentFile`) lives in `load.ts`.
 //
 // These same checks back two callers: the `--kind fragment` / "Fragment library"
-// path (a library author validating their file directly), and thorough tutor
+// path (a library author validating their file directly), and thorough activity
 // validation, which strict-renders EVERY fragment in EVERY referenced library
 // (`checkFragmentTemplates`, opt-in via `validateLibraries`). Duplicate-id stays
-// owned here for the standalone path; on the tutor path `checkConsistency` already
+// owned here for the standalone path; on the activity path `checkPlacements` already
 // reports it, so the whole-library pass uses `checkFragmentTemplates` ONLY (no
 // double-report).
 
@@ -85,8 +85,8 @@ export function checkFragmentTemplates(
 
 /**
  * Fragment ids declared more than once within a single file. The standalone
- * validator runs this directly; the tutor path gets the same check from
- * `checkConsistency` (so the whole-library pass must NOT repeat it).
+ * validator runs this directly; the activity path gets the same check from
+ * `checkPlacements` (so the whole-library pass must NOT repeat it).
  */
 export function findDuplicateFragmentIds(file: FragmentFile): ValidationError[] {
   const errors: ValidationError[] = [];

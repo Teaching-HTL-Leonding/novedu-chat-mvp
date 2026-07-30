@@ -6,16 +6,11 @@
 #   - topic_limits      — restricts the tutor to a configurable list of topics
 #   - language_policy   — which language to speak, which language for code
 #   - teenager_safety   — safety net for teenage students (non-overridable)
-#
-# Priorities: socratic_tutor (100) < topic_limits (200) < language_policy (400)
-# < teenager_safety (900). Tutors that add their own fragments should pick
-# priorities between these.
 
 id: general-fragments
 fragments:
   - id: socratic_tutor
     version: 1
-    priority: 100
 
     content: |
       You are a Socratic tutor.
@@ -42,7 +37,6 @@ fragments:
 
   - id: topic_limits
     version: 1
-    priority: 200
 
     input_schema:
       type: object
@@ -70,7 +64,6 @@ fragments:
 
   - id: language_policy
     version: 1
-    priority: 400
 
     input_schema:
       type: object
@@ -95,7 +88,6 @@ fragments:
 
   - id: teenager_safety
     version: 1
-    priority: 900
 
     classification:
       type: safety

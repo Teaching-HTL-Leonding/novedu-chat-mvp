@@ -36,7 +36,7 @@ describe("ErrorList", () => {
             fragmentId: "socratic_tutor",
             variable: "domain",
           },
-          { code: "DUPLICATE_PRIORITY", message: "Priority 100 is shared" },
+          { code: "HOST_TEMPLATE_PARSE_ERROR", message: "Host text is not a valid template" },
         ]}
       />,
     );
@@ -47,7 +47,7 @@ describe("ErrorList", () => {
       screen.getByText("Fragment socratic_tutor requires variable domain"),
     ).toBeInTheDocument();
     expect(screen.getByText("general / socratic_tutor · domain")).toBeInTheDocument();
-    expect(screen.getByText("DUPLICATE_PRIORITY")).toBeInTheDocument();
+    expect(screen.getByText("HOST_TEMPLATE_PARSE_ERROR")).toBeInTheDocument();
   });
 
   it("renders flattened zod issue detail for schema errors", () => {

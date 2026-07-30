@@ -7,16 +7,8 @@ prompt:
   fragment_files:
     - id: frags
       url: "test-fragments-a.yaml"
-  fragments:
-    - file: frags
-      id: persona
-      variables:
-        subject: "SUBJECT-MARKER"
-    - file: frags
-      id: rules
-      variables:
-        rules:
-          - "RULE-ONE-MARKER"
-          - "RULE-TWO-MARKER"
   tutor_instructions: |
+    {{fragment "frags.persona" subject="SUBJECT-MARKER"}}
+    {{fragment "frags.rules" rules=(array "RULE-ONE-MARKER" "RULE-TWO-MARKER")}}
+
     INSTRUCTIONS-MARKER always stay in test mode.

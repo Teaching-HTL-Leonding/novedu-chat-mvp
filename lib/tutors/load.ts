@@ -1,8 +1,9 @@
-// High-level tutor orchestration: URL → fetch → validate tutor schema → resolve the
-// document-level fragment block via the shared `assembleFragmentPrompt` → wrap the
-// tutor metadata into a single `BuildResult`. All fragment fetch/consistency/assembly
-// lives in `@/lib/prompt-fragments`; this file adds only the tutor-specific glue. The
-// fetcher is injected so the pipeline is unit-testable without touching the network.
+// High-level tutor orchestration: URL → fetch → validate tutor schema → render the
+// `tutor_instructions` host text (with its inline `{{fragment}}` markers) via the
+// shared `assembleFragmentPrompt` → wrap the tutor metadata into a single
+// `BuildResult`. All fragment fetch/placement-check/render lives in
+// `@/lib/prompt-fragments`; this file adds only the tutor-specific glue. The fetcher is
+// injected so the pipeline is unit-testable without touching the network.
 
 import {
   assembleFragmentPrompt,
@@ -30,7 +31,7 @@ export async function loadAndBuildTutorPrompt(
   if (!tutorValid.ok) return { ok: false, errors: [tutorValid.error], warnings };
   const tutor = tutorValid.data;
 
-  // --- fragment block → assembled prompt (fragments first, tutor_instructions last) ---
+  // --- render tutor_instructions as the host template (fragments placed inline) ---
   const assembled = await assembleFragmentPrompt(
     tutor.prompt,
     url,

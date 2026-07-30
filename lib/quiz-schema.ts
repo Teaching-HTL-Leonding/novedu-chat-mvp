@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
-import { FragmentFileRefSchema, FragmentRefSchema } from "@/lib/prompt-fragments";
+import { FragmentFileRefSchema } from "@/lib/prompt-fragments";
 
 /** An optional content image attached to a question (carries no secret). */
 const ImageRefSchema = z
@@ -130,16 +130,21 @@ export const QuizYamlSchema = z.strictObject({
       id: "discussion",
       description: "Optional guidance for the per-question follow-up discussion chat.",
     }),
-  // Optional document-level prompt-fragment block (the tutor `prompt` shape flattened
-  // to the root). The assembled block is prepended to BOTH the grader prompt and the
-  // discussion chat's system prompt (see `lib/quiz-fetch.ts`); `evaluation` and
-  // `discussion.instructions` stay plain strings.
+  // Optional document-level prompt-fragment libraries (the tutor `prompt` shape
+  // flattened to the root). WHICH fragments are used is expressed by inline
+  // `{{fragment "alias.id" …}}` markers inside the quiz-level `instructions` host
+  // text below; that rendered text is prepended to BOTH the grader prompt and the
+  // discussion chat's system prompt (see `lib/quiz-fetch.ts`). Per-question
+  // `evaluation` and `discussion.instructions` stay plain strings — no markers there.
   fragment_files: z.array(FragmentFileRefSchema).default([]).meta({
     description: "Optional fragment libraries this quiz pulls shared prompt fragments from.",
   }),
-  fragments: z.array(FragmentRefSchema).default([]).meta({
+  // The quiz-level host text: a preamble rendered once and prepended to both the
+  // grader and the discussion prompts. When any fragment_files are declared it is a
+  // Handlebars template carrying the inline `{{fragment}}` markers.
+  instructions: z.string().optional().meta({
     description:
-      "Optional fragments selected from fragment_files. Assembled in priority order and prepended to BOTH the grader prompt and the discussion chat's system prompt.",
+      'Optional quiz-level preamble prepended to BOTH the grader prompt and the discussion chat. When any fragment_files are declared, place fragments inline here with {{fragment "alias.id" …}} markers (escape a literal {{ as \\{{).',
   }),
   questions: z.array(QuizQuestionSchema).min(1).meta({
     description:

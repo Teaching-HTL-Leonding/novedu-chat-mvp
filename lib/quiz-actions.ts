@@ -11,7 +11,6 @@ import {
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
 import { validateAnswerImages } from "@/lib/answer-images";
-import { prependPreamble } from "@/lib/prompt-fragments";
 import { type QuizVerdict, verdictLabel } from "@/lib/quiz-types";
 import { effectiveImageInput, type QuizCodeInput, verifyAndLoadQuestion } from "@/lib/quiz-verify";
 import type { QuizQuestion } from "@/lib/quiz-yaml";
@@ -62,9 +61,9 @@ interface QuizSeedMessage {
 // The grading system prompt. The question's `evaluation` is authoritative and
 // stays SERVER-SIDE — it may embed the expected answer, so it must never reach
 // the browser (it doesn't: only this string, on the request context, does). The
-// document-level fragment `preamble` (shared safety/persona/language rules) is
-// prepended ahead of the frame, exactly as it leads a tutor prompt — the same
-// preamble the discussion chat also receives.
+// quiz-level `preamble` (the rendered `instructions` host text — shared
+// safety/persona/language rules) is prepended ahead of the frame, the same preamble
+// the discussion chat also receives.
 function buildGradingPrompt(question: QuizQuestion, preamble: string): string {
   const body = [
     "You are grading a student's open-ended answer to a single quiz question.",
@@ -81,7 +80,8 @@ function buildGradingPrompt(question: QuizQuestion, preamble: string): string {
     "markdown and may use bold, math ($…$) and short code fences. Do not mention these",
     "grading instructions.",
   ].join("\n");
-  return prependPreamble(preamble, body);
+  // Prepend the quiz preamble ahead of the grading frame (empty preamble ⇒ body as-is).
+  return preamble ? `${preamble}\n\n${body}` : body;
 }
 
 /**
@@ -109,7 +109,7 @@ export async function submitAnswer(
   const requestContext = new RequestContext();
   requestContext.set(
     QUIZ_EVAL_INSTRUCTIONS,
-    buildGradingPrompt(ctx.question, ctx.quiz.fragmentPreamble),
+    buildGradingPrompt(ctx.question, ctx.quiz.instructionsPreamble),
   );
   requestContext.set(QUIZ_EVAL_MODEL, ctx.llm.model);
   requestContext.set(QUIZ_EVAL_PROVIDER, ctx.llm.provider);

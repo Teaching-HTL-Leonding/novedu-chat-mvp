@@ -2,7 +2,6 @@ id: test-fragments-a
 fragments:
   - id: persona
     version: 1
-    priority: 10
     input_schema:
       type: object
       required:
@@ -14,7 +13,6 @@ fragments:
       You are a tutor for {{subject}}.
   - id: rules
     version: 1
-    priority: 20
     input_schema:
       type: object
       required:

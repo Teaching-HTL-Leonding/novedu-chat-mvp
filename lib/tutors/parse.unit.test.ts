@@ -84,8 +84,6 @@ describe("validate — fragment file", () => {
       fragments: [
         {
           id: "f",
-          version: 1,
-          priority: 1,
           content: "hi",
           input_schema: { type: "object", required: [], properties: { xs: { type: "array" } } },
         },

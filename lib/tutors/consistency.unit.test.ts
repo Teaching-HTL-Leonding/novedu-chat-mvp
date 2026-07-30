@@ -1,174 +1,201 @@
 import { describe, expect, it } from "vitest";
-import { checkConsistency, type Fragment, type FragmentFile } from "@/lib/prompt-fragments";
-import type { Tutor } from "./schemas";
-import { loadFixtureFragmentFiles, loadFixtureTutor } from "./test-fixtures";
+import {
+  checkPlacements,
+  type FragmentFile,
+  type FragmentFileRef,
+  type Placement,
+  resolveAndMerge,
+} from "@/lib/prompt-fragments";
+import { LIB_A_URL, LIB_B_URL, loadFixtureFragmentFiles } from "./test-fixtures";
 
-// Each test starts from the synthetic, self-consistent fixture and mutates a clone
-// to trigger exactly one error/warning category.
-function fresh(): { tutor: Tutor; files: Map<string, FragmentFile> } {
-  return { tutor: loadFixtureTutor(), files: loadFixtureFragmentFiles() };
+// Placement checking over the synthetic fragment libraries. Each test constructs the
+// inline placements directly (what `parseHostPlacements` would extract from a host
+// text) and mutates a clone of the libraries to trigger exactly one category.
+
+const FILE_REFS: FragmentFileRef[] = [
+  { id: "lib_a", url: LIB_A_URL },
+  { id: "lib_b", url: LIB_B_URL },
+];
+
+function placement(ref: string, args: Placement["args"] = {}): Placement {
+  return { ref, args, line: 1, column: 1 };
 }
+
+/** The six placements that mirror the fixture HOST_TEXT — self-consistent. */
+const HAPPY: Placement[] = [
+  placement("lib_a.str_frag", { topic: "T" }),
+  placement("lib_a.list_frag", { items: ["a", "b"] }),
+  placement("lib_a.flag_frag", { enabled: false }),
+  placement("lib_b.diagram_frag"),
+  placement("lib_b.plain_frag"),
+  placement("lib_a.safety_frag"),
+];
 
 function codes(result: { errors: { code: string }[] }): string[] {
   return result.errors.map((e) => e.code);
 }
+function warnCodes(result: { warnings: { code: string }[] }): string[] {
+  return result.warnings.map((w) => w.code);
+}
 
-describe("checkConsistency — happy path", () => {
-  it("accepts the synthetic fixture with no errors", () => {
-    const { tutor, files } = fresh();
-    const result = checkConsistency(tutor.prompt, files);
+describe("checkPlacements — happy path", () => {
+  it("accepts self-consistent placements with no errors and no warnings", () => {
+    const result = checkPlacements(HAPPY, loadFixtureFragmentFiles(), FILE_REFS);
     expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
   });
 
-  it("produces a plan ordered by priority", () => {
-    const { tutor, files } = fresh();
-    const result = checkConsistency(tutor.prompt, files);
-    expect(result.plan.map((p) => p.priority)).toEqual([10, 20, 30, 40, 50, 60]);
+  it("allows the same fragment to be placed more than once (no duplicate warning)", () => {
+    const twice = [placement("lib_b.plain_frag"), placement("lib_b.plain_frag"), ...HAPPY];
+    const result = checkPlacements(twice, loadFixtureFragmentFiles(), FILE_REFS);
+    expect(result.errors).toEqual([]);
+    // There is deliberately no DUPLICATE_FRAGMENT_REFERENCE concept anymore.
+    expect(warnCodes(result)).not.toContain("UNUSED_FRAGMENT_FILE");
   });
 });
 
-describe("checkConsistency — errors", () => {
+describe("checkPlacements — errors", () => {
   it("UNKNOWN_FRAGMENT_FILE_ALIAS for a bad file alias", () => {
-    const { tutor, files } = fresh();
-    const [first] = tutor.prompt.fragments;
-    if (first) first.file = "does_not_exist";
-    expect(codes(checkConsistency(tutor.prompt, files))).toContain("UNKNOWN_FRAGMENT_FILE_ALIAS");
+    const result = checkPlacements(
+      [placement("does_not_exist.str_frag", { topic: "T" })],
+      loadFixtureFragmentFiles(),
+      FILE_REFS,
+    );
+    expect(codes(result)).toContain("UNKNOWN_FRAGMENT_FILE_ALIAS");
   });
 
   it("FRAGMENT_NOT_FOUND for a bad fragment id", () => {
-    const { tutor, files } = fresh();
-    const [first] = tutor.prompt.fragments;
-    if (first) first.id = "no_such_fragment";
-    expect(codes(checkConsistency(tutor.prompt, files))).toContain("FRAGMENT_NOT_FOUND");
+    const result = checkPlacements(
+      [placement("lib_a.no_such_fragment")],
+      loadFixtureFragmentFiles(),
+      FILE_REFS,
+    );
+    expect(codes(result)).toContain("FRAGMENT_NOT_FOUND");
   });
 
   it("MISSING_REQUIRED_VARIABLE when a required input is absent", () => {
-    const { tutor, files } = fresh();
-    const ref = tutor.prompt.fragments.find((f) => f.id === "str_frag");
-    delete ref?.variables?.topic;
-    const result = checkConsistency(tutor.prompt, files);
+    const result = checkPlacements(
+      [placement("lib_a.str_frag")],
+      loadFixtureFragmentFiles(),
+      FILE_REFS,
+    );
     expect(codes(result)).toContain("MISSING_REQUIRED_VARIABLE");
     expect(result.errors.find((e) => e.code === "MISSING_REQUIRED_VARIABLE")?.variable).toBe(
       "topic",
     );
   });
 
-  it("MISSING_REQUIRED_VARIABLE when only bind (no variables) satisfies the input", () => {
-    const { tutor, files } = fresh();
-    const ref = tutor.prompt.fragments.find((f) => f.id === "str_frag");
-    if (ref) {
-      ref.variables = {};
-      ref.bind = { topic: "context.topic" };
-    }
-    expect(codes(checkConsistency(tutor.prompt, files))).toContain("MISSING_REQUIRED_VARIABLE");
-  });
-
   it("VARIABLE_TYPE_MISMATCH: array where string expected", () => {
-    const { tutor, files } = fresh();
-    const ref = tutor.prompt.fragments.find((f) => f.id === "str_frag");
-    if (ref?.variables) ref.variables.topic = ["not", "a", "string"];
-    expect(codes(checkConsistency(tutor.prompt, files))).toContain("VARIABLE_TYPE_MISMATCH");
+    const result = checkPlacements(
+      [placement("lib_a.str_frag", { topic: ["not", "a", "string"] })],
+      loadFixtureFragmentFiles(),
+      FILE_REFS,
+    );
+    expect(codes(result)).toContain("VARIABLE_TYPE_MISMATCH");
   });
 
   it("VARIABLE_TYPE_MISMATCH: string where boolean expected", () => {
-    const { tutor, files } = fresh();
-    const ref = tutor.prompt.fragments.find((f) => f.id === "flag_frag");
-    if (ref?.variables) ref.variables.enabled = "false";
-    expect(codes(checkConsistency(tutor.prompt, files))).toContain("VARIABLE_TYPE_MISMATCH");
+    const result = checkPlacements(
+      [placement("lib_a.flag_frag", { enabled: "false" })],
+      loadFixtureFragmentFiles(),
+      FILE_REFS,
+    );
+    expect(codes(result)).toContain("VARIABLE_TYPE_MISMATCH");
   });
 
   it("VARIABLE_TYPE_MISMATCH: string where array expected", () => {
-    const { tutor, files } = fresh();
-    const ref = tutor.prompt.fragments.find((f) => f.id === "list_frag");
-    if (ref?.variables) ref.variables.items = "oops" as unknown as string[];
-    expect(codes(checkConsistency(tutor.prompt, files))).toContain("VARIABLE_TYPE_MISMATCH");
-  });
-
-  it("DUPLICATE_PRIORITY when two referenced fragments share a priority", () => {
-    const { tutor, files } = fresh();
-    const libA = files.get("lib_a");
-    const a = libA?.fragments.find((f: Fragment) => f.id === "str_frag");
-    const b = libA?.fragments.find((f: Fragment) => f.id === "list_frag");
-    if (a && b) b.priority = a.priority;
-    expect(codes(checkConsistency(tutor.prompt, files))).toContain("DUPLICATE_PRIORITY");
+    const result = checkPlacements(
+      [placement("lib_a.list_frag", { items: "oops" as unknown as string[] })],
+      loadFixtureFragmentFiles(),
+      FILE_REFS,
+    );
+    expect(codes(result)).toContain("VARIABLE_TYPE_MISMATCH");
   });
 
   it("DUPLICATE_FRAGMENT_FILE_ALIAS when an alias is declared twice", () => {
-    const { tutor, files } = fresh();
-    const [firstFile] = tutor.prompt.fragment_files;
-    if (firstFile) tutor.prompt.fragment_files.push({ ...firstFile });
-    expect(codes(checkConsistency(tutor.prompt, files))).toContain("DUPLICATE_FRAGMENT_FILE_ALIAS");
+    const dupRefs: FragmentFileRef[] = [...FILE_REFS, { id: "lib_a", url: LIB_A_URL }];
+    const result = checkPlacements(HAPPY, loadFixtureFragmentFiles(), dupRefs);
+    expect(codes(result)).toContain("DUPLICATE_FRAGMENT_FILE_ALIAS");
   });
 
   it("DUPLICATE_FRAGMENT_ID_IN_FILE when a file declares a fragment twice", () => {
-    const { tutor, files } = fresh();
+    const files = loadFixtureFragmentFiles();
     const libA = files.get("lib_a");
-    const firstFragment = libA?.fragments[0];
-    if (libA && firstFragment) libA.fragments.push({ ...firstFragment });
-    expect(codes(checkConsistency(tutor.prompt, files))).toContain("DUPLICATE_FRAGMENT_ID_IN_FILE");
+    const first = libA?.fragments[0];
+    if (libA && first) libA.fragments.push({ ...first });
+    expect(codes(checkPlacements(HAPPY, files, FILE_REFS))).toContain(
+      "DUPLICATE_FRAGMENT_ID_IN_FILE",
+    );
   });
 });
 
-describe("checkConsistency — warnings", () => {
+describe("checkPlacements — warnings", () => {
   it("UNDECLARED_VARIABLE for an extra supplied variable", () => {
-    const { tutor, files } = fresh();
-    const ref = tutor.prompt.fragments.find((f) => f.id === "str_frag");
-    if (ref?.variables) ref.variables.surprise = "x";
-    const result = checkConsistency(tutor.prompt, files);
-    expect(result.warnings.map((w) => w.code)).toContain("UNDECLARED_VARIABLE");
+    const result = checkPlacements(
+      [placement("lib_a.str_frag", { topic: "T", surprise: "x" })],
+      loadFixtureFragmentFiles(),
+      FILE_REFS,
+    );
+    expect(warnCodes(result)).toContain("UNDECLARED_VARIABLE");
     expect(result.errors).toEqual([]);
   });
 
-  it("DUPLICATE_FRAGMENT_REFERENCE when the same fragment is referenced twice", () => {
-    const { tutor, files } = fresh();
-    const ref = tutor.prompt.fragments.find((f) => f.id === "diagram_frag");
-    if (ref) tutor.prompt.fragments.push({ ...ref });
-    const result = checkConsistency(tutor.prompt, files);
-    expect(result.warnings.map((w) => w.code)).toContain("DUPLICATE_FRAGMENT_REFERENCE");
+  it("UNUSED_FRAGMENT_FILE when a declared library is never placed", () => {
+    // Only lib_a is used; lib_b is declared but no placement draws from it.
+    const onlyLibA = [placement("lib_a.safety_frag")];
+    const result = checkPlacements(onlyLibA, loadFixtureFragmentFiles(), FILE_REFS);
+    expect(warnCodes(result)).toContain("UNUSED_FRAGMENT_FILE");
+    expect(result.warnings.find((w) => w.code === "UNUSED_FRAGMENT_FILE")?.fileAlias).toBe("lib_b");
+    expect(result.errors).toEqual([]);
   });
 });
 
-describe("checkConsistency — default values", () => {
-  // Add an optional `greeting` (with a default) to the str_frag fragment's schema.
-  function withOptionalDefault(): { tutor: Tutor; files: Map<string, FragmentFile> } {
-    const { tutor, files } = fresh();
+describe("resolveAndMerge — defaults & content", () => {
+  function withOptionalDefault(): Map<string, FragmentFile> {
+    const files = loadFixtureFragmentFiles();
     const schema = files.get("lib_a")?.fragments.find((f) => f.id === "str_frag")?.input_schema;
     if (schema) schema.properties.greeting = { type: "string", default: "Hello!" };
-    return { tutor, files };
+    return files;
   }
 
-  it("injects a declared default for an optional variable the tutor omits", () => {
-    const { tutor, files } = withOptionalDefault();
-    const result = checkConsistency(tutor.prompt, files);
-    expect(result.errors).toEqual([]);
-    const resolved = result.plan.find((p) => p.fragmentId === "str_frag");
-    expect(resolved?.variables.greeting).toBe("Hello!");
+  it("returns the fragment content for a resolved reference", () => {
+    const r = resolveAndMerge("lib_a.str_frag", { topic: "T" }, loadFixtureFragmentFiles());
+    expect(r.content).toContain("FIRST-MARKER");
+    expect(r.errors).toEqual([]);
+  });
+
+  it("returns null content for an unresolved reference", () => {
+    const r = resolveAndMerge("lib_a.nope", {}, loadFixtureFragmentFiles());
+    expect(r.content).toBeNull();
+    expect(r.errors.map((e) => e.code)).toContain("FRAGMENT_NOT_FOUND");
+  });
+
+  it("injects a declared default for an optional variable the placement omits", () => {
+    const r = resolveAndMerge("lib_a.str_frag", { topic: "T" }, withOptionalDefault());
+    expect(r.errors).toEqual([]);
+    expect(r.variables.greeting).toBe("Hello!");
   });
 
   it("lets a supplied value win over the default", () => {
-    const { tutor, files } = withOptionalDefault();
-    const ref = tutor.prompt.fragments.find((f) => f.id === "str_frag");
-    if (ref) ref.variables = { ...ref.variables, greeting: "Hi there" };
-    const result = checkConsistency(tutor.prompt, files);
-    expect(result.errors).toEqual([]);
-    const resolved = result.plan.find((p) => p.fragmentId === "str_frag");
-    expect(resolved?.variables.greeting).toBe("Hi there");
+    const r = resolveAndMerge(
+      "lib_a.str_frag",
+      { topic: "T", greeting: "Hi there" },
+      withOptionalDefault(),
+    );
+    expect(r.variables.greeting).toBe("Hi there");
   });
 
   it("does not inject anything for an optional variable without a default", () => {
-    const { tutor, files } = fresh();
-    const result = checkConsistency(tutor.prompt, files);
-    const resolved = result.plan.find((p) => p.fragmentId === "str_frag");
-    expect(resolved?.variables).not.toHaveProperty("greeting");
+    const r = resolveAndMerge("lib_a.str_frag", { topic: "T" }, loadFixtureFragmentFiles());
+    expect(r.variables).not.toHaveProperty("greeting");
   });
 
   it("REQUIRED_PROPERTY_HAS_DEFAULT when a required input also declares a default", () => {
-    const { tutor, files } = fresh();
-    // `topic` is required (and supplied by the fixture); giving it a default is futile.
+    const files = loadFixtureFragmentFiles();
     const schema = files.get("lib_a")?.fragments.find((f) => f.id === "str_frag")?.input_schema;
     if (schema) schema.properties.topic = { type: "string", default: "anything" };
-    const result = checkConsistency(tutor.prompt, files);
-    expect(result.warnings.map((w) => w.code)).toContain("REQUIRED_PROPERTY_HAS_DEFAULT");
-    expect(result.errors).toEqual([]); // topic is still supplied → no MISSING_REQUIRED_VARIABLE
+    const r = resolveAndMerge("lib_a.str_frag", { topic: "T" }, files);
+    expect(r.warnings.map((w) => w.code)).toContain("REQUIRED_PROPERTY_HAS_DEFAULT");
+    expect(r.errors).toEqual([]);
   });
 });

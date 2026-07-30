@@ -7,15 +7,10 @@ prompt:
   fragment_files:
     - id: frags
       url: "broken-fragments.yaml"
-  fragments:
-    # ERROR 1 — `persona` requires a `subject` variable, none supplied →
-    # MISSING_REQUIRED_VARIABLE.
-    - file: frags
-      id: persona
-      variables: {}
-    # ERROR 2 — there is no `summary` fragment in broken-fragments.yaml →
-    # FRAGMENT_NOT_FOUND.
-    - file: frags
-      id: summary
   tutor_instructions: |
+    {{! ERROR 1 — `persona` requires a `subject` variable, none supplied → MISSING_REQUIRED_VARIABLE. }}
+    {{fragment "frags.persona"}}
+    {{! ERROR 2 — there is no `summary` fragment in broken-fragments.yaml → FRAGMENT_NOT_FOUND. }}
+    {{fragment "frags.summary"}}
+
     Intentionally broken so the validator has something to report.

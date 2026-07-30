@@ -17,7 +17,19 @@ export type ErrorCode =
   | "FRAGMENT_NOT_FOUND"
   | "MISSING_REQUIRED_VARIABLE"
   | "VARIABLE_TYPE_MISMATCH"
-  | "DUPLICATE_PRIORITY"
+  // The host text (tutor_instructions / instructions) is a Handlebars template once
+  // the activity declares any `fragment_files:`; a malformed marker or an unescaped
+  // literal `{{` fails to parse. Carries the `line:col` from Handlebars' message.
+  | "HOST_TEMPLATE_PARSE_ERROR"
+  // A `{{fragment}}` marker whose reference is not a quoted string literal (a bare
+  // `{{fragment}}`, or `{{fragment someVar}}`). The reference MUST be `"alias.id"`.
+  | "FRAGMENT_REF_NOT_LITERAL"
+  // A `{{fragment}}` marker that is structurally wrong in a way that would render
+  // differently than it validates: a block form `{{#fragment}}…{{/fragment}}` (whose
+  // body would be silently dropped), a `(fragment …)` subexpression, extra positional
+  // arguments, or a hash argument whose value is not a string / boolean / `(array
+  // "…" …)`. Fails closed so no text is silently lost or rendered unvalidated.
+  | "FRAGMENT_MARKER_INVALID"
   | "ASSEMBLY_ERROR"
   // A fragment's `content` template failed to compile or strict-render against its
   // own declared `input_schema` — a Handlebars syntax error or a reference to a
@@ -43,7 +55,9 @@ export type ErrorCode =
 /** Non-fatal smells: the prompt still builds, but something is worth flagging. */
 export type WarningCode =
   | "UNDECLARED_VARIABLE"
-  | "DUPLICATE_FRAGMENT_REFERENCE"
+  // A `fragment_files:` library is declared but no `{{fragment}}` marker in the host
+  // text ever draws from it — a likely leftover or typo'd alias.
+  | "UNUSED_FRAGMENT_FILE"
   | "REQUIRED_PROPERTY_HAS_DEFAULT";
 
 export interface ValidationError {
@@ -64,6 +78,10 @@ export interface ValidationError {
   actualType?: string;
   /** HTTP status for FETCH_FAILED. */
   status?: number;
+  /** 1-based line of a host-template parse error / placement (regexed from Handlebars). */
+  line?: number;
+  /** 1-based column of a placement (from the parsed AST `loc`). */
+  column?: number;
   /** Zod's treeified issues for *_SCHEMA_ERROR (machine + human readable). */
   zodIssues?: unknown;
 }

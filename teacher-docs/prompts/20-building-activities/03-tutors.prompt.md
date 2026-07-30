@@ -11,9 +11,11 @@ Cover:
   the tutor behave the way you want).
 - Common options students notice: a name, a greeting, a short description, and clickable
   starter questions on the empty chat.
-- Fragments: pulling in reusable, named pieces of prompt and supplying their values, and
-  when that is worth it versus just writing instructions directly. Stay on the consumer
-  side: writing a library of your own is the reusable-fragments chapter's job.
+- Fragments: declaring a library under `fragment_files:` and placing a reusable, named
+  piece of prompt with an inline `{{fragment "alias.id" …}}` marker in `tutor_instructions`,
+  supplying its values as marker arguments, and when that is worth it versus just writing
+  instructions directly. Stay on the consumer side: writing a library of your own is the
+  reusable-fragments chapter's job.
 - Walk a real example (the sorting-algorithms sample tutor) rather than inventing YAML.
 
 Get right:
@@ -23,10 +25,11 @@ Get right:
   unused ones.
 - Fragments are not tutor-only: the same libraries work in quizzes, writing, and coding
   activities (one sentence; the reusable-fragments chapter has the detail).
-- Two fragments a tutor uses must not share a priority, even across different
-  libraries; validation rejects the file.
+- A fragment lands where its marker sits in `tutor_instructions`; there is no priority
+  and no separate `fragments:` list. If an older tutor still has them, it is the old
+  format; do not describe priority ordering.
 - An optional fragment input can carry a default the library author set; supplying a
-  value overrides it.
+  value as a marker argument overrides it.
 - Provider and model can be overridden per code; link to "Available AI models" instead
   of repeating it.
 - Reuse real YAML from activities/examples/**.

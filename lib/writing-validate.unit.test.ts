@@ -142,12 +142,10 @@ const LIB_YAML = `id: lib
 fragments:
   - id: safety
     version: 1
-    priority: 900
     content: |
       Always be safe and kind.
   - id: lang
     version: 1
-    priority: 400
     input_schema:
       type: object
       required: [language]
@@ -176,14 +174,11 @@ llm:
 fragment_files:
   - id: lib
     url: ${LIB_URL}
-fragments:
-  - file: lib
-    id: safety
-  - file: lib
-    id: lang
-    variables:
-      language: English
-instructions: "Coach the draft."
+instructions: |
+  {{fragment "lib.safety"}}
+  {{fragment "lib.lang" language="English"}}
+
+  Coach the draft.
 `;
     const result = await loadAndCheckWriting(
       URL_,
@@ -205,10 +200,10 @@ llm:
 fragment_files:
   - id: lib
     url: ${LIB_URL}
-fragments:
-  - file: lib
-    id: lang
-instructions: "Coach the draft."
+instructions: |
+  {{fragment "lib.lang"}}
+
+  Coach the draft.
 `;
     const result = await loadAndCheckWriting(
       URL_,

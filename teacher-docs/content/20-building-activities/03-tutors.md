@@ -47,7 +47,7 @@ prompt:
 
 ## Your instructions
 
-The `tutor_instructions` field is free text in your own words: who the tutor is, what it teaches, how it should respond, and what it must not do. It always comes last in the assembled [[prompt]], after any fragments, so it carries the concrete, tutor-specific framing.
+The `tutor_instructions` field is free text in your own words: who the tutor is, what it teaches, how it should respond, and what it must not do. It's the tutor's whole [[prompt]]. When you reuse fragments, you place them with markers inside this same text, so your own wording and any shared pieces read in the order you arrange them.
 
 For a one-off tutor, it's fine to put the whole prompt here and skip fragments entirely. The sample tutor uses its instructions for the class-specific parts: what the students already know (basic TypeScript, no classes or arrow functions yet), the learning goals of the unit, and didactic hints such as preferring tiny concrete arrays over abstract talk.
 
@@ -72,12 +72,12 @@ You can define any number of starter questions, but students see at most five. W
 
 A [[fragment]] is a named piece of prompt (a teaching style, a topic list, a safety policy) that lives in a separate fragment library file and can be pulled into many tutors. Write a rule once, reuse it everywhere, and fix it in one place when it needs a change.
 
-Using fragments takes two optional fields inside `prompt`:
+Using fragments takes two steps inside `prompt`:
 
 - **`fragment_files`** declares the libraries and gives each a short alias. The `url` is either a full `https://` link or a relative path, which is resolved next to your tutor file's own published location.
-- **`fragments`** lists which fragments to include and supplies their values under `variables`. A fragment declares which values it needs; required ones must be supplied with the right type, and validation tells you exactly what's missing. An optional value can carry a default set by the library's author: leave the value out to accept it, or supply your own to override it.
+- **A marker** in `tutor_instructions` places each fragment where you want it: `{{fragment "alias.id" name="value"}}`. The part in quotes is the library alias and the fragment's id, split at the first dot. A fragment declares which values it needs; required ones must be supplied with the right type, and validation tells you exactly what's missing. An optional value can carry a default set by the library's author: leave the argument out to accept it, or supply your own to override it.
 
-The order of the final prompt comes from each fragment's `priority` (set in the library, lower numbers first), not from the order you list them in. Your `tutor_instructions` are appended after all fragments. Two fragments a tutor uses must not share a priority, even when they come from different libraries; validation rejects the file because the order would be ambiguous.
+A fragment lands exactly where its marker sits, so your own wording and the shared pieces read in the order you arrange them in `tutor_instructions`. There is no priority number and no separate list to keep in sync.
 
 Two things to know before you rely on a library:
 
@@ -88,7 +88,7 @@ Two things to know before you rely on a library:
 
 ## The sample tutor, walked through
 
-The sorting-algorithms tutor (`activities/examples/sorting-algorithms/sorting-tutor.yaml`) pulls four fragments from a shared library and adds its own instructions:
+The sorting-algorithms tutor (`activities/examples/sorting-algorithms/sorting-tutor.yaml`) declares one shared library and places four fragments with markers at the top of its instructions, then adds its own text:
 
 ```yaml
 prompt:
@@ -96,34 +96,26 @@ prompt:
     - id: general_fragments
       url: "../shared/general-fragments.yaml"
 
-  fragments:
-    - file: general_fragments
-      id: socratic_tutor
+  tutor_instructions: |
+    {{fragment "general_fragments.socratic_tutor"}}
 
-    - file: general_fragments
-      id: topic_limits
-      variables:
-        allowed_topics:
-          - "Bubble Sort: idea, passes, neighbor comparisons, swaps, early exit when no swap happens"
-          - "Selection Sort: idea, finding the minimum in the unsorted part, swapping it to the front"
+    {{fragment "general_fragments.topic_limits" allowed_topics=(array
+      "Bubble Sort: idea, passes, comparisons, swaps"
+      "Selection Sort: finding the minimum and swapping it to the front")}}
 
-    - file: general_fragments
-      id: language_policy
-      variables:
-        natural_language: "German"
-        code_language: "English (TypeScript and p5.js terms)"
+    {{fragment "general_fragments.language_policy" natural_language="German" code_language="English (TypeScript and p5.js terms)"}}
 
-    - file: general_fragments
-      id: teenager_safety
-      required: true
+    {{fragment "general_fragments.teenager_safety"}}
+
+    You are a tutor for 16-year-old students at a vocational college ...
 ```
 
 Reading it top to bottom:
 
-1. **One library, one alias.** The library sits in a sibling folder, so a relative `url` is enough; `general_fragments` is the alias the entries below refer to.
-2. **`socratic_tutor`** needs no variables: it's a fixed teaching style (hints and questions instead of ready-made solutions) that any subject tutor can reuse unchanged.
-3. **`topic_limits`** takes a list of allowed topics, so the same fragment keeps a maths tutor on maths and this one on sorting. The full sample lists seven topics; the excerpt above shows the first two.
-4. **`language_policy`** takes two values: the tutor speaks German with the students but keeps code and technical terms in English.
-5. **`teenager_safety`** is the shared safety net for teenage students. It needs no values either. The `required: true` flag marks it as important to keep; it's accepted but doesn't change validation today.
+1. **One library, one alias.** The library sits in a sibling folder, so a relative `url` is enough; `general_fragments` is the alias every marker below refers to.
+2. **`socratic_tutor`** needs no values: it's a fixed teaching style (hints and questions instead of ready-made solutions) placed with a bare marker.
+3. **`topic_limits`** takes a list of allowed topics, written with `(array …)`, so the same fragment keeps a maths tutor on maths and this one on sorting. The full sample lists seven topics; the excerpt above shows two.
+4. **`language_policy`** takes two text values: the tutor speaks German with the students but keeps code and technical terms in English.
+5. **`teenager_safety`** is the shared safety net for teenage students, placed with a bare marker.
 
-After those four fragments, the tutor's own `tutor_instructions` add everything specific to this class: the students' prior knowledge, the learning goals, and how to guide them through visualising the algorithms. That split is the pattern to copy: shared behaviour in fragments, your class in the instructions.
+Below the markers, in the same `tutor_instructions` text, the tutor adds everything specific to this class: the students' prior knowledge, the learning goals, and how to guide them through visualising the algorithms. That split is the pattern to copy: shared behaviour in fragments, your class in the instructions.

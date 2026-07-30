@@ -2,14 +2,16 @@
 
 A **fragment library** is a reusable, parameterized collection of prompt pieces — a
 persona, a safety policy, a set of ground rules — written once and pulled into any
-activity (tutor, quiz, writing, coding) via a top-level `fragment_files:` /
-`fragments:` block. Fragments are a **cross-cutting** capability, not an activity
-module of their own.
+activity (tutor, quiz, writing, coding) by declaring the library under
+`fragment_files:` and dropping inline `{{fragment "alias.id" …}}` markers into the
+activity's own instructions. Fragments are a **cross-cutting** capability, not an
+activity module of their own.
 
 This folder holds only the **editor schema** for fragment-library files. The fragment
-format itself — `input_schema`, `variables`, `priority`, assembly order — is fully
-documented once in the tutor guide, [`../tutors/README.md`](../tutors/README.md).
-Reusable libraries live under [`../examples/shared/`](../examples/shared/) — e.g.
+format itself — `input_schema`, defaults, `content`, and how markers place and
+parameterize fragments — is fully documented once in the tutor guide,
+[`../tutors/README.md`](../tutors/README.md). Reusable libraries live under
+[`../examples/shared/`](../examples/shared/) — e.g.
 [`../examples/shared/general-fragments.yaml`](../examples/shared/general-fragments.yaml).
 
 ## Editor support

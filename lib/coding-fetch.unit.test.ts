@@ -25,7 +25,6 @@ const LIB_YAML = `id: lib
 fragments:
   - id: safety
     version: 1
-    priority: 900
     content: |
       SAFETY-MARKER be kind.
 `;
@@ -44,10 +43,10 @@ llm:
 fragment_files:
   - id: lib
     url: ${LIB_URL}
-fragments:
-  - file: lib
-    id: safety
-instructions: "INSTRUCTIONS-MARKER help beginners."
+instructions: |
+  {{fragment "lib.safety"}}
+
+  INSTRUCTIONS-MARKER help beginners.
 `,
       [LIB_URL]: LIB_YAML,
     };
@@ -85,10 +84,10 @@ llm:
 fragment_files:
   - id: lib
     url: ${LIB_URL}
-fragments:
-  - file: lib
-    id: safety
-instructions: "Help."
+instructions: |
+  {{fragment "lib.safety"}}
+
+  Help.
 `,
     };
     const result = await loadCoding(URL_);

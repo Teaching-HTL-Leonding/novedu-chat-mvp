@@ -28,14 +28,12 @@ const FRAGMENT_V1 = `id: e2e_api_fragments
 fragments:
   - id: greeting
     version: 1
-    priority: 1
     content: "Hello from the API, version one"
 `;
 const FRAGMENT_V2 = `id: e2e_api_fragments
 fragments:
   - id: greeting
     version: 2
-    priority: 1
     content: "Hello from the API, version two"
 `;
 

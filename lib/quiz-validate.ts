@@ -120,13 +120,15 @@ export async function loadAndCheckQuiz(
   const checked = checkQuizParsed(valid.data);
   if (!checked.ok) return checked;
 
-  // The fragment block's authoring gate: fetch + consistency + assembly dry-run
-  // (authoring default: `validateLibraries: true`).
+  // The fragment block's authoring gate: fetch + placement checks + a host-template
+  // render dry-run over the quiz `instructions` (authoring default: `validateLibraries:
+  // true`). The `instructions` host text carries the inline `{{fragment}}` markers.
   const assembled = await assembleFragmentPrompt(
-    { fragment_files: valid.data.fragment_files, fragments: valid.data.fragments },
+    { fragment_files: valid.data.fragment_files },
     url,
     fetchImpl,
     { allowedSchemes: opts.allowedSchemes, validateLibraries: opts.validateLibraries ?? true },
+    valid.data.instructions ?? "",
   );
   const warnings = [...checked.warnings, ...assembled.warnings];
   if (!assembled.ok) return { ok: false, errors: assembled.errors, warnings };

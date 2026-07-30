@@ -1,11 +1,18 @@
 // Public surface of the shared prompt-fragment core: the ONE home of Handlebars
-// handling (compilation, COMPILE_OPTIONS, consistency, assembly) and the
-// load/validate infrastructure every activity kind (tutor, quiz, writing, coding)
-// consumes. No consumer imports `handlebars` or re-implements any of this.
+// handling (fragment-content rendering, the isolated host-template engine, placement
+// checking) and the load/validate infrastructure every activity kind (tutor, quiz,
+// writing, coding) consumes. No consumer imports `handlebars` or re-implements any of
+// it; they all go through `assembleFragmentPrompt`.
 
-export { assembleSystemPrompt, COMPILE_OPTIONS } from "./assemble";
+export { COMPILE_OPTIONS, renderFragmentContent } from "./assemble";
 export { EMPTY_FRAGMENT_BLOCK } from "./block";
-export { type ConsistencyResult, checkConsistency, type ResolvedFragment } from "./consistency";
+export {
+  checkPlacements,
+  type PlacementCheckResult,
+  type ResolveResult,
+  resolveAndMerge,
+  splitFragmentRef,
+} from "./consistency";
 export type {
   BuildResult,
   ErrorCode,
@@ -23,13 +30,18 @@ export {
 } from "./fragment";
 export { getFragmentInputSchema } from "./fragment-inputs";
 export {
+  type FragmentResolver,
+  type ParseHostResult,
+  type Placement,
+  parseHostPlacements,
+  renderHostTemplate,
+} from "./host-template";
+export {
   type AssembleResult,
   assembleFragmentPrompt,
   type LoadOptions,
   loadAndCheckFragmentFile,
   loadYaml,
-  prependPreamble,
-  resolveFragmentPreamble,
   resolveFragmentUrl,
 } from "./load";
 export { parseYaml, validate } from "./parse";
@@ -40,8 +52,6 @@ export {
   type FragmentFileRef,
   FragmentFileRefSchema,
   FragmentFileSchema,
-  type FragmentRef,
-  FragmentRefSchema,
   FragmentSchema,
   InputSchema,
   type VariableValue,

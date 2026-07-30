@@ -29,16 +29,10 @@ fragment_files:
   - id: general_fragments
     url: "../shared/general-fragments.yaml"
 
-fragments:
-  - file: general_fragments
-    id: language_policy
-    variables:
-      natural_language: "English — simple and clear, suitable for B1–B2 learners; briefly explain difficult words when you use them"
-      code_language: "English"
+instructions: |
+  {{fragment "general_fragments.language_policy" natural_language="English — simple and clear, suitable for B1–B2 learners; briefly explain difficult words when you use them" code_language="English"}}
 
-  - file: general_fragments
-    id: teenager_safety
-    required: true
+  {{fragment "general_fragments.teenager_safety"}}
 
 discussion:
   instructions: |

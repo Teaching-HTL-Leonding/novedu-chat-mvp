@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
-import { FragmentFileRefSchema, FragmentRefSchema } from "@/lib/prompt-fragments";
+import { FragmentFileRefSchema } from "@/lib/prompt-fragments";
 
 export const CodingYamlSchema = z.strictObject({
   id: z
@@ -44,22 +44,18 @@ export const CodingYamlSchema = z.strictObject({
       provider: providerSchema,
     })
     .meta({ id: "llm", description: "The pinned model and provider that answer coding requests." }),
-  // Optional document-level prompt-fragment block (the tutor `prompt` shape flattened
-  // to the root, identical to writing). The assembled fragments are prepended to
-  // `instructions` in `loadCoding` (never in `endpoint.ts`) — fragments first,
-  // `instructions` last — and the proxy folds that one finished string into each request.
+  // Optional document-level prompt-fragment libraries (the tutor `prompt` shape
+  // flattened to the root, identical to writing). WHICH fragments are used is expressed
+  // by inline `{{fragment "alias.id" …}}` markers inside `instructions` below, rendered
+  // as the host template in `loadCoding` (never in `endpoint.ts`).
   fragment_files: z.array(FragmentFileRefSchema).default([]).meta({
     description: "Optional fragment libraries this activity pulls shared prompt fragments from.",
-  }),
-  fragments: z.array(FragmentRefSchema).default([]).meta({
-    description:
-      "Optional fragments selected from fragment_files. Assembled in priority order and prepended AHEAD of instructions.",
   }),
   // The teacher's system prompt, appended after the coding tool's own. SERVER-ONLY;
   // required.
   instructions: z.string().min(1).meta({
     description:
-      "The assistant's system prompt. SERVER-ONLY: never sent to the browser or the coding agent, and appended AFTER the coding tool's own prompt (so the teacher has the final word). Constrain the assistant to what your class has learned.",
+      "The assistant's system prompt. SERVER-ONLY: never sent to the browser or the coding agent, and appended AFTER the coding tool's own prompt (so the teacher has the final word). Constrain the assistant to what your class has learned. When any fragment_files are declared it is a Handlebars template: place fragments inline with {{fragment \"alias.id\" …}} markers (escape a literal {{ as \\{{).",
   }),
 });
 export type CodingYaml = z.infer<typeof CodingYamlSchema>;

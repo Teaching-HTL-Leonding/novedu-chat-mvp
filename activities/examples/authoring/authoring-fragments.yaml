@@ -11,15 +11,11 @@
 #   - from_teaching_material  — workflow: teaching material in, activity out
 #   - yaml_hygiene            — YAML formatting and strict-schema discipline
 #   - teacher_content_safety  — the produced material targets teenagers
-#
-# Priorities: 100 < 200 < 300 < 900. Authoring tutors adding their own
-# fragments should pick priorities between these.
 
 id: authoring-fragments
 fragments:
   - id: authoring_assistant
     version: 1
-    priority: 100
 
     input_schema:
       type: object
@@ -55,7 +51,6 @@ fragments:
 
   - id: from_teaching_material
     version: 1
-    priority: 200
 
     input_schema:
       type: object
@@ -91,7 +86,6 @@ fragments:
 
   - id: yaml_hygiene
     version: 1
-    priority: 300
 
     content: |
       YAML discipline:
@@ -114,7 +108,6 @@ fragments:
 
   - id: teacher_content_safety
     version: 1
-    priority: 900
 
     classification:
       type: safety

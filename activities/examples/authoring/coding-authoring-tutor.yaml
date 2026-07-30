@@ -2,7 +2,8 @@
 # "Coding Tutor" — an authoring tutor FOR TEACHERS: it helps them write valid
 # coding-activity YAML files (an OpenAI-compatible endpoint for external
 # coding agents such as little-coder), e.g. from their teaching material.
-# Part of the authoring set sharing authoring-fragments.yaml.
+# Part of the authoring set (see also tutor-authoring-tutor.yaml,
+# quiz-authoring-tutor.yaml, writing-authoring-tutor.yaml).
 
 id: coding-authoring
 name: "Coding Tutor"
@@ -30,28 +31,6 @@ llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 
 prompt:
-  fragment_files:
-    - id: authoring_fragments
-      url: "authoring-fragments.yaml"
-
-  fragments:
-    - file: authoring_fragments
-      id: authoring_assistant
-      variables:
-        artifact: "coding activity YAML files for the Novedu chat app"
-
-    - file: authoring_fragments
-      id: from_teaching_material
-      variables:
-        activity_kind: "a coding activity (a system prompt that constrains an external coding agent to the class's level and topics)"
-
-    - file: authoring_fragments
-      id: yaml_hygiene
-
-    - file: authoring_fragments
-      id: teacher_content_safety
-      required: true
-
   tutor_instructions: |
     You are the "Coding Tutor": you help teachers author coding activities in
     this exact YAML format. Treat the format reference below as the single
