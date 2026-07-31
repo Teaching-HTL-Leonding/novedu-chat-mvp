@@ -110,9 +110,17 @@
             "$ref": "#/$defs/fragmentFileRef"
           }
         },
+        "text_files": {
+          "default": [],
+          "description": "Optional plain-text files (markdown / source) embedded verbatim via {{file \"alias\"}} markers.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/textFileRef"
+          }
+        },
         "tutor_instructions": {
           "type": "string",
-          "description": "The tutor's system prompt. When any fragment_files are declared this is a Handlebars template: place fragments inline with {{fragment \"alias.id\" key=\"v\"}} markers (escape a literal {{ as \\{{). For single-file tutors it is the whole prompt."
+          "description": "The tutor's system prompt. When any fragment_files or text_files are declared this is a Handlebars template: place fragments inline with {{fragment \"alias.id\" key=\"v\"}} markers and embed text files with {{file \"alias\"}} (optionally {{file \"alias\" from=10 to=40}} for a line range; escape a literal {{ as \\{{). For single-file tutors it is the whole prompt."
         }
       },
       "required": [
@@ -142,6 +150,28 @@
       ],
       "additionalProperties": false,
       "description": "A reference to a fragment library by alias + URL."
+    },
+    "textFileRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[^.]+$",
+          "description": "Local alias for this text file, used in `{{file \"alias\"}}`. Must not contain a dot."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$",
+          "description": "HTTP(S) URL or relative path to the plain-text file."
+        }
+      },
+      "required": [
+        "id",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "A reference to a plain-text file (markdown / source) by alias + URL."
     }
   }
 }

@@ -26,12 +26,31 @@ import type { VariableValue } from "./schemas";
  */
 export type FragmentResolver = (ref: string, args: Record<string, VariableValue>) => string;
 
-/** One inline `{{fragment}}` marker extracted from the host text, in textual order. */
+/**
+ * Resolves one `{{file "alias" from= to=}}` placement to its spliced text: given the bare
+ * alias and the optional 1-based inclusive line range, look up the prefetched body and
+ * return it verbatim (no range) or the sliced excerpt. Throws to fail closed (a missing
+ * prefetched body blocks the activity rather than silently vanishing). Supplied by
+ * `load.ts` over the same `sliceLines` semantics `checkPlacements` bounds-checks with.
+ */
+export type FileResolver = (alias: string, from?: number, to?: number) => string;
+
+/**
+ * One inline marker extracted from the host text, in textual order. `kind` discriminates
+ * a `{{fragment}}` placement (`ref` = `"alias.id"`, `args` populated) from a `{{file}}`
+ * placement (`ref` = the bare alias, `args` always `{}`, optional `from` / `to`).
+ */
 export interface Placement {
-  /** The raw `"alias.id"` reference (split at the first dot by the consumer). */
+  /** Which marker this is — a fragment reference or a text-file embed. */
+  kind: "fragment" | "file";
+  /** The raw reference: `"alias.id"` for a fragment (split at the first dot), a bare alias for a file. */
   ref: string;
-  /** Inline hash args: strings / booleans natively, string arrays via `(array …)`. */
+  /** Inline hash args: strings / booleans natively, string arrays via `(array …)`. Always `{}` for a file. */
   args: Record<string, VariableValue>;
+  /** File placements only: 1-based inclusive start line of the range (`{{file … from=N}}`). */
+  from?: number;
+  /** File placements only: 1-based inclusive end line of the range (`{{file … to=N}}`). */
+  to?: number;
   /** 1-based line of the marker (from the parsed AST `loc`). */
   line: number;
   /** 1-based column of the marker. */
@@ -61,6 +80,10 @@ interface BoolLit {
   type: "BooleanLiteral";
   value: boolean;
 }
+interface NumberLit {
+  type: "NumberLiteral";
+  value: number;
+}
 interface SubExpr {
   type: "SubExpression";
   path: PathExpr;
@@ -68,7 +91,13 @@ interface SubExpr {
   hash?: Hash;
   loc: Loc;
 }
-type ValueNode = StringLit | BoolLit | SubExpr | PathExpr | { type: string; value?: unknown };
+type ValueNode =
+  | StringLit
+  | BoolLit
+  | NumberLit
+  | SubExpr
+  | PathExpr
+  | { type: string; value?: unknown };
 interface HashPair {
   key: string;
   value: ValueNode;
@@ -91,13 +120,28 @@ interface Program {
 
 const FRAGMENT_HELPER = "fragment";
 const ARRAY_HELPER = "array";
+const FILE_HELPER = "file";
 
 const isFragmentNode = (node: CallNode | SubExpr): boolean =>
   node.path?.original === FRAGMENT_HELPER;
+const isFileNode = (node: CallNode | SubExpr): boolean => node.path?.original === FILE_HELPER;
 
-/** A structural error stamped with the node's 1-based position. */
+/** A structural `{{fragment}}` error stamped with the node's 1-based position. */
 function markerInvalid(loc: Loc, detail: string): ValidationError {
   return error("FRAGMENT_MARKER_INVALID", `${detail} (line ${loc.start.line})`, {
+    line: loc.start.line,
+    column: loc.start.column + 1,
+  });
+}
+
+/**
+ * A structural `{{file}}` error stamped with the node's 1-based position. Every
+ * `{{file}}` violation collapses to this ONE code (there is deliberately no separate
+ * not-literal variant, unlike `{{fragment}}`): a file marker either parses into a valid
+ * `alias`/`from`/`to` shape or fails closed here.
+ */
+function fileMarkerInvalid(loc: Loc, detail: string): ValidationError {
+  return error("TEXT_FILE_MARKER_INVALID", `${detail} (line ${loc.start.line})`, {
     line: loc.start.line,
     column: loc.start.column + 1,
   });
@@ -171,6 +215,7 @@ function extractInlineMarker(node: CallNode, out: ParseHostResult): void {
     args[pair.key] = read.value;
   }
   out.placements.push({
+    kind: "fragment",
     ref: (first as StringLit).value,
     args,
     line: node.loc.start.line,
@@ -178,7 +223,73 @@ function extractInlineMarker(node: CallNode, out: ParseHostResult): void {
   });
 }
 
-/** Reject a `fragment` helper used anywhere but a simple inline mustache. */
+/**
+ * Extract one inline `{{file "alias" from=N to=M}}` mustache's alias + optional range.
+ * Structural contract (all TEXT_FILE_MARKER_INVALID, recording no placement on failure):
+ * the first positional must be a quoted string literal, there is exactly one positional,
+ * hash keys are restricted to `from` / `to`, each value must be an integer NumberLiteral
+ * >= 1, and when both are present `from <= to`. A `from`/`to` beyond the file's actual
+ * line count is NOT checked here (that needs the fetched body — see `checkPlacements`).
+ */
+function extractFileMarker(node: CallNode, out: ParseHostResult): void {
+  const first = node.params?.[0];
+  if (first?.type !== "StringLiteral") {
+    out.errors.push(
+      fileMarkerInvalid(node.loc, 'A {{file}} marker needs a quoted "alias" reference'),
+    );
+    return;
+  }
+  if ((node.params?.length ?? 0) > 1) {
+    out.errors.push(
+      fileMarkerInvalid(node.loc, 'A {{file}} marker takes exactly one "alias" reference'),
+    );
+    return;
+  }
+  let from: number | undefined;
+  let to: number | undefined;
+  for (const pair of node.hash?.pairs ?? []) {
+    if (pair.key !== "from" && pair.key !== "to") {
+      out.errors.push(
+        fileMarkerInvalid(
+          node.loc,
+          `A {{file}} marker accepts only from= / to=, not "${pair.key}"`,
+        ),
+      );
+      return;
+    }
+    // The value MUST be a real Handlebars number literal, not a string like "12" — at
+    // render the resolver receives the raw hash value, so a non-number would slice wrong.
+    if (
+      pair.value.type !== "NumberLiteral" ||
+      !Number.isInteger((pair.value as NumberLit).value) ||
+      (pair.value as NumberLit).value < 1
+    ) {
+      out.errors.push(
+        fileMarkerInvalid(node.loc, `"${pair.key}" must be an integer line number >= 1`),
+      );
+      return;
+    }
+    if (pair.key === "from") from = (pair.value as NumberLit).value;
+    else to = (pair.value as NumberLit).value;
+  }
+  if (from !== undefined && to !== undefined && from > to) {
+    out.errors.push(
+      fileMarkerInvalid(node.loc, `"from" (${from}) must not be greater than "to" (${to})`),
+    );
+    return;
+  }
+  out.placements.push({
+    kind: "file",
+    ref: (first as StringLit).value,
+    args: {},
+    ...(from !== undefined ? { from } : {}),
+    ...(to !== undefined ? { to } : {}),
+    line: node.loc.start.line,
+    column: node.loc.start.column + 1,
+  });
+}
+
+/** Reject a `fragment` / `file` helper used anywhere but a simple inline mustache. */
 function visitExpression(node: ValueNode, out: ParseHostResult): void {
   if (node.type !== "SubExpression") return;
   const sub = node as SubExpr;
@@ -190,12 +301,20 @@ function visitExpression(node: ValueNode, out: ParseHostResult): void {
         "{{fragment}} must be a standalone inline marker, not a subexpression",
       ),
     );
+  } else if (isFileNode(sub)) {
+    // `{{#if (file "a")}}` — the file helper WOULD run at render, unvalidated. Fail closed.
+    out.errors.push(
+      fileMarkerInvalid(
+        sub.loc,
+        "{{file}} must be a standalone inline marker, not a subexpression",
+      ),
+    );
   }
   for (const p of sub.params ?? []) visitExpression(p, out);
   for (const pair of sub.hash?.pairs ?? []) visitExpression(pair.value, out);
 }
 
-/** Collect every `{{fragment}}` marker in a program body (recursing into blocks). */
+/** Collect every `{{fragment}}` / `{{file}}` marker in a program body (recursing into blocks). */
 function collectPlacements(program: Program, out: ParseHostResult): void {
   for (const node of program.body) {
     if (isFragmentNode(node)) {
@@ -211,8 +330,21 @@ function collectPlacements(program: Program, out: ParseHostResult): void {
           ),
         );
       }
+    } else if (isFileNode(node)) {
+      if (node.type === "MustacheStatement") {
+        extractFileMarker(node, out);
+      } else {
+        // A block `{{#file}}…{{/file}}` — the inline helper never calls `options.fn`,
+        // so its body would silently vanish. Fail closed.
+        out.errors.push(
+          fileMarkerInvalid(
+            node.loc,
+            "{{file}} must be a simple inline marker, not a block {{#file}}…{{/file}}",
+          ),
+        );
+      }
     } else {
-      // Not a fragment node: still walk its arguments for an illegal `(fragment …)`.
+      // Not a marker node: still walk its arguments for an illegal `(fragment …)` / `(file …)`.
       for (const p of node.params ?? []) visitExpression(p, out);
       for (const pair of node.hash?.pairs ?? []) visitExpression(pair.value, out);
     }
@@ -227,8 +359,9 @@ function collectPlacements(program: Program, out: ParseHostResult): void {
  * order, WITHOUT rendering. A whole-template syntax error (a malformed marker, an
  * unescaped literal `{{`) becomes a single `HOST_TEMPLATE_PARSE_ERROR`; its position
  * is regexed out of Handlebars' message (`Parse error on line N:` — the parser
- * carries no structured position fields). A well-formed marker whose reference is not
- * a quoted string literal becomes a per-marker `FRAGMENT_REF_NOT_LITERAL`.
+ * carries no structured position fields). A well-formed `{{fragment}}` marker whose
+ * reference is not a quoted string literal becomes a per-marker `FRAGMENT_REF_NOT_LITERAL`;
+ * a structurally wrong `{{file}}` marker becomes a per-marker `TEXT_FILE_MARKER_INVALID`.
  */
 export function parseHostPlacements(text: string): ParseHostResult {
   const result: ParseHostResult = { placements: [], errors: [] };
@@ -249,8 +382,11 @@ export function parseHostPlacements(text: string): ParseHostResult {
   return result;
 }
 
-/** Build the isolated Handlebars instance carrying ONLY the `fragment` + `array` helpers. */
-function createHostInstance(resolver: FragmentResolver): typeof Handlebars {
+/** Build the isolated Handlebars instance carrying ONLY the `fragment` + `array` + `file` helpers. */
+function createHostInstance(
+  resolver: FragmentResolver,
+  fileResolver: FileResolver,
+): typeof Handlebars {
   const hb = Handlebars.create();
   hb.registerHelper(FRAGMENT_HELPER, (...args: unknown[]): string => {
     // Handlebars passes the options object last; the reference is the first positional.
@@ -265,18 +401,38 @@ function createHostInstance(resolver: FragmentResolver): typeof Handlebars {
     // Drop the trailing options object; the rest are the array elements.
     return args.slice(0, -1);
   });
+  hb.registerHelper(FILE_HELPER, (...args: unknown[]): string => {
+    // First positional is the alias; `from` / `to` arrive as hash number args. The
+    // fetched body is spliced VERBATIM by the resolver — never re-compiled as Handlebars,
+    // so a literal `{{` in course material survives untouched.
+    const alias = args.length >= 2 ? args[0] : undefined;
+    if (typeof alias !== "string") {
+      throw new Error('a {{file}} marker needs a quoted "alias" reference');
+    }
+    const options = args[args.length - 1] as { hash?: { from?: number; to?: number } };
+    return fileResolver(alias, options?.hash?.from, options?.hash?.to);
+  });
   return hb;
 }
 
 /**
  * Compile + render the host text with the isolated instance under
  * `{ strict: true, noEscape: true }` — `strict` so any stray `{{…}}` that is not a
- * `fragment` / `array` marker fails closed instead of rendering empty; `noEscape` so
- * the prompt text (ASCII diagrams, quotes) passes through verbatim. Each placement is
- * replaced by its `resolver` result. May throw — the caller wraps it as ASSEMBLY_ERROR.
+ * `fragment` / `array` / `file` marker fails closed instead of rendering empty; `noEscape`
+ * so the prompt text (ASCII diagrams, quotes) passes through verbatim. Each `{{fragment}}`
+ * placement is replaced by its `resolver` result, each `{{file}}` by its `fileResolver`
+ * result. May throw — the caller wraps it as ASSEMBLY_ERROR. `fileResolver` defaults to a
+ * thrower: a template with no `{{file}}` markers never invokes it, but one that does
+ * without a resolver fails closed rather than rendering wrong.
  */
-export function renderHostTemplate(text: string, resolver: FragmentResolver): string {
-  const hb = createHostInstance(resolver);
+export function renderHostTemplate(
+  text: string,
+  resolver: FragmentResolver,
+  fileResolver: FileResolver = () => {
+    throw new Error("a {{file}} marker was rendered without a file resolver");
+  },
+): string {
+  const hb = createHostInstance(resolver, fileResolver);
   const template = hb.compile(text, { strict: true, noEscape: true });
   return template({});
 }

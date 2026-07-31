@@ -184,13 +184,51 @@ export const FragmentFileRefSchema = z
 export type FragmentFileRef = z.infer<typeof FragmentFileRefSchema>;
 
 /**
- * The document-level fragment block an activity declares: just the fragment
- * LIBRARIES it may pull from (`fragment_files:`). WHICH fragments it actually uses,
- * where, and with which variables lives in the activity's host text as inline
- * `{{fragment "alias.id" …}}` markers — not here. The host text itself
- * (tutor_instructions / instructions) is NOT part of this block; it is passed
- * alongside it to the loader's orchestrator as the template to render.
+ * A plain-text file reference: an `id` alias + a `url`, mirroring `FragmentFileRefSchema`
+ * exactly (same no-dot alias regex, same http(s)-or-relative `FragmentUrlRef`). Unlike a
+ * fragment library, a text file is arbitrary content (markdown course material, a
+ * sample-solution source file) fetched over HTTP(S) and spliced VERBATIM into the host
+ * text by an inline `{{file "alias"}}` marker — there is nothing to select inside it, so
+ * the alias carries no dot. Text-file and fragment-file aliases share ONE namespace (an
+ * `id` may not collide across the two lists), so every marker alias resolves unambiguously.
+ */
+export const TextFileRefSchema = z
+  .strictObject({
+    id: z
+      .string()
+      // The bare alias used in an inline `{{file "alias"}}` marker. Like a fragment
+      // alias it must not contain a dot; the `.regex` is both the runtime guard and the
+      // pattern `z.toJSONSchema` emits for editors.
+      .regex(/^[^.]+$/, { message: "Alias must not contain a dot" })
+      .meta({
+        pattern: "^[^.]+$",
+        description:
+          'Local alias for this text file, used in `{{file "alias"}}`. Must not contain a dot.',
+      }),
+    // Same URL contract as a fragment ref, but with its own editor description — the
+    // shared `FragmentUrlRef` meta says "fragment library", which would mislead here.
+    url: FragmentUrlRef.meta({
+      pattern: "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$",
+      description: "HTTP(S) URL or relative path to the plain-text file.",
+    }),
+  })
+  .meta({
+    id: "textFileRef",
+    description: "A reference to a plain-text file (markdown / source) by alias + URL.",
+  });
+
+export type TextFileRef = z.infer<typeof TextFileRefSchema>;
+
+/**
+ * The document-level fragment block an activity declares: the fragment LIBRARIES it may
+ * pull from (`fragment_files:`) and the plain-text FILES it may embed (`text_files:`).
+ * WHICH fragments/files it actually uses, where, and with which variables lives in the
+ * activity's host text as inline `{{fragment "alias.id" …}}` / `{{file "alias"}}`
+ * markers — not here. The host text itself (tutor_instructions / instructions) is NOT
+ * part of this block; it is passed alongside it to the loader's orchestrator as the
+ * template to render.
  */
 export interface FragmentBlock {
   fragment_files: FragmentFileRef[];
+  text_files: TextFileRef[];
 }

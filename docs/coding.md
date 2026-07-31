@@ -80,14 +80,16 @@ instructions: |
   only `llm.model` + `instructions` and returns `{ title?, model, provider, instructions }`
   (`provider` defaults to SCCH when missing; a present-but-invalid value is
   rejected). `model`, `provider` and `instructions` are **server-only**.
-- **Fragments**: a coding YAML may declare **`fragment_files:`** (the shared
-  prompt-fragment core — `docs/prompt-fragments.md`) and place fragments inline in
-  `instructions` with `{{fragment "alias.id" …}}` markers. `loadCoding`
-  (`lib/coding-fetch.ts`) renders the block through
+- **Fragments**: a coding YAML may declare **`fragment_files:`** and/or **`text_files:`**
+  (the shared prompt-fragment core — `docs/prompt-fragments.md`) and place fragments
+  inline in `instructions` with `{{fragment "alias.id" …}}` markers, embedding plain-text
+  files (e.g. a sample solution) with `{{file "alias"}}` (spliced verbatim, never
+  compiled). `loadCoding` (`lib/coding-fetch.ts`) renders the block through
   `assembleFragmentPrompt(block, baseUrl, fetch, { validateLibraries: false }, instructions)`
   and stores the rendered host text back as `instructions`, identical to writing; a
-  YAML with no `fragment_files` returns `instructions` byte-verbatim (never compiled),
-  and a fetch / consistency / assembly failure fails the load closed. TWO coding-specific constraints hold. **(1)** Assembly happens
+  YAML with **neither** `fragment_files` nor `text_files` returns `instructions`
+  byte-verbatim (never compiled), and a fetch / consistency / assembly failure fails the
+  load closed. TWO coding-specific constraints hold. **(1)** Assembly happens
   in this load/parse layer, **never** in `lib/llm/endpoint.ts` — `resolveChatEndpoint`
   stays provider-blind and side-effect-free (no Handlebars / `Fetcher` /
   `app/mastra/scch.ts` import). **(2)** The proxy loads YAML **per completion request**,

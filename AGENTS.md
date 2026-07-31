@@ -73,8 +73,8 @@ Read before touching: `lib/report-types.ts`, `lib/report-store.ts`, `lib/report-
 
 Read before touching: `lib/prompt-fragments/**`, `lib/tutors/**`, or a consumer's fragment wiring (`lib/quiz-fetch.ts`, `lib/writing-fetch.ts`, `lib/coding-fetch.ts`).
 
-- The shared prompt-fragment core (`lib/prompt-fragments/`) is the ONE home of Handlebars — all four kinds (tutor, quiz, writing, coding) call `assembleFragmentPrompt`, passing their host text; none touch Handlebars or `COMPILE_OPTIONS`. Fragments are placed inline in the host text (no `priority`, no document-level `fragments:` list).
-- `handlebars` is imported by EXACTLY three files (`assemble.ts`, `fragment.ts`, `host-template.ts`), enforced by the `isolation.unit.test.ts` grep-guard.
+- The shared prompt-fragment core (`lib/prompt-fragments/`) is the ONE home of Handlebars — all four kinds (tutor, quiz, writing, coding) call `assembleFragmentPrompt`, passing their host text; none touch Handlebars or `COMPILE_OPTIONS`. Fragments are placed inline in the host text (no `priority`, no document-level `fragments:` list). Plain-text files are declared in `text_files:` (one alias namespace shared with `fragment_files`) and embedded inline with `{{file "alias" from= to=}}` markers — spliced **verbatim, never compiled** (a literal `{{` in fetched content survives). Template-semantics opt-in: an activity declaring NEITHER list returns its host text byte-verbatim.
+- `handlebars` is imported by EXACTLY three files (`assemble.ts`, `fragment.ts`, `host-template.ts`), enforced by the `isolation.unit.test.ts` grep-guard — `text-files.ts` stays out of it (verbatim splicing, no Handlebars).
 - Runtime loaders pass `validateLibraries: false` (hot path, fail closed on any fragment error); authoring validators + the CLI pass `true` (thorough whole-library check).
 
 ### Writing → `docs/writing.md`

@@ -119,9 +119,10 @@ shuffle: true # optional: omit for default true; false keeps the authored order
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model grades + discusses
   imageInput: true # optional: omit for default false; students may attach photos
-instructions: | # optional TOP-LEVEL shared prompt (may hold {{fragment ...}} markers);
+instructions: | # optional TOP-LEVEL shared prompt (may hold {{fragment ...}} / {{file ...}} markers);
   ...           # rendered once and prepended to BOTH grading and discussion
 fragment_files: [...] # optional: fragment libraries the markers above draw from
+text_files: [...] # optional: plain-text files embedded verbatim with {{file ...}}
 discussion: # optional: guidance for the per-question follow-up chat only
   instructions: |
     ...
@@ -194,12 +195,14 @@ already gives the assistant full context (the question, the expected answer, the
 student's answer, and the verdict), so this is only extra steering. Omit it to use
 a sensible default.
 
-### `instructions` and `fragment_files` (reusable prompt pieces)
+### `instructions`, `fragment_files` and `text_files` (reusable prompt pieces)
 
 Optional. A quiz may pull in **prompt fragments** — the same reusable, parameterized
-pieces tutors use (a persona, a safety policy, a set of ground rules). You declare the
-libraries under a **top-level `fragment_files:`** and place the fragments with inline
-`{{fragment "alias.id" …}}` markers inside a **top-level `instructions:`** host text:
+pieces tutors use (a persona, a safety policy, a set of ground rules) — and embed
+**plain-text files** verbatim. You declare the libraries under a **top-level
+`fragment_files:`** and any text files under a **top-level `text_files:`**, then place
+the fragments with inline `{{fragment "alias.id" …}}` markers and the files with
+`{{file "alias"}}` markers inside a **top-level `instructions:`** host text:
 
 ```yaml
 fragment_files:
@@ -221,8 +224,10 @@ per-question `evaluation` blocks stay **plain text** (markers go only in the top
 `instructions`); the rendered `instructions` comes first, your text follows. Omit both
 fields when the quiz uses no shared prompt.
 
-The full fragment mechanics — fragment libraries, `input_schema`, defaults, and the
-`{{fragment …}}` marker syntax — are documented in the tutor guide,
+The full mechanics — fragment libraries, `input_schema`, defaults, the `{{fragment …}}`
+marker syntax, and `text_files` + the `{{file "alias" from= to=}}` marker (whole file or
+a 1-based inclusive line range, spliced verbatim; aliases are shared with
+`fragment_files`) — are documented in the tutor guide,
 [`../tutors/README.md`](../tutors/README.md). The shared library
 [`../examples/shared/general-fragments.yaml`](../examples/shared/general-fragments.yaml)
 is reused across activity kinds.

@@ -94,13 +94,15 @@ are SERVER-ONLY.** The client-safe projection — `toPublicWriting` →
 `placeholder`; the render component MUST call it before sending anything to the
 browser, so the prompt and model never cross the wire.
 
-A writing YAML may also declare **`fragment_files:`** (the shared prompt-fragment
-core — `docs/prompt-fragments.md`) and place fragments inline in the still-required
-`instructions` with `{{fragment "alias.id" …}}` markers. `loadWriting` renders the
-block through `assembleFragmentPrompt(block, baseUrl, fetch, { validateLibraries: false }, instructions)`
+A writing YAML may also declare **`fragment_files:`** and/or **`text_files:`** (the
+shared prompt-fragment core — `docs/prompt-fragments.md`) and place fragments inline in
+the still-required `instructions` with `{{fragment "alias.id" …}}` markers and embed
+plain-text files with `{{file "alias"}}` (spliced verbatim, never compiled). `loadWriting`
+renders the block through `assembleFragmentPrompt(block, baseUrl, fetch, { validateLibraries: false }, instructions)`
 — the hot path — and stores the rendered host text back as `instructions`; a fetch /
-consistency / assembly failure fails the load closed. A YAML with no `fragment_files`
-declared returns `instructions` byte-verbatim (never compiled) and does not fetch.
+consistency / assembly failure fails the load closed. A YAML with **neither**
+`fragment_files` nor `text_files` declared returns `instructions` byte-verbatim (never
+compiled) and does not fetch.
 
 `lib/writing-fetch.ts` (`loadWriting`) is the single loader shared by the render
 component, the save action, the runtime descriptor's `buildRequestContext`, and

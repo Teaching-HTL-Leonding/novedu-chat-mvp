@@ -5,6 +5,7 @@ import {
   type FragmentFileRef,
   type Placement,
   resolveAndMerge,
+  type TextFileRef,
 } from "@/lib/prompt-fragments";
 import { LIB_A_URL, LIB_B_URL, loadFixtureFragmentFiles } from "./test-fixtures";
 
@@ -18,7 +19,7 @@ const FILE_REFS: FragmentFileRef[] = [
 ];
 
 function placement(ref: string, args: Placement["args"] = {}): Placement {
-  return { ref, args, line: 1, column: 1 };
+  return { kind: "fragment", ref, args, line: 1, column: 1 };
 }
 
 /** The six placements that mirror the fixture HOST_TEXT — self-consistent. */
@@ -147,6 +148,115 @@ describe("checkPlacements — warnings", () => {
     expect(warnCodes(result)).toContain("UNUSED_FRAGMENT_FILE");
     expect(result.warnings.find((w) => w.code === "UNUSED_FRAGMENT_FILE")?.fileAlias).toBe("lib_b");
     expect(result.errors).toEqual([]);
+  });
+});
+
+// --- text-file placements ({{file "alias" from= to=}}) --------------------------------
+// checkPlacements dispatches on placement.kind: file placements resolve against the
+// text-file map (alias + line-range bounds), fragment placements ignore the text side and
+// vice versa. The text-file body is passed as its FETCHED string keyed by alias.
+
+const COURSE_BODY = "L1\nL2\nL3\n"; // 3 logical lines (trailing newline not counted)
+const TEXT_REFS: TextFileRef[] = [{ id: "course", url: "https://example.com/course.md" }];
+const textMap = () => new Map<string, string>([["course", COURSE_BODY]]);
+
+function filePlacement(ref: string, range: { from?: number; to?: number } = {}): Placement {
+  return { kind: "file", ref, args: {}, ...range, line: 1, column: 1 };
+}
+
+describe("checkPlacements — text files", () => {
+  it("accepts an in-bounds file placement with no errors or warnings", () => {
+    const result = checkPlacements(
+      [filePlacement("course", { from: 1, to: 2 })],
+      new Map(),
+      [],
+      textMap(),
+      TEXT_REFS,
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("UNKNOWN_TEXT_FILE_ALIAS for a {{file}} alias with no declared text file", () => {
+    const result = checkPlacements([filePlacement("missing")], new Map(), [], textMap(), TEXT_REFS);
+    expect(codes(result)).toContain("UNKNOWN_TEXT_FILE_ALIAS");
+  });
+
+  it("DUPLICATE_TEXT_FILE_ALIAS when a text alias is declared twice", () => {
+    const dupRefs: TextFileRef[] = [...TEXT_REFS, { id: "course", url: "https://x/y.md" }];
+    const result = checkPlacements([], new Map(), [], textMap(), dupRefs);
+    expect(codes(result)).toContain("DUPLICATE_TEXT_FILE_ALIAS");
+  });
+
+  it("DUPLICATE_TEXT_FILE_ALIAS when a text alias collides with a fragment-file id", () => {
+    // ONE shared alias namespace: `lib_a` names a fragment library AND a text file.
+    const collidingText: TextFileRef[] = [{ id: "lib_a", url: "https://example.com/x.md" }];
+    const result = checkPlacements(
+      [],
+      loadFixtureFragmentFiles(),
+      FILE_REFS,
+      new Map([["lib_a", COURSE_BODY]]),
+      collidingText,
+    );
+    expect(codes(result)).toContain("DUPLICATE_TEXT_FILE_ALIAS");
+  });
+
+  it("TEXT_FILE_RANGE_OUT_OF_BOUNDS when `from` is beyond EOF (ALWAYS, even at runtime)", () => {
+    const result = checkPlacements(
+      [filePlacement("course", { from: 99 })],
+      new Map(),
+      [],
+      textMap(),
+      TEXT_REFS,
+      false, // runtime strictness
+    );
+    expect(codes(result)).toContain("TEXT_FILE_RANGE_OUT_OF_BOUNDS");
+  });
+
+  it("does NOT error on a `to` beyond EOF at runtime (the render layer clamps)", () => {
+    const result = checkPlacements(
+      [filePlacement("course", { to: 99 })],
+      new Map(),
+      [],
+      textMap(),
+      TEXT_REFS,
+      false,
+    );
+    expect(codes(result)).not.toContain("TEXT_FILE_RANGE_OUT_OF_BOUNDS");
+    expect(result.errors).toEqual([]);
+  });
+
+  it("DOES error on a `to` beyond EOF under strict (authoring) mode", () => {
+    const result = checkPlacements(
+      [filePlacement("course", { to: 99 })],
+      new Map(),
+      [],
+      textMap(),
+      TEXT_REFS,
+      true, // authoring strictness
+    );
+    expect(codes(result)).toContain("TEXT_FILE_RANGE_OUT_OF_BOUNDS");
+  });
+
+  it("UNUSED_TEXT_FILE warning when a declared text file is never placed", () => {
+    const result = checkPlacements([], new Map(), [], textMap(), TEXT_REFS);
+    expect(warnCodes(result)).toContain("UNUSED_TEXT_FILE");
+    expect(result.warnings.find((w) => w.code === "UNUSED_TEXT_FILE")?.fileAlias).toBe("course");
+    expect(result.errors).toEqual([]);
+  });
+
+  it("dispatches a mix of fragment and file placements without cross-contamination", () => {
+    const result = checkPlacements(
+      [placement("lib_a.safety_frag"), filePlacement("course", { from: 1, to: 3 })],
+      loadFixtureFragmentFiles(),
+      [{ id: "lib_a", url: LIB_A_URL }],
+      textMap(),
+      TEXT_REFS,
+    );
+    expect(result.errors).toEqual([]);
+    // Both the fragment library and the text file are used — no UNUSED_* warnings.
+    expect(warnCodes(result)).not.toContain("UNUSED_FRAGMENT_FILE");
+    expect(warnCodes(result)).not.toContain("UNUSED_TEXT_FILE");
   });
 });
 

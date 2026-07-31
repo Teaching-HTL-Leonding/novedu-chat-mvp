@@ -30,6 +30,7 @@ export {
 } from "./fragment";
 export { getFragmentInputSchema } from "./fragment-inputs";
 export {
+  type FileResolver,
   type FragmentResolver,
   type ParseHostResult,
   type Placement,
@@ -54,6 +55,9 @@ export {
   FragmentFileSchema,
   FragmentSchema,
   InputSchema,
+  type TextFileRef,
+  TextFileRefSchema,
   type VariableValue,
   VariableValueSchema,
 } from "./schemas";
+export { countLines, sliceLines } from "./text-files";

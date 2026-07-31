@@ -30,10 +30,18 @@
         "$ref": "#/$defs/fragmentFileRef"
       }
     },
+    "text_files": {
+      "default": [],
+      "description": "Optional plain-text files (markdown / source, e.g. a sample solution) embedded verbatim into instructions via {{file \"alias\"}} markers.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/textFileRef"
+      }
+    },
     "instructions": {
       "type": "string",
       "minLength": 1,
-      "description": "The assistant's system prompt. SERVER-ONLY: never sent to the browser or the coding agent, and appended AFTER the coding tool's own prompt (so the teacher has the final word). Constrain the assistant to what your class has learned. When any fragment_files are declared it is a Handlebars template: place fragments inline with {{fragment \"alias.id\" …}} markers (escape a literal {{ as \\{{)."
+      "description": "The assistant's system prompt. SERVER-ONLY: never sent to the browser or the coding agent, and appended AFTER the coding tool's own prompt (so the teacher has the final word). Constrain the assistant to what your class has learned. When any fragment_files or text_files are declared it is a Handlebars template: place fragments inline with {{fragment \"alias.id\" …}} and embed text files with {{file \"alias\"}} (optionally {{file \"alias\" from=10 to=40}} for a line range; escape a literal {{ as \\{{)."
     }
   },
   "required": [
@@ -88,6 +96,28 @@
       ],
       "additionalProperties": false,
       "description": "A reference to a fragment library by alias + URL."
+    },
+    "textFileRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[^.]+$",
+          "description": "Local alias for this text file, used in `{{file \"alias\"}}`. Must not contain a dot."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$",
+          "description": "HTTP(S) URL or relative path to the plain-text file."
+        }
+      },
+      "required": [
+        "id",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "A reference to a plain-text file (markdown / source) by alias + URL."
     }
   }
 }

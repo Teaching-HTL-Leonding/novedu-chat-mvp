@@ -7,6 +7,12 @@ activity (tutor, quiz, writing, coding) by declaring the library under
 activity's own instructions. Fragments are a **cross-cutting** capability, not an
 activity module of their own.
 
+A fragment library is schema-validated YAML with parameterized templates. To pull in a
+**plain-text file instead** — arbitrary markdown course material or a sample-solution
+source file, spliced in **verbatim** with no schema and no parameters — an activity uses
+`text_files:` + inline `{{file "alias"}}` markers rather than a fragment library; see the
+tutor guide. The two share one alias namespace.
+
 This folder holds only the **editor schema** for fragment-library files. The fragment
 format itself — `input_schema`, defaults, `content`, and how markers place and
 parameterize fragments — is fully documented once in the tutor guide,

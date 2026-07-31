@@ -19,6 +19,13 @@ Cover:
   `fragment_files:` and places fragments with inline `{{fragment "alias.id" …}}` markers
   directly in its `instructions`. Short section; the reusable-fragments chapter has the
   detail.
+- Embedding a sample solution: a coding activity can declare a plain-text file (for
+  example the teacher's reference implementation on GitHub) under a top-level
+  `text_files:` and splice it into `instructions` with an inline `{{file "alias"}}`
+  marker; the file is inserted exactly as fetched and students never see the
+  instructions. This is the flagship coding use for text files — the assistant knows
+  the target shape and can guide without handing it out. Walk the linked-lists example.
+  Short section; the reusable-fragments chapter has the general text-file detail.
 
 Get right:
 - The model is pinned by the teacher; a student's tool cannot change it.

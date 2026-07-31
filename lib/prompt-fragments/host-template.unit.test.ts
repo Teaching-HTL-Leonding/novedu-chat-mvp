@@ -82,6 +82,79 @@ describe("parseHostPlacements — structurally invalid markers (fail closed)", (
   }
 });
 
+describe("parseHostPlacements — {{file}} markers", () => {
+  it("extracts a bare-alias file marker with kind 'file' and no range", () => {
+    const { placements, errors } = parseHostPlacements('intro\n{{file "course"}}\ntail');
+    expect(errors).toEqual([]);
+    expect(placements).toHaveLength(1);
+    const p = placements[0];
+    if (!p) throw new Error("expected a placement");
+    expect(p.kind).toBe("file");
+    expect(p.ref).toBe("course");
+    expect(p.args).toEqual({});
+    expect(p.from).toBeUndefined();
+    expect(p.to).toBeUndefined();
+    expect(p.line).toBe(2);
+    expect(p.column).toBe(1);
+  });
+
+  it("captures from=/to= as numeric range bounds", () => {
+    const { placements, errors } = parseHostPlacements('{{file "course" from=12 to=40}}');
+    expect(errors).toEqual([]);
+    const p = placements[0];
+    if (!p) throw new Error("expected a placement");
+    expect(p.from).toBe(12);
+    expect(p.to).toBe(40);
+  });
+
+  it("captures from= alone and to= alone", () => {
+    const fromOnly = parseHostPlacements('{{file "c" from=5}}').placements[0];
+    expect(fromOnly?.from).toBe(5);
+    expect(fromOnly?.to).toBeUndefined();
+    const toOnly = parseHostPlacements('{{file "c" to=9}}').placements[0];
+    expect(toOnly?.from).toBeUndefined();
+    expect(toOnly?.to).toBe(9);
+  });
+
+  it("interleaves file and fragment markers, tagging each by kind in textual order", () => {
+    const { placements, errors } = parseHostPlacements(
+      '{{fragment "a.one"}}\n{{file "course"}}\n{{fragment "a.two"}}',
+    );
+    expect(errors).toEqual([]);
+    expect(placements.map((p) => [p.kind, p.ref])).toEqual([
+      ["fragment", "a.one"],
+      ["file", "course"],
+      ["fragment", "a.two"],
+    ]);
+  });
+});
+
+describe("parseHostPlacements — structurally invalid {{file}} markers (fail closed)", () => {
+  // Every {{file}} violation collapses to ONE code, TEXT_FILE_MARKER_INVALID, and records
+  // no placement — there is deliberately no separate not-literal variant (unlike fragments).
+  const invalid: [string, string][] = [
+    ["a non-literal alias (bare identifier)", "{{file course}}"],
+    ["a bare {{file}} with no alias", "{{file}}"],
+    ["an extra positional argument", '{{file "course" "extra"}}'],
+    ["an unknown hash key", '{{file "course" lines=5}}'],
+    ["a non-integer from", '{{file "course" from=1.5}}'],
+    ["a zero from", '{{file "course" from=0}}'],
+    ["a negative to", '{{file "course" to=-3}}'],
+    ["a string-valued from", '{{file "course" from="5"}}'],
+    ["from greater than to", '{{file "course" from=10 to=4}}'],
+    ["a block {{#file}} form", '{{#file "course"}}body{{/file}}'],
+    ["a (file …) subexpression", '{{#if (file "course")}}x{{/if}}'],
+  ];
+
+  for (const [label, src] of invalid) {
+    it(`rejects ${label} and records no placement`, () => {
+      const { placements, errors } = parseHostPlacements(src);
+      expect(errors.map((e) => e.code)).toContain("TEXT_FILE_MARKER_INVALID");
+      expect(placements).toEqual([]);
+    });
+  }
+});
+
 describe("renderHostTemplate", () => {
   const resolver = (ref: string, args: Record<string, unknown>) =>
     `[${ref}${Object.keys(args).length ? ` ${JSON.stringify(args)}` : ""}]`;

@@ -93,7 +93,7 @@ export async function loadAndCheckCoding(
   // The fragment block's authoring gate: fetch + placement checks + a host-template
   // render dry-run over `instructions` (authoring default: `validateLibraries: true`).
   const assembled = await assembleFragmentPrompt(
-    { fragment_files: valid.data.fragment_files },
+    { fragment_files: valid.data.fragment_files, text_files: valid.data.text_files },
     url,
     fetchImpl,
     { allowedSchemes: opts.allowedSchemes, validateLibraries: opts.validateLibraries ?? true },

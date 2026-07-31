@@ -30,6 +30,25 @@ export type ErrorCode =
   // arguments, or a hash argument whose value is not a string / boolean / `(array
   // "…" …)`. Fails closed so no text is silently lost or rendered unvalidated.
   | "FRAGMENT_MARKER_INVALID"
+  // A `{{file "alias"}}` marker's alias is not declared in `text_files:`.
+  | "UNKNOWN_TEXT_FILE_ALIAS"
+  // A `{{file}}` marker that is structurally wrong in a way that would render differently
+  // than it validates: a block form `{{#file}}…{{/file}}`, a `(file …)` subexpression,
+  // extra positional args, an alias that is not a quoted string literal, a hash key other
+  // than `from` / `to`, a `from` / `to` that is not an integer >= 1, or `from > to`.
+  // Deliberately ONE code (no separate not-literal variant, unlike fragments) — every
+  // structural violation of a `{{file}}` marker fails closed the same way.
+  | "TEXT_FILE_MARKER_INVALID"
+  // A text-file alias is declared twice — including a collision with a `fragment_files`
+  // id (the two lists share ONE alias namespace so every marker resolves unambiguously).
+  | "DUPLICATE_TEXT_FILE_ALIAS"
+  // A placed `{{file "alias" from= to=}}` range is out of bounds: `from` beyond the
+  // file's line count (ALWAYS an error — an empty splice would silently drop material),
+  // or `to` beyond it (authoring validators ONLY — the runtime clamps `to` to EOF so a
+  // source file shortened after validation degrades gracefully instead of failing).
+  | "TEXT_FILE_RANGE_OUT_OF_BOUNDS"
+  // A fetched text file exceeds the 200 KB cap (fail closed — carries the alias + URL).
+  | "TEXT_FILE_TOO_LARGE"
   | "ASSEMBLY_ERROR"
   // A fragment's `content` template failed to compile or strict-render against its
   // own declared `input_schema` — a Handlebars syntax error or a reference to a
@@ -58,6 +77,9 @@ export type WarningCode =
   // A `fragment_files:` library is declared but no `{{fragment}}` marker in the host
   // text ever draws from it — a likely leftover or typo'd alias.
   | "UNUSED_FRAGMENT_FILE"
+  // A `text_files:` entry is declared but no `{{file}}` marker in the host text ever
+  // embeds it — a likely leftover or typo'd alias.
+  | "UNUSED_TEXT_FILE"
   | "REQUIRED_PROPERTY_HAS_DEFAULT";
 
 export interface ValidationError {

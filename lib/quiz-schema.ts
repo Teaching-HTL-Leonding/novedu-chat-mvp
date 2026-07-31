@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
-import { FragmentFileRefSchema } from "@/lib/prompt-fragments";
+import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
 
 /** An optional content image attached to a question (carries no secret). */
 const ImageRefSchema = z
@@ -139,12 +139,18 @@ export const QuizYamlSchema = z.strictObject({
   fragment_files: z.array(FragmentFileRefSchema).default([]).meta({
     description: "Optional fragment libraries this quiz pulls shared prompt fragments from.",
   }),
+  // Optional plain-text files embedded verbatim into the quiz-level `instructions` via
+  // inline `{{file "alias"}}` markers (the tutor `prompt.text_files` shape at the root).
+  text_files: z.array(TextFileRefSchema).default([]).meta({
+    description:
+      'Optional plain-text files (markdown / source) embedded verbatim into instructions via {{file "alias"}} markers.',
+  }),
   // The quiz-level host text: a preamble rendered once and prepended to both the
-  // grader and the discussion prompts. When any fragment_files are declared it is a
-  // Handlebars template carrying the inline `{{fragment}}` markers.
+  // grader and the discussion prompts. When any fragment_files or text_files are
+  // declared it is a Handlebars template carrying the inline markers.
   instructions: z.string().optional().meta({
     description:
-      'Optional quiz-level preamble prepended to BOTH the grader prompt and the discussion chat. When any fragment_files are declared, place fragments inline here with {{fragment "alias.id" …}} markers (escape a literal {{ as \\{{).',
+      'Optional quiz-level preamble prepended to BOTH the grader prompt and the discussion chat. When any fragment_files or text_files are declared, place fragments inline with {{fragment "alias.id" …}} and embed text files with {{file "alias"}} (optionally {{file "alias" from=10 to=40}} for a line range; escape a literal {{ as \\{{).',
   }),
   questions: z.array(QuizQuestionSchema).min(1).meta({
     description:

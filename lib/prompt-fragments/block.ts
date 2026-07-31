@@ -5,7 +5,7 @@
 // later, fail-closed, by `assembleFragmentPrompt` at resolve time (a malformed
 // block errors the load rather than silently dropping a safety rule).
 
-import type { FragmentBlock, FragmentFileRef } from "./schemas";
+import type { FragmentBlock, FragmentFileRef, TextFileRef } from "./schemas";
 
 /**
  * The consumed/empty block a runtime loader leaves behind after resolving fragments
@@ -13,11 +13,14 @@ import type { FragmentBlock, FragmentFileRef } from "./schemas";
  * `instructions`), so no stale unresolved block lingers as a second source of truth
  * on the loaded object.
  */
-export const EMPTY_FRAGMENT_BLOCK: FragmentBlock = { fragment_files: [] };
+export const EMPTY_FRAGMENT_BLOCK: FragmentBlock = { fragment_files: [], text_files: [] };
 
 export function readFragmentBlock(root: Record<string, unknown>): FragmentBlock {
   const fragment_files = Array.isArray(root.fragment_files)
     ? (root.fragment_files as FragmentFileRef[])
     : [];
-  return { fragment_files };
+  // Lifted leniently exactly like `fragment_files`: pass the declared array through as-is
+  // (any structural problem is caught later, fail-closed, by `assembleFragmentPrompt`).
+  const text_files = Array.isArray(root.text_files) ? (root.text_files as TextFileRef[]) : [];
+  return { fragment_files, text_files };
 }
