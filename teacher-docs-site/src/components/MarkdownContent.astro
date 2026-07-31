@@ -5,7 +5,6 @@ import { getEntry } from "astro:content";
 import { withBase } from "../lib/paths.ts";
 
 // Renders the frontmatter `related:` slugs as link cards after the chapter body.
-// Non-collection pages (e.g. the glossary) carry no `related` and render nothing.
 const { entry } = Astro.locals.starlightRoute;
 const related: string[] = entry?.data?.related ?? [];
 

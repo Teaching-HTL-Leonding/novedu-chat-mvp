@@ -19,9 +19,9 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/05-writing.prompt.md and regenerate.
 -->
 
-A writing [[activity]] gives each student a split screen: an editor on the left where they write, and an AI writing coach on the right that gives feedback on their draft. The coach can read the draft at any time, but it has no way to change it. It only advises; the student writes every sentence. When students are happy with their text, they press **Save**, and you can review one saved text per student later.
+A writing activity gives each student a split screen: an editor on the left where they write, and an AI writing coach on the right that gives feedback on their draft. The coach can read the draft at any time, but it has no way to change it. It only advises; the student writes every sentence. When students are happy with their text, they press **Save**, and you can review one saved text per student later.
 
-You describe the task and how the coach should behave in a [[YAML]] file. The editor, the coach's read access to the draft, and the Save button are all built in.
+You describe the task and how the coach should behave in a YAML file. The editor, the coach's read access to the draft, and the Save button are all built in.
 
 ## The smallest working file
 
@@ -39,8 +39,8 @@ instructions: |
 ```
 
 - `id` is a short machine name for the activity, such as `my-essay`.
-- `llm.model` picks the AI model that drives the feedback chat. It works the same as in tutors and quizzes, and a [[code]] can override it later without touching the file.
-- `instructions` is the coach's [[prompt]]: how it should behave, what to look for, and how to talk to the student. Students never see this text, so you can spell out your assessment criteria freely.
+- `llm.model` picks the AI model that drives the feedback chat. It works the same as in tutors and quizzes, and a code can override it later without touching the file.
+- `instructions` is the coach's prompt: how it should behave, what to look for, and how to talk to the student. Students never see this text, so you can spell out your assessment criteria freely.
 
 ## The task students see
 
@@ -63,7 +63,7 @@ The coach cannot edit the student's text. Its only access to the draft is a read
 
 ## Reusing fragments in a writing activity
 
-A writing activity can place shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare the library under a top-level `fragment_files:`, then place each fragment with a marker in your `instructions`:
+A writing activity can place shared prompt fragments, the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare the library under a top-level `fragment_files:`, then place each fragment with a marker in your `instructions`:
 
 ```yaml
 fragment_files:
@@ -82,7 +82,7 @@ A fragment lands where its marker sits, so a school-wide rule can frame the coac
 
 Writing activities record the author by default, because reviewing saved texts only makes sense when you know whose text it is. This is different from tutors and quizzes, which default to anonymous.
 
-You can set `anonymous: true` for ephemeral, unattributed writing, but then saving is turned off: there is nothing to keep or review. The [[anonymous vs. per-user|anonymous]] setting is frozen onto the code when you create it.
+You can set `anonymous: true` for ephemeral, unattributed writing, but then saving is turned off: there is nothing to keep or review. The anonymous setting is frozen onto the code when you create it.
 
 ## A real example: the restaurant review letter
 

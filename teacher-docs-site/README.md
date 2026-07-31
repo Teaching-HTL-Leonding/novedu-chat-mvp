@@ -21,8 +21,8 @@ npm run typecheck      # includes this workspace's `astro check` leg
 ```
 
 The build doubles as the corpus's consistency check: frontmatter schema validation,
-dead `related:` slugs (build failure), and unknown `[[term]]` markers (build
-warning).
+dead `related:` slugs (build failure), and a post-build output check
+(`scripts/verify-dist.mjs`).
 
 ## How it hangs together
 
@@ -33,12 +33,13 @@ warning).
   Starlight's with the corpus's fields (`audience`, `keywords`, `related`,
   `generated`). On Windows, enable Developer Mode or `git config core.symlinks
   true` so the symlink checks out correctly.
-- `src/lib/` — shared slugifier, `glossary.md` parser, and the remark plugin that
-  turns `[[term]]` / `[[term|shown]]` into links to `/glossary#<slug>`.
-- `src/pages/glossary.astro` — the glossary page, generated from
-  `teacher-docs/glossary.md`; one anchor per term, same slugifier as the plugin.
+- `src/lib/` — the base-path helper (`paths.ts`) and the corpus contract test.
 - `src/components/MarkdownContent.astro` — appends the "Related chapters" link
   cards from the frontmatter `related:` slugs; a dead slug fails the build.
+- `scripts/verify-dist.mjs` — post-build guard run by the `build` script: fails
+  loudly if the `src/content/docs` symlink is broken, if any corpus chapter is
+  missing its page in `dist/`, or if the site chrome (index, 404, Pagefind) is
+  absent — an empty or partial site can never build green.
 
 ## Caveats
 
@@ -49,8 +50,7 @@ warning).
 - **Search (Pagefind) only works in `build`/`preview`**, not in `dev` — a Starlight
   limitation.
 - Editing a chapter live-reloads the running dev server (the loader watches the
-  out-of-root corpus). Editing `glossary.md` takes effect on the next chapter
-  rebuild or restart — the glossary itself does not trigger re-renders.
+  out-of-root corpus).
 - The dev server is a daemon in Astro 7: stop it with `npx astro dev stop` (in this
   directory), not Ctrl-C alone.
 - The build logs `Entry docs → 404 was not found.` (Starlight looking for an

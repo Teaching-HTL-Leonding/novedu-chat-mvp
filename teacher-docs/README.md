@@ -24,7 +24,6 @@ and gets fixed on the next regeneration.
 | `prompts/` | human | one `*.prompt.md` per chapter, the real IP |
 | `CHAPTERS.md` | human | the chapter manifest = the information architecture |
 | `style.md` | human | project voice/reading level |
-| `glossary.md` | human | teacher-word → app-word map |
 | `content/` | generated | the markdown corpus (do not hand-edit) |
 | `assets/` | generated/curated | images (screenshots are curated, not auto-captured, for now) |
 

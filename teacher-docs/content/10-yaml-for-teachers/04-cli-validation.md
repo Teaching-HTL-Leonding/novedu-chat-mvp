@@ -17,13 +17,13 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/10-yaml-for-teachers/04-cli-validation.prompt.md and regenerate.
 -->
 
-Before you hand an [[activity]] to a class, you can check it with the Novedu CLI, a small command-line tool. Its `validate` command runs the same checks the app itself runs when it loads your file, so any problem shows up on your screen instead of in front of your students. If the CLI says your file is valid, the app will accept it.
+Before you hand an activity to a class, you can check it with the Novedu CLI, a small command-line tool. Its `validate` command runs the same checks the app itself runs when it loads your file, so any problem shows up on your screen instead of in front of your students. If the CLI says your file is valid, the app will accept it.
 
 You don't need to install anything permanently. With Node.js (version 20 or newer) on your machine, `npx` fetches and runs the CLI on demand.
 
 ## Run the validate command
 
-Point the command at your [[YAML]] file:
+Point the command at your YAML file:
 
 ```bash
 npx @novedu/cli validate ./activities/examples/sorting-algorithms/sorting-tutor.yaml
@@ -52,7 +52,7 @@ npx @novedu/cli validate ./activities/examples/sorting-algorithms/sorting-visual
 
 Two more things worth knowing:
 
-- Validating a tutor also fully checks every [[fragment]] library it references, so one command covers the whole set.
+- Validating a tutor also fully checks every fragment library it references, so one command covers the whole set.
 - A tutor's relative fragment file paths resolve next to the tutor itself, so validate the tutor where its fragment files actually sit.
 
 ## Read the result

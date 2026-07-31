@@ -17,7 +17,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/03-time-limitation.prompt.md and regenerate.
 -->
 
-Every [[code]] can carry a time window: a start time, an end time, or both. Outside the window the link doesn't open the [[activity]], so you can hand out a code before the lesson and know it only works when you want it to. The window belongs to the code, not the activity, so two codes for the same activity can have different windows.
+Every code can carry a time window: a start time, an end time, or both. Outside the window the link doesn't open the activity, so you can hand out a code before the lesson and know it only works when you want it to. The window belongs to the code, not the activity, so two codes for the same activity can have different windows.
 
 ## Setting the window
 

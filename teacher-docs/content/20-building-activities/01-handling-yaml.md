@@ -17,7 +17,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/01-handling-yaml.prompt.md and regenerate.
 -->
 
-You've written an [[activity]] in [[YAML]]. Before you can hand it to a class, Novedu has to be able to read it. Novedu doesn't store your activity inside a [[code]]; it reads the file from a public web address every time students use it. So the last authoring step is giving your file such an address.
+You've written an activity in YAML. Before you can hand it to a class, Novedu has to be able to read it. Novedu doesn't store your activity inside a code; it reads the file from a public web address every time students use it. So the last authoring step is giving your file such an address.
 
 There are two ways to do that, and both work equally well:
 
@@ -62,7 +62,7 @@ Deleting an uploaded file makes its address stop working, so any code that point
 
 ## Files that reference other files
 
-A tutor can pull in a shared [[fragment]] library by URL, and that URL may be relative. A relative reference resolves against the activity's own address, wherever it is published. The sorting-algorithms sample tutor does exactly that:
+A tutor can pull in a shared fragment library by URL, and that URL may be relative. A relative reference resolves against the activity's own address, wherever it is published. The sorting-algorithms sample tutor does exactly that:
 
 ```yaml
 prompt:
