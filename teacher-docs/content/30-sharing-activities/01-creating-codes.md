@@ -18,11 +18,11 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/01-creating-codes.prompt.md and regenerate.
 -->
 
-Once an [[activity]] is ready, you hand it to a class as a [[code]]: a short link that opens the activity for anyone who has it. Creating one takes a minute, and you can create as many codes for the same activity as you like, for example one per class.
+Once an activity is ready, you hand it to a class as a code: a short link that opens the activity for anyone who has it. Creating one takes a minute, and you can create as many codes for the same activity as you like, for example one per class.
 
 ## What you need first
 
-The activity's [[YAML]] file must be reachable at a public web address. There are two ways to get one:
+The activity's YAML file must be reachable at a public web address. There are two ways to get one:
 
 - **Host the file yourself**, for example in a public GitHub repository, and use the raw file address.
 - **Upload it to Novedu's file store.** Every stored file gets a public address, and the file list offers a **Create code** shortcut that opens the create form with the kind and the address already filled in.
@@ -32,11 +32,11 @@ The activity's [[YAML]] file must be reachable at a public web address. There ar
 Novedu checks the activity file before storing anything. If the file has errors, the form lists them and no code is created; fix the file and submit again.
 
 1. Open **Codes** and select **New code**.
-2. Under **Activity**, pick the [[module|kind]] of activity: tutor, quiz, writing, or coding.
+2. Under **Activity**, pick the kind of activity: tutor, quiz, writing, or coding.
 3. Paste the file's address into **Activity YAML URL**.
 4. Add a **Note** for yourself, for example "3AHIF linked lists exercise". Only teachers see it; it labels the code in your list.
 5. Set **Available from** and **Available until** if the code should only work during a certain time. Both fields use your local time, and either may stay blank to leave that side open. The **Now**, **+1h**, **+1d**, and **+1w** buttons fill common values.
-6. Fill in the **LLM override** only if this one code should run on a different AI model than the activity file names. [[provider|Provider]] and model always go together (both or neither); the preset buttons fill a known-good pair in one click, and **Clear** removes the override.
+6. Fill in the **LLM override** only if this one code should run on a different AI model than the activity file names. Provider and model always go together (both or neither); the preset buttons fill a known-good pair in one click, and **Clear** removes the override.
 7. Select **Create code**.
 
 ## What you get
@@ -53,7 +53,7 @@ You can reopen any code from the list and edit three things at any time:
 - the availability window,
 - the model override.
 
-Three things are fixed when the code is created and never change: the kind of activity, the activity file's address, and whether the activity records who did what ([[anonymous vs. per-user|anonymous]] or per-user, taken from the activity file at creation time). To share a different file, create a new code.
+Three things are fixed when the code is created and never change: the kind of activity, the activity file's address, and whether the activity records who did what (anonymous or per-user, taken from the activity file at creation time). To share a different file, create a new code.
 
 The code points at your file, not at a copy of it. If you edit the activity file itself, students get the new version the next time they open the link.
 

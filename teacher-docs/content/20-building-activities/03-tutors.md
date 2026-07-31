@@ -19,7 +19,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/03-tutors.prompt.md and regenerate.
 -->
 
-A tutor is one [[YAML]] file. At its core it needs three things: an id, an AI model, and your instructions, the free-text guidance that makes the tutor behave the way you want. Everything else is optional polish. This chapter walks through the fields using the sorting-algorithms sample tutor, a real, validated file you can copy from.
+A tutor is one YAML file. At its core it needs three things: an id, an AI model, and your instructions, the free-text guidance that makes the tutor behave the way you want. Everything else is optional polish. This chapter walks through the fields using the sorting-algorithms sample tutor, a real, validated file you can copy from.
 
 ## The required fields
 
@@ -42,12 +42,12 @@ prompt:
 - **`id`** is a short machine name, such as `fractions-de`. Students never see it.
 - **`name`** is the human-readable title of the tutor.
 - **`description`** appears to students on the empty chat, below the greeting. Write it for them: say what the tutor helps with, in the language your class speaks.
-- **`llm.model`** names the AI model. An optional `provider` chooses where it runs, and when you create a [[code]] for the tutor you can override both without touching the file. The chapter on choosing an AI model covers the details.
+- **`llm.model`** names the AI model. An optional `provider` chooses where it runs, and when you create a code for the tutor you can override both without touching the file. The chapter on choosing an AI model covers the details.
 - **`tutor_instructions`** is where your own guidance goes: free text that tells the tutor how to behave.
 
 ## Your instructions
 
-The `tutor_instructions` field is free text in your own words: who the tutor is, what it teaches, how it should respond, and what it must not do. It's the tutor's whole [[prompt]]. When you reuse fragments, you place them with markers inside this same text, so your own wording and any shared pieces read in the order you arrange them.
+The `tutor_instructions` field is free text in your own words: who the tutor is, what it teaches, how it should respond, and what it must not do. It's the tutor's whole prompt. When you reuse fragments, you place them with markers inside this same text, so your own wording and any shared pieces read in the order you arrange them.
 
 For a one-off tutor, it's fine to put the whole prompt here and skip fragments entirely. The sample tutor uses its instructions for the class-specific parts: what the students already know (basic TypeScript, no classes or arrow functions yet), the learning goals of the unit, and didactic hints such as preferring tiny concrete arrays over abstract talk.
 
@@ -70,7 +70,7 @@ You can define any number of starter questions, but students see at most five. W
 
 ## Fragments: reusable pieces of prompt
 
-A [[fragment]] is a named piece of prompt (a teaching style, a topic list, a safety policy) that lives in a separate fragment library file and can be pulled into many tutors. Write a rule once, reuse it everywhere, and fix it in one place when it needs a change.
+A fragment is a named piece of prompt (a teaching style, a topic list, a safety policy) that lives in a separate fragment library file and can be pulled into many tutors. Write a rule once, reuse it everywhere, and fix it in one place when it needs a change.
 
 Using fragments takes two steps inside `prompt`:
 

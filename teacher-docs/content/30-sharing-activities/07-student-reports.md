@@ -19,7 +19,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/07-student-reports.prompt.md and regenerate.
 -->
 
-Students can flag a notable AI answer to you: something brilliant, something wrong, or something that needs your attention right away. A report is one small action a student takes inside an [[activity]], and every report lands in one place for you to review: the Reports page. Reports are a feedback channel, not only a complaint box, so it's worth telling a class they can flag great answers too.
+Students can flag a notable AI answer to you: something brilliant, something wrong, or something that needs your attention right away. A report is one small action a student takes inside an activity, and every report lands in one place for you to review: the Reports page. Reports are a feedback channel, not only a complaint box, so it's worth telling a class they can flag great answers too.
 
 ## What students can report
 
@@ -36,7 +36,7 @@ The note is optional. The student selects a reaction, can type a sentence about 
 
 ## Reports are never anonymous
 
-A report always carries the reporting student's name, even on an [[anonymous vs. per-user|anonymous]] [[code]]. The form says so before anything is sent: it warns the student that the report is not anonymous and that their name and the reported conversation or answer will be shared with you. So filing a report is the student's own choice to be named. Nobody is identified without acting.
+A report always carries the reporting student's name, even on an anonymous code. The form says so before anything is sent: it warns the student that the report is not anonymous and that their name and the reported conversation or answer will be shared with you. So filing a report is the student's own choice to be named. Nobody is identified without acting.
 
 An anonymous code stays anonymous everywhere else. A report on such a code names only the student who filed it. The rest of the class's work under that code keeps its anonymity: you still see what was written, never who wrote it, exactly as on the code's statistics page.
 

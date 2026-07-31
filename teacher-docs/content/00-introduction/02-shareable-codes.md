@@ -20,13 +20,13 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/02-shareable-codes.prompt.md and regenerate.
 -->
 
-When an [[activity]] is ready for your class, you hand it out as a [[code]]. A code is a short link that opens exactly one activity. You share the link (or just the code itself), students open it, and they see the experience you built.
+When an activity is ready for your class, you hand it out as a code. A code is a short link that opens exactly one activity. You share the link (or just the code itself), students open it, and they see the experience you built.
 
 ## One code, one activity
 
 A code is a short, random combination of letters and digits. You don't choose the text yourself; Novedu generates it when you create the code, and it is long enough that nobody can guess it. The full link looks like `https://<your Novedu address>/<code>`, and the code alone works too.
 
-Each code belongs to one activity of one [[module|kind]] (tutor, quiz, writing, or coding). The kind is fixed when the code is created and never changes. You can create several codes for the same activity, for example one per class, each with its own settings.
+Each code belongs to one activity of one kind (tutor, quiz, writing, or coding). The kind is fixed when the code is created and never changes. You can create several codes for the same activity, for example one per class, each with its own settings.
 
 ## How you get a code
 
@@ -50,6 +50,6 @@ A code brings a few settings with it, decided when you create it:
 
 - **A note.** A short label only teachers see, so you can find the code in your list later ("4AHIF, chapter 3 revision").
 - **An availability window.** An optional start and end time. Outside the window the code doesn't open, and students see a clear message instead. Leave either side open for a code without a start or without an end.
-- **Whether it records who did what.** Some activities are [[anonymous vs. per-user|anonymous]] and store no names; others record which student did what, so you can review individual work. The default depends on the kind of activity.
+- **Whether it records who did what.** Some activities are anonymous and store no names; others record which student did what, so you can review individual work. The default depends on the kind of activity.
 
 A code keeps working until you delete it. An expired code no longer opens for students, but it stays in your list, so its statistics remain available to you. The sharing chapters cover each of these settings in detail.

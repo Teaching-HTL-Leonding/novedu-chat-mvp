@@ -43,9 +43,6 @@ Field notes:
   body carries no "where to go next" links. Optional; omit if there are none.
 - **generated**: always `true`. Marks the file as a build artifact.
 
-Glossary terms are marked inline in the body with `[[term]]` (see the style rules),
-not listed in frontmatter.
-
 There is deliberately no `sources` or `verified_against` field: which files a chapter
 drew on, and when it was last checked, are not tracked in the doc. Staleness is
 handled by reasoning over git diffs (see the skill's *Keeping docs current*), and a

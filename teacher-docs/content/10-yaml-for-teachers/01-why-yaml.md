@@ -17,7 +17,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/10-yaml-for-teachers/01-why-yaml.prompt.md and regenerate.
 -->
 
-Every [[activity]] you build in Novedu, whether a tutor, a quiz, a writing task, or a coding activity, is a single plain-text file written in [[YAML]]. You can open and edit it in any text editor. There is no special software to install and no programming to learn: you fill in named fields, and most of what you write is ordinary teaching language, the instructions you want the AI to follow.
+Every activity you build in Novedu, whether a tutor, a quiz, a writing task, or a coding activity, is a single plain-text file written in YAML. You can open and edit it in any text editor. There is no special software to install and no programming to learn: you fill in named fields, and most of what you write is ordinary teaching language, the instructions you want the AI to follow.
 
 ## One file you can actually read
 
@@ -36,7 +36,7 @@ description: |
   and arrived slowly.
 ```
 
-You can guess what each field does just by reading it. The rest of the file continues the same way: a few short settings, then the [[prompt]], the written instructions that shape how the AI behaves. Nothing is hidden in a database or behind a form; the file is the whole activity.
+You can guess what each field does just by reading it. The rest of the file continues the same way: a few short settings, then the prompt, the written instructions that shape how the AI behaves. Nothing is hidden in a database or behind a form; the file is the whole activity.
 
 ## Why plain text is a good fit for teaching
 

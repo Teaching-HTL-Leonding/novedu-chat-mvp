@@ -17,9 +17,9 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/04-quizzes-overview.prompt.md and regenerate.
 -->
 
-A quiz is an [[activity]] made of open-ended questions. There are deliberately no multiple-choice options: students answer in their own words, and the AI grades each answer against guidance you write. Every answer gets a verdict (correct, partially correct, or incorrect) plus written feedback the student sees straight away.
+A quiz is an activity made of open-ended questions. There are deliberately no multiple-choice options: students answer in their own words, and the AI grades each answer against guidance you write. Every answer gets a verdict (correct, partially correct, or incorrect) plus written feedback the student sees straight away.
 
-Because the grading is a [[prompt]] you write in plain language, a question can ask for anything the AI can judge from your guidance: a fact, an explanation, a short calculation, or a piece of reasoning. You don't need to be a programmer to build one.
+Because the grading is a prompt you write in plain language, a question can ask for anything the AI can judge from your guidance: a fact, an explanation, a short calculation, or a piece of reasoning. You don't need to be a programmer to build one.
 
 ## What students experience
 
@@ -40,7 +40,7 @@ Because the grading guide stays private, you can be completely explicit in it: n
 
 You can also add guidance for the follow-up discussion chat, for example a rule that it should hint rather than repeat the full solution.
 
-By default, quizzes are [[anonymous vs. per-user|anonymous]]: answers feed the aggregate statistics, but the app doesn't record which student gave which answer. You can change that when you want attributed, graded work; the sharing chapters cover the details.
+By default, quizzes are anonymous: answers feed the aggregate statistics, but the app doesn't record which student gave which answer. You can change that when you want attributed, graded work; the sharing chapters cover the details.
 
 ## When a quiz is the right choice
 

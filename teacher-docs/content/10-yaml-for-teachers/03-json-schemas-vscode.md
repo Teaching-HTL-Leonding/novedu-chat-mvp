@@ -17,7 +17,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/10-yaml-for-teachers/03-json-schemas-vscode.prompt.md and regenerate.
 -->
 
-Writing an [[activity]] file by hand is much easier when your editor knows which fields exist. A short one-time setup gives you suggestions as you type, warnings when something is wrong, and a short explanation of every field, all before you upload anything to Novedu.
+Writing an activity file by hand is much easier when your editor knows which fields exist. A short one-time setup gives you suggestions as you type, warnings when something is wrong, and a short explanation of every field, all before you upload anything to Novedu.
 
 ## What the editor gives you
 
@@ -52,7 +52,7 @@ Copy the line exactly as it is, including the leading `#`. It is a comment, not 
 
 There is one schema per kind of activity, and the line has to match the kind of file you are writing. With the wrong schema, the editor underlines fields that are perfectly valid, so if everything suddenly looks wrong, check the first line first.
 
-For a tutor, or a library of [[fragment|fragments]] (the same schema covers both):
+For a tutor, or a library of fragments (the same schema covers both):
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json

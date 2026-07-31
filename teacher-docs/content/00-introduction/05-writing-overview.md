@@ -17,7 +17,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/05-writing-overview.prompt.md and regenerate.
 -->
 
-A writing [[activity]] puts a student's own text at the centre. The student writes in an editor on one side of the screen, and an AI writing coach sits on the other side, reads the draft, and gives feedback. The student does all the writing; the coach helps them make it better.
+A writing activity puts a student's own text at the centre. The student writes in an editor on one side of the screen, and an AI writing coach sits on the other side, reads the draft, and gives feedback. The student does all the writing; the coach helps them make it better.
 
 Think of an essay, a formal letter, a report, or any text students should produce themselves. Instead of handing in a first draft and waiting days for comments, they get feedback the moment they ask for it, while they can still act on it.
 
@@ -44,9 +44,9 @@ You define three things in your own words:
 - **How the coach helps.** Instructions that shape the coach's behaviour: what to prioritise in feedback, how to talk to the student, and the rule that matters most, advise rather than rewrite. For example, a coach for a formal feedback letter can be told to weigh tone and register most heavily, lead with what works, and raise only one or two improvements at a time.
 - **An optional starter scaffold.** Text that is already in the editor when the student arrives. A formal-letter skeleton with a hint in each paragraph gives structure to students who freeze in front of a blank page; leave it empty for a free start.
 
-Because the coach follows a written [[prompt]], you adjust it the same way you adjust a tutor: if the feedback is too generous or too detailed, you reword the instructions and try again. No programming, no model training.
+Because the coach follows a written prompt, you adjust it the same way you adjust a tutor: if the feedback is too generous or too detailed, you reword the instructions and try again. No programming, no model training.
 
-One difference from tutors and quizzes is worth knowing early: a writing activity records who wrote which text by default, because saving a text needs an author you can review. So writing is [[anonymous vs. per-user|per-user]] unless you deliberately switch it off, and switching it off also disables saving. The details live in the sharing chapters.
+One difference from tutors and quizzes is worth knowing early: a writing activity records who wrote which text by default, because saving a text needs an author you can review. So writing is per-user unless you deliberately switch it off, and switching it off also disables saving. The details live in the sharing chapters.
 
 ## When writing is the right choice
 
