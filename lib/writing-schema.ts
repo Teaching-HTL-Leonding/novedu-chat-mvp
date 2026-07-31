@@ -15,7 +15,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
-import { FragmentFileRefSchema } from "@/lib/prompt-fragments";
+import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
 
 export const WritingYamlSchema = z.strictObject({
   id: z
@@ -56,10 +56,16 @@ export const WritingYamlSchema = z.strictObject({
   fragment_files: z.array(FragmentFileRefSchema).default([]).meta({
     description: "Optional fragment libraries this activity pulls shared prompt fragments from.",
   }),
+  // Optional plain-text files embedded verbatim into `instructions` via inline
+  // `{{file "alias"}}` markers (the tutor `prompt.text_files` shape at the root).
+  text_files: z.array(TextFileRefSchema).default([]).meta({
+    description:
+      'Optional plain-text files (markdown / source) embedded verbatim into instructions via {{file "alias"}} markers.',
+  }),
   // The writing coach's system prompt. SERVER-ONLY; required.
   instructions: z.string().min(1).meta({
     description:
-      'The writing coach\'s system prompt. SERVER-ONLY: never sent to the browser, so it may describe the assessment criteria and coaching strategy. When any fragment_files are declared it is a Handlebars template: place fragments inline with {{fragment "alias.id" …}} markers (escape a literal {{ as \\{{).',
+      'The writing coach\'s system prompt. SERVER-ONLY: never sent to the browser, so it may describe the assessment criteria and coaching strategy. When any fragment_files or text_files are declared it is a Handlebars template: place fragments inline with {{fragment "alias.id" …}} and embed text files with {{file "alias"}} (optionally {{file "alias" from=10 to=40}} for a line range; escape a literal {{ as \\{{).',
   }),
   // Optional starter text prefilled into the editor.
   placeholder: z.string().optional().meta({

@@ -357,3 +357,45 @@ questions:
     if (!result.ok) expect(result.errors[0]?.code).toBe("DUPLICATE_QUIZ_QUESTION_ID");
   });
 });
+
+// --- document-level text files ({{file "alias"}}) — authoring gate (validateLibraries: true)
+const TEXT_URL = "https://example.com/course.md";
+const COURSE_BODY = "L1\nL2\nL3\n"; // 3 logical lines
+
+const quizWithTextFile = (instructions: string) => `
+id: q
+llm:
+  model: m
+text_files:
+  - id: course
+    url: ${TEXT_URL}
+instructions: |
+${instructions}
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+`;
+
+describe("loadAndCheckQuiz — text files", () => {
+  it("accepts a quiz that embeds a text file with an in-bounds {{file}} marker", async () => {
+    const quiz = quizWithTextFile('  Material:\n  {{file "course" from=1 to=2}}');
+    const result = await loadAndCheckQuiz(
+      URL_,
+      fetcherMap({ [URL_]: quiz, [TEXT_URL]: COURSE_BODY }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("TEXT_FILE_RANGE_OUT_OF_BOUNDS for a `from` past end-of-file", async () => {
+    const quiz = quizWithTextFile('  {{file "course" from=99}}');
+    const result = await loadAndCheckQuiz(
+      URL_,
+      fetcherMap({ [URL_]: quiz, [TEXT_URL]: COURSE_BODY }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.map((e) => e.code)).toContain("TEXT_FILE_RANGE_OUT_OF_BOUNDS");
+    }
+  });
+});

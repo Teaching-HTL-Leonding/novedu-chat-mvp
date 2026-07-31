@@ -220,3 +220,50 @@ instructions: |
     if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("MISSING_REQUIRED_VARIABLE");
   });
 });
+
+// --- document-level text files ({{file "alias"}}) — authoring gate (validateLibraries: true)
+const TEXT_URL = "https://example.com/solution.ts";
+const SOLUTION_BODY =
+  "export const first = 1;\nexport const second = 2;\nexport const third = 3;\n";
+
+describe("loadAndCheckCoding — text files", () => {
+  it("accepts an activity that embeds a sample-solution file with an in-bounds {{file}} marker", async () => {
+    const coding = `
+id: buddy
+llm:
+  model: m
+text_files:
+  - id: solution
+    url: ${TEXT_URL}
+instructions: |
+  Sample solution:
+  {{file "solution" from=1 to=2}}
+`;
+    const result = await loadAndCheckCoding(
+      URL_,
+      fetcherMap({ [URL_]: coding, [TEXT_URL]: SOLUTION_BODY }),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("TEXT_FILE_RANGE_OUT_OF_BOUNDS for a `from` past end-of-file", async () => {
+    const coding = `
+id: buddy
+llm:
+  model: m
+text_files:
+  - id: solution
+    url: ${TEXT_URL}
+instructions: |
+  {{file "solution" from=99}}
+`;
+    const result = await loadAndCheckCoding(
+      URL_,
+      fetcherMap({ [URL_]: coding, [TEXT_URL]: SOLUTION_BODY }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.map((e) => e.code)).toContain("TEXT_FILE_RANGE_OUT_OF_BOUNDS");
+    }
+  });
+});

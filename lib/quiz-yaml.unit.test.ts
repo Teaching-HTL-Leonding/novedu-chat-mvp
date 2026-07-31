@@ -281,7 +281,7 @@ describe("toPublicQuiz", () => {
       model: "m",
       provider: "SCCH",
       imageInput: false,
-      fragmentBlock: { fragment_files: [] },
+      fragmentBlock: { fragment_files: [], text_files: [] },
       instructionsPreamble: "",
       questions: [{ id: "a", question: "Q", evaluation: "E" }],
     };
@@ -297,7 +297,7 @@ describe("toPublicQuiz", () => {
       model: "m",
       provider: "SCCH",
       imageInput: false,
-      fragmentBlock: { fragment_files: [] },
+      fragmentBlock: { fragment_files: [], text_files: [] },
       instructionsPreamble: "",
       questions: [{ id: "a", question: "Q", evaluation: "E", image }],
     };
@@ -313,7 +313,7 @@ describe("toPublicQuiz", () => {
       model: "m",
       provider: "SCCH",
       imageInput: true,
-      fragmentBlock: { fragment_files: [] },
+      fragmentBlock: { fragment_files: [], text_files: [] },
       instructionsPreamble: "",
       questions: [
         { id: "inherits", question: "Q", evaluation: "E" },

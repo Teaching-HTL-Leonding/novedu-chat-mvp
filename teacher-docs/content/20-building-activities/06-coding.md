@@ -4,7 +4,7 @@ description: Write a coding activity's YAML with an id, a pinned AI model, and i
 sidebar:
   order: 6
 audience: teacher
-keywords: [coding activity, coding assistant, instructions, model, little-coder, YAML, coding buddy, fragments]
+keywords: [coding activity, coding assistant, instructions, model, little-coder, YAML, coding buddy, fragments, sample solution, text_files]
 related:
   - 00-introduction/06-coding-overview
   - 20-building-activities/02-available-llms
@@ -76,6 +76,30 @@ instructions: |
 ```
 
 A fragment lands where its marker sits, so a school-wide rule can frame the coding assistant at the top of your `instructions` without you repeating it in every activity. The chapter on reusable fragments covers writing a library and supplying values.
+
+## Embedding your sample solution
+
+A coding activity can also embed a plain-text file, and the classic use is the teacher's sample solution. Declare the file under a top-level `text_files:` (a short alias plus a web address, for example the raw GitHub address of your reference implementation), then place it in your `instructions` with a `{{file}}` marker:
+
+````yaml
+text_files:
+  - id: solution
+    url: https://raw.githubusercontent.com/rstropek/htl-2025-26-2nd/refs/heads/main/40-classes/LinkedListWithTests/src/linkedList.ts
+
+instructions: |
+  ## The sample solution — your private reference, NOT a handout
+  Below is the teacher's reference implementation. Use it to recognise when a
+  student is on the right track and to give precise, minimal nudges toward it.
+
+  Hard rule: NEVER paste this class — or any complete method body from it — back
+  to the student.
+
+  ```typescript
+  {{file "solution"}}
+  ```
+````
+
+The file is inserted exactly as fetched, so your source code arrives unchanged. Because students never see the `instructions`, the assistant knows the exact target shape (method names, signatures, return conventions) and can guide towards it without ever handing it out. The repository ships a complete example of this pattern at `activities/examples/linked-lists/linked-list-buddy.yaml`, a linked-list exercise whose assistant carries the sample solution as its private reference. The chapter on reusable fragments covers the general text-file rules, including embedding just a line range of a file.
 
 ## What a coding file does not have
 

@@ -3,9 +3,11 @@
 Output: teacher-docs/content/20-building-activities/07-fragments.md · order 7
 
 Job: A teacher who keeps rewriting the same prompt wording (a teaching style, a
-safety policy, a language rule) across activities. After this chapter they can write
+safety policy, a language rule) across activities, or who wants existing course
+material inside a prompt without copy-pasting it. After this chapter they can write
 a fragment library of their own and place its fragments in tutors, quizzes, writing,
-and coding activities.
+and coding activities, and they can embed a plain-text file (course notes, a sample
+solution) with a text-file marker.
 
 Cover:
 - Fragments are not a tutor-only feature: one library serves all four activity
@@ -39,6 +41,29 @@ Cover:
   references.
 - Hosting: a public web address or a file hosted in the app; relative references
   resolve next to the activity file.
+- Embedding plain-text files: alongside `fragment_files:` an activity may declare
+  `text_files:` (same shape: an id alias plus a web address, declared in the same
+  place per kind) and splice a file into its instructions with an inline
+  `{{file "alias"}}` marker. The file is inserted exactly as fetched — it is ordinary
+  text, not a template, so `{{ }}` inside the material stays literal and needs no
+  escaping. Optional `from=` / `to=` line numbers (1-based, both ends included,
+  either alone works) embed just an excerpt; the same file can be placed several
+  times with different ranges. Typical uses: markdown course material for a tutor,
+  a sample-solution source file for a coding activity (the linked-lists example).
+
+Get right (text files):
+- The marker uses a bare quoted alias with no dot — there is nothing to select
+  inside a plain file — and takes no other values than `from=` / `to=`.
+- One shared alias namespace: a `text_files` id must not collide with a
+  `fragment_files` id.
+- Declaring either list turns the instructions into a template, so the `\{{`
+  escaping rule then applies to the teacher's own prose (not to fetched content).
+- Validation fetches every declared text file and checks every placed line range
+  against the real file; a range past the end of the file fails validation. A file
+  bigger than 200 KB is rejected.
+- Text files are fetched fresh when a student opens the activity, like fragment
+  libraries: editing the hosted file changes the prompt without touching the
+  activity. If the file cannot be fetched, the activity refuses to start.
 
 Get right:
 - The quiz case is special: a quiz's markers live in a top-level `instructions` field,

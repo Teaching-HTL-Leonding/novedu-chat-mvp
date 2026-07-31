@@ -3,8 +3,9 @@
 // is unit-testable without touching the network.
 //
 // `assembleFragmentPrompt` is the ONE orchestrator: given a `{ fragment_files,
-// fragments }` block, a base URL, a `Fetcher`, and `LoadOptions`, it fetches every
-// declared library in parallel, (optionally) runs the thorough whole-library check,
+// text_files }` block, a base URL, a `Fetcher`, and `LoadOptions`, it fetches every
+// declared library and text file in parallel, (optionally) runs the thorough
+// whole-library check,
 // checks consistency, and assembles — returning the finished prompt text or the
 // structured errors. Tutor, quiz, writing, and coding each call it with a single
 // block; none of them touch Handlebars or `COMPILE_OPTIONS` themselves.
@@ -23,6 +24,10 @@ import { checkFragmentFileValue, checkFragmentTemplates } from "./fragment";
 import { parseHostPlacements, renderHostTemplate } from "./host-template";
 import { parseYaml, validate } from "./parse";
 import { type FragmentBlock, type FragmentFile, FragmentFileSchema } from "./schemas";
+import { sliceLines } from "./text-files";
+
+/** The 200 KB (UTF-8 bytes) per-file cap on an embedded `text_files:` body — fail closed above it. */
+const MAX_TEXT_FILE_BYTES = 200 * 1024;
 
 /**
  * Resolve a fragment-file reference to an absolute URL. An absolute http(s) ref is used
@@ -144,9 +149,12 @@ export type AssembleResult =
  * → check → render pipeline. `hostText` IS the template: fragments appear only where
  * the author placed a marker; there is no ordering concept and no prepend fallback.
  *
- * TEMPLATE-SEMANTICS OPT-IN: an activity that declares no `fragment_files:` is NEVER
- * compiled — its host text returns byte-verbatim (protecting plain activities and the
- * authoring tutors whose prose contains sample markers as teaching content).
+ * TEMPLATE-SEMANTICS OPT-IN: an activity that declares NEITHER `fragment_files:` NOR
+ * `text_files:` is NEVER compiled — its host text returns byte-verbatim (protecting plain
+ * activities and the authoring tutors whose prose contains sample markers as teaching
+ * content). Text files are fetched in parallel with the fragment libraries; each is kept
+ * as a RAW string (no YAML parse) and spliced verbatim at render — never re-compiled as
+ * Handlebars, so a literal `{{` in course material can never execute.
  */
 export async function assembleFragmentPrompt(
   block: FragmentBlock,
@@ -158,15 +166,15 @@ export async function assembleFragmentPrompt(
   const warnings: ValidationWarning[] = [];
   const allowedSchemes = opts.allowedSchemes ?? DEFAULT_ALLOWED_SCHEMES;
 
-  // No libraries declared ⇒ the host text is NOT a template. Return it verbatim,
-  // without a single fetch and without ever handing it to Handlebars — a literal
-  // `{{` in plain prose stays untouched.
-  if (block.fragment_files.length === 0) {
+  // Neither libraries NOR text files declared ⇒ the host text is NOT a template. Return
+  // it verbatim, without a single fetch and without ever handing it to Handlebars — a
+  // literal `{{` in plain prose stays untouched.
+  if (block.fragment_files.length === 0 && block.text_files.length === 0) {
     return { ok: true, prompt: hostText, warnings };
   }
 
-  // --- fragment files (fetched in parallel; surface every failing file at once) ---
-  const settled = await Promise.all(
+  // --- fragment files + text files (fetched in parallel; surface every failing file at once) ---
+  const fragmentSettledPromise = Promise.all(
     block.fragment_files.map(
       async (
         ref,
@@ -210,15 +218,65 @@ export async function assembleFragmentPrompt(
     ),
   );
 
+  // Text files travel the SAME fetch path — resolve + scheme-gate + fetch — but there is
+  // NO YAML parse: the raw body is kept verbatim. The 200 KB (UTF-8 bytes) cap is enforced
+  // immediately after fetch, failing closed above it.
+  const textSettledPromise = Promise.all(
+    block.text_files.map(
+      async (
+        ref,
+      ): Promise<{ alias: string; body: string } | { alias: string; error: ValidationError }> => {
+        let fileUrl: string;
+        try {
+          fileUrl = resolveFragmentUrl(ref.url, baseUrl);
+        } catch {
+          return {
+            alias: ref.id,
+            error: error("INVALID_URL", `Invalid text-file URL: ${ref.url}`, {
+              url: ref.url,
+              fileAlias: ref.id,
+            }),
+          };
+        }
+        const schemeError = schemeGate(fileUrl, allowedSchemes);
+        if (schemeError) return { alias: ref.id, error: { ...schemeError, fileAlias: ref.id } };
+        const fetched = await fetchText(fileUrl, fetchImpl);
+        if (!fetched.ok) return { alias: ref.id, error: fetched.error };
+        const byteLength = new TextEncoder().encode(fetched.text).length;
+        if (byteLength > MAX_TEXT_FILE_BYTES) {
+          return {
+            alias: ref.id,
+            error: error(
+              "TEXT_FILE_TOO_LARGE",
+              `Text file "${ref.id}" is ${byteLength} bytes, over the ${MAX_TEXT_FILE_BYTES}-byte limit`,
+              { url: fileUrl, fileAlias: ref.id },
+            ),
+          };
+        }
+        return { alias: ref.id, body: fetched.text };
+      },
+    ),
+  );
+
+  const [fragmentSettled, textSettled] = await Promise.all([
+    fragmentSettledPromise,
+    textSettledPromise,
+  ]);
+
   const fragmentFilesByAlias = new Map<string, FragmentFile>();
   const fragmentUrlByAlias = new Map<string, string>();
+  const textFilesByAlias = new Map<string, string>();
   const fileErrors: ValidationError[] = [];
-  for (const result of settled) {
+  for (const result of fragmentSettled) {
     if ("error" in result) fileErrors.push(result.error);
     else {
       fragmentFilesByAlias.set(result.alias, result.file);
       fragmentUrlByAlias.set(result.alias, result.url);
     }
+  }
+  for (const result of textSettled) {
+    if ("error" in result) fileErrors.push(result.error);
+    else textFilesByAlias.set(result.alias, result.body);
   }
   if (fileErrors.length > 0) return { ok: false, errors: fileErrors, warnings };
 
@@ -245,29 +303,46 @@ export async function assembleFragmentPrompt(
     return { ok: false, errors: [...libraryErrors, ...parsed.errors], warnings };
   }
 
-  // --- placement consistency (resolution + per-placement variable validation) ---
+  // --- placement consistency (resolution + per-placement variable / range validation) ---
+  // `strict` (authoring / CLI) makes a `to` beyond EOF an error too; at runtime it clamps.
   const placementCheck = checkPlacements(
     parsed.placements,
     fragmentFilesByAlias,
     block.fragment_files,
+    textFilesByAlias,
+    block.text_files,
+    opts.validateLibraries ?? false,
   );
   warnings.push(...placementCheck.warnings);
   const preRenderErrors = [...libraryErrors, ...placementCheck.errors];
   if (preRenderErrors.length > 0) return { ok: false, errors: preRenderErrors, warnings };
 
   // --- render the host template (strict Handlebars backstop) ---
-  // The resolver shares `resolveAndMerge` with the checker above, so what renders is
-  // exactly what was validated. Any resolve error or null content (which should never
+  // The fragment resolver shares `resolveAndMerge` with the checker above, so what renders
+  // is exactly what was validated. Any resolve error or null content (which should never
   // happen post-check) throws and fails closed as ASSEMBLY_ERROR — so even an argument
-  // the AST couldn't see (defense in depth) can never render unvalidated.
+  // the AST couldn't see (defense in depth) can never render unvalidated. The file
+  // resolver splices the PREFETCHED body verbatim (no range) or via `sliceLines` (with
+  // `to` clamped to EOF); file content is NEVER compiled as Handlebars.
   try {
-    const prompt = renderHostTemplate(hostText, (ref, args) => {
-      const resolved = resolveAndMerge(ref, args, fragmentFilesByAlias);
-      if (resolved.content === null || resolved.errors.length > 0) {
-        throw new Error(`Fragment "${ref}" could not be resolved`);
-      }
-      return renderFragmentContent(resolved.content, resolved.variables);
-    });
+    const prompt = renderHostTemplate(
+      hostText,
+      (ref, args) => {
+        const resolved = resolveAndMerge(ref, args, fragmentFilesByAlias);
+        if (resolved.content === null || resolved.errors.length > 0) {
+          throw new Error(`Fragment "${ref}" could not be resolved`);
+        }
+        return renderFragmentContent(resolved.content, resolved.variables);
+      },
+      (alias, from, to) => {
+        const body = textFilesByAlias.get(alias);
+        // Defense in depth: a placement the checker passed is always prefetched; a miss
+        // here can only be a bug, so throw to fail closed (becomes ASSEMBLY_ERROR).
+        if (body === undefined) throw new Error(`Text file "${alias}" was not prefetched`);
+        if (from === undefined && to === undefined) return body; // verbatim, byte-identical
+        return sliceLines(body, from, to);
+      },
+    );
     return { ok: true, prompt, warnings };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

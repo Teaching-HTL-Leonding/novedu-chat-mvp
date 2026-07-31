@@ -406,9 +406,9 @@ in-page discussion live in `app/[code]/_quiz/`.
   optional content `image` (below), an optional `imageInput` override, and
   `evaluation` (the SERVER-ONLY grading prompt). It may also carry an optional
   top-level **`instructions`** host text (rendered once and prepended to both the
-  grader and the discussion) with inline `{{fragment "alias.id" …}}` markers, plus
-  the **`fragment_files:`** declarations the markers draw from (the shared
-  prompt-fragment core — `docs/prompt-fragments.md`).
+  grader and the discussion) with inline `{{fragment "alias.id" …}}` and `{{file
+  "alias"}}` markers, plus the **`fragment_files:`** and **`text_files:`** declarations
+  the markers draw from (the shared prompt-fragment core — `docs/prompt-fragments.md`).
 - **The rendered `instructions` feed BOTH grader and discussion.** The top-level
   `instructions` host text is rendered **once** at load (`loadQuiz`,
   `lib/quiz-fetch.ts`, `validateLibraries: false` — the hot path;

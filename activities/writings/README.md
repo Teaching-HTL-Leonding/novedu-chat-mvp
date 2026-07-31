@@ -162,12 +162,14 @@ for a thorough example.
 > even if `instructions` asked it to rewrite, it physically cannot. Lean into that:
 > tell it to give directions and guiding questions, not finished sentences.
 
-### `fragment_files` and reusable prompt pieces
+### `fragment_files`, `text_files` and reusable prompt pieces
 
 Optional. A writing activity may pull in **prompt fragments** — the same reusable,
-parameterized pieces tutors use (a persona, a safety policy, a set of ground rules).
-Declare the libraries under a **top-level `fragment_files:`** and place the fragments
-with inline `{{fragment "alias.id" …}}` markers directly in your `instructions`:
+parameterized pieces tutors use (a persona, a safety policy, a set of ground rules) —
+and embed **plain-text files** verbatim. Declare the libraries under a **top-level
+`fragment_files:`** and any text files under a **top-level `text_files:`**, then place
+the fragments with inline `{{fragment "alias.id" …}}` markers and the files with
+`{{file "alias"}}` markers directly in your `instructions`:
 
 ```yaml
 fragment_files:
@@ -185,13 +187,15 @@ instructions: |
     code_language="English"}}
 ```
 
-Each fragment renders exactly where its marker sits inside `instructions` — there is
-no separate prepend step and no ordering knob. A writing file with **no**
-`fragment_files` keeps its `instructions` exactly as written (any `{{…}}` in it stays
-literal). Omit `fragment_files` when the activity uses no fragments.
+Each fragment or file renders exactly where its marker sits inside `instructions` —
+there is no separate prepend step and no ordering knob. A writing file with **neither**
+`fragment_files` nor `text_files` keeps its `instructions` exactly as written (any
+`{{…}}` in it stays literal). Omit both when the activity uses no shared prompt.
 
-The full fragment mechanics — fragment libraries, `input_schema`, defaults, and the
-`{{fragment …}}` marker syntax — are documented in the tutor guide,
+The full mechanics — fragment libraries, `input_schema`, defaults, the `{{fragment …}}`
+marker syntax, and `text_files` + the `{{file "alias" from= to=}}` marker (whole file or
+a 1-based inclusive line range, spliced verbatim; aliases are shared with
+`fragment_files`) — are documented in the tutor guide,
 [`../tutors/README.md`](../tutors/README.md). The shared library
 [`../examples/shared/general-fragments.yaml`](../examples/shared/general-fragments.yaml)
 is reused across activity kinds.

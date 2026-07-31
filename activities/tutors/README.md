@@ -200,7 +200,8 @@ llm:
   imageInput: false # optional: omit for default true; set false to disable image uploads
 prompt:
   fragment_files: [...] # optional: the libraries you pull fragments from
-  tutor_instructions: | # your instructions, with inline {{fragment ...}} markers
+  text_files: [...] # optional: plain-text files you embed with {{file ...}}
+  tutor_instructions: | # your instructions, with inline {{fragment ...}} / {{file ...}} markers
     ...
 ```
 
@@ -293,6 +294,53 @@ fragment_files:
   [Hosting](#9-hosting-your-files)). Only `http(s)` is allowed — an absolute URL
   with any other scheme (e.g. `ftp:`) is rejected.
 
+### `prompt.text_files`
+
+Optional. Declares **plain-text files** — markdown course material, a sample-solution
+source file, anything — that you want to drop into your instructions **verbatim**.
+Unlike a fragment library there is no schema and nothing to select inside: the whole
+file (or a line range) is spliced in exactly as fetched, and any `{{…}}` inside it stays
+literal (it is **never** treated as a template).
+
+```yaml
+text_files:
+  - id: course # the alias (you choose this)
+    url: "https://example.com/material/loops.md" # the file (absolute or relative)
+```
+
+- `id` — the alias your `{{file "course"}}` markers use. Like a fragment alias it **must
+  not contain a dot**. Aliases are **shared** with `fragment_files`: an `id` may not be
+  used by both a library and a text file.
+- `url` — same two forms as `fragment_files` (absolute `http(s)://…`, or a relative path
+  resolved next to your tutor file). Each file is capped at **200 KB**.
+
+### Embedding a text file with `{{file}}`
+
+Write a `{{file "alias"}}` marker at the exact spot where the file's content should
+appear. To embed only part of a file, add 1-based, **inclusive** line numbers:
+
+```yaml
+text_files:
+  - id: solution
+    url: "https://example.com/src/linkedList.ts"
+tutor_instructions: |
+  Here is the full reference solution:
+  {{file "solution"}}
+
+  Focus today on the delete method only:
+  {{file "solution" from=42 to=68}}
+```
+
+- `{{file "alias"}}` — the whole file, byte-for-byte (trailing newline and all).
+- `from=` / `to=` — optional line numbers. `from=42 to=68` keeps lines 42–68 inclusive;
+  `from=42` alone means "line 42 to the end"; `to=68` alone means "line 1 to 68". They
+  must be whole numbers ≥ 1 and `from` may not be greater than `to`.
+- You may place the **same file more than once** with different ranges.
+- **Line numbers vs. the live file:** at validation time a `from` or `to` past the end of
+  the file is an error. If the source file is later shortened, a too-large `to` is quietly
+  clamped to the last line at runtime, but a `from` past the end still fails (an empty
+  splice would silently drop material — fix the range or re-check the file).
+
 ### Placing fragments with markers
 
 You do not list fragments in a separate field. Instead you write a **marker**
@@ -339,10 +387,10 @@ Your instructions in your own words, **with the `{{fragment …}}` markers place
 wherever you want each fragment**. There is no separate list and no ordering knob:
 a fragment appears exactly where its marker sits, in reading order.
 
-For a one-off tutor that uses no fragments, just write plain instructions and omit
-`fragment_files` — a tutor with **no** `fragment_files` is never treated as a
-template, so any `{{…}}` in it is kept verbatim (handy when your instructions
-mention Handlebars as example text).
+For a one-off tutor that uses no fragments and no text files, just write plain
+instructions and omit both `fragment_files` and `text_files` — a tutor with **neither**
+is never treated as a template, so any `{{…}}` in it is kept verbatim (handy when your
+instructions mention Handlebars as example text).
 
 ---
 
@@ -499,13 +547,15 @@ Notes:
 
 ## 8. How the prompt is assembled
 
-1. If the tutor declares **no** `fragment_files`, `tutor_instructions` is used
-   **exactly as written** — no template processing at all — and that is the whole
-   system prompt.
+1. If the tutor declares **neither** `fragment_files` nor `text_files`,
+   `tutor_instructions` is used **exactly as written** — no template processing at all —
+   and that is the whole system prompt.
 2. Otherwise `tutor_instructions` is treated as a template: each `{{fragment …}}`
    marker is replaced, **in place**, by that fragment's `content` rendered with the
    placement's effective values (the fragment's defaults overridden by the marker's
-   arguments).
+   arguments); each `{{file …}}` marker is replaced, **in place**, by the fetched file's
+   content (whole, or the requested line range) spliced in **verbatim** — never rendered
+   as a template, so any `{{…}}` inside the file stays literal.
 3. Everything else — your own text and the blank lines around the markers — is kept
    as written. The result is the final system prompt.
 
@@ -558,7 +608,8 @@ The validator checks, in order:
 2. The tutor file has the correct structure (no missing or misspelled fields).
 3. Every referenced fragment library loads and has the correct structure.
 4. Every `{{fragment …}}` marker parses, resolves to a real fragment, and supplies
-   every required input with the right type.
+   every required input with the right type. Every `{{file …}}` marker resolves to a
+   declared `text_files` alias, and its `from`/`to` line range fits the file.
 5. **Every fragment in every referenced library renders** — its `content` template
    is checked against its own declared inputs, even fragments this tutor doesn't
    use. A template bug anywhere in a library you reference fails validation.
@@ -593,6 +644,12 @@ syntax errors surface before any tutor references the library.
 | `VARIABLE_TYPE_MISMATCH`                            | An argument's type is wrong (e.g. text where a list is expected). | Provide the declared type.                       |
 | `FRAGMENT_TEMPLATE_ERROR`                           | A fragment's `content` uses a `{{variable}}` it never declares, or has a Handlebars syntax error. | Declare the variable in `input_schema`, fix the typo, or correct the template. |
 | `UNUSED_FRAGMENT_FILE` _(warning)_                  | A declared library isn't used by any marker.                   | Remove the unused `fragment_files` entry, or add a marker that uses it. |
+| `TEXT_FILE_MARKER_INVALID`                          | A `{{file}}` marker is malformed: unquoted alias, an argument other than `from`/`to`, a non-integer or `<1` line number, or `from > to`. | Write it as `{{file "alias"}}` (optionally `from=`/`to=` whole numbers ≥ 1). |
+| `UNKNOWN_TEXT_FILE_ALIAS`                           | A `{{file}}` alias doesn't match any `text_files` alias.       | Use the exact alias you declared.                |
+| `DUPLICATE_TEXT_FILE_ALIAS`                         | An alias is declared twice — or the same alias is used by both a `text_files` entry and a `fragment_files` entry. | Give each library and text file a unique alias. |
+| `TEXT_FILE_RANGE_OUT_OF_BOUNDS`                     | A `{{file}}` `from`/`to` line number is past the end of the file. | Fix the range (or re-check the file — it may have been shortened). |
+| `TEXT_FILE_TOO_LARGE`                               | A fetched text file is over the 200 KB limit.                  | Trim the file or embed a smaller excerpt.        |
+| `UNUSED_TEXT_FILE` _(warning)_                      | A declared text file isn't embedded by any marker.             | Remove the unused `text_files` entry, or add a `{{file}}` marker that uses it. |
 | `UNDECLARED_VARIABLE` _(warning)_                   | A marker passes an argument the fragment doesn't use.          | Usually a typo — remove or correct it.           |
 | `REQUIRED_PROPERTY_HAS_DEFAULT` _(warning)_         | A `required` input also declares a `default` it can never use. | Drop the `default`, or remove it from `required`. |
 
@@ -601,9 +658,12 @@ syntax errors surface before any tutor references the library.
 ## 11. Checklist before you publish
 
 - [ ] Each fragment has a **unique** `id` within its library.
-- [ ] Every `fragment_files` alias is **dot-free** and used by at least one marker.
+- [ ] Every `fragment_files` / `text_files` alias is **dot-free**, **unique across both
+      lists**, and used by at least one marker.
 - [ ] Every `{{fragment "alias.id" …}}` marker is well-formed and supplies each
       `required` input with the **correct type**.
+- [ ] Every `{{file "alias"}}` marker names a declared text file and any `from`/`to`
+      range fits the file.
 - [ ] Every `{{variable}}` used in a fragment's `content` is declared and either
       supplied or has a `default`.
 - [ ] Any literal `{{` in your instructions is escaped as `\{{`.

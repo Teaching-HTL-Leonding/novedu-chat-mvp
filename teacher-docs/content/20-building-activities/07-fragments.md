@@ -1,10 +1,10 @@
 ---
 title: Reusable fragments
-description: Write a fragment library once and place the same prompt pieces in tutors, quizzes, writing, and coding activities.
+description: Write a fragment library once and reuse it across activities, and embed plain-text files such as course material or a sample solution.
 sidebar:
   order: 7
 audience: teacher
-keywords: [fragment, fragment library, fragments, fragment_files, marker, input_schema, default, reuse, prompt]
+keywords: [fragment, fragment library, fragments, fragment_files, marker, input_schema, default, reuse, prompt, text file, text_files, course material, sample solution, line range]
 related:
   - 20-building-activities/03-tutors
   - 20-building-activities/04-quizzes
@@ -20,7 +20,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/07-fragments.prompt.md and regenerate.
 -->
 
-A [[fragment]] is a named piece of [[prompt]] (a teaching style, a safety policy, a language rule) that lives in a fragment library, a [[YAML]] file of its own. Write the rule once, place it in as many activities as you like, and fix it in one place when it needs a change. The chapter on building a tutor shows how to *use* fragments; this chapter shows how to *write* a library of your own, and how the same library serves every kind of [[activity]].
+A [[fragment]] is a named piece of [[prompt]] (a teaching style, a safety policy, a language rule) that lives in a fragment library, a [[YAML]] file of its own. Write the rule once, place it in as many activities as you like, and fix it in one place when it needs a change. The chapter on building a tutor shows how to *use* fragments; this chapter shows how to *write* a library of your own, and how the same library serves every kind of [[activity]]. It also covers the simpler sibling of a fragment library: embedding a plain-text file (course material, a sample solution) straight into your instructions with a text-file marker.
 
 ## One library, four kinds of activity
 
@@ -181,11 +181,36 @@ An optional input can carry a **`default`**, used whenever a marker leaves the v
 
 Defaults are what make a fragment pleasant to reuse: the common case needs no values at all, and the unusual class overrides just the one value it cares about.
 
+## Embedding a plain-text file
+
+Sometimes you don't need a parameterised fragment, you just want an existing file inside the prompt: the markdown notes for this week's unit, or the sample solution a coding assistant should steer students towards. For that, declare the file under `text_files:` and place it with a `{{file}}` marker:
+
+```yaml
+text_files:
+  - id: solution
+    url: https://raw.githubusercontent.com/rstropek/htl-2025-26-2nd/refs/heads/main/40-classes/LinkedListWithTests/src/linkedList.ts
+
+instructions: |
+  Here is the sample solution. Guide students towards it, never paste it back:
+
+  {{file "solution"}}
+```
+
+`text_files:` sits in the same place as `fragment_files:` for each kind (inside `prompt:` for a tutor, at the top level for a quiz, writing, or coding activity), and the entries have the same shape: a short `id` alias plus a `url`, absolute or relative to the activity file. The two lists share one set of aliases, so an id you use under `text_files:` must not also name a fragment library.
+
+A few things make text files simpler than fragments:
+
+- The marker is a bare quoted alias, `{{file "solution"}}`, with no dot: a plain file has nothing to select inside it.
+- The file is inserted exactly as fetched. It's ordinary text, not a template, so `{{ }}` inside the material stays literal and needs no escaping; only your own surrounding prose follows the `\{{` rule.
+- The only arguments are optional line numbers: `{{file "course" from=120 to=180}}` embeds lines 120 to 180 (counting from one, both ends included). Either end works alone: `from=120` means "from line 120 to the end", `to=40` means "the first 40 lines". You can place the same file several times with different ranges, for example the whole file for context and one excerpt to focus on today.
+
+Like a fragment library, a text file is fetched fresh when a student opens the activity, so editing the hosted file updates the prompt without touching the activity. A file that can't be fetched, or is larger than 200 KB, stops the activity from starting rather than running with material missing. The linked-lists coding activity under `activities/examples/linked-lists/` is a complete, validated example of the sample-solution pattern.
+
 ## Braces that are not markers
 
-An activity that declares no `fragment_files:` is left exactly as you wrote it, character for character. So a plain activity, or a teaching example whose instructions show `{{ }}` as ordinary text, is safe: nothing tries to read those braces as markers.
+An activity that declares neither `fragment_files:` nor `text_files:` is left exactly as you wrote it, character for character. So a plain activity, or a teaching example whose instructions show `{{ }}` as ordinary text, is safe: nothing tries to read those braces as markers.
 
-Once an activity does declare a library under `fragment_files:`, its instructions are read as a template. Two things follow:
+Once an activity does declare a fragment library or a text file, its instructions are read as a template. Two things follow:
 
 - If you want a literal `{{` in your own wording (not a marker), write it as `\{{` so it isn't mistaken for one.
 - A marker only works when its library is declared. If you write `{{fragment "…"}}` but forget the matching `fragment_files:` entry, the text is sent to the model as-is instead of being replaced. Declare every library you place a marker from.
@@ -194,7 +219,7 @@ Once an activity does declare a library under `fragment_files:`, its instruction
 
 You can validate a fragment library on its own, before any activity uses it: on the app's Validate page, switch the selector to **Fragment library** and paste the library's address, or run the CLI with `--kind fragment`. The check confirms the file's structure, that fragment ids are unique, and that every fragment's content renders against its own declared inputs, so a typo in a template surfaces before a colleague's activity trips over it.
 
-Validating or sharing an *activity* runs the same thorough check over every fragment in every library the activity references, even fragments it doesn't place. A library that validates once is safe for everyone who builds on it.
+Validating or sharing an *activity* runs the same thorough check over every fragment in every library the activity references, even fragments it doesn't place. A library that validates once is safe for everyone who builds on it. The activity check also fetches every declared text file and checks each placed line range against the real file, so a `from=` or `to=` past the end of the file fails validation instead of surprising a class later.
 
 One safety property to rely on: fragments never vanish silently. If a library can't be loaded or a fragment fails when a student opens the activity, the activity refuses to start rather than running without the missing rules. A safety policy you placed is either in effect or the activity doesn't run.
 

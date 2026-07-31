@@ -124,7 +124,7 @@ export async function loadAndCheckQuiz(
   // render dry-run over the quiz `instructions` (authoring default: `validateLibraries:
   // true`). The `instructions` host text carries the inline `{{fragment}}` markers.
   const assembled = await assembleFragmentPrompt(
-    { fragment_files: valid.data.fragment_files },
+    { fragment_files: valid.data.fragment_files, text_files: valid.data.text_files },
     url,
     fetchImpl,
     { allowedSchemes: opts.allowedSchemes, validateLibraries: opts.validateLibraries ?? true },

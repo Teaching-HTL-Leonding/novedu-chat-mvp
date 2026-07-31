@@ -15,8 +15,10 @@ import type {
   FragmentFile,
   FragmentFileRef,
   InputSchema,
+  TextFileRef,
   VariableValue,
 } from "./schemas";
+import { countLines } from "./text-files";
 
 type DeclaredProperty = InputSchema["properties"][string];
 
@@ -193,16 +195,29 @@ export interface PlacementCheckResult {
 }
 
 /**
- * Cross-check every inline placement against the declared libraries: duplicate
- * aliases, duplicate fragment ids within a file, each placement's `alias.id`
- * resolution + variable validation (via `resolveAndMerge`), and a warning for any
- * declared library no placement ever uses. Errors block the build; the rest are
- * warnings. Order-independent — placements carry their own textual position.
+ * Cross-check every inline placement against the declared libraries AND text files:
+ * duplicate aliases (fragment libraries, text files, and collisions ACROSS the two —
+ * one shared alias namespace), duplicate fragment ids within a file, each `{{fragment}}`
+ * placement's `alias.id` resolution + variable validation (via `resolveAndMerge`), each
+ * `{{file}}` placement's alias resolution + line-range bounds, and a warning for any
+ * declared library / text file no placement ever uses. Errors block the build; the rest
+ * are warnings. Order-independent — placements carry their own textual position.
+ *
+ * `textFilesByAlias` maps a declared text-file alias to its FETCHED body (needed for the
+ * range bounds check); `strict` is the authoring-strictness flag — when set (authoring
+ * validators / CLI), a `to` beyond EOF is an error too, whereas at runtime (`strict:
+ * false`) the render layer clamps `to` to EOF instead. A `from` beyond EOF is ALWAYS an
+ * error (an empty splice would silently drop material). The new params default so the
+ * legacy fragment-only call sites (and their tests) need no change; the one real caller
+ * (`load.ts`) always passes the text side explicitly.
  */
 export function checkPlacements(
   placements: Placement[],
   filesByAlias: Map<string, FragmentFile>,
   fileRefs: FragmentFileRef[],
+  textFilesByAlias: Map<string, string> = new Map(),
+  textFileRefs: TextFileRef[] = [],
+  strict = false,
 ): PlacementCheckResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationWarning[] = [];
@@ -216,6 +231,35 @@ export function checkPlacements(
         error(
           "DUPLICATE_FRAGMENT_FILE_ALIAS",
           `Fragment-file alias "${alias}" is declared ${count} times`,
+          { fileAlias: alias },
+        ),
+      );
+    }
+  }
+
+  // 1b. Duplicate text-file aliases + collisions with a fragment-file alias (ONE shared
+  // namespace, so every marker resolves unambiguously). A text alias declared twice is a
+  // duplicate; a text alias that also names a fragment library is a cross-list collision.
+  const fragmentAliases = new Set(fileRefs.map((r) => r.id));
+  const textAliasCounts = new Map<string, number>();
+  for (const ref of textFileRefs)
+    textAliasCounts.set(ref.id, (textAliasCounts.get(ref.id) ?? 0) + 1);
+  for (const [alias, count] of textAliasCounts) {
+    if (count > 1) {
+      errors.push(
+        error(
+          "DUPLICATE_TEXT_FILE_ALIAS",
+          `Text-file alias "${alias}" is declared ${count} times`,
+          {
+            fileAlias: alias,
+          },
+        ),
+      );
+    } else if (fragmentAliases.has(alias)) {
+      errors.push(
+        error(
+          "DUPLICATE_TEXT_FILE_ALIAS",
+          `Alias "${alias}" is declared as both a fragment library and a text file`,
           { fileAlias: alias },
         ),
       );
@@ -240,16 +284,22 @@ export function checkPlacements(
     }
   }
 
-  // 3. Resolve + validate each placement.
+  // 3. Resolve + validate each placement, dispatched on its kind (fragment vs file).
   const usedAliases = new Set<string>();
+  const usedTextAliases = new Set<string>();
   for (const placement of placements) {
+    if (placement.kind === "file") {
+      checkFilePlacement(placement, textFilesByAlias, strict, errors);
+      usedTextAliases.add(placement.ref);
+      continue;
+    }
     usedAliases.add(splitFragmentRef(placement.ref).alias);
     const resolved = resolveAndMerge(placement.ref, placement.args, filesByAlias);
     errors.push(...resolved.errors);
     warnings.push(...resolved.warnings);
   }
 
-  // 4. A declared library that no marker ever draws from — a likely leftover / typo.
+  // 4. A declared library / text file that no marker ever draws from — a likely leftover / typo.
   for (const ref of fileRefs) {
     if (!usedAliases.has(ref.id)) {
       warnings.push(
@@ -261,6 +311,63 @@ export function checkPlacements(
       );
     }
   }
+  for (const ref of textFileRefs) {
+    if (!usedTextAliases.has(ref.id)) {
+      warnings.push(
+        warning(
+          "UNUSED_TEXT_FILE",
+          `Text file "${ref.id}" is declared but no {{file}} marker embeds it`,
+          { fileAlias: ref.id },
+        ),
+      );
+    }
+  }
 
   return { errors, warnings };
+}
+
+/**
+ * Validate one `{{file}}` placement: the alias must be a declared text file, and its
+ * line range must fit. `from` beyond EOF is ALWAYS an error (an empty splice would
+ * silently drop material); `to` beyond EOF is an error ONLY under `strict` (authoring) —
+ * at runtime the render layer clamps `to` to EOF so a shortened source degrades gracefully.
+ */
+function checkFilePlacement(
+  placement: Placement,
+  textFilesByAlias: Map<string, string>,
+  strict: boolean,
+  errors: ValidationError[],
+): void {
+  const body = textFilesByAlias.get(placement.ref);
+  if (body === undefined) {
+    errors.push(
+      error(
+        "UNKNOWN_TEXT_FILE_ALIAS",
+        `File marker "${placement.ref}" uses unknown text-file alias`,
+        {
+          fileAlias: placement.ref,
+        },
+      ),
+    );
+    return;
+  }
+  const lineCount = countLines(body);
+  if (placement.from !== undefined && placement.from > lineCount) {
+    errors.push(
+      error(
+        "TEXT_FILE_RANGE_OUT_OF_BOUNDS",
+        `File "${placement.ref}" has ${lineCount} line(s), but from=${placement.from} is past the end`,
+        { fileAlias: placement.ref, line: placement.line },
+      ),
+    );
+  }
+  if (strict && placement.to !== undefined && placement.to > lineCount) {
+    errors.push(
+      error(
+        "TEXT_FILE_RANGE_OUT_OF_BOUNDS",
+        `File "${placement.ref}" has ${lineCount} line(s), but to=${placement.to} is past the end`,
+        { fileAlias: placement.ref, line: placement.line },
+      ),
+    );
+  }
 }

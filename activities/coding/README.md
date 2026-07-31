@@ -149,17 +149,23 @@ language, a subset of features, a teaching style). See
 [`../examples/sorting-algorithms/sorting-visualizer.yaml`](../examples/sorting-algorithms/sorting-visualizer.yaml)
 for a thorough example.
 
-### `fragment_files` and reusable prompt pieces
+### `fragment_files`, `text_files` and reusable prompt pieces
 
 Optional. A coding activity may pull in **prompt fragments** — the same reusable,
-parameterized pieces tutors use (a persona, a safety policy, a set of ground rules).
-Declare the libraries under a **top-level `fragment_files:`** and place the fragments
-with inline `{{fragment "alias.id" …}}` markers directly in your `instructions`:
+parameterized pieces tutors use (a persona, a safety policy, a set of ground rules) —
+and embed **plain-text files** verbatim (a common use is dropping in a **sample-solution
+source file** as the model's reference answer). Declare the libraries under a **top-level
+`fragment_files:`** and any text files under a **top-level `text_files:`**, then place
+the fragments with inline `{{fragment "alias.id" …}}` markers and the files with
+`{{file "alias"}}` markers directly in your `instructions`:
 
 ```yaml
 fragment_files:
   - id: general # the alias (no dots) you use in markers
     url: "../shared/general-fragments.yaml" # relative to this coding file, or a full http(s) URL
+text_files:
+  - id: solution # aliases are shared with fragment_files — keep them unique
+    url: "https://example.com/src/linkedList.ts" # a raw source file, absolute or relative
 
 instructions: |
   {{fragment "general.teenager_safety"}}
@@ -167,18 +173,25 @@ instructions: |
   You are a friendly TypeScript coding buddy for a BEGINNER. Keep every explanation
   and every line of code within what the student has learned.
 
+  Here is the reference solution — never reveal it directly, only guide toward it:
+  {{file "solution"}}
+
   {{fragment "general.language_policy" natural_language="German"
     code_language="English (TypeScript terms)"}}
 ```
 
-Each fragment renders exactly where its marker sits inside `instructions` — there is
-no separate prepend step and no ordering knob (identical to the writing activity). The
-whole rendered `instructions` is still appended after the coding tool's own prompt. A
-coding file with **no** `fragment_files` keeps its `instructions` exactly as written.
-Omit `fragment_files` when the activity uses no fragments.
+Each fragment or file renders exactly where its marker sits inside `instructions` —
+there is no separate prepend step and no ordering knob (identical to the writing
+activity). File content is spliced **verbatim** (any `{{…}}` inside it stays literal);
+add `from=`/`to=` line numbers to embed only an excerpt. The whole rendered
+`instructions` is still appended after the coding tool's own prompt. A coding file with
+**neither** `fragment_files` nor `text_files` keeps its `instructions` exactly as
+written. Omit both when the activity uses no shared prompt.
 
-The full fragment mechanics — fragment libraries, `input_schema`, defaults, and the
-`{{fragment …}}` marker syntax — are documented in the tutor guide,
+The full mechanics — fragment libraries, `input_schema`, defaults, the `{{fragment …}}`
+marker syntax, and `text_files` + the `{{file "alias" from= to=}}` marker (whole file or
+a 1-based inclusive line range; aliases shared with `fragment_files`) — are documented
+in the tutor guide,
 [`../tutors/README.md`](../tutors/README.md). The shared library
 [`../examples/shared/general-fragments.yaml`](../examples/shared/general-fragments.yaml)
 is reused across activity kinds.

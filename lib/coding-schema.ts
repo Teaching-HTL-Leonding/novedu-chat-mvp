@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
-import { FragmentFileRefSchema } from "@/lib/prompt-fragments";
+import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
 
 export const CodingYamlSchema = z.strictObject({
   id: z
@@ -51,11 +51,18 @@ export const CodingYamlSchema = z.strictObject({
   fragment_files: z.array(FragmentFileRefSchema).default([]).meta({
     description: "Optional fragment libraries this activity pulls shared prompt fragments from.",
   }),
+  // Optional plain-text files (e.g. a sample-solution source file) embedded verbatim into
+  // `instructions` via inline `{{file "alias"}}` markers (the tutor `prompt.text_files`
+  // shape at the root).
+  text_files: z.array(TextFileRefSchema).default([]).meta({
+    description:
+      'Optional plain-text files (markdown / source, e.g. a sample solution) embedded verbatim into instructions via {{file "alias"}} markers.',
+  }),
   // The teacher's system prompt, appended after the coding tool's own. SERVER-ONLY;
   // required.
   instructions: z.string().min(1).meta({
     description:
-      "The assistant's system prompt. SERVER-ONLY: never sent to the browser or the coding agent, and appended AFTER the coding tool's own prompt (so the teacher has the final word). Constrain the assistant to what your class has learned. When any fragment_files are declared it is a Handlebars template: place fragments inline with {{fragment \"alias.id\" …}} markers (escape a literal {{ as \\{{).",
+      'The assistant\'s system prompt. SERVER-ONLY: never sent to the browser or the coding agent, and appended AFTER the coding tool\'s own prompt (so the teacher has the final word). Constrain the assistant to what your class has learned. When any fragment_files or text_files are declared it is a Handlebars template: place fragments inline with {{fragment "alias.id" …}} and embed text files with {{file "alias"}} (optionally {{file "alias" from=10 to=40}} for a line range; escape a literal {{ as \\{{).',
   }),
 });
 export type CodingYaml = z.infer<typeof CodingYamlSchema>;

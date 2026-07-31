@@ -16,7 +16,7 @@
 
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
-import { FragmentFileRefSchema } from "@/lib/prompt-fragments";
+import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
 
 /**
  * An example question offered to students on the welcome screen: the `title` is
@@ -83,9 +83,13 @@ export const TutorSchema = z.strictObject({
         .array(FragmentFileRefSchema)
         .default([])
         .meta({ description: "Optional fragment libraries used by this tutor." }),
+      text_files: z.array(TextFileRefSchema).default([]).meta({
+        description:
+          'Optional plain-text files (markdown / source) embedded verbatim via {{file "alias"}} markers.',
+      }),
       tutor_instructions: z.string().meta({
         description:
-          'The tutor\'s system prompt. When any fragment_files are declared this is a Handlebars template: place fragments inline with {{fragment "alias.id" key="v"}} markers (escape a literal {{ as \\{{). For single-file tutors it is the whole prompt.',
+          'The tutor\'s system prompt. When any fragment_files or text_files are declared this is a Handlebars template: place fragments inline with {{fragment "alias.id" key="v"}} markers and embed text files with {{file "alias"}} (optionally {{file "alias" from=10 to=40}} for a line range; escape a literal {{ as \\{{). For single-file tutors it is the whole prompt.',
       }),
     })
     .meta({

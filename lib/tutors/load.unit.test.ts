@@ -326,6 +326,46 @@ describe("loadAndBuildTutorPrompt — inline placement", () => {
   });
 });
 
+describe("loadAndBuildTutorPrompt — text files", () => {
+  // A tutor that declares NO fragment_files but a `text_files` entry under `prompt:` and
+  // embeds it with a {{file}} marker. The presence of text_files alone opts the host text
+  // into template semantics, so the marker is resolved (spliced verbatim) at render.
+  const SOLUTION_URL = "https://fixtures.test/tutors/solution.ts";
+  const SOLUTION_BODY =
+    "export const first = 1;\nexport const second = 2;\nexport const third = 3;\n";
+  const tutorWithTextFile = [
+    "id: tt",
+    'name: "Text Tutor"',
+    'description: "Uses a sample solution file."',
+    "llm:",
+    "  model: test-model",
+    "prompt:",
+    "  text_files:",
+    "    - id: solution",
+    `      url: ${SOLUTION_URL}`,
+    "  tutor_instructions: |",
+    "    Reference solution:",
+    '    {{file "solution" from=1 to=2}}',
+  ].join("\n");
+
+  const textFetcher = (): Fetcher => async (url) => {
+    if (url === TUTOR_URL) return fixtureResponse(tutorWithTextFile);
+    if (url === SOLUTION_URL) return fixtureResponse(SOLUTION_BODY);
+    throw new Error(`Unexpected fetch URL: ${url}`);
+  };
+
+  it("assembles a prompt with the embedded text-file excerpt spliced in", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, textFetcher());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.prompt).toContain("Reference solution:");
+    expect(result.prompt).toContain("export const first = 1;");
+    expect(result.prompt).toContain("export const second = 2;");
+    // from=1 to=2 excludes the third line.
+    expect(result.prompt).not.toContain("export const third = 3;");
+  });
+});
+
 describe("loadAndBuildTutorPrompt — validateLibraries (thorough whole-library check)", () => {
   // Append an UNUSED fragment with a broken template (it references a variable its
   // input_schema never declares) to a real referenced library. The tutor never
