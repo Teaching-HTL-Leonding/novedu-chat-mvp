@@ -6,8 +6,6 @@
  *
  * - frontmatter carries the required fields; `related:` slugs resolve
  * - no body H1 (the page title renders from frontmatter)
- * - every `[[term]]` marker resolves against the glossary
- * - the glossary itself parses with unambiguous aliases and unique anchors
  */
 // @vitest-environment node
 import { readdirSync, readFileSync } from "node:fs";
@@ -15,7 +13,6 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
-import { loadGlossary, normalizeTermKey } from "./glossary.ts";
 
 const CONTENT_DIR = fileURLToPath(new URL("../../../teacher-docs/content", import.meta.url));
 
@@ -23,7 +20,7 @@ interface Chapter {
   /** Content-relative slug: "30-sharing-activities/01-creating-codes". */
   id: string;
   frontmatter: Record<string, unknown>;
-  /** Body lines with fenced code blocks and inline code spans blanked out. */
+  /** Body lines with fenced code blocks blanked out. */
   proseLines: string[];
 }
 
@@ -42,8 +39,7 @@ function loadChapters(): Chapter[] {
           inFence = !inFence;
           return "";
         }
-        // Blank inline code spans so a literal `[[term]]` in backticks is not a marker.
-        return inFence ? "" : line.replace(/`[^`]*`/g, "");
+        return inFence ? "" : line;
       });
       chapters.push({
         id: `${section.name}/${file.replace(/\.md$/, "")}`,
@@ -88,24 +84,5 @@ describe("teacher-docs corpus contract", () => {
       const h1 = chapter.proseLines.find((line) => /^# /.test(line));
       expect(h1, `${chapter.id}: body H1 "${h1}" duplicates the frontmatter title`).toBeUndefined();
     }
-  });
-
-  it("every [[term]] marker resolves against the glossary", () => {
-    const { lookup } = loadGlossary();
-    for (const chapter of chapters) {
-      const prose = chapter.proseLines.join("\n");
-      for (const match of prose.matchAll(/\[\[([^\]|]+?)(?:\|[^\]]+?)?\]\]/g)) {
-        const term = normalizeTermKey(match[1] as string);
-        expect(lookup.has(term), `${chapter.id}: unknown glossary term "[[${match[1]}]]"`).toBe(
-          true,
-        );
-      }
-    }
-  });
-
-  it("the glossary parses with unambiguous aliases and unique anchors", () => {
-    // loadGlossary throws on malformed bullets, ambiguous aliases, and slug collisions.
-    const { entries } = loadGlossary();
-    expect(entries.length).toBeGreaterThanOrEqual(8);
   });
 });

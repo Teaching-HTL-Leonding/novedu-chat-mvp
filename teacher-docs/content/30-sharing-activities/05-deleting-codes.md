@@ -17,7 +17,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/05-deleting-codes.prompt.md and regenerate.
 -->
 
-A [[code]] never disappears on its own. Even after its time window closes, it stays in your **Codes** list (marked **expired**) with all of its data, until a teacher deletes it. Deleting is how you tidy up after a unit is finished, and it's permanent: the code and everything recorded under it are gone for good.
+A code never disappears on its own. Even after its time window closes, it stays in your **Codes** list (marked **expired**) with all of its data, until a teacher deletes it. Deleting is how you tidy up after a unit is finished, and it's permanent: the code and everything recorded under it are gone for good.
 
 ## How to delete codes
 
@@ -36,7 +36,7 @@ Deleting a code removes the code and everything that was recorded under it:
 
 - The link stops working immediately. Students who open it see an unknown-code message, and the code disappears from their recent-codes shortcuts.
 - All conversations and quiz discussions under the code are deleted, including their transcripts.
-- Saved student texts from a writing [[activity]] are deleted.
+- Saved student texts from a writing activity are deleted.
 - The code's statistics page is gone, along with its interaction counts and per-student view.
 
 Review the code's statistics and read or copy anything you still need before you delete: there's no way to open a deleted code's conversations, saved texts, or statistics afterwards.

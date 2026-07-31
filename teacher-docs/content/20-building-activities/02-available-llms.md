@@ -16,7 +16,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/02-available-llms.prompt.md and regenerate.
 -->
 
-Every [[activity]] tells Novedu which AI model should run it. You set that in the `llm:` block of the activity's [[YAML]] file. The block is small: a required `model` and an optional `provider`.
+Every activity tells Novedu which AI model should run it. You set that in the `llm:` block of the activity's YAML file. The block is small: a required `model` and an optional `provider`.
 
 ```yaml
 llm:
@@ -27,7 +27,7 @@ That's the whole block in most activities, taken from the sorting-algorithms sam
 
 ## The two providers
 
-The [[provider]] decides where the AI runs. There are two choices:
+The provider decides where the AI runs. There are two choices:
 
 - **SCCH** (the school's self-hosted AI server): the default. If you leave out `provider`, your activity runs here. Here `model` is a raw model id, like the one in the sample above.
 - **Azure Foundry**: runs the activity on an Azure deployment your school has set up. With this provider, `model` names the Azure deployment, not a raw model id.
@@ -55,7 +55,7 @@ If you validate your YAML with the Novedu CLI, use version 0.6.0 or newer when t
 
 ## Override the model per code, without editing the YAML
 
-The `llm:` block is only the activity's default. When you create or edit a [[code]] (the short link you hand to a class), the form lets you override the provider and the model for that one code. The YAML file stays untouched, so the same activity can run once on the school's server and once on Azure, just by creating two codes.
+The `llm:` block is only the activity's default. When you create or edit a code (the short link you hand to a class), the form lets you override the provider and the model for that one code. The YAML file stays untouched, so the same activity can run once on the school's server and once on Azure, just by creating two codes.
 
 A few things to know about the override:
 

@@ -17,9 +17,9 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/03-tutors-overview.prompt.md and regenerate.
 -->
 
-A tutor is the simplest kind of [[activity]] in Novedu: a chat with an AI that follows your instructions, on a topic you choose. You decide what it teaches, how it talks to students, and where it draws the line. A well-written tutor explains ideas, asks guiding questions, and nudges students forward instead of doing the work for them.
+A tutor is the simplest kind of activity in Novedu: a chat with an AI that follows your instructions, on a topic you choose. You decide what it teaches, how it talks to students, and where it draws the line. A well-written tutor explains ideas, asks guiding questions, and nudges students forward instead of doing the work for them.
 
-You don't train an AI model to get this behaviour. You write a [[prompt]], a set of plain-language instructions, and the tutor follows it. If the tutor answers in a way you don't like, you change the instructions and try again.
+You don't train an AI model to get this behaviour. You write a prompt, a set of plain-language instructions, and the tutor follows it. If the tutor answers in a way you don't like, you change the instructions and try again.
 
 ## What students experience
 
@@ -37,9 +37,9 @@ Everything the tutor does comes from instructions you write. Typical instruction
 - **How it teaches.** For example, ask guiding questions, give hints before solutions, and have students predict the next step before revealing it.
 - **What it must not do.** For example, never hand over the finished solution, stay on the allowed topics, and avoid concepts the class hasn't learned yet.
 
-You write these instructions in your own words. For rules you want to apply across many tutors, such as a teaching style or a safety policy, you can also pull in a [[fragment]], a named piece of prompt written once and reused. That way a whole team of teachers shares one carefully worded safety policy instead of each rewriting it.
+You write these instructions in your own words. For rules you want to apply across many tutors, such as a teaching style or a safety policy, you can also pull in a fragment, a named piece of prompt written once and reused. That way a whole team of teachers shares one carefully worded safety policy instead of each rewriting it.
 
-By default, tutor chats are [[anonymous vs. per-user|anonymous]]: the app doesn't record which student had which conversation.
+By default, tutor chats are anonymous: the app doesn't record which student had which conversation.
 
 ## When a tutor is the right choice
 

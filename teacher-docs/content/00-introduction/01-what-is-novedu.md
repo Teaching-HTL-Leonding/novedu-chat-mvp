@@ -21,11 +21,11 @@ generated: true
 
 Novedu helps you create AI-supported learning experiences for your students. You decide the subject, the task, the teaching approach, and the boundaries. Students then use the experience you designed.
 
-In Novedu, one experience you create for students is called an [[activity]]. An activity can be a tutor, a quiz, a writing task, or a coding activity. You don't need to be a programmer to create one.
+In Novedu, one experience you create for students is called an activity. An activity can be a tutor, a quiz, a writing task, or a coding activity. You don't need to be a programmer to create one.
 
 ## You shape the AI with instructions
 
-You shape an activity by writing a [[prompt]], which is a set of instructions that tells the AI how to behave. Think of the prompt as clear written guidance for a capable assistant: explain the role, the goal, the teaching style, and any rules it should follow.
+You shape an activity by writing a prompt, which is a set of instructions that tells the AI how to behave. Think of the prompt as clear written guidance for a capable assistant: explain the role, the goal, the teaching style, and any rules it should follow.
 
 You don't train or fine-tune an AI model. Writing instructions makes an activity quick to try and adjust. You can read exactly what you asked the AI to do, revise the instructions, and stay in control of the learning design. No data science is required.
 
@@ -51,6 +51,6 @@ A coding activity gives an external coding assistant the instructions you choose
 
 ## From an idea to your class
 
-You first author the activity by describing what students should do and how the AI should support them. When the activity is ready, you create a [[code]], the short link you give to your class. Students open the code and see the right experience for that activity.
+You first author the activity by describing what students should do and how the AI should support them. When the activity is ready, you create a code, the short link you give to your class. Students open the code and see the right experience for that activity.
 
 The same basic path applies to all four kinds: write the activity, create a code, and share it with students. You can start with a simple set of instructions, try the activity, and improve it as your teaching needs become clearer.

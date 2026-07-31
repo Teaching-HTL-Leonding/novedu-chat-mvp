@@ -45,7 +45,6 @@ doc = f(chapter-prompt, source code, engineer docs)
 teacher-docs/
   README.md            orientation + the "edit the prompt, not the output" policy
   style.md             human-owned: voice, reading level, audience  → references/style-and-voice.md is the rulebook
-  glossary.md          human-owned: teacher-word → app-word map
   CHAPTERS.md          the chapter manifest = the information architecture
   prompts/             human-owned IP: one *.prompt.md per chapter
   content/             GENERATED markdown (do not hand-edit)

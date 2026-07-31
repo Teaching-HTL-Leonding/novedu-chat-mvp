@@ -8,7 +8,7 @@ emerge; keep it short.
 
 Write for a teacher, second person, active, task-first, short, and never use an
 internal name (a file, function, route, or table). Explain a technical term once,
-then link the glossary.
+in place, the first time it matters.
 
 ## Reviewer
 

@@ -19,7 +19,7 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/06-coding.prompt.md and regenerate.
 -->
 
-A coding [[activity]] gives your class an AI coding assistant that behaves the way you decide. Students work in their own coding tool on their own machine; your [[YAML]] file only tells Novedu which model answers and what rules the assistant follows. It is the smallest activity file of all: an id, a model, and your instructions.
+A coding activity gives your class an AI coding assistant that behaves the way you decide. Students work in their own coding tool on their own machine; your YAML file only tells Novedu which model answers and what rules the assistant follows. It is the smallest activity file of all: an id, a model, and your instructions.
 
 ## The fields
 
@@ -39,7 +39,7 @@ instructions: |
 
 - **`id`** (required): a short machine name for the activity.
 - **`name`** (optional): a human-readable label for you.
-- **`title`** (optional): the heading students see on the connection page when they open the activity's [[code]] link.
+- **`title`** (optional): the heading students see on the connection page when they open the activity's code link.
 - **`llm.model`** (required): the model that answers. You can also add `llm.provider` to run on Azure instead of the school's server; the same `llm:` block works here as in every other activity.
 - **`instructions`** (required): the assistant's rules, written by you.
 
@@ -47,11 +47,11 @@ The first comment line is an editor hint: with a YAML-aware editor such as VS Co
 
 ## The model is yours to pin
 
-The `llm.model` you write is final. A student's coding tool always sends some model name of its own, but Novedu ignores it and answers with the model you chose. Students never need to know which model runs, and they cannot switch to another one. When you later create a code for the activity, you can override the [[provider]] and model for that one code without editing the file.
+The `llm.model` you write is final. A student's coding tool always sends some model name of its own, but Novedu ignores it and answers with the model you chose. Students never need to know which model runs, and they cannot switch to another one. When you later create a code for the activity, you can override the provider and model for that one code without editing the file.
 
 ## Instructions shape the assistant
 
-The `instructions` field is the assistant's rulebook, a [[prompt]] in plain language. Students never see the text; they only notice its effect in every answer the assistant gives. Your rules also outrank anything the student's coding tool tells the model, so they hold even when the tool has ideas of its own.
+The `instructions` field is the assistant's rulebook, a prompt in plain language. Students never see the text; they only notice its effect in every answer the assistant gives. Your rules also outrank anything the student's coding tool tells the model, so they hold even when the tool has ideas of its own.
 
 The most useful thing to write is what your class may use, so the assistant's help never runs ahead of the lessons:
 
@@ -62,7 +62,7 @@ The most useful thing to write is what your class may use, so the assistant's he
 
 ## Reusing fragments in a coding activity
 
-A coding activity can place shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare the library under a top-level `fragment_files:`, then place each fragment with a marker in your `instructions`:
+A coding activity can place shared prompt fragments, the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare the library under a top-level `fragment_files:`, then place each fragment with a marker in your `instructions`:
 
 ```yaml
 fragment_files:
@@ -81,7 +81,7 @@ A fragment lands where its marker sits, so a school-wide rule can frame the codi
 
 Coding files deliberately leave out fields you may know from tutors, quizzes, and writing activities:
 
-- **No `anonymous` field.** Coding activities are always [[anonymous vs. per-user|anonymous]]: requests carry no student identity, and nothing is recorded per student.
+- **No `anonymous` field.** Coding activities are always anonymous: requests carry no student identity, and nothing is recorded per student.
 - **No `placeholder` and no `description`.** There is no in-app chat window to show them in; students work in their own tool.
 
 Do not add any of the three. Validation rejects a coding file that contains them, so a leftover field from a copied tutor is caught before students are affected. You can check a file at any time with the Novedu CLI (`novedu-cli validate my-coding.yaml --kind coding`) or with the **Validate** button on the app's YAML Files page.

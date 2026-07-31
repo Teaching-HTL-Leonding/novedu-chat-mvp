@@ -17,13 +17,13 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/00-introduction/06-coding-overview.prompt.md and regenerate.
 -->
 
-A coding [[activity]] gives every student an AI coding assistant that follows your rules while they program in a real editor. The student works in their own coding environment with an external coding assistant, for example [little-coder](https://github.com/itayinbarr/little-coder), and that assistant gets its answers through Novedu. You decide how it behaves: which language it uses, which concepts it may touch, and how it teaches.
+A coding activity gives every student an AI coding assistant that follows your rules while they program in a real editor. The student works in their own coding environment with an external coding assistant, for example [little-coder](https://github.com/itayinbarr/little-coder), and that assistant gets its answers through Novedu. You decide how it behaves: which language it uses, which concepts it may touch, and how it teaches.
 
-As with every other kind of activity, you don't train an AI model. You write a [[prompt]], plain-language instructions for the assistant, and pick the model that answers.
+As with every other kind of activity, you don't train an AI model. You write a prompt, plain-language instructions for the assistant, and pick the model that answers.
 
 ## How coding differs from the other kinds
 
-Tutors, quizzes, and writing tasks all run as a page inside Novedu. A coding activity doesn't: there is no chat page in the app. Instead, the student's own coding tool connects to Novedu using the [[code]], and every question the student asks goes through Novedu on its way to the AI. On that way through, Novedu adds your instructions and answers with the model you chose.
+Tutors, quizzes, and writing tasks all run as a page inside Novedu. A coding activity doesn't: there is no chat page in the app. Instead, the student's own coding tool connects to Novedu using the code, and every question the student asks goes through Novedu on its way to the AI. On that way through, Novedu adds your instructions and answers with the model you chose.
 
 The effect: the student works in a normal programming setup, with files, a terminal, and an assistant that edits and runs code on their machine, yet the help always stays within the limits you set. Students never see your instructions or which model answers; they simply notice that the assistant teaches the way you asked it to.
 
@@ -59,9 +59,9 @@ instructions: |
     sorting function on request.
 ```
 
-You also pick the model that answers, and where it runs (the school's own server or Azure, a [[provider]] choice you can adjust per code).
+You also pick the model that answers, and where it runs (the school's own server or Azure, a provider choice you can adjust per code).
 
-Coding activities are always [[anonymous vs. per-user|anonymous]]: you see overall usage of a code, not what an individual student asked.
+Coding activities are always anonymous: you see overall usage of a code, not what an individual student asked.
 
 ## When coding is the right choice
 

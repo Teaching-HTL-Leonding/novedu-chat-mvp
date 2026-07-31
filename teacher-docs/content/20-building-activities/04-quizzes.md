@@ -19,9 +19,9 @@ generated: true
   Edit the chapter prompt in teacher-docs/prompts/20-building-activities/04-quizzes.prompt.md and regenerate.
 -->
 
-A quiz is an [[activity]] made of **open-ended questions**. There is deliberately no multiple choice: students answer in their own words, and the AI grades each answer against a grading guide you write. The student immediately sees a verdict (**correct**, **partial**, or **incorrect**) and written feedback, and can then open a short discussion chat about that question.
+A quiz is an activity made of **open-ended questions**. There is deliberately no multiple choice: students answer in their own words, and the AI grades each answer against a grading guide you write. The student immediately sees a verdict (**correct**, **partial**, or **incorrect**) and written feedback, and can then open a short discussion chat about that question.
 
-You define a quiz in one [[YAML]] file. The core is simple: an `id`, a model, and a list of questions.
+You define a quiz in one YAML file. The core is simple: an `id`, a model, and a list of questions.
 
 ## One question, two texts
 
@@ -62,9 +62,9 @@ Field by field:
 - **`id`** (required): a short machine name for the quiz.
 - **`name`** (optional): a human-readable label.
 - **`title`** and **`description`** (optional): what students see on the welcome screen before the first question. Write the `description` for your students.
-- **`anonymous`** (optional, default `true`): by default a quiz is [[Anonymous vs. per-user|anonymous]], so answers feed the statistics but aren't linked to a student. Set `anonymous: false` to attribute each attempt to the signed-in student. The setting is frozen onto a [[code]] when you create one; editing the file later doesn't change a live code.
+- **`anonymous`** (optional, default `true`): by default a quiz is anonymous, so answers feed the statistics but aren't linked to a student. Set `anonymous: false` to attribute each attempt to the signed-in student. The setting is frozen onto a code when you create one; editing the file later doesn't change a live code.
 - **`shuffle`** (optional, default `true`): questions appear in a random order per attempt. Set `shuffle: false` to keep your authored order.
-- **`llm.model`** (required): the model that grades the answers and drives the discussion chat. You can also set an optional `llm.provider` (the [[provider]] decides where the AI runs); the create-code form can override both per code.
+- **`llm.model`** (required): the model that grades the answers and drives the discussion chat. You can also set an optional `llm.provider` (the provider decides where the AI runs); the create-code form can override both per code.
 - **`questions`** (required): at least one question. Each needs an `id` (unique within the quiz), a `question`, and an `evaluation`; an optional `title` labels it in the statistics and progress display.
 
 ## Writing grading guidance that works
@@ -105,7 +105,7 @@ After seeing their feedback, a student can open a short discussion chat about th
 
 ## Reusing fragments in a quiz
 
-A quiz can place shared prompt [[fragment|fragments]], the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare the library under a top-level `fragment_files:`, then place each fragment with a marker in a top-level `instructions:` field:
+A quiz can place shared prompt fragments, the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare the library under a top-level `fragment_files:`, then place each fragment with a marker in a top-level `instructions:` field:
 
 ```yaml
 fragment_files:

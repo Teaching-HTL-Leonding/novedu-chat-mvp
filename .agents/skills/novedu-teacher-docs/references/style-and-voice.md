@@ -57,13 +57,10 @@ the teacher, not a manual.
 - **Introduce a term clearly the first time it matters**, so a section still makes
   sense on its own (for example, "a code, the short link you hand to a class").
   Expand an acronym the first time it appears.
-- **Mark glossary terms with `[[term]]`** on their first use in a chapter, using a
-  term from `teacher-docs/glossary.md` (for example `[[activity]]`). This is the only
-  glossary mechanism: do not write a normal markdown link or an anchor. A build step
-  (for example an Astro remark plugin) turns `[[term]]` into a glossary link or
-  tooltip; left untouched it still reads as the plain word. Mark the first
-  occurrence, not every one. For a plural or inflection use `[[term|shown]]`, for
-  example `[[activity|activities]]`.
+- **Plain words, no glossary markers.** There is no glossary; never write `[[term]]`
+  markers or link a term to a definitions page. The "introduce a term clearly"
+  rule above is the whole mechanism: define a term in place the first time it
+  matters.
 - **Never an internal name** (a file, function, route, or table). See
   `references/scope.md`.
 
