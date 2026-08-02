@@ -64,6 +64,7 @@ describe("quizModule.runtime.buildRequestContext", () => {
         model: "gemma-4",
         provider: "Azure Foundry",
         discussionInstructions: "Focus on big-O.",
+        questions: [],
       },
     });
     const result = await quizModule.runtime?.buildRequestContext(entry);
@@ -83,7 +84,7 @@ describe("quizModule.runtime.buildRequestContext", () => {
     try {
       loadQuiz.mockResolvedValue({
         ok: true,
-        quiz: { model: "gpt-5.4-mini", provider: "Azure Foundry" },
+        quiz: { model: "gpt-5.4-mini", provider: "Azure Foundry", questions: [] },
       });
       const result = await quizModule.runtime?.buildRequestContext(entry);
       expect(result).toMatchObject({
@@ -99,7 +100,12 @@ describe("quizModule.runtime.buildRequestContext", () => {
   it("applies the code's LLM override pair over the quiz YAML's llm values", async () => {
     loadQuiz.mockResolvedValue({
       ok: true,
-      quiz: { model: "yaml-model", provider: "SCCH", discussionInstructions: "Focus on big-O." },
+      quiz: {
+        model: "yaml-model",
+        provider: "SCCH",
+        discussionInstructions: "Focus on big-O.",
+        questions: [],
+      },
     });
     const withOverride = {
       ...entry,
@@ -119,7 +125,10 @@ describe("quizModule.runtime.buildRequestContext", () => {
   it("502s a Foundry OVERRIDE on a server without AZURE_FOUNDRY_ENDPOINT (gate on the effective provider)", async () => {
     vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
     try {
-      loadQuiz.mockResolvedValue({ ok: true, quiz: { model: "gemma-4", provider: "SCCH" } });
+      loadQuiz.mockResolvedValue({
+        ok: true,
+        quiz: { model: "gemma-4", provider: "SCCH", questions: [] },
+      });
       const withOverride = {
         ...entry,
         llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" },
@@ -136,13 +145,50 @@ describe("quizModule.runtime.buildRequestContext", () => {
   });
 
   it("uses only the default frame when the quiz omits discussionInstructions", async () => {
-    loadQuiz.mockResolvedValue({ ok: true, quiz: { model: "gemma-4" } });
+    loadQuiz.mockResolvedValue({ ok: true, quiz: { model: "gemma-4", questions: [] } });
     const result = await quizModule.runtime?.buildRequestContext(entry);
     expect(result?.ok).toBe(true);
     if (result?.ok) {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("quiz-discussion-instructions")).toContain("single quiz question");
     }
+  });
+});
+
+describe("quizModule discussion instructions — compound quizzes", () => {
+  it("prepends the compound preamble + each DISTINCT source preamble once, in include order", async () => {
+    loadQuiz.mockResolvedValue({
+      ok: true,
+      quiz: {
+        model: "gemma-4",
+        provider: "SCCH",
+        instructionsPreamble: "COMPOUND-PREAMBLE shared rules.",
+        // Question order IS include order; intro's preamble appears on two
+        // questions but must be prepended only once.
+        questions: [
+          { id: "own", question: "Q", evaluation: "E" },
+          { id: "intro/q1", question: "Q", evaluation: "E", sourcePreamble: "INTRO-PREAMBLE." },
+          { id: "intro/q2", question: "Q", evaluation: "E", sourcePreamble: "INTRO-PREAMBLE." },
+          { id: "loops/q1", question: "Q", evaluation: "E", sourcePreamble: "LOOPS-PREAMBLE." },
+        ],
+      },
+    });
+    const result = await quizModule.runtime?.buildRequestContext(entry);
+    expect(result?.ok).toBe(true);
+    if (!result?.ok) return;
+    const ctx = result.context as unknown as { get(k: string): unknown };
+    const instr = ctx.get("quiz-discussion-instructions") as string;
+    // Order: compound → intro → loops → the default frame.
+    const compoundAt = instr.indexOf("COMPOUND-PREAMBLE");
+    const introAt = instr.indexOf("INTRO-PREAMBLE");
+    const loopsAt = instr.indexOf("LOOPS-PREAMBLE");
+    const frameAt = instr.indexOf("single quiz question");
+    expect(compoundAt).toBeGreaterThanOrEqual(0);
+    expect(compoundAt).toBeLessThan(introAt);
+    expect(introAt).toBeLessThan(loopsAt);
+    expect(loopsAt).toBeLessThan(frameAt);
+    // Distinct: the duplicated intro preamble appears exactly once.
+    expect(instr.match(/INTRO-PREAMBLE/g)).toHaveLength(1);
   });
 });
 

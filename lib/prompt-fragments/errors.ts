@@ -65,6 +65,24 @@ export type ErrorCode =
   // The same quiz question `id` is declared on more than one question (per-question
   // stats key must be unique).
   | "DUPLICATE_QUIZ_QUESTION_ID"
+  // A quiz's OWN question id contains `/` — reserved as the namespace delimiter for
+  // questions imported via `quiz_files` (`"<alias>/<id>"`), so an own id can never
+  // collide with an imported one.
+  | "QUIZ_QUESTION_ID_RESERVED_SLASH"
+  // The same `quiz_files` include alias is declared twice (each alias prefixes its
+  // imported question ids, so it must be unique).
+  | "DUPLICATE_QUIZ_INCLUDE_ALIAS"
+  // A `quiz_files` include could not be used: fetch / YAML parse / schema failure,
+  // or any strict-check failure INSIDE the included quiz (duplicate question ids,
+  // its own fragment block, …). Wraps the nested errors' messages and carries the
+  // include alias (`fileAlias`) + resolved URL.
+  | "QUIZ_INCLUDE_UNREADABLE"
+  // An included quiz itself declares `quiz_files` — includes are one level deep
+  // (no recursion, no cycles).
+  | "QUIZ_INCLUDE_NESTED"
+  // The quiz's RESOLVED question pool is empty: no own `questions` and no
+  // `quiz_files` includes to supply any.
+  | "QUIZ_NO_QUESTIONS"
   // App-only: the YAML names an LLM provider this server does not have configured
   // (e.g. `Azure Foundry` without AZURE_FOUNDRY_ENDPOINT). Emitted by the app's
   // authoring gate (lib/file-validators.ts), never by the CLI-bundled loadAndCheck*

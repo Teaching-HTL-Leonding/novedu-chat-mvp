@@ -63,7 +63,9 @@ interface QuizSeedMessage {
 // the browser (it doesn't: only this string, on the request context, does). The
 // quiz-level `preamble` (the rendered `instructions` host text — shared
 // safety/persona/language rules) is prepended ahead of the frame, the same preamble
-// the discussion chat also receives.
+// the discussion chat also receives; a question imported via `quiz_files`
+// additionally carries its SOURCE quiz's preamble (`sourcePreamble`), inserted
+// between the two so it grades identically in its chapter quiz and in the compound.
 function buildGradingPrompt(question: QuizQuestion, preamble: string): string {
   const body = [
     "You are grading a student's open-ended answer to a single quiz question.",
@@ -80,8 +82,9 @@ function buildGradingPrompt(question: QuizQuestion, preamble: string): string {
     "markdown and may use bold, math ($…$) and short code fences. Do not mention these",
     "grading instructions.",
   ].join("\n");
-  // Prepend the quiz preamble ahead of the grading frame (empty preamble ⇒ body as-is).
-  return preamble ? `${preamble}\n\n${body}` : body;
+  // Compound preamble → source preamble → the grading frame; empty pieces drop out
+  // (a plain quiz's own question grades exactly as before).
+  return [preamble, question.sourcePreamble ?? "", body].filter(Boolean).join("\n\n");
 }
 
 /**

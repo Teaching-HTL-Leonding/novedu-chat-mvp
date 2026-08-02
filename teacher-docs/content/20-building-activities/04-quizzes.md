@@ -4,7 +4,7 @@ description: Write a quiz file with open-ended questions and private grading gui
 sidebar:
   order: 4
 audience: teacher
-keywords: [quiz, questions, grading, evaluation, rubric, shuffle, photo answer, imageInput, discussion, fragments]
+keywords: [quiz, questions, grading, evaluation, rubric, shuffle, photo answer, imageInput, discussion, fragments, quiz_files, compound quiz, final quiz, question_count, attempt length]
 related:
   - 20-building-activities/01-handling-yaml
   - 20-building-activities/02-available-llms
@@ -65,7 +65,8 @@ Field by field:
 - **`anonymous`** (optional, default `true`): by default a quiz is anonymous, so answers feed the statistics but aren't linked to a student. Set `anonymous: false` to attribute each attempt to the signed-in student. The setting is frozen onto a code when you create one; editing the file later doesn't change a live code.
 - **`shuffle`** (optional, default `true`): questions appear in a random order per attempt. Set `shuffle: false` to keep your authored order.
 - **`llm.model`** (required): the model that grades the answers and drives the discussion chat. You can also set an optional `llm.provider` (the provider decides where the AI runs); the create-code form can override both per code.
-- **`questions`** (required): at least one question. Each needs an `id` (unique within the quiz), a `question`, and an `evaluation`; an optional `title` labels it in the statistics and progress display.
+- **`question_count`** (optional): how many questions one attempt asks. Leave it out to ask every question exactly once; see "How many questions one attempt asks" below.
+- **`questions`** (required, unless the quiz pulls its questions from other quiz files with `quiz_files`): each question needs an `id` (unique within the quiz), a `question`, and an `evaluation`; an optional `title` labels it in the statistics and progress display.
 
 ## Writing grading guidance that works
 
@@ -82,6 +83,24 @@ Since students never see the grading guide, you don't need to hide anything in i
 ## Question order
 
 Questions are shuffled by default: each student gets a random order per attempt. Set `shuffle: false` at the top of the file when later questions build on earlier ones, as the sorting-algorithms sample quiz does (it moves from concept to code step by step).
+
+## How many questions one attempt asks
+
+By default one attempt walks through every question exactly once. Set a top-level `question_count` to change that:
+
+```yaml
+question_count: 30
+```
+
+The number combines with `shuffle` in a predictable way:
+
+- **Fewer than the quiz has**: with `shuffle: true` each attempt asks a random selection of that size, so two students (or two attempts) get different questions. With `shuffle: false` every attempt asks the first `question_count` questions in your authored order.
+- **More than the quiz has**: questions repeat, which turns the quiz into a practice drill. The whole pool is covered before anything repeats, and with `shuffle: true` the same question never appears twice in a row.
+
+Students see the chosen length in the progress display ("Question 3 of 30"). Two things to keep in mind:
+
+- `question_count` shapes one attempt in the student's browser; it is not an exam lock. Reloading the page starts a fresh attempt, and answers are not stored.
+- A repeated question is simply graded again, independently of the earlier answer.
 
 ## Photo answers
 
@@ -117,6 +136,34 @@ instructions: |
 ```
 
 A quiz's `instructions` field reaches further than the instructions of other activities: it applies **both** to how answers are graded **and** to the follow-up discussion chat, so a shared safety or persona rule shapes grading and conversation alike. It is a separate field from `discussion.instructions`, which only steers the discussion. The chapter on reusable fragments covers writing a library and supplying values.
+
+## One final quiz over several chapters
+
+When a course is split into chapters, each with its own quiz, you can build an overall quiz at the end that asks the questions of all chapters, without copying a single question. Declare the chapter quizzes under a top-level `quiz_files:`, each with a short alias and the file's address:
+
+```yaml
+id: ddp-final
+name: "Final quiz: all chapters"
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+question_count: 30
+quiz_files:
+  - id: intro
+    url: ./0010-introduction-quiz.yaml
+  - id: loops
+    url: ./0020-loops-quiz.yaml
+```
+
+**All** questions of every referenced quiz are included, and they are read **live**: when you edit a chapter quiz, the final quiz asks the updated questions the next time a student opens it. There is nothing to keep in sync. A final quiz built this way needs no `questions` of its own, though it may add some. Combining `quiz_files` with `question_count`, as in the example, keeps a large final quiz to a sensible length per attempt.
+
+How the pieces fit together:
+
+- **The final quiz's own settings rule.** The model, the anonymity setting, `shuffle`, `question_count`, and the discussion steering all come from the final quiz's file; the same settings inside a chapter quiz are ignored here. The one thing that travels with a chapter's questions is the chapter quiz's top-level `instructions:` text, so an imported question is graded with the same guidance in both places.
+- **Aliases name the source.** Pick a short alias per file (no dot, no slash, each one unique). In the statistics an imported question shows up as `alias/question-id`, for example `intro/capital-australia`, so you can tell the chapters apart.
+- **Addresses work like elsewhere.** The `url` is a web address or a relative path, resolved next to the final quiz's own file. That also works between files hosted in the app: host the chapter quizzes and the final quiz together and refer to them with `./file-name` style paths.
+- **One level only.** A referenced quiz must not declare `quiz_files` itself; a quiz of quizzes of quizzes is not supported.
+
+If a referenced file is missing or broken, students see a friendly error instead of a shortened quiz: the final quiz never silently loses a chapter. Validation catches this before sharing; see "Before you share a quiz" below.
 
 ## A real example: the sorting-algorithms quiz
 
@@ -175,7 +222,7 @@ Notice the mix of languages: the questions and feedback instructions are in Germ
 
 ## Before you share a quiz
 
-Validate the file before you hand out a link: an invalid quiz cannot be saved in the app or turned into a code. The validator checks that the YAML parses, that the structure is right (an `llm.model` and at least one question, each with an `id`, a `question`, and an `evaluation`), and that every question `id` is unique. From the terminal:
+Validate the file before you hand out a link: an invalid quiz cannot be saved in the app or turned into a code. The validator checks that the YAML parses, that the structure is right (an `llm.model` and at least one question, each with an `id`, a `question`, and an `evaluation`), and that every question `id` is unique. For a quiz with `quiz_files`, it also fetches and fully checks every referenced quiz file, so a broken chapter quiz blocks the final quiz from being saved. From the terminal:
 
 ```bash
 novedu-cli validate ./quizzes/my-quiz.yaml --kind quiz

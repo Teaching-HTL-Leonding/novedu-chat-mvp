@@ -8,6 +8,7 @@ import { DialogShell } from "@/components/ui/dialog-shell";
 import { FieldError } from "@/components/ui/field";
 import { IMAGE_ACCEPT, MAX_IMAGES_PER_ANSWER, readAnswerImage } from "@/lib/answer-images";
 import { startDiscussion, submitAnswer } from "@/lib/quiz-actions";
+import { buildQuestionSequence } from "@/lib/quiz-sequence";
 import {
   type QuizVerdict,
   type ResolvedQuiz,
@@ -37,32 +38,28 @@ const VERDICT_VARS: Record<QuizVerdict, string> = {
   incorrect: "[--verdict:var(--color-destructive)]",
 };
 
-// The student-facing quiz runner. Walks the (optionally shuffled) questions one
-// at a time: render the markdown question, take a free-text answer, grade it via
+// The student-facing quiz runner. Walks the attempt's question sequence one at a
+// time: render the markdown question, take a free-text answer, grade it via
 // the `submitAnswer` action (LLM verdict + feedback), then offer Next / Finish /
-// an inline discussion. The quiz CODE travels with every action so the server
-// re-verifies it each time. NOTHING is stored about the run — the summary is
-// client-only and a reload restarts the quiz.
+// an inline discussion. The sequence semantics (shuffle passes, `question_count`
+// truncation/repeats) live in the pure `buildQuestionSequence`
+// (lib/quiz-sequence.ts); the runner only calls it. The quiz CODE travels with
+// every action so the server re-verifies it each time. NOTHING is stored about
+// the run — the summary is client-only and a reload restarts the quiz.
 
 type VerdictCounts = Record<QuizVerdict, number>;
 
-function shuffle<T>(items: T[]): T[] {
-  const a = [...items];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j] as T, a[i] as T];
-  }
-  return a;
-}
-
 export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string }) {
-  // Shuffle on the CLIENT after mount: server and first client render both use
-  // the authored order (no hydration mismatch), then the effect reorders once.
-  // `ready` gates the questions so the first visible question never flickers.
+  // Build the sequence on the CLIENT after mount: server and first client render
+  // both use the authored order (no hydration mismatch), then the effect applies
+  // the real sequence once. `ready` gates the questions so the first visible
+  // question never flickers.
   const [order, setOrder] = useState<ResolvedQuizQuestion[]>(quiz.questions);
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    setOrder(quiz.shuffle ? shuffle(quiz.questions) : quiz.questions);
+    setOrder(
+      buildQuestionSequence(quiz.questions, { shuffle: quiz.shuffle, count: quiz.questionCount }),
+    );
     setReady(true);
   }, [quiz]);
 

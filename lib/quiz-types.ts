@@ -48,6 +48,13 @@ export interface QuizPublic {
   description?: string;
   /** Present questions in a random order per attempt. */
   shuffle: boolean;
+  /**
+   * Questions per attempt — the EFFECTIVE `question_count`, resolved server-side to
+   * the pool size when the quiz doesn't set one. May exceed the pool size (drill
+   * mode — questions repeat). Drives the runner's sequence + progress label only;
+   * grading stays per-question and stateless.
+   */
+  questionCount: number;
   questions: QuizQuestionPublic[];
 }
 
