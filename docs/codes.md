@@ -398,10 +398,12 @@ in-page discussion live in `app/[code]/_quiz/`.
 
 - **Quiz YAML** (sample: `activities/examples/sorting-algorithms/sorting-quiz.yaml`, parsed leniently by `parseQuiz` in
   `lib/quiz-yaml.ts`): `id`, `name`, optional `title`/`description` (student
-  welcome), `anonymous` (default `true`), `shuffle` (default `true`), `llm.model`
+  welcome), `anonymous` (default `true`), `shuffle` (default `true`), optional
+  **`question_count`** (attempt length, below), `llm.model`
   (grades AND drives the discussion) with optional `llm.provider` (missing ⇒ SCCH;
   every module's YAML has it — docs/ai-models.md) and optional `llm.imageInput`
-  (photo answers, below), optional `discussion.instructions`, and
+  (photo answers, below), optional `discussion.instructions`, optional
+  **`quiz_files`** live includes (below), and
   `questions[]` each with `id`, optional `title`, `question` (markdown), an
   optional content `image` (below), an optional `imageInput` override, and
   `evaluation` (the SERVER-ONLY grading prompt). It may also carry an optional
@@ -421,6 +423,63 @@ in-page discussion live in `app/[code]/_quiz/`.
   so a shared safety/persona fragment governs both. `evaluation` stays a plain
   per-question string and `discussion.instructions` a plain string;
   `instructionsPreamble` is server-only and `toPublicQuiz` never copies it.
+- **Compound quizzes (`quiz_files`) — LIVE includes.** A quiz may reference other
+  quiz files (each entry an alias `id` + http(s)-or-relative `url`, mirroring
+  `fragment_files` refs; the alias additionally may not contain `/`) and pull in
+  **ALL** of their questions, fresh on every load — the canonical use is a
+  final/overall quiz over per-chapter quizzes, which never goes stale when a
+  chapter is edited. Semantics, all implemented at IMPORT time inside `loadQuiz`
+  (`lib/quiz-fetch.ts`) so downstream a compound quiz is just a `Quiz` with more
+  questions:
+  - **Namespacing:** imported question ids become `"<alias>/<id>"` — collisions
+    across chapters are impossible; the strict gate rejects OWN ids containing `/`
+    (`QUIZ_QUESTION_ID_RESERVED_SLASH`) so an own id can never masquerade as an
+    imported one. Aliases have their own namespace (they never appear in `{{…}}`
+    markers) and must be unique (`DUPLICATE_QUIZ_INCLUDE_ALIAS`).
+  - **Per-source preamble travels:** the source quiz's rendered `instructions`
+    preamble (resolved with the SOURCE's own `fragment_files`/`text_files`,
+    relative to the SOURCE url) lands on each imported question as the server-only
+    `QuizQuestion.sourcePreamble`, so a question grades identically in its chapter
+    quiz and in the compound. `buildGradingPrompt` inserts it between the
+    compound's `instructionsPreamble` and the grading frame;
+    `buildDiscussionInstructions` prepends each DISTINCT source preamble once, in
+    include order (the discussion prompt is per-code, not per-question).
+    `toPublicQuiz` strips it exactly like `evaluation`.
+  - **Materialization:** each imported question's `imageInput` becomes the
+    source-effective boolean (`question override ?? source quiz-level
+    llm.imageInput`), and a relative `image.src` is absolutized against the SOURCE
+    url (hosted names + absolute URLs pass through).
+  - **Everything else of an included quiz is IGNORED** — `llm`, `anonymous`,
+    `shuffle`, `discussion`, `title`, `description`, `question_count` all stay
+    governed by the compound quiz's own top level (incl. the code's LLM override
+    via `effectiveLlm`, and the compound's own frozen `anonymous`).
+  - **One level deep, fail closed:** an included quiz declaring `quiz_files` fails
+    the load/validation (`QUIZ_INCLUDE_NESTED`) — no recursion, no cycles. At
+    runtime ANY include problem (bad ref, duplicate alias, unfetchable, not a
+    quiz, nested) fails the whole load with a friendly notice — the final exam
+    never silently shrinks. The authoring gate (`loadAndCheckQuiz`) fetches every
+    include and runs the FULL strict check on it, wrapping failures as
+    `QUIZ_INCLUDE_UNREADABLE` (alias + URL); a quiz with neither own questions nor
+    includes is `QUIZ_NO_QUESTIONS` (own `questions` may be empty when includes
+    supply the pool). `QuizCheckResult.questionCount` is the RESOLVED pool size
+    (own + imported), so `/files` save and code-create metadata show the real exam
+    size.
+- **Attempt length (`question_count`)** — how many questions ONE attempt asks
+  (any quiz, not just compound). Omitted ⇒ every pool question exactly once
+  (default); may exceed the pool (drill mode — questions repeat). The sequence is
+  built CLIENT-side from the public projection by the pure, client-safe
+  `buildQuestionSequence` (`lib/quiz-sequence.ts`, injectable RNG,
+  deterministically unit-tested; `QuizRunner` only calls it): with `shuffle: true`,
+  repeated independently-shuffled passes over the pool with no immediate repeat
+  across a pass boundary (unless the pool has one question), truncated to the
+  count — count < pool is a random subset per attempt, count > pool covers the
+  pool evenly before repeating; with `shuffle: false`, sequential cycling
+  (`1…N, 1…N, …`) truncated — count < pool means "the first N, in order". The
+  progress label reads "Question x of `question_count`". Grading stays
+  per-question and stateless (a repeated question is graded again) and there is
+  **no server-side attempt enforcement** — attempt/result recording remains future
+  work. `toPublicQuiz` puts the EFFECTIVE `questionCount` (authored value ??
+  resolved pool size) on `QuizPublic`.
 - **An optional question `image`** is an
   `ImageRef` from the **image subsystem** (`docs/images.md`) — it carries no
   secret (unlike `evaluation`), so it survives `toPublicQuiz` and is resolved

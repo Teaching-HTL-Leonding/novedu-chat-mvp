@@ -33,6 +33,20 @@
       "description": "Present questions in a random order per attempt. Set to false to keep the authored order.",
       "type": "boolean"
     },
+    "question_count": {
+      "description": "How many questions one attempt asks (default: every question exactly once). May exceed the pool size — then questions repeat (drill mode). With shuffle off, fewer than the pool means the first N in authored order.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "quiz_files": {
+      "default": [],
+      "description": "Other quiz files whose questions are ALL included live into this quiz (a compound/final quiz). One level deep — an included quiz may not itself declare quiz_files.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/quizFileRef"
+      }
+    },
     "llm": {
       "$ref": "#/$defs/llm"
     },
@@ -60,21 +74,42 @@
       "type": "string"
     },
     "questions": {
-      "minItems": 1,
+      "default": [],
+      "description": "The quiz questions. Each is open-ended and graded by the LLM via its evaluation prompt. May be omitted when quiz_files supplies the questions.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/question"
-      },
-      "description": "The quiz questions. Each is open-ended and graded by the LLM via its evaluation prompt."
+      }
     }
   },
   "required": [
     "id",
-    "llm",
-    "questions"
+    "llm"
   ],
   "additionalProperties": false,
   "$defs": {
+    "quizFileRef": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[^./]+$",
+          "description": "Local alias for this included quiz. Prefixes every imported question id as \"<alias>/<id>\", so it may not contain a dot or a slash."
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$",
+          "description": "HTTP(S) URL or relative path to the included quiz file."
+        }
+      },
+      "required": [
+        "id",
+        "url"
+      ],
+      "additionalProperties": false,
+      "description": "A reference to another quiz file whose questions are included live."
+    },
     "llm": {
       "type": "object",
       "properties": {

@@ -231,6 +231,69 @@ questions:
     expect(result.quiz.questions[0]?.imageInput).toBeUndefined();
   });
 
+  it("lifts a valid question_count and ignores malformed ones (default: pool once)", () => {
+    const counted = parseQuiz(`
+llm:
+  model: m
+question_count: 30
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+`);
+    expect(counted.ok && counted.quiz.questionCount).toBe(30);
+
+    for (const malformed of ['"30"', "0", "-2", "1.5", "true"]) {
+      const result = parseQuiz(`
+llm:
+  model: m
+question_count: ${malformed}
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+`);
+      expect(result.ok, `question_count: ${malformed}`).toBe(true);
+      if (result.ok) expect(result.quiz.questionCount).toBeUndefined();
+    }
+  });
+
+  it("lifts quiz_files through as-is for loadQuiz to resolve fail-closed", () => {
+    const result = parseQuiz(`
+llm:
+  model: m
+quiz_files:
+  - id: intro
+    url: ./intro-quiz.yaml
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.quizFiles).toEqual([{ id: "intro", url: "./intro-quiz.yaml" }]);
+  });
+
+  it("accepts zero own questions when quiz_files is declared, rejects when absent", () => {
+    const withIncludes = parseQuiz(`
+llm:
+  model: m
+quiz_files:
+  - id: intro
+    url: ./intro-quiz.yaml
+`);
+    expect(withIncludes.ok).toBe(true);
+    if (withIncludes.ok) expect(withIncludes.quiz.questions).toEqual([]);
+
+    const withoutIncludes = parseQuiz(`
+llm:
+  model: m
+questions: []
+`);
+    expect(withoutIncludes.ok).toBe(false);
+  });
+
   it("skips incomplete and duplicate-id questions", () => {
     const result = parseQuiz(`
 llm:
@@ -282,10 +345,57 @@ describe("toPublicQuiz", () => {
       provider: "SCCH",
       imageInput: false,
       fragmentBlock: { fragment_files: [], text_files: [] },
+      quizFiles: [],
       instructionsPreamble: "",
       questions: [{ id: "a", question: "Q", evaluation: "E" }],
     };
     expect(toPublicQuiz(quiz)).not.toHaveProperty("anonymous");
+  });
+
+  it("strips each question's sourcePreamble (server-only, like evaluation)", () => {
+    const quiz: Quiz = {
+      id: "x",
+      anonymous: true,
+      shuffle: true,
+      model: "m",
+      provider: "SCCH",
+      imageInput: false,
+      fragmentBlock: { fragment_files: [], text_files: [] },
+      quizFiles: [],
+      instructionsPreamble: "",
+      questions: [
+        {
+          id: "intro/q1",
+          question: "Q",
+          evaluation: "E",
+          sourcePreamble: "SOURCE-PREAMBLE grade in German.",
+        },
+      ],
+    };
+    const pub = toPublicQuiz(quiz);
+    expect(pub.questions[0]).not.toHaveProperty("sourcePreamble");
+    expect(JSON.stringify(pub)).not.toContain("SOURCE-PREAMBLE");
+  });
+
+  it("carries the EFFECTIVE questionCount (authored value, else the pool size)", () => {
+    const base: Quiz = {
+      id: "x",
+      anonymous: true,
+      shuffle: true,
+      model: "m",
+      provider: "SCCH",
+      imageInput: false,
+      fragmentBlock: { fragment_files: [], text_files: [] },
+      quizFiles: [],
+      instructionsPreamble: "",
+      questions: [
+        { id: "a", question: "Q", evaluation: "E" },
+        { id: "b", question: "Q", evaluation: "E" },
+      ],
+    };
+    expect(toPublicQuiz(base).questionCount).toBe(2); // default: pool size
+    expect(toPublicQuiz({ ...base, questionCount: 30 }).questionCount).toBe(30); // drill mode
+    expect(toPublicQuiz({ ...base, questionCount: 1 }).questionCount).toBe(1);
   });
 
   it("carries the raw ImageRef through unchanged (it holds no secret)", () => {
@@ -298,6 +408,7 @@ describe("toPublicQuiz", () => {
       provider: "SCCH",
       imageInput: false,
       fragmentBlock: { fragment_files: [], text_files: [] },
+      quizFiles: [],
       instructionsPreamble: "",
       questions: [{ id: "a", question: "Q", evaluation: "E", image }],
     };
@@ -314,6 +425,7 @@ describe("toPublicQuiz", () => {
       provider: "SCCH",
       imageInput: true,
       fragmentBlock: { fragment_files: [], text_files: [] },
+      quizFiles: [],
       instructionsPreamble: "",
       questions: [
         { id: "inherits", question: "Q", evaluation: "E" },

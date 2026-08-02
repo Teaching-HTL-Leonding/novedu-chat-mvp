@@ -248,7 +248,12 @@ All four kinds resolve one document-level block + their host text through the sh
   `lib/quiz-fetch.ts`): the optional top-level **`instructions`** host text is rendered
   into the server-only **`Quiz.instructionsPreamble`**, prepended to BOTH the grader
   prompt and the discussion chat's system prompt. `toPublicQuiz` never copies it. (No
-  markers in per-question `evaluation` or `discussion.instructions`.)
+  markers in per-question `evaluation` or `discussion.instructions`.) Note that the
+  quiz's **`quiz_files`** live includes are NOT a fragment mechanism: questions are
+  structured data, not prompt text — the quiz loader merely calls the existing
+  `assembleFragmentPrompt` seam once more per included quiz (with the SOURCE's own
+  block, relative to the SOURCE url) to render that source's `instructions` into the
+  imported questions' `sourcePreamble`. The Handlebars importer set is unchanged.
 - **Writing** (`docs/writing.md`) — `loadWriting` (`lib/writing-fetch.ts`) renders the
   `instructions` host text and stores the result back as `instructions`.
 - **Coding** (`docs/coding.md`) — `loadCoding` (`lib/coding-fetch.ts`) does the same for

@@ -44,7 +44,11 @@ vi.mock("@mastra/core/request-context", () => ({
   },
 }));
 
-import { QUIZ_EVAL_MODEL, QUIZ_EVAL_PROVIDER } from "@/app/mastra/quiz-agents";
+import {
+  QUIZ_EVAL_INSTRUCTIONS,
+  QUIZ_EVAL_MODEL,
+  QUIZ_EVAL_PROVIDER,
+} from "@/app/mastra/quiz-agents";
 import { startDiscussion, submitAnswer } from "@/lib/quiz-actions";
 
 const entry = {
@@ -115,6 +119,139 @@ describe("submitAnswer LLM selection", () => {
     expect(result).toMatchObject({ ok: true });
     expect(gradedContext().get(QUIZ_EVAL_MODEL)).toBe("gpt-5.4-mini");
     expect(gradedContext().get(QUIZ_EVAL_PROVIDER)).toBe("Azure Foundry");
+  });
+});
+
+describe("submitAnswer grading-prompt composition", () => {
+  const instructions = () => gradedContext().get(QUIZ_EVAL_INSTRUCTIONS) as string;
+
+  it("orders compound preamble → source preamble → grading frame → evaluation", async () => {
+    loadQuiz.mockResolvedValue({
+      ok: true,
+      quiz: {
+        ...quiz,
+        instructionsPreamble: "COMPOUND-PREAMBLE shared rules.",
+        questions: [
+          {
+            id: "intro/q1",
+            question: "What is 2+2?",
+            evaluation: "EVAL-CRITERIA 4 is correct.",
+            sourcePreamble: "SOURCE-PREAMBLE chapter rules.",
+          },
+        ],
+      },
+    });
+    const result = await submitAnswer({ code: entry.code, questionId: "intro/q1", answer: "4" });
+    expect(result).toMatchObject({ ok: true });
+    const prompt = instructions();
+    const compoundAt = prompt.indexOf("COMPOUND-PREAMBLE");
+    const sourceAt = prompt.indexOf("SOURCE-PREAMBLE");
+    const frameAt = prompt.indexOf("You are grading a student's open-ended answer");
+    const evalAt = prompt.indexOf("EVAL-CRITERIA");
+    expect(compoundAt).toBeGreaterThanOrEqual(0);
+    expect(compoundAt).toBeLessThan(sourceAt);
+    expect(sourceAt).toBeLessThan(frameAt);
+    expect(frameAt).toBeLessThan(evalAt);
+  });
+
+  it("drops each preamble that is empty (a plain quiz grades exactly as before)", async () => {
+    loadQuiz.mockResolvedValue({ ok: true, quiz: { ...quiz, instructionsPreamble: "" } });
+    const result = await submitAnswer({ code: entry.code, questionId: "q1", answer: "4" });
+    expect(result).toMatchObject({ ok: true });
+    expect(instructions().startsWith("You are grading a student's open-ended answer")).toBe(true);
+  });
+
+  it("keeps the source preamble without a compound one (chapter question in a bare compound)", async () => {
+    loadQuiz.mockResolvedValue({
+      ok: true,
+      quiz: {
+        ...quiz,
+        instructionsPreamble: "",
+        questions: [
+          {
+            id: "intro/q1",
+            question: "What is 2+2?",
+            evaluation: "4 is correct.",
+            sourcePreamble: "SOURCE-PREAMBLE chapter rules.",
+          },
+        ],
+      },
+    });
+    await submitAnswer({ code: entry.code, questionId: "intro/q1", answer: "4" });
+    expect(instructions().startsWith("SOURCE-PREAMBLE chapter rules.")).toBe(true);
+  });
+});
+
+describe("action failure paths (grader/agent never invoked)", () => {
+  it("submitAnswer rejects when the code expires mid-quiz, without grading", async () => {
+    checkCode.mockResolvedValue({ ok: false, reason: "expired" });
+    const result = await submitAnswer({ code: entry.code, questionId: "q1", answer: "4" });
+    expect(result).toEqual({
+      ok: false,
+      message: "This quiz's availability window has ended.",
+    });
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("submitAnswer rejects an unknown question id (stale client), without grading", async () => {
+    const result = await submitAnswer({ code: entry.code, questionId: "gone", answer: "4" });
+    expect(result).toEqual({
+      ok: false,
+      message: "That question is no longer part of this quiz.",
+    });
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("startDiscussion rejects a failing code / unknown question, without touching memory", async () => {
+    checkCode.mockResolvedValue({ ok: false, reason: "expired" });
+    const expired = await startDiscussion({
+      code: entry.code,
+      questionId: "q1",
+      answer: "4",
+      result: "correct",
+      feedback: "Well done.",
+    });
+    expect(expired).toEqual({
+      ok: false,
+      message: "This quiz's availability window has ended.",
+    });
+
+    checkCode.mockResolvedValue({ ok: true, entry });
+    const unknown = await startDiscussion({
+      code: entry.code,
+      questionId: "gone",
+      answer: "4",
+      result: "correct",
+      feedback: "Well done.",
+    });
+    expect(unknown).toEqual({
+      ok: false,
+      message: "That question is no longer part of this quiz.",
+    });
+    expect(createThread).not.toHaveBeenCalled();
+    expect(saveMessages).not.toHaveBeenCalled();
+  });
+
+  it("resolves NAMESPACED question ids in both actions (compound quizzes)", async () => {
+    loadQuiz.mockResolvedValue({
+      ok: true,
+      quiz: {
+        ...quiz,
+        questions: [{ id: "intro/q1", question: "What is 2+2?", evaluation: "4 is correct." }],
+      },
+    });
+    const graded = await submitAnswer({ code: entry.code, questionId: "intro/q1", answer: "4" });
+    expect(graded).toMatchObject({ ok: true });
+
+    const discussion = await startDiscussion({
+      code: entry.code,
+      questionId: "intro/q1",
+      answer: "4",
+      result: "correct",
+      feedback: "Well done.",
+    });
+    expect(discussion).toMatchObject({ ok: true });
+    expect(saveMessages).toHaveBeenCalled();
   });
 });
 

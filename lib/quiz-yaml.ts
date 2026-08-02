@@ -29,6 +29,26 @@ export interface QuizQuestion {
   image?: ImageRef;
   /** Per-question override of the quiz-level `imageInput` (unset ⇒ inherit). */
   imageInput?: boolean;
+  /**
+   * SERVER-ONLY, set at import time by `loadQuiz` on questions pulled in via
+   * `quiz_files`: the SOURCE quiz's rendered `instructions` preamble, so an imported
+   * question grades (and discusses) identically in its chapter quiz and in the
+   * compound quiz. Never set on a quiz's own questions; `toPublicQuiz` drops it
+   * exactly like `evaluation`.
+   */
+  sourcePreamble?: string;
+}
+
+/**
+ * A `quiz_files` include reference as lifted by the lenient parser — mirrors
+ * `FragmentFileRef` (alias + URL; the alias additionally may not contain `/`).
+ * Passed through as-is for `loadQuiz` to resolve FAIL-CLOSED (like
+ * `readFragmentBlock` defers structural errors to resolve time); the strict
+ * authoring shape lives in `lib/quiz-schema.ts`.
+ */
+export interface QuizFileRef {
+  id: string;
+  url: string;
 }
 
 /** A fully parsed quiz. `evaluation` prompts and `model` are server-side only. */
@@ -50,6 +70,13 @@ export interface Quiz {
    * the model must be vision-capable). Per-question `imageInput` overrides it.
    */
   imageInput: boolean;
+  /**
+   * Questions per attempt (`question_count`). Omitted ⇒ every pool question exactly
+   * once (today's behavior); may exceed the pool size (drill mode — questions
+   * repeat). A pure runner-side sequence bound: grading stays per-question and
+   * stateless, no server-side attempt enforcement.
+   */
+  questionCount?: number;
   /** Optional guidance appended to the discussion chat's system prompt. */
   discussionInstructions?: string;
   /**
@@ -66,6 +93,15 @@ export interface Quiz {
    * resolved preamble is the single source of truth and no stale block lingers.
    */
   fragmentBlock: FragmentBlock;
+  /**
+   * The unresolved `quiz_files` include list (server-only, transient), lifted as-is
+   * like the fragment block. `loadQuiz` fetches each include, namespaces + merges its
+   * questions into `questions`, then clears this to `[]` so the merged pool is the
+   * single source of truth. Any structural problem (bad ref, unfetchable, nested
+   * includes, duplicate alias) fails the LOAD closed — the compound quiz must never
+   * silently shrink.
+   */
+  quizFiles: QuizFileRef[];
   /**
    * The rendered quiz-level preamble (server-only), prepended to BOTH the grader prompt
    * and the discussion chat's system prompt. It is the `instructions` host text with any
@@ -150,8 +186,14 @@ export function parseQuiz(content: string): QuizParseResult {
     };
   }
 
-  const rawQuestions = root.questions;
-  if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+  // Lifted leniently like the fragment block: the declared array passes through as-is
+  // for `loadQuiz` to resolve fail-closed (a malformed entry errors the LOAD rather
+  // than silently dropping a chapter's questions).
+  const quizFiles = Array.isArray(root.quiz_files) ? (root.quiz_files as QuizFileRef[]) : [];
+
+  const rawQuestions = Array.isArray(root.questions) ? root.questions : [];
+  // Zero own questions is fine when includes will supply the pool.
+  if (rawQuestions.length === 0 && quizFiles.length === 0) {
     return { ok: false, message: "This quiz has no questions." };
   }
 
@@ -178,12 +220,20 @@ export function parseQuiz(content: string): QuizParseResult {
       ...(typeof q.imageInput === "boolean" ? { imageInput: q.imageInput } : {}),
     });
   }
-  if (questions.length === 0) {
+  if (questions.length === 0 && quizFiles.length === 0) {
     return {
       ok: false,
       message: "This quiz has no complete questions (each needs an id, question and evaluation).",
     };
   }
+
+  // Malformed (non-integer, < 1, non-number) ⇒ ignored, i.e. the default "every
+  // pool question exactly once" — never fails the quiz for a student.
+  const rawCount = root.question_count;
+  const questionCount =
+    typeof rawCount === "number" && Number.isInteger(rawCount) && rawCount >= 1
+      ? rawCount
+      : undefined;
 
   return {
     ok: true,
@@ -196,6 +246,7 @@ export function parseQuiz(content: string): QuizParseResult {
       shuffle: asBool(root.shuffle, true),
       model,
       provider,
+      questionCount,
       imageInput: asBool(llm?.imageInput, false),
       discussionInstructions: asString(
         (root.discussion as Record<string, unknown> | undefined)?.instructions,
@@ -204,6 +255,7 @@ export function parseQuiz(content: string): QuizParseResult {
       // `loadQuiz` to render; `parseQuiz` leaves the preamble empty (needs the network).
       instructions: asString(root.instructions),
       fragmentBlock: readFragmentBlock(root),
+      quizFiles,
       instructionsPreamble: "",
       questions,
     },
@@ -212,9 +264,10 @@ export function parseQuiz(content: string): QuizParseResult {
 
 /**
  * The student-facing projection — strips every server-only field, above all the
- * `evaluation` grading prompts, the `instructions` host text, the `fragmentBlock`, and
- * the rendered `instructionsPreamble`, before anything reaches the browser (it copies
- * only the whitelisted public fields below, so the server-only ones can never leak).
+ * `evaluation` grading prompts, the per-question `sourcePreamble`s, the `instructions`
+ * host text, the `fragmentBlock`/`quizFiles`, and the rendered `instructionsPreamble`,
+ * before anything reaches the browser (it copies only the whitelisted public fields
+ * below, so the server-only ones can never leak).
  */
 export function toPublicQuiz(quiz: Quiz): QuizPublic {
   const questions: QuizQuestionPublic[] = quiz.questions.map((q) => ({
@@ -232,6 +285,9 @@ export function toPublicQuiz(quiz: Quiz): QuizPublic {
     title: quiz.title,
     description: quiz.description,
     shuffle: quiz.shuffle,
+    // The EFFECTIVE attempt length: the authored `question_count`, defaulting to the
+    // (resolved) pool size — the runner builds its sequence from this one number.
+    questionCount: quiz.questionCount ?? quiz.questions.length,
     questions,
   };
 }

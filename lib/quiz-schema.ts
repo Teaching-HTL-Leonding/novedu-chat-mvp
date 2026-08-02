@@ -18,6 +18,32 @@ import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
 import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
 
+/**
+ * A live quiz include: alias + URL, mirroring `FragmentFileRefSchema` (same URL
+ * contract). The alias prefixes every imported question id as `"<alias>/<id>"`, so
+ * on top of the no-dot rule it may not contain a `/` either. Aliases live in their
+ * OWN namespace (they never appear in `{{…}}` markers — only in question ids).
+ */
+const QuizFileRefSchema = z
+  .strictObject({
+    id: z
+      .string()
+      .regex(/^[^./]+$/, { message: "Alias must not contain a dot or a slash" })
+      .meta({
+        pattern: "^[^./]+$",
+        description:
+          'Local alias for this included quiz. Prefixes every imported question id as "<alias>/<id>", so it may not contain a dot or a slash.',
+      }),
+    url: FragmentFileRefSchema.shape.url.meta({
+      pattern: "^(https?://|(?![A-Za-z][A-Za-z0-9+.-]*:).+)$",
+      description: "HTTP(S) URL or relative path to the included quiz file.",
+    }),
+  })
+  .meta({
+    id: "quizFileRef",
+    description: "A reference to another quiz file whose questions are included live.",
+  });
+
 /** An optional content image attached to a question (carries no secret). */
 const ImageRefSchema = z
   .strictObject({
@@ -97,6 +123,25 @@ export const QuizYamlSchema = z.strictObject({
     description:
       "Present questions in a random order per attempt. Set to false to keep the authored order.",
   }),
+  // Attempt length: how many questions one attempt asks. Purely a runner-side
+  // sequence bound — grading stays per-question and stateless; there is no
+  // server-side attempt enforcement.
+  question_count: z.number().int().min(1).optional().meta({
+    description:
+      "How many questions one attempt asks (default: every question exactly once). May exceed the pool size — then questions repeat (drill mode). With shuffle off, fewer than the pool means the first N in authored order.",
+  }),
+  // Live includes: pull ALL questions of the referenced quiz files into this
+  // quiz's pool, fresh on every load (like fragment_files — editing a chapter
+  // quiz immediately updates the compound quiz). One level deep only: an
+  // included quiz may not itself declare quiz_files. Imported question ids are
+  // namespaced "<alias>/<id>"; each imported question travels with its source
+  // quiz's rendered `instructions` preamble so it grades identically in both
+  // places. Everything else of an included quiz (llm, anonymous, shuffle,
+  // discussion, title, description, question_count) is ignored.
+  quiz_files: z.array(QuizFileRefSchema).default([]).meta({
+    description:
+      "Other quiz files whose questions are ALL included live into this quiz (a compound/final quiz). One level deep — an included quiz may not itself declare quiz_files.",
+  }),
   // `provider` selects which LLM endpoint serves `model` (default SCCH); the one
   // model grades answers AND drives the discussion chat. `imageInput` (default
   // false) lets students attach photos to their answers — the model must be
@@ -152,9 +197,12 @@ export const QuizYamlSchema = z.strictObject({
     description:
       'Optional quiz-level preamble prepended to BOTH the grader prompt and the discussion chat. When any fragment_files or text_files are declared, place fragments inline with {{fragment "alias.id" …}} and embed text files with {{file "alias"}} (optionally {{file "alias" from=10 to=40}} for a line range; escape a literal {{ as \\{{).',
   }),
-  questions: z.array(QuizQuestionSchema).min(1).meta({
+  // May be empty ONLY when `quiz_files` includes supply the pool — the resolved
+  // pool (own + imported) must be ≥ 1, checked in `lib/quiz-validate.ts`
+  // (`QUIZ_NO_QUESTIONS`), where the includes are actually fetched.
+  questions: z.array(QuizQuestionSchema).default([]).meta({
     description:
-      "The quiz questions. Each is open-ended and graded by the LLM via its evaluation prompt.",
+      "The quiz questions. Each is open-ended and graded by the LLM via its evaluation prompt. May be omitted when quiz_files supplies the questions.",
   }),
 });
 export type QuizYaml = z.infer<typeof QuizYamlSchema>;

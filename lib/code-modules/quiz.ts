@@ -18,6 +18,13 @@ import type { CodeModuleDef } from "./registry";
 // followed by a default frame and the quiz's optional `discussionInstructions`; the
 // question/answer/verdict are the thread's seed messages, recalled from memory, NOT
 // repeated here. The teacher detail is the shared conversation stats ("Discussions").
+//
+// A compound quiz's imported questions each carry their SOURCE quiz's preamble
+// (`sourcePreamble`). The discussion prompt is built per-CODE (the runtime route does
+// not know which question a thread discusses), so each DISTINCT source preamble is
+// prepended once, in include order, between the compound preamble and the frame.
+// Accepted trade-off: the prompt grows with the number of chapters; chapter
+// instructions are typically short.
 function buildDiscussionInstructions(quiz: Quiz): string {
   const base =
     "You are helping a student understand a single quiz question. The conversation " +
@@ -27,8 +34,14 @@ function buildDiscussionInstructions(quiz: Quiz): string {
   const frame = quiz.discussionInstructions
     ? `${base}\n\n${quiz.discussionInstructions.trim()}`
     : base;
-  // Prepend the quiz preamble ahead of the frame (empty preamble ⇒ frame as-is).
-  return quiz.instructionsPreamble ? `${quiz.instructionsPreamble}\n\n${frame}` : frame;
+  // Question order IS include order (loadQuiz merges includes in declared order).
+  const sourcePreambles: string[] = [];
+  for (const question of quiz.questions) {
+    const preamble = question.sourcePreamble;
+    if (preamble && !sourcePreambles.includes(preamble)) sourcePreambles.push(preamble);
+  }
+  // Compound preamble → distinct source preambles → frame; empty pieces drop out.
+  return [quiz.instructionsPreamble, ...sourcePreambles, frame].filter(Boolean).join("\n\n");
 }
 
 export const quizModule: CodeModuleDef = {

@@ -5,7 +5,12 @@ import type { ResolvedQuiz } from "@/lib/quiz-types";
 // The quiz runner's PHOTO-ANSWER surface (app/[code]/_quiz/quiz-runner.tsx):
 // the Add-photo control is offered only on questions whose effective
 // `imageInput` is true, picked files run through the shared client validation
-// (lib/answer-images.ts), and Submit gates on text OR ≥1 photo. The grading /
+// (lib/answer-images.ts), and Submit gates on text OR ≥1 photo — plus the core
+// WALK loop (answer → verdict → Next → Finish → summary) and the sequence
+// WIRING: the runner renders exactly what `buildQuestionSequence` returns and
+// labels progress from its length. The sequence SEMANTICS (shuffle passes,
+// question_count truncation/repeats) live in lib/quiz-sequence.unit.test.ts —
+// here the builder is stubbed (pass-through by default). The grading /
 // discussion server actions are mocked; the in-page discussion chat (CopilotKit)
 // is stubbed out. The server-side re-validation lives in
 // lib/quiz-actions.unit.test.ts.
@@ -13,6 +18,9 @@ import type { ResolvedQuiz } from "@/lib/quiz-types";
 const submitAnswer = vi.hoisted(() => vi.fn());
 const startDiscussion = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/quiz-actions", () => ({ submitAnswer, startDiscussion }));
+
+const buildQuestionSequence = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/quiz-sequence", () => ({ buildQuestionSequence }));
 
 vi.mock("@/app/[code]/_quiz/quiz-discussion", () => ({
   QuizDiscussion: () => <div data-testid="quiz-discussion">chat</div>,
@@ -40,13 +48,27 @@ function quizWith(imageInput: boolean): ResolvedQuiz {
   return {
     id: "q",
     shuffle: false,
+    questionCount: 1,
     questions: [{ id: "q1", question: "What is **2 + 2**?", imageInput }],
   };
+}
+
+/** A plain n-question quiz for the walk tests (no photos). */
+function quizOf(n: number): ResolvedQuiz {
+  const questions = Array.from({ length: n }, (_, i) => ({
+    id: `q${i + 1}`,
+    question: `QUESTION-${i + 1}`,
+    imageInput: false,
+  }));
+  return { id: "q", shuffle: false, questionCount: n, questions };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   submitAnswer.mockResolvedValue({ ok: true, result: "correct", feedback: "Well done." });
+  // Pass-through by default: the runner walks the pool in order. Individual tests
+  // override the return value to assert the wiring.
+  buildQuestionSequence.mockImplementation((pool: unknown[]) => [...pool]);
 });
 
 // cleanup() is ASYNC (it act-unmounts every root) — an unawaited call leaks
@@ -139,4 +161,72 @@ test("a rejected file shows a dismissible notice and does not enable Submit", as
 
   await screen.getByRole("button", { name: "Dismiss" }).click();
   expect(screen.getByRole("alert").query()).toBeNull();
+});
+
+// --- sequence wiring + the core walk loop ------------------------------------------
+
+test("renders exactly the sequence buildQuestionSequence returns, progress from its length", async () => {
+  const quiz = quizOf(2);
+  quiz.questionCount = 3; // drill mode: 3 asked from a pool of 2
+  const [q1, q2] = quiz.questions;
+  buildQuestionSequence.mockReturnValue([q2, q1, q2]);
+
+  const screen = await render(<QuizRunner code={CODE} quiz={quiz} />);
+  // The runner hands the POOL + its shuffle/count knobs to the builder…
+  await expect.element(screen.getByText("Question 1 of 3")).toBeVisible();
+  expect(buildQuestionSequence).toHaveBeenCalledExactlyOnceWith(quiz.questions, {
+    shuffle: false,
+    count: 3,
+  });
+  // …and shows the builder's first pick (q2), not the authored first question.
+  await expect.element(screen.getByText("QUESTION-2")).toBeVisible();
+});
+
+test("walks the quiz: verdict labels, Next advances, Finish ends in the summary", async () => {
+  const screen = await render(<QuizRunner code={CODE} quiz={quizOf(3)} />);
+
+  // Q1: correct.
+  await expect.element(screen.getByText("Question 1 of 3")).toBeVisible();
+  submitAnswer.mockResolvedValueOnce({ ok: true, result: "correct", feedback: "FB-1" });
+  await screen.getByRole("textbox").fill("a1");
+  await screen.getByRole("button", { name: "Submit answer" }).click();
+  await expect.element(screen.getByRole("heading", { name: "correct" })).toBeVisible();
+  await expect.element(screen.getByText("FB-1")).toBeVisible();
+
+  // Next advances to Q2 with a cleared answer box.
+  await screen.getByRole("button", { name: "Next question" }).click();
+  await expect.element(screen.getByText("Question 2 of 3")).toBeVisible();
+  await expect.element(screen.getByText("QUESTION-2")).toBeVisible();
+  await expect.element(screen.getByRole("textbox")).toHaveValue("");
+
+  // Q2: partly correct.
+  submitAnswer.mockResolvedValueOnce({ ok: true, result: "partial", feedback: "FB-2" });
+  await screen.getByRole("textbox").fill("a2");
+  await screen.getByRole("button", { name: "Submit answer" }).click();
+  await expect.element(screen.getByRole("heading", { name: "partly correct" })).toBeVisible();
+  await screen.getByRole("button", { name: "Next question" }).click();
+
+  // Q3 (last): wrong; the advance button reads "Finish" and ends in the summary.
+  await expect.element(screen.getByText("Question 3 of 3")).toBeVisible();
+  submitAnswer.mockResolvedValueOnce({ ok: true, result: "incorrect", feedback: "FB-3" });
+  await screen.getByRole("textbox").fill("a3");
+  await screen.getByRole("button", { name: "Submit answer" }).click();
+  await expect.element(screen.getByRole("heading", { name: "wrong" })).toBeVisible();
+  await screen.getByRole("button", { name: "Finish" }).click();
+
+  await expect.element(screen.getByRole("heading", { name: "Quiz summary" })).toBeVisible();
+  await expect.element(screen.getByText("You answered 3 of 3 questions.")).toBeVisible();
+});
+
+test("Finish now ends the quiz early with the partial tally", async () => {
+  const screen = await render(<QuizRunner code={CODE} quiz={quizOf(3)} />);
+
+  submitAnswer.mockResolvedValueOnce({ ok: true, result: "correct", feedback: "FB-1" });
+  await screen.getByRole("textbox").fill("a1");
+  await screen.getByRole("button", { name: "Submit answer" }).click();
+  await expect.element(screen.getByRole("heading", { name: "correct" })).toBeVisible();
+
+  await screen.getByRole("button", { name: "Finish now" }).click();
+  await expect.element(screen.getByRole("heading", { name: "Quiz summary" })).toBeVisible();
+  await expect.element(screen.getByText("You answered 1 of 3 questions.")).toBeVisible();
 });

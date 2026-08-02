@@ -101,7 +101,7 @@ In VS Code, install the Red Hat YAML extension to get this schema support:
 
 The line is a comment, not a YAML field. The app ignores it, but the editor can
 use it for validation, completion, and hover help. (The schema is for editor hints;
-the app validates with its own checks — see [Validating your quiz](#7-validating-your-quiz).)
+the app validates with its own checks — see [Validating your quiz](#8-validating-your-quiz).)
 
 ---
 
@@ -116,6 +116,7 @@ title: "Welcome!" # optional: greeting students see on the welcome screen
 description: "What this quiz covers." # optional: shown below the greeting
 anonymous: false # optional: omit for default true; false attributes each attempt
 shuffle: true # optional: omit for default true; false keeps the authored order
+question_count: 30 # optional: questions per attempt (omit: every question once)
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model grades + discusses
   imageInput: true # optional: omit for default false; students may attach photos
@@ -126,7 +127,8 @@ text_files: [...] # optional: plain-text files embedded verbatim with {{file ...
 discussion: # optional: guidance for the per-question follow-up chat only
   instructions: |
     ...
-questions: # at least one; each is graded by the LLM
+quiz_files: [...] # optional: other quiz files whose questions are ALL included live
+questions: # at least one — unless quiz_files supplies the questions
   - id: ...
     question: |
       ...
@@ -158,6 +160,22 @@ later does not change a live code.
 Optional, **default `true`**. When true, questions are presented in a random order
 per attempt. Set `shuffle: false` to keep the authored order (useful when later
 questions build on earlier ones).
+
+### `question_count`
+
+Optional. How many questions **one attempt** asks. Omit it to ask every question
+exactly once (the default). The number interacts with `shuffle`:
+
+- **Fewer than the pool**: with `shuffle: true` each attempt asks a **random
+  selection** of that size; with `shuffle: false` every attempt asks the **first
+  `question_count` questions** in authored order.
+- **More than the pool**: questions **repeat** (drill/practice mode). The whole
+  pool is covered before anything repeats, and with `shuffle: true` the same
+  question never appears twice in a row.
+
+Students see the length in the progress display ("Question 3 of 30"). The count
+shapes one attempt in the browser only — it is **not** an exam lock: a reload
+starts a fresh attempt, and a repeated question is simply graded again.
 
 ### `llm.model`
 
@@ -240,7 +258,7 @@ is reused across activity kinds.
 
 | Field         | Required | What it is                                                                       |
 | ------------- | -------- | -------------------------------------------------------------------------------- |
-| `id`          | yes      | Stable id, **unique** within the quiz — the per-question stats key.               |
+| `id`          | yes      | Stable id, **unique** within the quiz — the per-question stats key. Must not contain `/` (reserved for questions imported via `quiz_files`). |
 | `title`       | no       | Short label for the stats table and progress display.                            |
 | `question`    | yes      | The **Markdown** shown to the student (math via `$…$` and code fences render).    |
 | `evaluation`  | yes      | The **grading prompt**. SERVER-ONLY — never sent to the browser.                  |
@@ -285,7 +303,57 @@ crosses to the browser (unlike `evaluation`).
 
 ---
 
-## 6. Hosting your quiz
+## 6. Compound quizzes — one quiz from many (`quiz_files`)
+
+When a course is split into chapters, each with its own quiz, you can build an
+**overall quiz** at the end that asks the questions of all chapters — without
+copying a single question. Declare the chapter quizzes under a top-level
+`quiz_files:`, each with a short **alias** and the file's **URL**:
+
+```yaml
+id: ddp-final
+name: "Final quiz: all chapters"
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+question_count: 30 # keep a big final quiz to a sensible length per attempt
+quiz_files:
+  - id: intro # alias: no dots, no slashes, unique within this file
+    url: ./0010-introduction-quiz.yaml # relative to THIS file, or a full http(s) URL
+  - id: loops
+    url: ./0020-loops-quiz.yaml
+```
+
+How it works:
+
+- **All questions, live.** Every question of every referenced quiz is included,
+  read **fresh on each load** — editing a chapter quiz immediately updates the
+  final quiz. There is nothing to keep in sync.
+- **Own questions are optional.** A compound quiz may add its own `questions`, or
+  declare none at all and consist purely of the included ones.
+- **Ids are namespaced.** An imported question appears in the statistics as
+  `alias/question-id` (e.g. `intro/capital-australia`), so chapters can't collide
+  and you can tell them apart. That is why an own question id may not contain `/`.
+- **The compound quiz's own settings rule.** Its `llm`, `anonymous`, `shuffle`,
+  `question_count`, `title`/`description`, and `discussion` govern every question,
+  imported ones included; the same settings inside a referenced file are
+  **ignored**. The one thing that travels with an imported question is its source
+  quiz's top-level `instructions:` text — so a question is graded with the same
+  shared guidance in its chapter quiz and in the final quiz.
+- **One level deep.** A referenced quiz must not declare `quiz_files` itself —
+  includes do not nest.
+- **Never a silently shorter exam.** If a referenced file is missing or broken,
+  students see a friendly error instead of a shrunken quiz, and validation (below)
+  fails the save: every included file is fetched and fully checked, so a broken
+  chapter blocks the final quiz.
+
+URLs resolve exactly like `fragment_files` refs: an absolute `http(s)` URL is used
+as-is, anything else is resolved **relative to the compound quiz's own URL**. That
+also works between app-hosted files — host the chapter quizzes and the final quiz
+together on the **YAML Files** page and reference them as `./<file-name>`.
+
+---
+
+## 7. Hosting your quiz
 
 The server fetches your quiz over the internet, so it must be at a **public
 `http(s)` URL**.
@@ -308,7 +376,7 @@ hand the `/<code>` link to students.
 
 ---
 
-## 7. Validating your quiz
+## 8. Validating your quiz
 
 Validation runs the same structural checks the app enforces, so a broken quiz is
 caught **before** a student opens it — an invalid quiz cannot be saved or turned
@@ -331,9 +399,12 @@ The validator checks, in order:
 
 1. The file is valid YAML.
 2. The quiz has the correct structure — no missing or misspelled fields, an
-   `llm.model`, and at least one question (each with an `id`, a `question`, and an
-   `evaluation`).
-3. Every question `id` is unique.
+   `llm.model`, and at least one question, own or included (each with an `id`, a
+   `question`, and an `evaluation`).
+3. Every question `id` is unique (and contains no `/`), and every `quiz_files`
+   alias is unique.
+4. For a compound quiz, **every referenced quiz file is fetched and fully
+   checked** the same way — a broken chapter quiz blocks the final quiz.
 
 ### Common problems and how to fix them
 
@@ -342,16 +413,25 @@ The validator checks, in order:
 | `YAML_PARSE_ERROR`          | The file isn't valid YAML.                                     | Check indentation and quotes.                 |
 | `QUIZ_SCHEMA_ERROR`         | A field is missing, has the wrong type, or is misspelled (the detail lines name the field). | Compare against this guide; fix the named field. A numeric-looking `id` must be **quoted**. |
 | `DUPLICATE_QUIZ_QUESTION_ID`| Two questions share an `id`.                                   | Give each question a distinct `id`.           |
+| `QUIZ_QUESTION_ID_RESERVED_SLASH` | An own question `id` contains `/` (reserved for imported questions). | Remove the `/` from the id.       |
+| `QUIZ_NO_QUESTIONS`         | The quiz has no own questions **and** no `quiz_files` includes. | Add at least one question or an include.      |
+| `DUPLICATE_QUIZ_INCLUDE_ALIAS` | Two `quiz_files` entries share an alias.                    | Give each include a distinct alias.           |
+| `QUIZ_INCLUDE_UNREADABLE`   | A referenced quiz file couldn't be fetched, or fails its own checks (the message names the alias + URL and the nested problems). | Fix or re-publish the referenced quiz file.   |
+| `QUIZ_INCLUDE_NESTED`       | A referenced quiz declares `quiz_files` itself.                | Reference only plain (chapter) quizzes — includes don't nest. |
 | `FETCH_FAILED`              | The URL couldn't be loaded.                                    | Check the URL is public and pushed.           |
 
 ---
 
-## 8. Checklist before you publish
+## 9. Checklist before you publish
 
-- [ ] The quiz has an `id`, an `llm.model`, and **at least one** question.
+- [ ] The quiz has an `id`, an `llm.model`, and **at least one** question (own,
+      or included via `quiz_files`).
 - [ ] Every question has an `id`, a `question`, and an `evaluation`.
-- [ ] Every question `id` is **unique**.
+- [ ] Every question `id` is **unique** and contains no `/`.
 - [ ] Numeric-looking ids are **quoted** (e.g. `id: "1"`).
 - [ ] `anonymous` is set the way you want — default `true` (not attributed).
+- [ ] For a compound quiz: aliases are short and unique, every referenced quiz
+      file is published and valid, and `question_count` is set if the combined
+      pool is large.
 - [ ] The file is **public** and **pushed** (if hosted on GitHub).
 - [ ] You validated the quiz and it passes.

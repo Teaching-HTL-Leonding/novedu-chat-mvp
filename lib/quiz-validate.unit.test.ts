@@ -135,7 +135,9 @@ questions:
     if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_SCHEMA_ERROR");
   });
 
-  it("rejects a quiz with no questions", () => {
+  it("rejects a quiz with no questions and no includes (QUIZ_NO_QUESTIONS)", () => {
+    // An empty `questions` passes the schema now (quiz_files may supply the pool);
+    // the resolved-pool check is what rejects a truly empty quiz.
     const result = check(`
 id: q
 llm:
@@ -143,7 +145,96 @@ llm:
 questions: []
 `);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_SCHEMA_ERROR");
+    if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_NO_QUESTIONS");
+  });
+
+  it("rejects a non-positive or non-integer question_count", () => {
+    for (const bad of ["0", "-3", "1.5", '"30"']) {
+      const result = check(`
+id: q
+llm:
+  model: m
+question_count: ${bad}
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+`);
+      expect(result.ok, `question_count: ${bad}`).toBe(false);
+      if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_SCHEMA_ERROR");
+    }
+  });
+
+  it("accepts a valid question_count (may exceed the pool — drill mode)", () => {
+    const result = check(`
+id: q
+llm:
+  model: m
+question_count: 30
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+`);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects a quiz_files alias containing a dot or a slash (schema pattern)", () => {
+    for (const alias of ["bad.alias", "bad/alias"]) {
+      const result = check(`
+id: q
+llm:
+  model: m
+quiz_files:
+  - id: ${alias}
+    url: ./other.yaml
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+`);
+      expect(result.ok, alias).toBe(false);
+      if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_SCHEMA_ERROR");
+    }
+  });
+
+  it("rejects an own question id containing '/' (QUIZ_QUESTION_ID_RESERVED_SLASH)", () => {
+    const result = check(`
+id: q
+llm:
+  model: m
+questions:
+  - id: intro/q1
+    question: "Q?"
+    evaluation: "grade"
+`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]?.code).toBe("QUIZ_QUESTION_ID_RESERVED_SLASH");
+      expect(result.errors[0]?.questionId).toBe("intro/q1");
+    }
+  });
+
+  it("rejects a duplicate quiz_files alias (DUPLICATE_QUIZ_INCLUDE_ALIAS)", () => {
+    const result = check(`
+id: q
+llm:
+  model: m
+quiz_files:
+  - id: intro
+    url: ./a.yaml
+  - id: intro
+    url: ./b.yaml
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]?.code).toBe("DUPLICATE_QUIZ_INCLUDE_ALIAS");
+      expect(result.errors[0]?.fileAlias).toBe("intro");
+    }
   });
 
   it("rejects an unsupported llm.provider", () => {
@@ -396,6 +487,165 @@ describe("loadAndCheckQuiz — text files", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.errors.map((e) => e.code)).toContain("TEXT_FILE_RANGE_OUT_OF_BOUNDS");
+    }
+  });
+});
+
+// --- quiz_files live includes (the deep authoring gate) ----------------------------
+
+const BASE = "https://example.com/final-quiz.yaml";
+const INTRO_URL = "https://example.com/intro.yaml";
+
+const INTRO_QUIZ = `
+id: intro
+llm:
+  model: chapter-model
+questions:
+  - id: q1
+    question: "Q1?"
+    evaluation: "grade 1"
+  - id: q2
+    question: "Q2?"
+    evaluation: "grade 2"
+`;
+
+const compound = (files: string, ownQuestions = "") => `
+id: final
+llm:
+  model: final-model
+quiz_files:
+${files}
+${ownQuestions}
+`;
+
+describe("loadAndCheckQuiz — quiz_files includes", () => {
+  it("accepts a compound quiz (relative include URL) and reports the RESOLVED pool size", async () => {
+    const quiz = compound(
+      "  - id: intro\n    url: ./intro.yaml",
+      'questions:\n  - id: own\n    question: "Own?"\n    evaluation: "grade"',
+    );
+    const result = await loadAndCheckQuiz(
+      BASE,
+      fetcherMap({ [BASE]: quiz, [INTRO_URL]: INTRO_QUIZ }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.questionCount).toBe(3); // 1 own + 2 imported
+  });
+
+  it("accepts a compound quiz with ZERO own questions (includes supply the pool)", async () => {
+    const quiz = compound("  - id: intro\n    url: ./intro.yaml");
+    const result = await loadAndCheckQuiz(
+      BASE,
+      fetcherMap({ [BASE]: quiz, [INTRO_URL]: INTRO_QUIZ }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.questionCount).toBe(2);
+  });
+
+  it("QUIZ_INCLUDE_UNREADABLE for an unfetchable include (alias + URL carried)", async () => {
+    const quiz = compound("  - id: intro\n    url: ./missing.yaml");
+    const result = await loadAndCheckQuiz(BASE, fetcherMap({ [BASE]: quiz }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]?.code).toBe("QUIZ_INCLUDE_UNREADABLE");
+      expect(result.errors[0]?.fileAlias).toBe("intro");
+      expect(result.errors[0]?.url).toBe("https://example.com/missing.yaml");
+    }
+  });
+
+  it("QUIZ_INCLUDE_UNREADABLE wraps a schema failure inside the included quiz", async () => {
+    const broken = `
+id: intro
+questions:
+  - id: q1
+    question: "Q1?"
+    evaluation: "grade"
+`; // no llm.model → schema error inside the include
+    const quiz = compound("  - id: intro\n    url: ./intro.yaml");
+    const result = await loadAndCheckQuiz(BASE, fetcherMap({ [BASE]: quiz, [INTRO_URL]: broken }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]?.code).toBe("QUIZ_INCLUDE_UNREADABLE");
+      expect(result.errors[0]?.fileAlias).toBe("intro");
+    }
+  });
+
+  it("QUIZ_INCLUDE_UNREADABLE wraps duplicate question ids inside the included quiz", async () => {
+    const withDup = `
+id: intro
+llm:
+  model: m
+questions:
+  - id: dup
+    question: "Q1?"
+    evaluation: "grade"
+  - id: dup
+    question: "Q2?"
+    evaluation: "grade"
+`;
+    const quiz = compound("  - id: intro\n    url: ./intro.yaml");
+    const result = await loadAndCheckQuiz(BASE, fetcherMap({ [BASE]: quiz, [INTRO_URL]: withDup }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]?.code).toBe("QUIZ_INCLUDE_UNREADABLE");
+      expect(result.errors[0]?.message).toContain("dup");
+    }
+  });
+
+  it("QUIZ_INCLUDE_UNREADABLE wraps a broken fragment block inside the included quiz", async () => {
+    const withBadFragments = `
+id: intro
+llm:
+  model: m
+fragment_files:
+  - id: lib
+    url: ./nowhere.yaml
+instructions: |
+  {{fragment "lib.safety"}}
+questions:
+  - id: q1
+    question: "Q1?"
+    evaluation: "grade"
+`;
+    const quiz = compound("  - id: intro\n    url: ./intro.yaml");
+    const result = await loadAndCheckQuiz(
+      BASE,
+      fetcherMap({ [BASE]: quiz, [INTRO_URL]: withBadFragments }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("QUIZ_INCLUDE_UNREADABLE");
+  });
+
+  it("QUIZ_INCLUDE_NESTED when an included quiz itself declares quiz_files", async () => {
+    const nested = `
+id: intro
+llm:
+  model: m
+quiz_files:
+  - id: deeper
+    url: ./deeper.yaml
+questions:
+  - id: q1
+    question: "Q1?"
+    evaluation: "grade"
+`;
+    const quiz = compound("  - id: intro\n    url: ./intro.yaml");
+    const result = await loadAndCheckQuiz(BASE, fetcherMap({ [BASE]: quiz, [INTRO_URL]: nested }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]?.code).toBe("QUIZ_INCLUDE_NESTED");
+      expect(result.errors[0]?.fileAlias).toBe("intro");
+    }
+  });
+
+  it("surfaces EVERY broken include at once, in declared order", async () => {
+    const quiz = compound(
+      "  - id: one\n    url: ./missing-one.yaml\n  - id: two\n    url: ./missing-two.yaml",
+    );
+    const result = await loadAndCheckQuiz(BASE, fetcherMap({ [BASE]: quiz }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.map((e) => e.fileAlias)).toEqual(["one", "two"]);
     }
   });
 });
