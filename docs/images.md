@@ -4,11 +4,15 @@ Deep reference for the **module-agnostic image subsystem**: teachers upload PNG 
 JPEG / SVG images *in the app* and reference them by name from any activity YAML
 (tutor, fragment, quiz). The bytes live in Azure Blob Storage and are retrieved
 **direct-to-blob via a short-lived SAS** — there is NO app route serving image
-bytes, so nothing here touches `proxy.ts`. The always-on invariants are
+bytes; the only `proxy.ts` entry is the `api/images(?:/|$)` exclusion for the
+**bearer metadata routes** (which carry no session cookie — bytes still go
+direct-to-blob). The always-on invariants are
 summarized in `AGENTS.md`; this file has the full mechanics. Read it before
-touching `app/images/**`, `lib/image-store.ts`, `lib/image-blob.ts`,
+touching `app/images/**`, `app/api/images/**`, `lib/image-store.ts`,
+`lib/image-blob.ts`,
 `lib/image-resolve.ts`, `lib/image-ref.ts`, `lib/relative-url.ts`,
-`lib/images-actions.ts`, `components/content-image.tsx`,
+`lib/images-actions.ts`, `lib/image-service.ts`,
+`components/content-image.tsx`,
 `components/image-lightbox.tsx`, the image helpers in `lib/file-name.ts`, or the
 `novedu_images` schema.
 
@@ -40,9 +44,12 @@ renders a `ResolvedImage` as a bounded thumbnail opening the shared
 | --- | --- | --- | --- |
 | List | `/images` (`app/images/page.tsx`) | teacher | active versions only, contains-filter over name + "Only my images" (default on); a row's "View" button opens the image in the shared lightbox from a read SAS (no inline thumbnail) |
 | Upload | `/images/new` (`upload-image-form.tsx`) | teacher | name + file picker; direct-to-blob PUT then confirm |
+| Bearer API / CLI | `GET /api/images`, `POST /api/images/<name>`, `POST /api/images/<name>/confirm` (`app/api/images/**`) | teacher (bearer token) | the CLI's `images upload/list` — the same confirm-only flow over `lib/image-service.ts`; see below and `docs/api.md` |
 
 Both pages gate with **`requireTeacherPage()`** ("effective" teacher — student
-mode is denied). There is no edit surface: an image is immutable once confirmed;
+mode is denied); the bearer routes gate with **`requireBearerTeacher()`**
+(`lib/api-auth.ts` — no student mode on that channel). There is no edit
+surface: an image is immutable once confirmed;
 to change it, delete and re-upload (the name is reusable).
 
 ## Data model — `novedu_images` (temporal / append-only)
@@ -122,23 +129,41 @@ Every SAS is **HTTPS-only**, short-lived, and starts 5 minutes in the past
 The container is **`novedu-images`** on account **`stnoveduchatmvp`**; both are
 env-overridable (`IMAGE_BLOB_CONTAINER`, `IMAGE_STORAGE_ACCOUNT`).
 
-## Server actions — `lib/images-actions.ts` (`"use server"`)
+## Service & server actions — `lib/image-service.ts` + `lib/images-actions.ts`
 
-The thin auth + policy shell, mirroring `lib/files-actions.ts`. **Every** action
-gates with **`requireTeacherUserId()`** (an *effective* teacher — student mode is
-denied — plus the session `oid`); never `session.user.isTeacher`. The largest
-image is **5 MB**; only `image/png` / `image/jpeg` / `image/svg+xml` are allowed.
+The policy pipeline lives in **`lib/image-service.ts`** — the transport-agnostic
+seam shared by the web server actions and the bearer API routes, mirroring
+`lib/file-service.ts`. **Auth never enters the service**: each channel gates
+itself and passes the verified user id in; failures carry a `reason`
+discriminant (`invalid` / `conflict` / `unavailable`) the channels map to a
+form message or HTTP 400/409/503. The largest
+image is **5 MB** (`MAX_IMAGE_BYTES`); only `image/png` / `image/jpeg` /
+`image/svg+xml` are allowed.
 
-- `requestImageUpload(name, mime, size)` → gate + validate the name/MIME/size +
-  reject a name already taken by an active image, then mint a **create-only** SAS.
-  **No DB row is written here.**
-- `confirmImageUpload(name, blobPath, mime)` → inspect what actually landed via
+- `prepareImageUpload({ name, mime, byteSize })` → validate the name/MIME/size +
+  reject a name already taken by an active image (`conflict`), then mint a
+  **create-only** SAS. **No DB row is written here** — and no user id is taken;
+  the request step records nothing.
+- `confirmImageUploadForUser(userId, { name, blobPath, mime, credit? })` →
+  inspect what actually landed via
   `getBlobProperties` (size and content type are **re-derived from the blob, never
   trusted from the client**); a blob that is missing, too large, or of the wrong
   type is rejected — and a present-but-bad blob is deleted so it does not linger —
-  then `confirmImage` writes the metadata row.
+  then `confirmImage` writes the metadata row as `userId`.
+
+`lib/images-actions.ts` (`"use server"`) is the thin web shell, mirroring
+`lib/files-actions.ts`: **every** action
+gates with **`requireTeacherUserId()`** (an *effective* teacher — student mode is
+denied — plus the session `oid`); never `session.user.isTeacher`. It maps the
+service failures to `{ ok: false, error }` form messages and revalidates
+`/images` on success (`revalidatePath` stays OUT of the service — the bearer
+routes share it).
+
+- `requestImageUpload(name, mime, size)` → gate + `prepareImageUpload`.
+- `confirmImageUpload(name, blobPath, mime, credit?)` → gate +
+  `confirmImageUploadForUser`.
 - `deleteSelectedImagesAction(names)` → the list's **"Delete Selected"**, the **only**
-  delete path; mirrors `deleteSelectedFilesAction`.
+  delete path (web-only — no bearer delete route); mirrors `deleteSelectedFilesAction`.
 
 ## The upload flow — request → PUT → confirm
 
@@ -155,6 +180,15 @@ the app server.
    and the matching `Content-Type`.
 4. The form calls `confirmImageUpload`, which inspects the landed blob, rejects +
    removes anything off-policy, and writes the metadata row.
+
+The **CLI runs the identical flow over the bearer routes** (`docs/api.md`):
+`POST /api/images/<name>` (→ `prepareImageUpload`) returns the SAS slot, the CLI
+PUTs the raw bytes straight to Blob Storage itself, and
+`POST /api/images/<name>/confirm` (→ `confirmImageUploadForUser`) writes the
+row. The bytes never pass through the app on either channel — the "no
+`/api/images` byte route" invariant holds; the bearer routes carry metadata and
+SAS URLs only. `GET /api/images` lists active versions with a short-lived read
+SAS per row.
 
 ## Resolution primitive — `ImageRef` → `resolveImageRef` → `ResolvedImage`
 
@@ -249,6 +283,17 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
 
 - `lib/image-store.unit.test.ts` — the temporal transitions, the name-taken guard,
   the best-effort blob cleanup.
+- `lib/image-service.unit.test.ts` — the shared policy pipeline: the reason
+  discriminants, the UUID blob path, the blob-derived size, the best-effort
+  delete of off-policy blobs, the credit normalization/clamping.
+- `lib/images-actions.unit.test.ts` — the web shell: the teacher gate, the
+  service wiring (transitive through the mocked blob/store seams), the
+  revalidation.
+- `app/api/images/route.unit.test.ts`, `app/api/images/[name]/route.unit.test.ts`,
+  `app/api/images/[name]/confirm/route.unit.test.ts` — the bearer routes (real
+  auth gate via a local JWKS, mocked service/store; see `docs/api.md`), and the
+  hermetic `e2e/api-images.spec.ts` proving the proxy exclusion + 401/403 over
+  real HTTP.
 - `lib/image-blob.unit.test.ts` — SAS permission/expiry/protocol shape and the
   passwordless delegation-key path.
 - `lib/image-resolve.unit.test.ts` — the three-shape resolution and the lenient

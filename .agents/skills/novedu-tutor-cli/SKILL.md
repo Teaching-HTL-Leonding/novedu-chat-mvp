@@ -5,14 +5,16 @@ description: >-
   any activity YAML — a tutor, fragment library, quiz, writing, or coding
   activity — with the exact validation pipeline the app enforces; sign in to
   Microsoft Entra ID; and, as a signed-in teacher, mint/list activity codes,
-  upload/list app-hosted YAML files, and triage student reports. Use this skill
+  upload/list app-hosted YAML files and images, and triage student reports. Use
+  this skill
   whenever the user wants to validate, check, lint, or verify an activity YAML
   ("is this tutor valid?", "check my quiz", "why won't this file load?"), debug
   a schema or template error, sanity-check `tutor_instructions` /
   `fragment_files` / `questions` / `instructions`, authenticate the CLI ("log in
   to novedu", "who am I signed in as?", "sign out"), share or host an activity
   ("create a code for this quiz", "upload this YAML to the app", "what codes do
-  I have?", "list my hosted files"), or act on student feedback ("what have
+  I have?", "list my hosted files", "upload this diagram so the quiz can show
+  it"), or act on student feedback ("what have
   students reported?", "show me report <id>", "fix the issues students
   flagged", "mark these resolved") — even if they never name the CLI. Prefer the
   CLI over reading YAML by eye or re-deriving the rules: it is the source of
@@ -49,6 +51,8 @@ codes create --module <tutor|quiz|writing|coding> --file <url>
 codes list   [--search <q>] [--module <m>] [--all]
 files upload <name> [--kind <kind>] (--file <path> | reads stdin)
 files list   [--search <q>] [--all]
+images upload <name> --file <path> [--credit <text>]
+images list   [--search <q>] [--all]
 
 reports list    [--status open|resolved|all] [--reaction good|omg|bad|holysh]
                 [--search <q>] [--all]
@@ -59,9 +63,10 @@ reports resolve <id...>
 Behaviors an agent must know:
 
 - **`validate` needs no sign-in**; everything under `codes` / `files` /
-  `reports` needs a signed-in **teacher** (a non-teacher gets a generic 403 —
-  check with `whoami`, `Teacher: yes`).
-- **JSON I/O contract** (`codes`/`files`/`reports`): success objects verbatim
+  `images` / `reports` needs a signed-in **teacher** (a non-teacher gets a
+  generic 403 — check with `whoami`, `Teacher: yes`).
+- **JSON I/O contract** (`codes`/`files`/`images`/`reports`): success objects
+  verbatim
   on stdout, exit 0; every failure a JSON `{ message }` or `{ errors: [...] }`
   on stderr, exit 1. Read the stderr JSON and act on it — the server's
   structured validation detail names the exact problem. (`whoami` prints
@@ -82,7 +87,15 @@ Behaviors an agent must know:
   existing file's kind is frozen at create time (contradicting `--kind` →
   409). Existing codes keep serving the file, so uploading a fix needs no
   re-share. Every hosted file is public at the `url` the list returns.
-- `whoami`, `codes`, `files`, and `reports` accept `--server <url>` (beats the
+- `images upload <name>` is **create-only** (unlike files there is no upsert):
+  a taken name → 409 — images are immutable; delete + re-upload happens in the
+  web app (`/images`). `--file` is **required** (`.png`, `.jpg`/`.jpeg` or
+  `.svg`, max 5 MB — the type comes from the extension; binary, so no stdin);
+  `--credit` stores an optional attribution. Reference the uploaded image from
+  activity YAML by NAME with `hosted: true` (e.g. a quiz question's
+  `image: { src: <name>, hosted: true, alt: … }`); the `url` in `images list`
+  is a short-lived SAS link for previewing, never for embedding.
+- `whoami`, `codes`, `files`, `images`, and `reports` accept `--server <url>` (beats the
   `NOVEDU_SERVER` env var, which beats the production default) — pass
   `--server http://localhost:3000` against a local dev server.
 
@@ -170,7 +183,8 @@ unknown value returns a `400 { message }` on stderr, not a silent empty list.
 
 ## Scope — what the CLI does NOT do
 
-It cannot edit or delete codes, delete files, browse arbitrary
+It cannot edit or delete codes, delete files or images (or overwrite an
+image), browse arbitrary
 stats/conversations (a reported chat's transcript is visible only via
 `reports show`), file/reopen/delete reports, or deploy. Those stay in the web
 app on purpose — an agent should never destroy a student's report, and deletion
@@ -193,4 +207,8 @@ npx @novedu/cli codes create --module quiz \
 npx @novedu/cli reports show 3f2c… | jq '{reaction, description, messages}'
 npx @novedu/cli files upload sorting-quiz --file ./sorting-quiz.yaml
 npx @novedu/cli reports resolve 3f2c…
+
+# Host an image, then reference it from a quiz question by name
+npx @novedu/cli images upload sorting-diagram --file ./diagram.png --credit "CC BY 4.0"
+# → in the YAML:  image: { src: sorting-diagram, hosted: true, alt: "…" }
 ```

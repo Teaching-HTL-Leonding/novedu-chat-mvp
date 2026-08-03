@@ -7,8 +7,8 @@ requires Node >= 20). It covers two jobs:
   activities, and coding activities — with the app's exact validation pipeline,
   offline and without signing in.
 - **Manage the app as a teacher** — sign in with Microsoft Entra ID, then mint
-  activity codes, upload app-hosted YAML files, and triage student reports,
-  straight from the terminal (or from a coding agent, see below).
+  activity codes, upload app-hosted YAML files and images, and triage student
+  reports, straight from the terminal (or from a coding agent, see below).
 
 No install needed:
 
@@ -75,20 +75,23 @@ npx @novedu/cli logout   # remove the cached credentials from this machine
 - Not signed in (or the cached token expired for good)? Commands exit 1 with
   `Not signed in — run "novedu-cli login".`
 
-## Managing codes & files (teacher account required)
+## Managing codes, files & images (teacher account required)
 
-The `codes` and `files` groups call the app's API as the signed-in teacher. The
+The `codes`, `files` and `images` groups call the app's API as the signed-in
+teacher. The
 server runs the identical validation pipeline as the web forms and is
 authoritative — the CLI sends your input as-is and relays the server's answer.
 
 ```
-codes create --module <tutor|quiz|writing|coding> --file <url>
-             [--start <iso>] [--end <iso>] [--note <text>]
-             [--llm-provider <p> --llm-model <m>]
-codes list   [--search <q>] [--module <m>] [--all]
-files upload <name> [--kind <tutor|fragment|quiz|writing|coding>]
-             (--file <path> | reads stdin)
-files list   [--search <q>] [--all]
+codes create  --module <tutor|quiz|writing|coding> --file <url>
+              [--start <iso>] [--end <iso>] [--note <text>]
+              [--llm-provider <p> --llm-model <m>]
+codes list    [--search <q>] [--module <m>] [--all]
+files upload  <name> [--kind <tutor|fragment|quiz|writing|coding>]
+              (--file <path> | reads stdin)
+files list    [--search <q>] [--all]
+images upload <name> --file <path> [--credit <text>]
+images list   [--search <q>] [--all]
 ```
 
 - **Output is JSON only.** Success: the API's objects verbatim on stdout, exit
@@ -105,8 +108,20 @@ files list   [--search <q>] [--all]
   `--kind` fails with 409). The YAML comes from `--file <path>` or stdin.
   Every hosted file is public at the `url` the list returns — no download
   command needed.
-- Both `list` commands default to **only your own** codes/files (like the web
-  lists); `--all` widens to every teacher's, `--search` is a contains-filter.
+- `images upload <name>` uploads a **new** app-hosted image — `.png`,
+  `.jpg`/`.jpeg` or `.svg` (the type comes from the file extension), max 5 MB.
+  Unlike `files upload` it is **create-only**: a taken name fails with 409 —
+  images are immutable; delete + re-upload in the web app (`/images`) to
+  replace one. `--file` is required (images are binary — no stdin);
+  `--credit` stores an optional attribution shown with the image. The bytes go
+  straight to Azure Blob Storage (the CLI runs the same request → upload →
+  confirm flow as the web form). Reference the image from activity YAML by
+  name with `hosted: true`.
+- `images list` shows your images with a short-lived download `url` (a ~3 h
+  SAS link — share the *name*, not this URL).
+- All `list` commands default to **only your own** codes/files/images (like the
+  web lists); `--all` widens to every teacher's, `--search` is a
+  contains-filter.
 
 Example — host a quiz and share it:
 
@@ -118,6 +133,21 @@ npx @novedu/cli codes create --module quiz \
   --file https://…/api/files/sorting-quiz \
   --start 2026-07-07T08:00:00Z --note "3A Monday"
 # { "code": "…", "url": "https://…/<code>", … }   — hand the url to students
+```
+
+Example — host an image and reference it from the quiz YAML:
+
+```bash
+npx @novedu/cli images upload sorting-diagram --file ./diagram.png --credit "CC BY 4.0"
+# { "name": "sorting-diagram", "mimeType": "image/png", "byteSize": 48211, "credit": "CC BY 4.0" }
+```
+
+```yaml
+# in the activity YAML:
+image:
+  hosted: true
+  src: sorting-diagram
+  alt: Merge sort splitting an array
 ```
 
 ## Triaging student reports (teacher account required)
