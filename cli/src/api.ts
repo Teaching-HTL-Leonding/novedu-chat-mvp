@@ -20,26 +20,28 @@ export function failJson(value: unknown): void {
 }
 
 /**
- * Performs one authenticated API request and prints the outcome per the JSON
- * contract. Server error bodies (`{ message }` — incl. the generic 401/403 —
- * or `{ errors }`) are passed through VERBATIM to stderr — the server's
- * structured validation detail is the CLI's error message. No client-side
- * pre-validation: the server runs the identical pipeline; offline checking is
- * the `validate` command's job.
+ * Performs one authenticated API request. On ANY failure (not signed in,
+ * network, non-2xx) it prints the JSON error to stderr per the contract —
+ * server error bodies (`{ message }` — incl. the generic 401/403 — or
+ * `{ errors }`) passed through VERBATIM — marks the process failed, and
+ * returns `{ ok: false }`. On success it returns the parsed payload WITHOUT
+ * printing, so multi-step commands (`images upload`) can consume intermediate
+ * responses silently. No client-side pre-validation: the server runs the
+ * identical pipeline; offline checking is the `validate` command's job.
  */
-export async function runApiRequest(options: {
+export async function performApiRequest(options: {
   server?: string;
   path: string;
   method?: "GET" | "POST" | "PUT";
   body?: unknown;
-}): Promise<void> {
+}): Promise<{ ok: true; payload: unknown } | { ok: false }> {
   let token: string;
   try {
     token = await getAccessToken();
   } catch (error) {
     if (error instanceof NotSignedInError) {
       failJson({ message: error.message });
-      return;
+      return { ok: false };
     }
     throw error;
   }
@@ -59,7 +61,7 @@ export async function runApiRequest(options: {
     failJson({
       message: `Could not reach ${server}: ${error instanceof Error ? error.message : error}`,
     });
-    return;
+    return { ok: false };
   }
 
   let payload: unknown;
@@ -71,7 +73,22 @@ export async function runApiRequest(options: {
 
   if (!response.ok) {
     failJson(payload ?? { message: `${server} rejected the request: HTTP ${response.status}` });
-    return;
+    return { ok: false };
   }
-  printJson(payload ?? null);
+  return { ok: true, payload };
+}
+
+/**
+ * Performs one authenticated API request and prints the outcome per the JSON
+ * contract: the success body pretty-printed to stdout, every failure to stderr
+ * (see {@link performApiRequest}).
+ */
+export async function runApiRequest(options: {
+  server?: string;
+  path: string;
+  method?: "GET" | "POST" | "PUT";
+  body?: unknown;
+}): Promise<void> {
+  const result = await performApiRequest(options);
+  if (result.ok) printJson(result.payload ?? null);
 }

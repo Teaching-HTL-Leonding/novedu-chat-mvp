@@ -4,10 +4,10 @@ Deep reference for the app's second auth channel: CLI commands (and any other
 non-browser client, e.g. a future MCP server) calling app API routes with an
 Entra **bearer token** instead of a session cookie. Read it before touching
 `lib/api-auth.ts`, `app/api/me/**`, `app/api/codes/**`, `app/api/files/**`
-(the bearer handlers), `app/api/reports/**`, the services they share with the
-web actions (`lib/code-service.ts`, `lib/file-service.ts`), the CLI commands
-(`cli/src/auth.ts`, `cli/src/api.ts`,
-`cli/src/commands/{login,logout,whoami,codes,files,reports}.ts`), or when
+(the bearer handlers), `app/api/images/**`, `app/api/reports/**`, the services
+they share with the web actions (`lib/code-service.ts`, `lib/file-service.ts`,
+`lib/image-service.ts`), the CLI commands (`cli/src/auth.ts`, `cli/src/api.ts`,
+`cli/src/commands/{login,logout,whoami,codes,files,images,reports}.ts`), or when
 adding a bearer-protected endpoint. Cookie sessions, teacher roles and student
 mode live in `docs/auth.md`.
 
@@ -118,6 +118,32 @@ stored `origin` column, which is operator-only).
   one fails **loudly** with `409` (never silently ignored; a create race on
   the name is 409 too). Body `{ kind?, content }`; `200` with
   `{ name, kind, url, action: "created" | "updated" }`.
+- **`GET /api/images?q=&mine=`** (`app/api/images/route.ts`, teacher-only) —
+  the `/images` page's filters and defaults (`q` over the name; `mine` default
+  on). Bare JSON array of active versions
+  `{ name, mimeType, byteSize, credit, createdBy, createdAt, url }` — `url` is
+  a **short-lived (~3 h) read SAS** straight to the blob (the bytes never pass
+  through the app, `docs/images.md`), or `null` when minting fails for that
+  row. Unlike `/api/files` there is **no public GET** anywhere under this
+  prefix.
+- **`POST /api/images/<name>`** (`app/api/images/[name]/route.ts`,
+  teacher-only) — step 1 of the same **confirm-only, direct-to-blob** upload
+  flow the web form uses, via `prepareImageUpload` (`lib/image-service.ts`).
+  Body `{ mime, byteSize }` (PNG/JPEG/SVG, ≤ 5 MB — the claimed size; confirm
+  re-derives the real one). `200` with `{ uploadUrl, blobPath }`: PUT the raw
+  bytes to `uploadUrl` with `x-ms-blob-type: BlockBlob` and a `Content-Type`
+  equal to `mime` (the create-only SAS pins it, valid ~10 min), then confirm.
+  **Create-only, no upsert** — images are immutable; a taken name is `409`
+  (delete + re-upload in the web app is the way to replace one). Writes no DB
+  row.
+- **`POST /api/images/<name>/confirm`**
+  (`app/api/images/[name]/confirm/route.ts`, teacher-only) — step 3:
+  `confirmImageUploadForUser` (`lib/image-service.ts`) inspects the landed blob
+  (size/MIME re-derived, never trusted from the client; a present-but-bad blob
+  is deleted best-effort) and writes the `novedu_images` row as the token
+  `oid`. Body `{ blobPath, mime, credit? }` (`credit` trimmed, clamped to 512
+  chars). `201` with `{ name, mimeType, byteSize, credit }`; a missing or
+  off-policy blob is `400`, a name race `409`, storage trouble `503`.
 - **`GET /api/reports?status=&reaction=&q=&mine=`** (`app/api/reports/route.ts`,
   teacher-only) — the `/reports` inbox's exact filters and defaults over
   `listReports`: `status` `open` (default) | `resolved` | `all`; `reaction` one
@@ -155,15 +181,16 @@ stored `origin` column, which is operator-only).
 - **Proxy exclusion, per route:** bearer routes must not hit the cookie gate
   (a CLI has no session), so each one gets its own **path-bounded** entry in
   the `proxy.ts` matcher (`api/me(?:/|$)`, `api/codes(?:/|$)`,
-  `api/reports(?:/|$)`) — never a blanket `/api` prefix. The files handlers ride
+  `api/reports(?:/|$)`, `api/images(?:/|$)`) — never a blanket `/api` prefix. The files handlers ride
   the pre-existing public `api/files` exclusion and self-gate. Adding a bearer endpoint = new route
   file gated by `requireBearerUser`/`requireBearerTeacher` + its own matcher
   exclusion + documentation here.
 - **The service seam:** the bearer write routes and the web server actions
   execute the identical policy pipeline through `lib/code-service.ts` /
-  `lib/file-service.ts` (plain server modules; auth never enters them — each
-  channel gates itself and passes the verified `userId` in). Listing needs no
-  service: `listCodes` / `listFiles` are already transport-agnostic, and every
+  `lib/file-service.ts` / `lib/image-service.ts` (plain server modules; auth
+  never enters them — each channel gates itself and passes the verified
+  `userId` in). Listing needs no
+  service: `listCodes` / `listFiles` / `listImages` are already transport-agnostic, and every
   `reports` operation is likewise a bare `lib/report-store.ts` call (the added
   `getReportById` plus the existing `listReports` / `setReportsResolved`) — no
   service layer, auth never enters the store.
@@ -176,8 +203,9 @@ stored `origin` column, which is operator-only).
   deployments of this teaching repo. Requested scope:
   `api://<client-id>/cli.access` (msal-node adds the OIDC scopes itself).
 - **Management commands** (`cli/src/commands/codes.ts`, `files.ts`,
-  `reports.ts`; shared plumbing in `cli/src/api.ts`): `codes create/list`,
-  `files upload/list`, `reports list/show/resolve` — thin flag→request mappers
+  `images.ts`, `reports.ts`; shared plumbing in `cli/src/api.ts`):
+  `codes create/list`, `files upload/list`, `images upload/list`,
+  `reports list/show/resolve` — thin flag→request mappers
   over the routes above, **JSON-only** output: success bodies pretty-printed on
   **stdout** (exit 0), every failure — auth, network, or the server's
   `{ message }`/`{ errors }` verbatim — as JSON on **stderr** (exit 1); both
@@ -185,6 +213,17 @@ stored `origin` column, which is operator-only).
   `--file <path>` or stdin; `list` defaults to only-mine (`--all` widens, UI
   parity). No client-side pre-validation — the server runs the identical
   pipeline; offline checking stays the `validate` command's job.
+- **The `images` group** (`cli/src/commands/images.ts`) drives the three
+  `/api/images` routes. `images upload <name> --file <path> [--credit <text>]`
+  runs the 3-step flow client-side: bearer `POST /api/images/<name>` for the
+  slot, a **raw `PUT` of the bytes to the SAS `uploadUrl`** (no bearer header —
+  the SAS is the auth; `Content-Type` = the MIME derived from the file
+  extension via the shared `imageMimeFromExtension`, the one client-side
+  check because the SAS pins it), then bearer `POST …/confirm` whose body is
+  the command's stdout. `--file` is **required** (binary — no stdin);
+  whichever step fails, exactly one JSON error lands on stderr (exit 1) and
+  later steps are skipped. `images list [--search <q>] [--all]` mirrors
+  `files list`. Create-only like the route: no overwrite, no delete (web-only).
 - **The `reports` group** (`cli/src/commands/reports.ts`) drives the three
   `/api/reports` routes for the report-triage loop
   (`reports list` → `reports show <id>` → fix the activity YAML →
@@ -226,8 +265,11 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   groups, overage) through the REAL `jwtVerify`.
 - **Route unit tests** (`app/api/codes/route.unit.test.ts`,
   `app/api/files/route.unit.test.ts`, the PUT cases in
-  `app/api/files/[name]/route.unit.test.ts`, and the three reports routes —
-  `app/api/reports/route.unit.test.ts`,
+  `app/api/files/[name]/route.unit.test.ts`, the three images routes —
+  `app/api/images/route.unit.test.ts`,
+  `app/api/images/[name]/route.unit.test.ts`,
+  `app/api/images/[name]/confirm/route.unit.test.ts` — and the three reports
+  routes — `app/api/reports/route.unit.test.ts`,
   `app/api/reports/[id]/route.unit.test.ts`,
   `app/api/reports/resolve/route.unit.test.ts`) keep the auth gate REAL the same
   way (local JWKS, minted tokens) and mock the services/stores: the 401/403
@@ -241,7 +283,8 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   gitignored `e2e/.auth/` (once, not per run — the server caches the JWKS
   after the first bearer request); `playwright.config.ts` injects
   `API_AUTH_JWKS_PATH` into the dev-server env; `e2e/api-me.spec.ts`,
-  `e2e/api-codes.spec.ts` and `e2e/api-reports.spec.ts` exercise the routes over
+  `e2e/api-codes.spec.ts`, `e2e/api-images.spec.ts` and `e2e/api-reports.spec.ts`
+  exercise the routes over
   HTTP with an empty cookie state, which also proves the proxy-matcher
   exclusions (a regression turns the expected 401 into a sign-in redirect); the
   @live-db `e2e/api-management.live.spec.ts` runs the full file-upsert → list →
@@ -257,4 +300,7 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   `codes`/`files` command tests pin the flag→request mapping, stdin/--file
   reading, and the stdout/stderr JSON split; `cli/src/commands/reports.unit.test.ts`
   does the same for `reports list/show/resolve` (the defaults, `--all` →
-  `mine=0`, the multi-id resolve body, and the exit codes).
+  `mine=0`, the multi-id resolve body, and the exit codes), and
+  `cli/src/commands/images.unit.test.ts` pins the 3-step upload order (raw SAS
+  PUT with the pinned content type and NO bearer header), the short-circuit on
+  each step's failure, and the extension→MIME rejection with zero fetches.

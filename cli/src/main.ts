@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { registerCodes } from "./commands/codes";
 import { registerFiles } from "./commands/files";
+import { registerImages } from "./commands/images";
 import { registerLogin } from "./commands/login";
 import { registerLogout } from "./commands/logout";
 import { registerReports } from "./commands/reports";
@@ -33,6 +34,7 @@ registerLogout(program);
 registerWhoami(program);
 registerCodes(program);
 registerFiles(program);
+registerImages(program);
 registerReports(program);
 
 program.parseAsync().catch((err) => {
