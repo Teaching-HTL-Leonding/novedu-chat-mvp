@@ -162,12 +162,14 @@ export const QuizYamlSchema = z.strictObject({
       id: "llm",
       description: "The single model + provider that grades and discusses answers.",
     }),
-  // Optional guidance for the per-question follow-up discussion chat.
+  // Optional guidance for the per-question follow-up discussion chat. A host text
+  // exactly like `instructions`: it may carry inline fragment/file markers, rendered
+  // against the quiz's own fragment_files/text_files.
   discussion: z
     .strictObject({
       instructions: z.string().min(1).meta({
         description:
-          "Optional guidance appended to the per-question follow-up discussion chat's system prompt.",
+          'Optional guidance appended to the per-question follow-up discussion chat\'s system prompt. When any fragment_files or text_files are declared, place fragments inline with {{fragment "alias.id" …}} and embed text files with {{file "alias"}} (escape a literal {{ as \\{{) — same rules as instructions.',
       }),
     })
     .optional()
@@ -177,10 +179,11 @@ export const QuizYamlSchema = z.strictObject({
     }),
   // Optional document-level prompt-fragment libraries (the tutor `prompt` shape
   // flattened to the root). WHICH fragments are used is expressed by inline
-  // `{{fragment "alias.id" …}}` markers inside the quiz-level `instructions` host
-  // text below; that rendered text is prepended to BOTH the grader prompt and the
-  // discussion chat's system prompt (see `lib/quiz-fetch.ts`). Per-question
-  // `evaluation` and `discussion.instructions` stay plain strings — no markers there.
+  // `{{fragment "alias.id" …}}` markers inside the quiz's two host texts — the
+  // quiz-level `instructions` below (rendered text prepended to BOTH the grader
+  // prompt and the discussion chat's system prompt, see `lib/quiz-fetch.ts`) and
+  // `discussion.instructions` above. Per-question `evaluation` stays a plain
+  // string — no markers there.
   fragment_files: z.array(FragmentFileRefSchema).default([]).meta({
     description: "Optional fragment libraries this quiz pulls shared prompt fragments from.",
   }),

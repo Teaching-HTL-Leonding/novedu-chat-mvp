@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FetchResponse } from "./fetcher";
-import { assembleFragmentPrompt } from "./load";
+import { assembleFragmentPrompt, assembleFragmentPrompts } from "./load";
 import type { FragmentBlock } from "./schemas";
 import { fixtureResponse, LIB_A_URL, LIB_A_YAML } from "./test-fixtures";
 
@@ -242,5 +242,86 @@ describe("assembleFragmentPrompt — same text file placed twice with different 
     );
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.prompt).toBe("L1\nL2\n===\nL4\nL5");
+  });
+});
+
+describe("assembleFragmentPrompts — several host texts, one shared block", () => {
+  it("renders each host text against ONE fetch pass, prompts index-aligned", async () => {
+    const seen: string[] = [];
+    const result = await assembleFragmentPrompts(
+      block({
+        fragment_files: [{ id: "lib_a", url: LIB_A_URL }],
+        text_files: [{ id: "course", url: COURSE_URL }],
+      }),
+      BASE_URL,
+      fetcherFor(
+        { [LIB_A_URL]: fixtureResponse(LIB_A_YAML), [COURSE_URL]: fixtureResponse(COURSE_BODY) },
+        seen,
+      ),
+      {},
+      ['{{fragment "lib_a.safety_frag"}}', 'Discuss with care.\n{{file "course" from=1 to=1}}', ""],
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.prompts).toHaveLength(3);
+    expect(result.prompts[0]).toContain("LAST-MARKER");
+    expect(result.prompts[1]).toBe("Discuss with care.\nL1");
+    expect(result.prompts[2]).toBe("");
+    // Each declared file was fetched exactly ONCE, not once per host text.
+    expect(seen.filter((u) => u === LIB_A_URL)).toHaveLength(1);
+    expect(seen.filter((u) => u === COURSE_URL)).toHaveLength(1);
+  });
+
+  it("collects errors ACROSS hosts and fails the whole call (fail closed)", async () => {
+    const result = await assembleFragmentPrompts(
+      block({ text_files: [{ id: "course", url: COURSE_URL }] }),
+      BASE_URL,
+      fetcherFor({ [COURSE_URL]: fixtureResponse(COURSE_BODY) }),
+      {},
+      // Host 1 is fine; hosts 2 + 3 each reference an undeclared alias.
+      ['{{file "course"}}', '{{file "missing"}}', '{{file "also_missing"}}'],
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // Both broken hosts surface their own error in the ONE failing result.
+    expect(result.errors.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("a library used only by the SECOND host is not flagged unused (union check)", async () => {
+    const result = await assembleFragmentPrompts(
+      block({ fragment_files: [{ id: "lib_a", url: LIB_A_URL }] }),
+      BASE_URL,
+      fetcherFor({ [LIB_A_URL]: fixtureResponse(LIB_A_YAML) }),
+      {},
+      ["no markers here", '{{fragment "lib_a.safety_frag"}}'],
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.warnings.map((w) => w.code)).not.toContain("UNUSED_FRAGMENT_FILE");
+    }
+  });
+
+  it("parse failure in ANY host fails the whole call", async () => {
+    const result = await assembleFragmentPrompts(
+      block({ text_files: [{ id: "course", url: COURSE_URL }] }),
+      BASE_URL,
+      fetcherFor({ [COURSE_URL]: fixtureResponse(COURSE_BODY) }),
+      {},
+      ['{{file "course"}}', "broken {{"],
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it("returns ALL host texts byte-verbatim when NEITHER list is declared (never compiled)", async () => {
+    const hosts = ["plain with a literal {{ inside", '{{fragment "lib_a.safety_frag"}}'];
+    const result = await assembleFragmentPrompts(
+      block(),
+      BASE_URL,
+      fetcherFor({}), // any fetch would throw — proves zero network
+      {},
+      hosts,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.prompts).toEqual(hosts);
   });
 });

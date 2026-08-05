@@ -31,7 +31,7 @@ Fragments aren't a tutor feature. A tutor, a quiz, a writing activity, and a cod
 
 Where `fragment_files:` goes depends on the kind. A tutor declares it inside its `prompt:` section. A quiz, writing, or coding activity declares it at the top level of the file, next to `id` and `name`.
 
-The instructions text that holds the markers also depends on the kind: a tutor's `tutor_instructions`, a writing or coding activity's `instructions`, and a quiz's own top-level `instructions`. A quiz's `instructions` field is special: that text applies both to how answers are graded and to the follow-up discussion chat, so a persona or safety rule you place there shapes grading and conversation alike. It is a separate field from `discussion.instructions`.
+The instructions text that holds the markers also depends on the kind: a tutor's `tutor_instructions`, a writing or coding activity's `instructions`, and for a quiz two fields, its top-level `instructions` and its `discussion.instructions`. A quiz's `instructions` field is special: that text applies both to how answers are graded and to the follow-up discussion chat, so a persona or safety rule you place there shapes grading and conversation alike. `discussion.instructions` steers only the discussion chat and takes the same markers; the per-question `evaluation` texts stay plain.
 
 ## Placing a fragment with a marker
 

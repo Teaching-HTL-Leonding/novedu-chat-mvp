@@ -446,3 +446,113 @@ questions:
     expect(serialized).not.toContain("quizFiles");
   });
 });
+
+describe("loadQuiz — discussion.instructions as a second host text", () => {
+  it("renders discussion.instructions markers against the SAME fragment block", async () => {
+    state.bodies = {
+      [QUIZ_URL]: quizYaml(`fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+instructions: |
+  {{fragment "lib.safety"}}
+discussion:
+  instructions: |
+    {{fragment "lib.lang" language="French"}}`),
+      [LIB_URL]: LIB_YAML,
+    };
+    const result = await loadQuiz(QUIZ_URL);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.quiz.instructionsPreamble).toContain("SAFETY-MARKER");
+      expect(result.quiz.discussionInstructions).toContain("LANG-MARKER respond in French.");
+      // Each host renders independently — no cross-bleed between the two.
+      expect(result.quiz.discussionInstructions).not.toContain("SAFETY-MARKER");
+    }
+  });
+
+  it("fails the whole load when a discussion.instructions marker is broken", async () => {
+    state.bodies = {
+      [QUIZ_URL]: quizYaml(`fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+discussion:
+  instructions: |
+    {{fragment "missing.frag"}}`),
+      [LIB_URL]: LIB_YAML,
+    };
+    const result = await loadQuiz(QUIZ_URL);
+    expect(result).toEqual({
+      ok: false,
+      message: "This quiz's prompt fragments could not be loaded.",
+    });
+  });
+
+  it("keeps discussion.instructions byte-verbatim on a plain quiz (no lists declared)", async () => {
+    state.bodies = {
+      [QUIZ_URL]: quizYaml(`discussion:
+  instructions: "A literal {{fragment \\"a.b\\"}} stays put."`),
+    };
+    const result = await loadQuiz(QUIZ_URL);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.quiz.discussionInstructions).toBe('A literal {{fragment "a.b"}} stays put.');
+    }
+  });
+
+  it("collapses a whitespace-only rendered discussion guidance back to undefined", async () => {
+    // A fragment whose content is blank renders to nothing but the surrounding
+    // newlines — that must read as "no discussion guidance", not an empty string.
+    state.bodies = {
+      [QUIZ_URL]: quizYaml(`fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+discussion:
+  instructions: |
+    {{fragment "lib.blank"}}`),
+      [LIB_URL]: `${LIB_YAML}  - id: blank
+    version: 1
+    content: "   "
+`,
+    };
+    const result = await loadQuiz(QUIZ_URL);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.quiz.discussionInstructions).toBeUndefined();
+  });
+
+  it("ignores an INCLUDED chapter's broken discussion.instructions at runtime", async () => {
+    // Deliberate asymmetry: `resolveInclude` renders only the chapter's `instructions`
+    // (the compound quiz governs the discussion), so a chapter marker the AUTHORING gate
+    // rejects (`checkInclude`) must NOT fail a runtime compound load. Pins the leniency
+    // so a future change to `resolveInclude` cannot silently break live compound quizzes.
+    const introBrokenDiscussion = `
+id: intro
+llm:
+  model: chapter-model
+fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+instructions: |
+  {{fragment "lib.safety"}}
+discussion:
+  instructions: |
+    {{fragment "lib.does-not-exist"}}
+questions:
+  - id: q1
+    question: "Intro Q1?"
+    evaluation: "intro grade 1"
+`;
+    state.bodies = {
+      [QUIZ_URL]: compoundYaml(),
+      [INTRO_URL]: introBrokenDiscussion,
+      [LIB_URL]: LIB_YAML,
+      [LOOPS_URL]: LOOPS_QUIZ,
+    };
+    const result = await loadQuiz(QUIZ_URL);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The chapter's `instructions` preamble still travels with its questions.
+    expect(result.quiz.questions.find((q) => q.id === "intro/q1")?.sourcePreamble).toContain(
+      "SAFETY-MARKER",
+    );
+  });
+});

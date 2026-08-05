@@ -17,7 +17,7 @@
 // runtime `parseQuiz` (`lib/quiz-yaml.ts`) is unchanged and separate.
 
 import {
-  assembleFragmentPrompt,
+  assembleFragmentPrompts,
   error,
   type Fetcher,
   type LoadOptions,
@@ -254,12 +254,14 @@ async function checkInclude(
   // The included quiz's own fragment-block authoring gate, relative to ITS url —
   // its `instructions` preamble travels with its questions at runtime, so it must
   // assemble cleanly (thorough by default, exactly like the root's gate below).
-  const assembled = await assembleFragmentPrompt(
+  // Its `discussion.instructions` is checked too: it is ignored by the compound
+  // quiz, but the chapter file must stay usable as a quiz of its own.
+  const assembled = await assembleFragmentPrompts(
     { fragment_files: valid.data.fragment_files, text_files: valid.data.text_files },
     includeUrl,
     fetchImpl,
     { allowedSchemes: opts.allowedSchemes, validateLibraries: opts.validateLibraries ?? true },
-    valid.data.instructions ?? "",
+    [valid.data.instructions ?? "", valid.data.discussion?.instructions ?? ""],
   );
   if (!assembled.ok) {
     return {
@@ -298,14 +300,15 @@ export async function loadAndCheckQuiz(
   if (!checked.ok) return checked;
 
   // The fragment block's authoring gate: fetch + placement checks + a host-template
-  // render dry-run over the quiz `instructions` (authoring default: `validateLibraries:
-  // true`). The `instructions` host text carries the inline `{{fragment}}` markers.
-  const assembled = await assembleFragmentPrompt(
+  // render dry-run over the quiz's TWO host texts — `instructions` and
+  // `discussion.instructions` (authoring default: `validateLibraries: true`). Both may
+  // carry inline `{{fragment}}`/`{{file}}` markers; a bad marker in either blocks the save.
+  const assembled = await assembleFragmentPrompts(
     { fragment_files: valid.data.fragment_files, text_files: valid.data.text_files },
     url,
     fetchImpl,
     { allowedSchemes: opts.allowedSchemes, validateLibraries: opts.validateLibraries ?? true },
-    valid.data.instructions ?? "",
+    [valid.data.instructions ?? "", valid.data.discussion?.instructions ?? ""],
   );
   const warnings = [...checked.warnings, ...assembled.warnings];
   if (!assembled.ok) return { ok: false, errors: assembled.errors, warnings };

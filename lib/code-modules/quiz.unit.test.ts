@@ -156,19 +156,17 @@ describe("quizModule.runtime.buildRequestContext", () => {
 });
 
 describe("quizModule discussion instructions — compound quizzes", () => {
-  it("prepends the compound preamble + each DISTINCT source preamble once, in include order", async () => {
+  it("uses ONLY the compound file's instructions — chapter sourcePreambles are grading-only", async () => {
     loadQuiz.mockResolvedValue({
       ok: true,
       quiz: {
         model: "gemma-4",
         provider: "SCCH",
         instructionsPreamble: "COMPOUND-PREAMBLE shared rules.",
-        // Question order IS include order; intro's preamble appears on two
-        // questions but must be prepended only once.
+        discussionInstructions: "COMPOUND-DISCUSSION guidance.",
         questions: [
           { id: "own", question: "Q", evaluation: "E" },
           { id: "intro/q1", question: "Q", evaluation: "E", sourcePreamble: "INTRO-PREAMBLE." },
-          { id: "intro/q2", question: "Q", evaluation: "E", sourcePreamble: "INTRO-PREAMBLE." },
           { id: "loops/q1", question: "Q", evaluation: "E", sourcePreamble: "LOOPS-PREAMBLE." },
         ],
       },
@@ -178,17 +176,16 @@ describe("quizModule discussion instructions — compound quizzes", () => {
     if (!result?.ok) return;
     const ctx = result.context as unknown as { get(k: string): unknown };
     const instr = ctx.get("quiz-discussion-instructions") as string;
-    // Order: compound → intro → loops → the default frame.
+    // Compound preamble → the default frame → the compound's discussion guidance.
     const compoundAt = instr.indexOf("COMPOUND-PREAMBLE");
-    const introAt = instr.indexOf("INTRO-PREAMBLE");
-    const loopsAt = instr.indexOf("LOOPS-PREAMBLE");
     const frameAt = instr.indexOf("single quiz question");
+    const discussionAt = instr.indexOf("COMPOUND-DISCUSSION");
     expect(compoundAt).toBeGreaterThanOrEqual(0);
-    expect(compoundAt).toBeLessThan(introAt);
-    expect(introAt).toBeLessThan(loopsAt);
-    expect(loopsAt).toBeLessThan(frameAt);
-    // Distinct: the duplicated intro preamble appears exactly once.
-    expect(instr.match(/INTRO-PREAMBLE/g)).toHaveLength(1);
+    expect(compoundAt).toBeLessThan(frameAt);
+    expect(frameAt).toBeLessThan(discussionAt);
+    // The chapters' preambles must NOT leak into the discussion prompt.
+    expect(instr).not.toContain("INTRO-PREAMBLE");
+    expect(instr).not.toContain("LOOPS-PREAMBLE");
   });
 });
 

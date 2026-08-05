@@ -213,6 +213,11 @@ already gives the assistant full context (the question, the expected answer, the
 student's answer, and the verdict), so this is only extra steering. Omit it to use
 a sensible default.
 
+Like the top-level `instructions`, this is a **host text**: when the quiz declares
+`fragment_files:` or `text_files:` (below), you can place `{{fragment "alias.id" …}}`
+and `{{file "alias"}}` markers here too — same rules, including escaping a literal
+`{{` as `\{{`. Without those declarations the text is used exactly as written.
+
 ### `instructions`, `fragment_files` and `text_files` (reusable prompt pieces)
 
 Optional. A quiz may pull in **prompt fragments** — the same reusable, parameterized
@@ -237,10 +242,11 @@ instructions: |
 This top-level `instructions` is rendered **once** and **prepended to BOTH** the
 private grading prompt and the follow-up discussion chat — so a shared safety or
 persona rule applies to how the model grades **and** how it discusses. It is **not**
-the same field as `discussion.instructions`, which stays discussion-only. Your
-per-question `evaluation` blocks stay **plain text** (markers go only in the top-level
-`instructions`); the rendered `instructions` comes first, your text follows. Omit both
-fields when the quiz uses no shared prompt.
+the same field as `discussion.instructions`, which stays discussion-only (and may
+carry markers too, see above). Your per-question `evaluation` blocks stay **plain
+text** (markers go in the two host texts, never in `evaluation`); the rendered
+`instructions` comes first, your text follows. Omit both fields when the quiz uses
+no shared prompt.
 
 The full mechanics — fragment libraries, `input_schema`, defaults, the `{{fragment …}}`
 marker syntax, and `text_files` + the `{{file "alias" from= to=}}` marker (whole file or
@@ -334,11 +340,14 @@ How it works:
   `alias/question-id` (e.g. `intro/capital-australia`), so chapters can't collide
   and you can tell them apart. That is why an own question id may not contain `/`.
 - **The compound quiz's own settings rule.** Its `llm`, `anonymous`, `shuffle`,
-  `question_count`, `title`/`description`, and `discussion` govern every question,
-  imported ones included; the same settings inside a referenced file are
-  **ignored**. The one thing that travels with an imported question is its source
-  quiz's top-level `instructions:` text — so a question is graded with the same
-  shared guidance in its chapter quiz and in the final quiz.
+  `question_count`, `title`/`description`, `instructions`, and `discussion` govern
+  every question, imported ones included; the same settings inside a referenced
+  file are **ignored**. The one thing that travels with an imported question is its
+  source quiz's top-level `instructions:` text, and it applies to **grading only** —
+  so a question is graded with the same shared guidance in its chapter quiz and in
+  the final quiz. The follow-up **discussion chat** always follows the final quiz's
+  own `instructions` and `discussion.instructions`; put any guidance discussions
+  need there (fragments make it easy to share it with the chapters).
 - **One level deep.** A referenced quiz must not declare `quiz_files` itself —
   includes do not nest.
 - **Never a silently shorter exam.** If a referenced file is missing or broken,

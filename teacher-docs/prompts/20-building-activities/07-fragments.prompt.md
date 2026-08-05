@@ -22,9 +22,9 @@ Cover:
   at the first dot. Passing values through the marker (text, true/false, a list). The
   same fragment can be placed more than once with different values.
 - Which text is the "instructions" for each kind: a tutor's `tutor_instructions`, a
-  writing or coding activity's `instructions`, and a quiz's own top-level
-  `instructions` (a new optional field; introduce it here as where a quiz's markers
-  live).
+  writing or coding activity's `instructions`, and a quiz's two optional fields, the
+  top-level `instructions` and `discussion.instructions` (introduce them here as
+  where a quiz's markers live).
 - What a library file looks like: the file's `id` plus a list of fragments, each with
   an `id`, an optional `version`, optional declared inputs, and the `content` text.
 - Writing the content as a template: insert a value, loop over a list, switch text on
@@ -66,9 +66,10 @@ Get right (text files):
   activity. If the file cannot be fetched, the activity refuses to start.
 
 Get right:
-- The quiz case is special: a quiz's markers live in a top-level `instructions` field,
-  and that text applies to BOTH the grading of answers and the follow-up discussion
-  chat. It is separate from `discussion.instructions`.
+- The quiz case is special: a quiz's markers may live in two fields. The top-level
+  `instructions` applies to BOTH the grading of answers and the follow-up discussion
+  chat; `discussion.instructions` steers only the discussion chat and takes the same
+  markers. Per-question `evaluation` stays plain text.
 - There is no `priority` and no separate `fragments:` list any more; order is simply
   where you place the marker in the text. If an older activity still has them, it is
   the old format. Do not describe priority ordering.

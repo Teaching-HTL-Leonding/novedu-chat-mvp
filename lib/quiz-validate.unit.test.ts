@@ -649,3 +649,62 @@ questions:
     }
   });
 });
+
+describe("loadAndCheckQuiz — discussion.instructions as a second host text", () => {
+  const withDiscussion = (discussionInstructions: string) => `
+id: q
+llm:
+  model: m
+fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+discussion:
+  instructions: |
+${discussionInstructions}
+questions:
+  - id: a
+    question: "Q?"
+    evaluation: "grade"
+`;
+
+  it("accepts valid markers inside discussion.instructions", async () => {
+    const quiz = withDiscussion('    {{fragment "lib.lang" language="German"}}');
+    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
+    expect(result.ok).toBe(true);
+  });
+
+  it("blocks the save on a broken marker in discussion.instructions", async () => {
+    const quiz = withDiscussion('    {{fragment "lib.nope"}}');
+    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("FRAGMENT_NOT_FOUND");
+  });
+
+  it("QUIZ_INCLUDE_UNREADABLE wraps a broken discussion.instructions inside an included quiz", async () => {
+    const brokenInclude = `
+id: intro
+llm:
+  model: m
+fragment_files:
+  - id: lib
+    url: ${LIB_URL}
+discussion:
+  instructions: |
+    {{fragment "lib.nope"}}
+questions:
+  - id: q1
+    question: "Q1?"
+    evaluation: "grade"
+`;
+    const quiz = compound("  - id: intro\n    url: ./intro.yaml");
+    const result = await loadAndCheckQuiz(
+      BASE,
+      fetcherMap({ [BASE]: quiz, [INTRO_URL]: brokenInclude, [LIB_URL]: LIB_YAML }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]?.code).toBe("QUIZ_INCLUDE_UNREADABLE");
+      expect(result.errors[0]?.fileAlias).toBe("intro");
+    }
+  });
+});

@@ -2,13 +2,14 @@
 // block every activity kind embeds. The fetcher is injected so this entire pipeline
 // is unit-testable without touching the network.
 //
-// `assembleFragmentPrompt` is the ONE orchestrator: given a `{ fragment_files,
+// `assembleFragmentPrompts` is the ONE orchestrator: given a `{ fragment_files,
 // text_files }` block, a base URL, a `Fetcher`, and `LoadOptions`, it fetches every
 // declared library and text file in parallel, (optionally) runs the thorough
-// whole-library check,
-// checks consistency, and assembles — returning the finished prompt text or the
-// structured errors. Tutor, quiz, writing, and coding each call it with a single
-// block; none of them touch Handlebars or `COMPILE_OPTIONS` themselves.
+// whole-library check, checks consistency, and assembles each host text — returning
+// the finished prompt texts or the structured errors. `assembleFragmentPrompt` is its
+// single-host wrapper. Tutor, writing, and coding render their one host text; the quiz
+// renders two (`instructions` + `discussion.instructions`) in one pass; none of them
+// touch Handlebars or `COMPILE_OPTIONS` themselves.
 
 import { resolveRelativeUrl } from "@/lib/relative-url";
 import { renderFragmentContent } from "./assemble";
@@ -137,6 +138,11 @@ export type AssembleResult =
   | { ok: true; prompt: string; warnings: ValidationWarning[] }
   | { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] };
 
+/** The result of rendering SEVERAL host texts against one shared fragment block. */
+export type AssembleManyResult =
+  | { ok: true; prompts: string[]; warnings: ValidationWarning[] }
+  | { ok: false; errors: ValidationError[]; warnings: ValidationWarning[] };
+
 /**
  * Render an activity's host text (`tutor_instructions` / `instructions`) into a
  * finished prompt string, inserting each inline `{{fragment "alias.id" …}}` marker in
@@ -163,14 +169,38 @@ export async function assembleFragmentPrompt(
   opts: LoadOptions = {},
   hostText = "",
 ): Promise<AssembleResult> {
+  const result = await assembleFragmentPrompts(block, baseUrl, fetchImpl, opts, [hostText]);
+  if (!result.ok) return result;
+  // One host in ⇒ one prompt out; the `?? ""` only satisfies noUncheckedIndexedAccess.
+  return { ok: true, prompt: result.prompts[0] ?? "", warnings: result.warnings };
+}
+
+/**
+ * The multi-host variant of {@link assembleFragmentPrompt}: renders SEVERAL host texts
+ * of the SAME document (e.g. a quiz's `instructions` and `discussion.instructions`)
+ * against the document's one fragment block in a single pass — every fragment library
+ * and text file is fetched and checked ONCE, placements are parsed per host but
+ * consistency-checked in ONE pass over their union (so a library placed in any host
+ * counts as used), and each host renders on its own. Any error fails the whole call
+ * (fail closed); `prompts` is index-aligned with `hostTexts`. The template-semantics
+ * opt-in applies identically: with neither list declared, ALL host texts return
+ * byte-verbatim.
+ */
+export async function assembleFragmentPrompts(
+  block: FragmentBlock,
+  baseUrl: string,
+  fetchImpl: Fetcher,
+  opts: LoadOptions = {},
+  hostTexts: string[] = [],
+): Promise<AssembleManyResult> {
   const warnings: ValidationWarning[] = [];
   const allowedSchemes = opts.allowedSchemes ?? DEFAULT_ALLOWED_SCHEMES;
 
-  // Neither libraries NOR text files declared ⇒ the host text is NOT a template. Return
-  // it verbatim, without a single fetch and without ever handing it to Handlebars — a
+  // Neither libraries NOR text files declared ⇒ the host texts are NOT templates. Return
+  // them verbatim, without a single fetch and without ever handing them to Handlebars — a
   // literal `{{` in plain prose stays untouched.
   if (block.fragment_files.length === 0 && block.text_files.length === 0) {
-    return { ok: true, prompt: hostText, warnings };
+    return { ok: true, prompts: [...hostTexts], warnings };
   }
 
   // --- fragment files + text files (fetched in parallel; surface every failing file at once) ---
@@ -295,18 +325,24 @@ export async function assembleFragmentPrompt(
     }
   }
 
-  // --- extract inline placements from the host text ---
-  const parsed = parseHostPlacements(hostText);
-  if (parsed.errors.length > 0) {
-    // A template that does not even parse (malformed marker, unescaped `{{`) or a
-    // marker with a non-literal reference blocks the build — nothing to render.
-    return { ok: false, errors: [...libraryErrors, ...parsed.errors], warnings };
+  // --- extract inline placements from every host text ---
+  // A template that does not even parse (malformed marker, unescaped `{{`) or a
+  // marker with a non-literal reference blocks the build — nothing to render. Parse
+  // errors are collected across ALL hosts so each surfaces its own marker problems
+  // in one pass.
+  const parsedHosts = hostTexts.map((hostText) => parseHostPlacements(hostText));
+  const parseErrors = parsedHosts.flatMap((parsed) => parsed.errors);
+  if (parseErrors.length > 0) {
+    return { ok: false, errors: [...libraryErrors, ...parseErrors], warnings };
   }
 
   // --- placement consistency (resolution + per-placement variable / range validation) ---
+  // ONE check over the UNION of all hosts' placements: the structural passes (duplicate
+  // aliases, duplicate fragment ids) must not repeat per host, and a library placed in
+  // ANY host counts as used (`checkPlacements` is order-independent by contract).
   // `strict` (authoring / CLI) makes a `to` beyond EOF an error too; at runtime it clamps.
   const placementCheck = checkPlacements(
-    parsed.placements,
+    parsedHosts.flatMap((parsed) => parsed.placements),
     fragmentFilesByAlias,
     block.fragment_files,
     textFilesByAlias,
@@ -317,41 +353,45 @@ export async function assembleFragmentPrompt(
   const preRenderErrors = [...libraryErrors, ...placementCheck.errors];
   if (preRenderErrors.length > 0) return { ok: false, errors: preRenderErrors, warnings };
 
-  // --- render the host template (strict Handlebars backstop) ---
+  // --- render each host template (strict Handlebars backstop) ---
   // The fragment resolver shares `resolveAndMerge` with the checker above, so what renders
   // is exactly what was validated. Any resolve error or null content (which should never
   // happen post-check) throws and fails closed as ASSEMBLY_ERROR — so even an argument
   // the AST couldn't see (defense in depth) can never render unvalidated. The file
   // resolver splices the PREFETCHED body verbatim (no range) or via `sliceLines` (with
   // `to` clamped to EOF); file content is NEVER compiled as Handlebars.
-  try {
-    const prompt = renderHostTemplate(
-      hostText,
-      (ref, args) => {
-        const resolved = resolveAndMerge(ref, args, fragmentFilesByAlias);
-        if (resolved.content === null || resolved.errors.length > 0) {
-          throw new Error(`Fragment "${ref}" could not be resolved`);
-        }
-        return renderFragmentContent(resolved.content, resolved.variables);
-      },
-      (alias, from, to) => {
-        const body = textFilesByAlias.get(alias);
-        // Defense in depth: a placement the checker passed is always prefetched; a miss
-        // here can only be a bug, so throw to fail closed (becomes ASSEMBLY_ERROR).
-        if (body === undefined) throw new Error(`Text file "${alias}" was not prefetched`);
-        if (from === undefined && to === undefined) return body; // verbatim, byte-identical
-        return sliceLines(body, from, to);
-      },
-    );
-    return { ok: true, prompt, warnings };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return {
-      ok: false,
-      errors: [error("ASSEMBLY_ERROR", `Failed to render system prompt: ${message}`)],
-      warnings,
-    };
+  // Like every stage above, render errors are collected across ALL hosts before failing.
+  const prompts: string[] = [];
+  const renderErrors: ValidationError[] = [];
+  for (const hostText of hostTexts) {
+    try {
+      prompts.push(
+        renderHostTemplate(
+          hostText,
+          (ref, args) => {
+            const resolved = resolveAndMerge(ref, args, fragmentFilesByAlias);
+            if (resolved.content === null || resolved.errors.length > 0) {
+              throw new Error(`Fragment "${ref}" could not be resolved`);
+            }
+            return renderFragmentContent(resolved.content, resolved.variables);
+          },
+          (alias, from, to) => {
+            const body = textFilesByAlias.get(alias);
+            // Defense in depth: a placement the checker passed is always prefetched; a miss
+            // here can only be a bug, so throw to fail closed (becomes ASSEMBLY_ERROR).
+            if (body === undefined) throw new Error(`Text file "${alias}" was not prefetched`);
+            if (from === undefined && to === undefined) return body; // verbatim, byte-identical
+            return sliceLines(body, from, to);
+          },
+        ),
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      renderErrors.push(error("ASSEMBLY_ERROR", `Failed to render system prompt: ${message}`));
+    }
   }
+  if (renderErrors.length > 0) return { ok: false, errors: renderErrors, warnings };
+  return { ok: true, prompts, warnings };
 }
 
 /**

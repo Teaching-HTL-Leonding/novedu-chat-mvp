@@ -77,7 +77,13 @@ export interface Quiz {
    * stateless, no server-side attempt enforcement.
    */
   questionCount?: number;
-  /** Optional guidance appended to the discussion chat's system prompt. */
+  /**
+   * Optional guidance appended to the discussion chat's system prompt
+   * (`discussion.instructions`). A host text exactly like `instructions`: when the
+   * quiz declares `fragment_files`/`text_files` it may carry inline
+   * `{{fragment}}`/`{{file}}` markers. `parseQuiz` leaves it as authored; `loadQuiz`
+   * replaces it with the rendered result (both host texts render in one pass).
+   */
   discussionInstructions?: string;
   /**
    * The quiz-level host text (server-only, transient): the preamble prepended to both
