@@ -146,7 +146,7 @@
         "instructions": {
           "type": "string",
           "minLength": 1,
-          "description": "Optional guidance appended to the per-question follow-up discussion chat's system prompt."
+          "description": "Optional guidance appended to the per-question follow-up discussion chat's system prompt. When any fragment_files or text_files are declared, place fragments inline with {{fragment \"alias.id\" …}} and embed text files with {{file \"alias\"}} (escape a literal {{ as \\{{) — same rules as instructions."
         }
       },
       "required": [

@@ -411,18 +411,21 @@ in-page discussion live in `app/[code]/_quiz/`.
   grader and the discussion) with inline `{{fragment "alias.id" …}}` and `{{file
   "alias"}}` markers, plus the **`fragment_files:`** and **`text_files:`** declarations
   the markers draw from (the shared prompt-fragment core — `docs/prompt-fragments.md`).
-- **The rendered `instructions` feed BOTH grader and discussion.** The top-level
-  `instructions` host text is rendered **once** at load (`loadQuiz`,
-  `lib/quiz-fetch.ts`, `validateLibraries: false` — the hot path;
-  `assembleFragmentPrompt` expands each inline `{{fragment}}` marker in textual
-  order) into a server-only `Quiz.instructionsPreamble` (a fetch / consistency /
-  assembly failure fails the load closed). `buildGradingPrompt`
-  (`lib/quiz-actions.ts`) prepends it ahead of the fixed grading frame + the
-  question's `evaluation`, and `buildDiscussionInstructions`
-  (`lib/code-modules/quiz.ts`) prepends it ahead of the discussion system prompt —
-  so a shared safety/persona fragment governs both. `evaluation` stays a plain
-  per-question string and `discussion.instructions` a plain string;
-  `instructionsPreamble` is server-only and `toPublicQuiz` never copies it.
+- **The rendered `instructions` feed BOTH grader and discussion.** The quiz has
+  TWO host texts — the top-level `instructions` and `discussion.instructions` —
+  rendered **once** at load in a single pass (`loadQuiz`, `lib/quiz-fetch.ts`,
+  `validateLibraries: false` — the hot path; `assembleFragmentPrompts` fetches the
+  document's fragment/text files once and expands each host's inline
+  `{{fragment}}`/`{{file}}` markers in textual order) into the server-only
+  `Quiz.instructionsPreamble` and the rendered `Quiz.discussionInstructions` (a
+  fetch / consistency / assembly failure in EITHER host fails the load closed).
+  `buildGradingPrompt` (`lib/quiz-actions.ts`) prepends the preamble ahead of the
+  fixed grading frame + the question's `evaluation`, and
+  `buildDiscussionInstructions` (`lib/code-modules/quiz.ts`) prepends it ahead of
+  the discussion system prompt — so a shared safety/persona fragment governs both.
+  `evaluation` stays a plain per-question string — no markers there;
+  `instructionsPreamble` is server-only and `toPublicQuiz` never copies it (nor
+  `discussionInstructions`).
 - **Compound quizzes (`quiz_files`) — LIVE includes.** A quiz may reference other
   quiz files (each entry an alias `id` + http(s)-or-relative `url`, mirroring
   `fragment_files` refs; the alias additionally may not contain `/`) and pull in
@@ -436,15 +439,17 @@ in-page discussion live in `app/[code]/_quiz/`.
     (`QUIZ_QUESTION_ID_RESERVED_SLASH`) so an own id can never masquerade as an
     imported one. Aliases have their own namespace (they never appear in `{{…}}`
     markers) and must be unique (`DUPLICATE_QUIZ_INCLUDE_ALIAS`).
-  - **Per-source preamble travels:** the source quiz's rendered `instructions`
-    preamble (resolved with the SOURCE's own `fragment_files`/`text_files`,
-    relative to the SOURCE url) lands on each imported question as the server-only
-    `QuizQuestion.sourcePreamble`, so a question grades identically in its chapter
-    quiz and in the compound. `buildGradingPrompt` inserts it between the
-    compound's `instructionsPreamble` and the grading frame;
-    `buildDiscussionInstructions` prepends each DISTINCT source preamble once, in
-    include order (the discussion prompt is per-code, not per-question).
-    `toPublicQuiz` strips it exactly like `evaluation`.
+  - **Per-source preamble travels — for GRADING only:** the source quiz's rendered
+    `instructions` preamble (resolved with the SOURCE's own
+    `fragment_files`/`text_files`, relative to the SOURCE url) lands on each
+    imported question as the server-only `QuizQuestion.sourcePreamble`, so a
+    question grades identically in its chapter quiz and in the compound.
+    `buildGradingPrompt` inserts it between the compound's `instructionsPreamble`
+    and the grading frame. The DISCUSSION prompt uses only the compound file's own
+    `instructions` + `discussion.instructions` (`buildDiscussionInstructions`) —
+    chapter preambles never enter it, exactly like every other include-level field
+    the compound governs. `toPublicQuiz` strips `sourcePreamble` exactly like
+    `evaluation`.
   - **Materialization:** each imported question's `imageInput` becomes the
     source-effective boolean (`question override ?? source quiz-level
     llm.imageInput`), and a relative `image.src` is absolutized against the SOURCE

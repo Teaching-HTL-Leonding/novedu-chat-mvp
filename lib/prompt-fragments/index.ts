@@ -2,7 +2,7 @@
 // handling (fragment-content rendering, the isolated host-template engine, placement
 // checking) and the load/validate infrastructure every activity kind (tutor, quiz,
 // writing, coding) consumes. No consumer imports `handlebars` or re-implements any of
-// it; they all go through `assembleFragmentPrompt`.
+// it; they all go through `assembleFragmentPrompt(s)`.
 
 export { COMPILE_OPTIONS, renderFragmentContent } from "./assemble";
 export { EMPTY_FRAGMENT_BLOCK } from "./block";
@@ -38,8 +38,10 @@ export {
   renderHostTemplate,
 } from "./host-template";
 export {
+  type AssembleManyResult,
   type AssembleResult,
   assembleFragmentPrompt,
+  assembleFragmentPrompts,
   type LoadOptions,
   loadAndCheckFragmentFile,
   loadYaml,

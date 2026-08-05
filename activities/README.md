@@ -21,8 +21,9 @@ reusable, parameterized prompt piece — a persona, a safety policy, a set of gr
 rules — written once in a **fragment library**, declared in an activity under
 `fragment_files:`, and placed with inline `{{fragment "alias.id" …}}` markers in the
 activity's own host text: the tutor's `tutor_instructions`, writing's and coding's
-`instructions`, and a quiz's optional top-level `instructions` (rendered once and
-prepended to **both** the grader prompt and the discussion chat). A fragment renders
+`instructions`, and a quiz's two optional host texts — the top-level `instructions`
+(rendered once and prepended to **both** the grader prompt and the discussion chat)
+and `discussion.instructions` (discussion-only). A fragment renders
 exactly where its marker sits — there is no ordering or priority concept. The fragment
 format, `input_schema`, defaults, and marker syntax are fully documented once in the
 tutor guide, [`tutors/README.md`](tutors/README.md); the other guides link back to

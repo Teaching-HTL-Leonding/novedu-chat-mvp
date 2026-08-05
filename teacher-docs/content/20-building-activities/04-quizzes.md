@@ -122,6 +122,8 @@ Photo answers are **off by default**. A few things to know:
 
 After seeing their feedback, a student can open a short discussion chat about that question. Novedu already gives the assistant full context (the question, the expected answer, the student's answer, and the verdict), so the optional `discussion.instructions` field is only extra steering: tone, language, and didactic style. Omit it to use a sensible default.
 
+When the quiz declares fragment libraries (see "Reusing fragments in a quiz" below), you can place `{{fragment …}}` and `{{file …}}` markers inside `discussion.instructions` too, exactly as in the top-level `instructions` field.
+
 ## Reusing fragments in a quiz
 
 A quiz can place shared prompt fragments, the same reusable pieces tutors use (a persona, a safety policy, a language rule). Declare the library under a top-level `fragment_files:`, then place each fragment with a marker in a top-level `instructions:` field:
@@ -135,7 +137,7 @@ instructions: |
   {{fragment "general_fragments.teenager_safety"}}
 ```
 
-A quiz's `instructions` field reaches further than the instructions of other activities: it applies **both** to how answers are graded **and** to the follow-up discussion chat, so a shared safety or persona rule shapes grading and conversation alike. It is a separate field from `discussion.instructions`, which only steers the discussion. The chapter on reusable fragments covers writing a library and supplying values.
+A quiz's `instructions` field reaches further than the instructions of other activities: it applies **both** to how answers are graded **and** to the follow-up discussion chat, so a shared safety or persona rule shapes grading and conversation alike. It is a separate field from `discussion.instructions`, which only steers the discussion and takes the same markers. Your per-question `evaluation` texts stay plain, markers don't work there. The chapter on reusable fragments covers writing a library and supplying values.
 
 ## One final quiz over several chapters
 
@@ -158,7 +160,9 @@ quiz_files:
 
 How the pieces fit together:
 
-- **The final quiz's own settings rule.** The model, the anonymity setting, `shuffle`, `question_count`, and the discussion steering all come from the final quiz's file; the same settings inside a chapter quiz are ignored here. The one thing that travels with a chapter's questions is the chapter quiz's top-level `instructions:` text, so an imported question is graded with the same guidance in both places.
+- **The final quiz's own settings rule.** The model, the anonymity setting, `shuffle`, `question_count`, and `discussion.instructions` all come from the final quiz's file, and the same settings inside a chapter quiz are ignored here. A chapter's own `discussion.instructions` never applies in the final quiz.
+- **Grading instructions add up.** The chapter quiz's top-level `instructions:` text is the one thing that travels with its questions, and it applies to grading only. An imported question is graded with the final quiz's `instructions` first and the chapter's on top, so both are in force at once. That is worth keeping in mind while you write them: a language, persona, or safety rule in the final quiz's `instructions` also governs every imported question, so avoid putting a rule there that contradicts a chapter's.
+- **The follow-up discussion follows the final quiz alone.** No chapter text reaches the discussion chat, so put any guidance the discussions need into the final quiz's own `instructions` and `discussion.instructions`.
 - **Aliases name the source.** Pick a short alias per file (no dot, no slash, each one unique). In the statistics an imported question shows up as `alias/question-id`, for example `intro/capital-australia`, so you can tell the chapters apart.
 - **Addresses work like elsewhere.** The `url` is a web address or a relative path, resolved next to the final quiz's own file. That also works between files hosted in the app: host the chapter quizzes and the final quiz together and refer to them with `./file-name` style paths.
 - **One level only.** A referenced quiz must not declare `quiz_files` itself; a quiz of quizzes of quizzes is not supported.

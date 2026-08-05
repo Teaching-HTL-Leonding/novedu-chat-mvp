@@ -81,13 +81,18 @@ engine, placement checking, fragment schemas, and the load pipeline. Extracted o
 `lib/prompt-fragments/index.ts` barrel; consumers import from `@/lib/prompt-fragments`
 and never re-implement any of it.
 
-- **`assembleFragmentPrompt(block, baseUrl, fetchImpl, opts, hostText)`** (`load.ts`) —
+- **`assembleFragmentPrompts(block, baseUrl, fetchImpl, opts, hostTexts)`** (`load.ts`) —
   **THE orchestrator** and the sole owner of the fetch → validate → check → render
-  pipeline. Given a document-level `{ fragment_files, text_files }` block, a base URL, a `Fetcher`,
-  `LoadOptions`, and the activity's **host text**, it:
+  pipeline, taking one or more **host texts** of the SAME document (fetched/checked
+  once, each host rendered on its own; errors collected across hosts fail the whole
+  call, `prompts` index-aligned with `hostTexts`).
+  **`assembleFragmentPrompt(block, baseUrl, fetchImpl, opts, hostText)`** is its
+  single-host wrapper — what most kinds call. Given a document-level
+  `{ fragment_files, text_files }` block, a base URL, a `Fetcher`, `LoadOptions`, and
+  the host text(s), it:
   1. **Template-semantics opt-in:** if the block declares **neither `fragment_files`
-     NOR `text_files`**, it returns `hostText` **byte-verbatim** — never compiled, no
-     fetch. This protects plain activities and the authoring tutors whose prose contains
+     NOR `text_files`**, it returns every host text **byte-verbatim** — never compiled,
+     no fetch. This protects plain activities and the authoring tutors whose prose contains
      sample markers as teaching content.
   2. Otherwise fetches every declared library **and every declared text file in
      parallel** (one combined `Promise.all`; relative refs resolved against `baseUrl` via
@@ -96,16 +101,18 @@ and never re-implement any of it.
      with the 200 KB (UTF-8 bytes) cap enforced immediately after fetch (`TEXT_FILE_TOO_LARGE`).
      Every failing file is collected and surfaced at once (fail closed). Optionally runs
      the thorough whole-library check (`validateLibraries`).
-  3. `parseHostPlacements(hostText)` → `checkPlacements(...)` (the placement checker
-     receives both the fragment side and the text-file side + the strictness flag).
-  4. Renders the host template under strict Handlebars — the `fragment` resolver
+  3. `parseHostPlacements(hostText)` per host, then ONE `checkPlacements(...)` over the
+     union of all hosts' placements (the placement checker receives both the fragment
+     side and the text-file side + the strictness flag; a library placed in any host
+     counts as used).
+  4. Renders each host template under strict Handlebars — the `fragment` resolver
      renders each fragment, the `file` resolver splices each prefetched body (verbatim,
      or `sliceLines` with `to` clamped to EOF); any throw is the fail-closed
      `ASSEMBLY_ERROR` backstop.
-  Returns `{ ok: true, prompt, warnings }` or `{ ok: false, errors, warnings }`. Every
-  kind funnels through this ONE pipeline — the tutor passes `tutor_instructions`,
-  writing/coding pass `instructions`, and quiz passes its optional top-level
-  `instructions`.
+  Returns `{ ok: true, prompts, warnings }` or `{ ok: false, errors, warnings }` (the
+  wrapper: `prompt`). Every kind funnels through this ONE pipeline — the tutor passes
+  `tutor_instructions`, writing/coding pass `instructions`, and quiz passes its two
+  optional host texts, the top-level `instructions` + `discussion.instructions`.
 - **`host-template.ts`** — owns the **isolated `Handlebars.create()` instance** with
   the `fragment` + `array` + `file` helpers, so those helpers exist ONLY when rendering
   host text. Exposes `parseHostPlacements(text)` (a `Handlebars.parse()` AST walk
@@ -245,11 +252,13 @@ All four kinds resolve one document-level block + their host text through the sh
   the host text and gets the complete prompt back. `lib/tutors/` holds only
   tutor-specific code (`TutorSchema`, the wrapper, `sample.ts`).
 - **Quiz** (`docs/codes.md`) — resolved **once** at load (`loadQuiz`,
-  `lib/quiz-fetch.ts`): the optional top-level **`instructions`** host text is rendered
-  into the server-only **`Quiz.instructionsPreamble`**, prepended to BOTH the grader
-  prompt and the discussion chat's system prompt. `toPublicQuiz` never copies it. (No
-  markers in per-question `evaluation` or `discussion.instructions`.) Note that the
-  quiz's **`quiz_files`** live includes are NOT a fragment mechanism: questions are
+  `lib/quiz-fetch.ts`): the quiz's TWO host texts render in one
+  `assembleFragmentPrompts` pass — the optional top-level **`instructions`** into the
+  server-only **`Quiz.instructionsPreamble`** (prepended to BOTH the grader prompt and
+  the discussion chat's system prompt) and the optional **`discussion.instructions`**
+  into the rendered `Quiz.discussionInstructions` (discussion-only). `toPublicQuiz`
+  copies neither. (No markers in per-question `evaluation`.) Note that the quiz's
+  **`quiz_files`** live includes are NOT a fragment mechanism: questions are
   structured data, not prompt text — the quiz loader merely calls the existing
   `assembleFragmentPrompt` seam once more per included quiz (with the SOURCE's own
   block, relative to the SOURCE url) to render that source's `instructions` into the

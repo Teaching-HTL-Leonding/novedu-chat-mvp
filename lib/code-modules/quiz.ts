@@ -20,11 +20,12 @@ import type { CodeModuleDef } from "./registry";
 // repeated here. The teacher detail is the shared conversation stats ("Discussions").
 //
 // A compound quiz's imported questions each carry their SOURCE quiz's preamble
-// (`sourcePreamble`). The discussion prompt is built per-CODE (the runtime route does
-// not know which question a thread discusses), so each DISTINCT source preamble is
-// prepended once, in include order, between the compound preamble and the frame.
-// Accepted trade-off: the prompt grows with the number of chapters; chapter
-// instructions are typically short.
+// (`sourcePreamble`), but that applies to GRADING only (`buildGradingPrompt`): the
+// discussion prompt uses ONLY the compound file's own instructions — consistent with
+// every other include-level field (`llm`, `anonymous`, `shuffle`, ...), which the
+// compound file governs too. Mixing all chapters' preambles into one prompt would put
+// conflicting persona/language rules in force at once; the question/answer/verdict the
+// discussion needs are recalled from the thread's seed messages regardless.
 function buildDiscussionInstructions(quiz: Quiz): string {
   const base =
     "You are helping a student understand a single quiz question. The conversation " +
@@ -34,14 +35,8 @@ function buildDiscussionInstructions(quiz: Quiz): string {
   const frame = quiz.discussionInstructions
     ? `${base}\n\n${quiz.discussionInstructions.trim()}`
     : base;
-  // Question order IS include order (loadQuiz merges includes in declared order).
-  const sourcePreambles: string[] = [];
-  for (const question of quiz.questions) {
-    const preamble = question.sourcePreamble;
-    if (preamble && !sourcePreambles.includes(preamble)) sourcePreambles.push(preamble);
-  }
-  // Compound preamble → distinct source preambles → frame; empty pieces drop out.
-  return [quiz.instructionsPreamble, ...sourcePreambles, frame].filter(Boolean).join("\n\n");
+  // Compound preamble → frame; empty pieces drop out.
+  return [quiz.instructionsPreamble, frame].filter(Boolean).join("\n\n");
 }
 
 export const quizModule: CodeModuleDef = {

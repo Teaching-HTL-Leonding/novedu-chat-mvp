@@ -2,6 +2,7 @@ import { loadAppHostedYaml } from "@/lib/app-hosted-yaml";
 import type { ImageRef } from "@/lib/image-ref";
 import {
   assembleFragmentPrompt,
+  assembleFragmentPrompts,
   EMPTY_FRAGMENT_BLOCK,
   type Fetcher,
   resolveFragmentUrl,
@@ -9,10 +10,12 @@ import {
 import { parseQuiz, type Quiz, type QuizFileRef, type QuizQuestion } from "@/lib/quiz-yaml";
 
 // Loads + leniently parses the quiz YAML behind a (verified) quiz URL, via the shared
-// `loadAppHostedYaml`, renders the quiz-level `instructions` host text (with any
-// inline `{{fragment}}` markers resolved in place) into the server-only
-// `Quiz.instructionsPreamble` — prepended to BOTH the grader prompt and the discussion
-// chat — and resolves any `quiz_files` LIVE INCLUDES: every question of every
+// `loadAppHostedYaml`, renders the quiz's TWO host texts (with any inline
+// `{{fragment}}` / `{{file}}` markers resolved in place) against the document's ONE
+// fragment block — `instructions` into the server-only `Quiz.instructionsPreamble`
+// (prepended to BOTH the grader prompt and the discussion chat) and
+// `discussion.instructions` back into `Quiz.discussionInstructions` (the discussion
+// chat only) — and resolves any `quiz_files` LIVE INCLUDES: every question of every
 // referenced quiz file is pulled fresh, namespaced `"<alias>/<id>"`, and merged into
 // the pool, so downstream a compound quiz is just a `Quiz` with more questions.
 // The single definition shared by the `/q` page, `submitAnswer`, `startDiscussion`,
@@ -32,8 +35,9 @@ type IncludeResult = { ok: true; questions: QuizQuestion[] } | { ok: false; mess
 /**
  * Renders ONE quiz document's `instructions` host text against its OWN fragment
  * block, relative to its OWN URL (`validateLibraries: false` — the hot path). Used
- * for the root quiz and for each included source quiz, so an imported question's
- * `sourcePreamble` is exactly what its chapter quiz would grade with.
+ * for each included source quiz, so an imported question's `sourcePreamble` is
+ * exactly what its chapter quiz would grade with. (The root document renders its
+ * two host texts — `instructions` + `discussion.instructions` — in `loadQuiz`.)
  */
 async function renderPreamble(
   quiz: Quiz,
@@ -153,14 +157,23 @@ async function resolveInclude(
 
 export function loadQuiz(quizUrl: string): Promise<LoadQuizResult> {
   return loadAppHostedYaml(quizUrl, parseQuiz, "quiz", async (parsed, { url, fetcher }) => {
-    // Runtime hot path: `validateLibraries: false`. The `instructions` host text is the
-    // template; with no fragment_files it returns verbatim, off the network entirely.
-    const resolved = await renderPreamble(parsed.quiz, url, fetcher);
+    // Runtime hot path: `validateLibraries: false`. The quiz has TWO host texts —
+    // `instructions` and `discussion.instructions` — rendered in ONE pass against the
+    // document's fragment block (libraries/text files fetched once); with no
+    // fragment_files both return verbatim, off the network entirely.
+    const resolved = await assembleFragmentPrompts(
+      parsed.quiz.fragmentBlock,
+      url,
+      fetcher,
+      { validateLibraries: false },
+      [parsed.quiz.instructions ?? "", parsed.quiz.discussionInstructions ?? ""],
+    );
     if (!resolved.ok) {
       // Fail closed — same hard-error path as an unfetchable activity YAML (so a
       // safety fragment that fails to resolve blocks the quiz rather than vanishing).
       return { ok: false, message: "This quiz's prompt fragments could not be loaded." };
     }
+    const [instructionsPreamble = "", discussionInstructions = ""] = resolved.prompts;
 
     // Resolve the live includes (in parallel, merged in DECLARED order). Duplicate
     // aliases are an authoring error — fail closed rather than guessing.
@@ -196,7 +209,11 @@ export function loadQuiz(quizUrl: string): Promise<LoadQuizResult> {
         ...parsed.quiz,
         fragmentBlock: EMPTY_FRAGMENT_BLOCK,
         quizFiles: [],
-        instructionsPreamble: resolved.preamble,
+        instructionsPreamble: instructionsPreamble.trimEnd(),
+        // The rendered discussion guidance replaces the authored host text — empty
+        // (e.g. no `discussion:` block) collapses back to "none".
+        discussionInstructions:
+          discussionInstructions.trim() !== "" ? discussionInstructions.trimEnd() : undefined,
         questions,
       },
     };
