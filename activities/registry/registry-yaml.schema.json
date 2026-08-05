@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/registry/registry-yaml.schema.json",
+  "$comment": "Generated from lib/registry-schema.ts by `npm run generate:schemas` — do not edit by hand.",
+  "title": "Activity Registry YAML",
+  "description": "Schema for an activity registry: the hand-written file listing a publication's activities under stable keys, reconciled by `novedu codes sync`.",
+  "type": "object",
+  "properties": {
+    "base-url": {
+      "description": "Base URL each entry's `file` is resolved against. Must end with a slash. Only needed when an entry uses `file`.",
+      "type": "string"
+    },
+    "activities": {
+      "type": "object",
+      "properties": {
+        "quizzes": {
+          "description": "Activities minted as `quiz` codes, keyed by the name your material references.",
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/registryEntry"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tutors": {
+          "description": "Activities minted as `tutor` codes, keyed by the name your material references.",
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/registryEntry"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "writing": {
+          "description": "Activities minted as `writing` codes, keyed by the name your material references.",
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/registryEntry"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "coding": {
+          "description": "Activities minted as `coding` codes, keyed by the name your material references.",
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/registryEntry"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "description": "The activities, grouped by the kind of code each one is minted as."
+    }
+  },
+  "required": [
+    "activities"
+  ],
+  "additionalProperties": {},
+  "$defs": {
+    "registryEntry": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "description": "Path to the activity YAML, resolved against `base-url`. Give exactly one of `file` or `url`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "description": "Absolute http(s) URL of the activity YAML. Give exactly one of `file` or `url`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "start": {
+          "description": "Start of the code's validity window, ISO 8601 with an explicit offset or Z (e.g. 2026-09-01T08:00:00+02:00), whole seconds.",
+          "type": "string"
+        },
+        "end": {
+          "description": "End of the code's validity window, same format as `start`, and must be after it.",
+          "type": "string"
+        },
+        "note": {
+          "description": "Note shown in the codes list, at most 200 characters. No effect on behaviour.",
+          "type": "string",
+          "maxLength": 200
+        },
+        "llm": {
+          "description": "Per-code LLM override replacing the activity YAML's own `llm:`. Provider and model must be given together.",
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "enum": [
+                "SCCH",
+                "Azure Foundry"
+              ],
+              "description": "LLM provider override for this code. Required when `llm` is present."
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "description": "Model id (for Azure Foundry, the deployment name). Required when `llm` is present."
+            }
+          },
+          "required": [
+            "provider",
+            "model"
+          ],
+          "additionalProperties": {}
+        }
+      },
+      "additionalProperties": {},
+      "description": "One activity: where its YAML lives, plus the parameters its code is minted with."
+    }
+  }
+}

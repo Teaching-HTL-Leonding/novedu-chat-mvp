@@ -218,8 +218,16 @@ export async function acquireByDeviceCode(
  * The one call every API command makes: a silently-acquired access token for
  * the Authorization header. Throws NotSignedInError when interactive login is
  * required first.
+ *
+ * `NOVEDU_TOKEN` short-circuits the MSAL cache with a caller-supplied bearer
+ * token. It exists for TESTS and CI (the CLI integration suite runs the real
+ * binary against a fake API, with no browser to sign in) — the token is still
+ * validated by the server on every request, so this weakens nothing; it only
+ * removes the interactive step. Not a substitute for `login` in normal use.
  */
 export async function getAccessToken(): Promise<string> {
+  const override = process.env.NOVEDU_TOKEN?.trim();
+  if (override) return override;
   const result = await acquireSilent(buildPca());
   if (!result) throw new NotSignedInError();
   return result.accessToken;

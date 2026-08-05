@@ -9,6 +9,7 @@ related:
   - 10-yaml-for-teachers/01-why-yaml
   - 10-yaml-for-teachers/02-yaml-101
   - 10-yaml-for-teachers/04-cli-validation
+  - 30-sharing-activities/08-activity-registry
 generated: true
 ---
 
@@ -50,12 +51,18 @@ Copy the line exactly as it is, including the leading `#`. It is a comment, not 
 
 ## Which schema for which kind of activity
 
-There is one schema per kind of activity, and the line has to match the kind of file you are writing. With the wrong schema, the editor underlines fields that are perfectly valid, so if everything suddenly looks wrong, check the first line first.
+There is a separate schema for each kind of file, and the line has to match the kind you are writing. With the wrong schema, the editor underlines fields that are perfectly valid, so if everything suddenly looks wrong, check the first line first.
 
-For a tutor, or a library of fragments (the same schema covers both):
+For a tutor:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+```
+
+For a library of fragments. A fragment library is not a tutor and has its own schema, even though tutors are where you use fragments most:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/fragments/fragment-yaml.schema.json
 ```
 
 For a quiz:
@@ -74,6 +81,12 @@ For a coding activity:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
+```
+
+There is one more schema, for a file that is not an activity: the **activity registry**, the list of activities you keep next to a book or a course repository. If you write one, it takes this line:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/registry/registry-yaml.schema.json
 ```
 
 ## The editor helps, Novedu decides

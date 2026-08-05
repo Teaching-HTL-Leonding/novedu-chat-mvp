@@ -1,4 +1,4 @@
-// Regenerates the five activity JSON Schemas from their zod sources of truth.
+// Regenerates the six authoring JSON Schemas from their zod sources of truth.
 //
 //   npm run generate:schemas
 //
@@ -21,4 +21,4 @@ for (const entry of schemaRegistry) {
   console.log(`✓ ${entry.outPath}`);
 }
 
-console.log(`\nGenerated ${schemaRegistry.length} activity JSON Schemas.`);
+console.log(`\nGenerated ${schemaRegistry.length} authoring JSON Schemas.`);

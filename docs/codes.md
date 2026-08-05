@@ -240,6 +240,13 @@ tutor/quiz/writing, coding its little-coder connection config. The origin comes 
 first), then `TUTOR_CODE_ORIGIN` (fallback), then the request's forwarded/host headers
 (fine for dev); it is display-only.
 
+A publication that embeds MANY activities does not mint them one by one: an
+**activity registry** file lists every activity under a stable key and
+`novedu-cli codes sync` reconciles it with the server (reuse a matching code,
+mint what has none) into a committed key → code lock file — `docs/registry.md`.
+It is a pure client of `GET`/`POST /api/codes`; nothing in this document changes
+for it.
+
 **Editing** (`/codes/edit/[code]`, the SAME `CodeForm` in `mode="edit"` →
 `updateCodeAction` → `updateCode`) changes only the **note**, the
 **availability window**, and the **LLM override pair** (set or cleared as a

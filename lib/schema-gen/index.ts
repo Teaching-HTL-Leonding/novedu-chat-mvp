@@ -1,9 +1,10 @@
 // The single source that turns the zod authoring schemas into the JSON Schemas
 // teachers point their editors at. zod is the source of truth (`lib/tutors/schemas.ts`,
 // `lib/prompt-fragments/schemas.ts`, `lib/quiz-schema.ts`, `lib/writing-schema.ts`,
-// `lib/coding-schema.ts`); the teacher prose lives in inline `.meta({ description })`.
+// `lib/coding-schema.ts`, `lib/registry-schema.ts`); the teacher prose lives in inline
+// `.meta({ description })`.
 //
-// `npm run generate:schemas` (scripts/generate-activity-schemas.ts) writes the five
+// `npm run generate:schemas` (scripts/generate-activity-schemas.ts) writes the six
 // files below; the hermetic drift-guard test (`generated-schemas.unit.test.ts`)
 // deep-equals a fresh in-memory generation against the committed files, so an
 // edited zod schema committed WITHOUT regenerating fails CI. Nothing in `app/` or
@@ -14,6 +15,7 @@ import { z } from "zod";
 import { CodingYamlSchema } from "@/lib/coding-schema";
 import { FragmentFileSchema } from "@/lib/prompt-fragments";
 import { QuizYamlSchema } from "@/lib/quiz-schema";
+import { RegistryYamlSchema } from "@/lib/registry-schema";
 import { TutorSchema } from "@/lib/tutors/schemas";
 import { WritingYamlSchema } from "@/lib/writing-schema";
 
@@ -42,7 +44,10 @@ export interface SchemaRegistryEntry {
   sourceFile: string;
 }
 
-/** Every activity kind that generates a JSON Schema. One flat top-level type each. */
+/**
+ * Every YAML kind that generates a JSON Schema. One flat top-level type each. Most are
+ * activity kinds; `fragment` and `registry` are the cross-cutting exceptions.
+ */
 export const schemaRegistry: readonly SchemaRegistryEntry[] = [
   {
     kind: "tutor",
@@ -91,6 +96,16 @@ export const schemaRegistry: readonly SchemaRegistryEntry[] = [
     description:
       "Schema for a coding activity: an OpenAI-compatible coding endpoint an external coding agent (e.g. little-coder) points at.",
     sourceFile: "lib/coding-schema.ts",
+  },
+  {
+    kind: "registry",
+    root: RegistryYamlSchema,
+    outPath: "activities/registry/registry-yaml.schema.json",
+    id: `${RAW_BASE}/registry/registry-yaml.schema.json`,
+    title: "Activity Registry YAML",
+    description:
+      "Schema for an activity registry: the hand-written file listing a publication's activities under stable keys, reconciled by `novedu codes sync`.",
+    sourceFile: "lib/registry-schema.ts",
   },
 ] as const;
 

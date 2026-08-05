@@ -16,6 +16,14 @@ and referenced by a `# yaml-language-server:` modeline for editor IntelliSense:
 | [`coding/`](coding/README.md) | OpenAI-compatible coding endpoint | [coding/README.md](coding/README.md) |
 | [`fragments/`](fragments/README.md) | Reusable prompt-fragment libraries (cross-cutting) | [fragments/README.md](fragments/README.md) |
 
+One more folder holds an editor schema without being a module:
+[`registry/`](registry/registry-yaml.schema.json) carries
+`registry-yaml.schema.json` for the **activity registry** — the hand-written file a
+publication keeps in its own repo listing the activities it embeds, reconciled by
+`novedu-cli codes sync`. It is not an activity and has no authoring guide here; the
+format is documented in [`../docs/registry.md`](../docs/registry.md) and
+[`../cli/README.md`](../cli/README.md).
+
 **Prompt fragments are a cross-cutting capability of all four kinds.** A fragment is a
 reusable, parameterized prompt piece — a persona, a safety policy, a set of ground
 rules — written once in a **fragment library**, declared in an activity under

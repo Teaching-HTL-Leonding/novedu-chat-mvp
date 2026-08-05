@@ -79,6 +79,11 @@ git tag cli-v0.3.1
 git push origin cli-v0.3.1        # -> publish-cli.yml runs and publishes 0.3.1
 ```
 
+Release-worthy changes are not only `cli/` diffs: the CLI **bundles** the app's
+validators, and formats it owns — the activity registry consumed by
+`codes sync` (`docs/registry.md`) — live in the published binary too. A change to
+either reaches teachers only through a release.
+
 Versions are **forward-only**: npm rejects republishing an existing version, and
 moving a release tag is avoided. If a tagged publish fails before the registry
 accepts it (see below), retire that tag and roll forward to the next version

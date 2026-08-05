@@ -24,24 +24,35 @@ export function failJson(value: unknown): void {
  * network, non-2xx) it prints the JSON error to stderr per the contract —
  * server error bodies (`{ message }` — incl. the generic 401/403 — or
  * `{ errors }`) passed through VERBATIM — marks the process failed, and
- * returns `{ ok: false }`. On success it returns the parsed payload WITHOUT
- * printing, so multi-step commands (`images upload`) can consume intermediate
- * responses silently. No client-side pre-validation: the server runs the
- * identical pipeline; offline checking is the `validate` command's job.
+ * returns `{ ok: false, error }` with that same payload. On success it returns
+ * the parsed payload WITHOUT printing, so multi-step commands (`images upload`)
+ * can consume intermediate responses silently. No client-side pre-validation:
+ * the server runs the identical pipeline; offline checking is the `validate`
+ * command's job.
+ *
+ * `quiet` suppresses both the stderr print and the exit-code marking and hands
+ * the failure payload back instead — for commands that make MANY requests and
+ * report the outcome themselves (`codes sync`, where one entry's rejection must
+ * not abort the run).
  */
 export async function performApiRequest(options: {
   server?: string;
   path: string;
   method?: "GET" | "POST" | "PUT";
   body?: unknown;
-}): Promise<{ ok: true; payload: unknown } | { ok: false }> {
+  quiet?: boolean;
+}): Promise<{ ok: true; payload: unknown } | { ok: false; error: unknown }> {
+  const fail = (value: unknown): { ok: false; error: unknown } => {
+    if (!options.quiet) failJson(value);
+    return { ok: false, error: value };
+  };
+
   let token: string;
   try {
     token = await getAccessToken();
   } catch (error) {
     if (error instanceof NotSignedInError) {
-      failJson({ message: error.message });
-      return { ok: false };
+      return fail({ message: error.message });
     }
     throw error;
   }
@@ -58,10 +69,9 @@ export async function performApiRequest(options: {
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch (error) {
-    failJson({
+    return fail({
       message: `Could not reach ${server}: ${error instanceof Error ? error.message : error}`,
     });
-    return { ok: false };
   }
 
   let payload: unknown;
@@ -72,8 +82,7 @@ export async function performApiRequest(options: {
   }
 
   if (!response.ok) {
-    failJson(payload ?? { message: `${server} rejected the request: HTTP ${response.status}` });
-    return { ok: false };
+    return fail(payload ?? { message: `${server} rejected the request: HTTP ${response.status}` });
   }
   return { ok: true, payload };
 }

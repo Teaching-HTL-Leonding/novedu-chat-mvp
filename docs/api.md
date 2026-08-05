@@ -213,6 +213,16 @@ stored `origin` column, which is operator-only).
   `--file <path>` or stdin; `list` defaults to only-mine (`--all` widens, UI
   parity). No client-side pre-validation — the server runs the identical
   pipeline; offline checking stays the `validate` command's job.
+- **`codes sync <registry-file>`** is the ONE exception to the JSON-only output
+  rule: it reconciles a whole **activity registry** (`docs/registry.md`) in a
+  single run — one `GET /api/codes`, then a `POST /api/codes` per entry that has
+  no matching code — so it prints a per-entry report and keeps the JSON contract
+  behind `--json`. It adds no route and no server behavior: matching is entirely
+  client-side over the listing's `fileUrl` / `module` / window / `llm` fields.
+  Hard failures (invalid registry, no token, unreachable server, unwritable
+  lock) stay JSON on stderr with exit 1; a single entry's rejection is reported
+  in the run's report instead — `performApiRequest({ quiet: true })` hands the
+  failure payload back rather than printing it.
 - **The `images` group** (`cli/src/commands/images.ts`) drives the three
   `/api/images` routes. `images upload <name> --file <path> [--credit <text>]`
   runs the 3-step flow client-side: bearer `POST /api/images/<name>` for the
@@ -296,7 +306,12 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   the env var fails these specs — restart it with the var or let Playwright
   start its own.
 - **CLI unit tests** mock `@azure/msal-node` and `fetch`; the cache plugin is
-  tested against the real filesystem (permission modes included). The
+  tested against the real filesystem (permission modes included). `codes sync`
+  additionally has offline integration coverage against a fake `/api/codes` in
+  `test-fixtures/serve.mjs`, reached with the **test-only `NOVEDU_TOKEN`**
+  override in `cli/src/auth.ts` (checked before the MSAL cache — it only skips
+  the interactive login; the server still validates the token on every request).
+  See `docs/registry.md`. The
   `codes`/`files` command tests pin the flag→request mapping, stdin/--file
   reading, and the stdout/stderr JSON split; `cli/src/commands/reports.unit.test.ts`
   does the same for `reports list/show/resolve` (the defaults, `--all` →

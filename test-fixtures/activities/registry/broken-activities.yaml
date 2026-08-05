@@ -1,0 +1,16 @@
+# A deliberately INVALID activity registry (docs/registry.md) — fixture for the
+# CLI's `codes sync` integration test. Three distinct mistakes in one file:
+#   * `quizes` is not one of the four group names (a typo that would silently
+#     drop every entry under it),
+#   * `Welcome_Quiz` is not a valid registry key,
+#   * `file:` is used although the registry declares no `base-url`.
+# Keep it broken; the test asserts the reported paths.
+activities:
+  quizes:
+    typo-group:
+      url: https://example.com/quiz.yaml
+  quizzes:
+    Welcome_Quiz:
+      url: https://example.com/quiz.yaml
+    relative:
+      file: quizzes/test-quiz.yaml

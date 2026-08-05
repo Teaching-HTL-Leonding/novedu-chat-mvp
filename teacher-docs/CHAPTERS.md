@@ -60,6 +60,7 @@ _Turning an activity into a code and handing it to a class._
 | 05 | Deleting a code | ✎ `30-sharing-activities/05-deleting-codes.prompt.md` | `docs/codes.md`, `docs/usage-metering.md` (behavior: deletion removes stats) |
 | 06 | Special case: coding codes | ✎ `30-sharing-activities/06-coding-special-case.prompt.md` | `docs/coding.md` (behavior), `activities/coding/README.md` |
 | 07 | Student reports | ✎ `30-sharing-activities/07-student-reports.prompt.md` | `docs/reports.md` (behavior), `docs/codes.md` (anonymity) |
+| 08 | Many activities at once: the activity registry | ✎ `30-sharing-activities/08-activity-registry.prompt.md` | `docs/registry.md` (format + sync semantics), `cli/README.md` (`codes sync`) |
 
 > Scope reminder for every chapter: the "Where to look" entries are engineer
 > references. Document only teacher-facing behavior, not how the app works inside
