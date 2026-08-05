@@ -49,8 +49,17 @@ Read before touching: `lib/api-auth.ts`, `app/api/me/**`, `app/api/codes/**`, th
 
 - The CLI is a public client of the same app registration; tokens carry the `cli.access` scope and are validated per request by `lib/api-auth.ts` — see the security block.
 - Adding a bearer endpoint = route gated by `requireBearerUser`/`requireBearerTeacher` + its own path-bounded `proxy.ts` exclusion + a `docs/api.md` entry.
-- The `codes`/`files` CLI commands are JSON-only (success on stdout, failures — incl. the server's structured validation errors — on stderr, exit 1); the routes mirror the web lists' filter params with `mine` defaulting on.
-- Tests substitute only the signing key (`API_AUTH_JWKS_PATH`, non-production only); issuer/audience are never overridable.
+- The `codes`/`files` CLI commands are JSON-only (success on stdout, failures — incl. the server's structured validation errors — on stderr, exit 1); the routes mirror the web lists' filter params with `mine` defaulting on. The ONE exception is `codes sync` (`docs/registry.md`), which prints a per-entry report and keeps JSON behind `--json`; hard failures stay JSON on stderr.
+- Tests substitute only the signing key (`API_AUTH_JWKS_PATH`, non-production only); issuer/audience are never overridable. `NOVEDU_TOKEN` (client side, `cli/src/auth.ts`) skips the interactive login for tests/CI only — the server still validates every token.
+
+### Activity registry & `codes sync` → `docs/registry.md`
+
+Read before touching: `lib/registry-schema.ts`, `cli/src/registry.ts`, `cli/src/sync.ts`, the `sync` subcommand in `cli/src/commands/codes.ts`, or the fake `/api/codes` in `test-fixtures/serve.mjs`.
+
+- A hand-written registry in the CONSUMER repo lists activities under stable keys; `codes sync` reconciles it with the server and rewrites a committed `activity-codes` lock file the publication renders from offline. **No server-side change** — matching is client-side over `GET /api/codes`.
+- `lib/registry-schema.ts` owns the FORMAT (group names, key rules, entry fields) and is the zod root `lib/schema-gen` generates the editor JSON Schema from; `cli/src/registry.ts` owns the parsing STRATEGY (`activities` stays opaque to zod so the hand-written walk names the exact YAML path). Group names come from `GROUP_MODULES`, so the two cannot drift.
+- Match = URL + module + window (compared as instants) + llm pair; `note` is excluded. No match → mint. Existing codes are NEVER modified or deleted: changed parameters produce a new code and the old one is only reported as superseded.
+- A registry error aborts before any server call; one entry's mint failure never aborts the run, and the lock keeps that entry's previous code (exit 1 all the same).
 
 ### Codes → `docs/codes.md`
 

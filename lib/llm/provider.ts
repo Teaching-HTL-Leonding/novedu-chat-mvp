@@ -6,14 +6,19 @@ import { z } from "zod";
 // never appear as string literals anywhere else. Pure and client-safe (no I/O, no
 // server-only imports), so the studio GUI may import it later.
 
-export type LlmProvider = "SCCH" | "Azure Foundry";
+// The literals themselves, as a tuple, so schemas that need an *enum* (rather than
+// `providerSchema`, which carries a default) can be built from them without restating
+// the names — `lib/registry-schema.ts` is one such consumer.
+export const LLM_PROVIDERS = ["SCCH", "Azure Foundry"] as const;
+
+export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
 export const DEFAULT_PROVIDER: LlmProvider = "SCCH";
 
 // The `llm.provider` field of every activity YAML: optional, defaulting to SCCH,
 // so all existing YAML keeps its meaning without migration. The `.meta()` teacher
 // prose is emitted into every generated activity JSON Schema (all four `llm` blocks).
-export const providerSchema = z.enum(["SCCH", "Azure Foundry"]).default(DEFAULT_PROVIDER).meta({
+export const providerSchema = z.enum(LLM_PROVIDERS).default(DEFAULT_PROVIDER).meta({
   description:
     "The LLM provider serving the model. For Azure Foundry, model is the deployment name.",
 });

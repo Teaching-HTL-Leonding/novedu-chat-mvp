@@ -12,14 +12,21 @@ Cover:
 - The setup: install the Red Hat YAML extension in your editor, then add the schema
   modeline (the "# yaml-language-server: $schema=..." comment) at the top of the file;
   the editor loads the schema automatically.
-- Which schema for which kind: there is one schema per activity kind (tutor/fragment,
-  quiz, writing, coding). Quote the real modeline from an example file.
+- Which schema for which kind: there is a SEPARATE schema per kind — tutor, fragment
+  library, quiz, writing, coding — plus one for the activity registry. Quote the real
+  modeline from an example file.
 
 Get right:
 - The modeline is a specific comment on the first line; quote a real one from an
   example activity rather than paraphrasing.
 - Match the schema to the activity kind; the wrong one flags valid fields.
+- A fragment library has its OWN schema and does NOT share the tutor's. Pointing a
+  fragment file at the tutor schema underlines perfectly valid fields.
 - The extension is a one-time install; the schema is fetched over the network.
+- The activity registry (the file `codes sync` reads, covered in "Many activities at
+  once") has a schema too. Mention it briefly with its modeline; the registry itself
+  belongs to that chapter, so do not explain the format here.
 
 Look: the module READMEs' editor-support sections, the schema files, line 1 of the
-example activities, the Red Hat vscode-yaml extension page.
+example activities, docs/registry.md and cli/README.md for the registry modeline, the
+Red Hat vscode-yaml extension page.

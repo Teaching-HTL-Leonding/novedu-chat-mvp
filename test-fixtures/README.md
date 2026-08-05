@@ -15,6 +15,12 @@ layers genuinely need a real file/URL:
   serves this tree over HTTP as a second Playwright `webServer` (see
   `playwright.config.ts`), so specs run fully offline.
 
+`serve.mjs` additionally fakes `GET`/`POST /api/codes` (in-memory store,
+deterministic `synced0001…` codes, any bearer accepted) so the CLI's
+`codes sync` integration test can run end to end offline — see
+`docs/registry.md`. It is a test double, never a second implementation; anything
+policy-relevant belongs in `app/api/codes/route.ts` and its own tests.
+
 The `lib/tutors` unit tests need no files at all — their synthetic tutor/fragment
 fixtures live in-code in `lib/tutors/test-fixtures.ts`.
 
@@ -36,4 +42,7 @@ activities/
   quizzes/   test-quiz.yaml, broken-quiz.yaml
   writings/  test-writing.yaml [@live-llm], broken-writing.yaml
   coding/    test-coding.yaml, broken-coding.yaml
+  registry/  broken-activities.yaml  (an INVALID activity registry — the valid
+             one is written to a temp dir by the test, its base-url carries the
+             fixtures server's ephemeral port)
 ```

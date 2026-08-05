@@ -87,6 +87,7 @@ codes create  --module <tutor|quiz|writing|coding> --file <url>
               [--start <iso>] [--end <iso>] [--note <text>]
               [--llm-provider <p> --llm-model <m>]
 codes list    [--search <q>] [--module <m>] [--all]
+codes sync    <registry-file> [--lock <path>] [--dry-run] [--json]
 files upload  <name> [--kind <tutor|fragment|quiz|writing|coding>]
               (--file <path> | reads stdin)
 files list    [--search <q>] [--all]
@@ -103,6 +104,8 @@ images list   [--search <q>] [--all]
   shareable `url`. `--start`/`--end` must be ISO 8601 **with an explicit
   offset or `Z`** (e.g. `2026-07-07T08:00:00Z`); the
   `--llm-provider`/`--llm-model` override pair is both-or-nothing.
+- `codes sync <registry-file>` mints codes for a whole **course** at once — see
+  [Many activities at once](#many-activities-at-once-codes-sync) below.
 - `files upload <name>` is an **upsert**: creating a new file requires
   `--kind`; an existing file's kind is frozen at create time (a contradicting
   `--kind` fails with 409). The YAML comes from `--file <path>` or stdin.
@@ -149,6 +152,87 @@ image:
   src: sorting-diagram
   alt: Merge sort splitting an array
 ```
+
+## Many activities at once: `codes sync`
+
+A course with twenty quizzes should not be twenty `codes create` calls whose
+codes you paste into twenty files by hand. Instead, keep an **activity registry**
+next to the material: one hand-written YAML file listing every activity under a
+stable key, plus a **lock file** the CLI generates and you commit.
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/registry/registry-yaml.schema.json
+# ddp-activities.yaml — the registry (you write this)
+base-url: "https://raw.githubusercontent.com/acme/course/refs/heads/main/"
+
+activities:
+  quizzes:
+    welcome:
+      file: 0010-introduction/0010-welcome-quiz.yaml
+      note: "Creative Coding book: Welcome (0010)"
+    number-systems:
+      file: 0030-conditions/0050-number-systems-quiz.yaml
+      start: 2026-09-01T00:00:00+02:00
+      end: 2027-01-31T23:59:59+01:00
+  tutors:
+    sorting:
+      url: https://novedu.at/api/files/sorting-tutor
+```
+
+```bash
+npx @novedu/cli codes sync ddp-activities.yaml
+# ddp-activities.yaml: 3 entries
+#   reused    welcome         cu4afwoa23  https://novedu.at/cu4afwoa23
+#   minted    number-systems  hb34gpvahn  https://novedu.at/hb34gpvahn
+#   reused    sorting         nlc90ezf5z  https://novedu.at/nlc90ezf5z
+#
+# 2 reused, 1 minted, 0 failed
+# Lock file: ddp-activities.lock.yaml
+```
+
+```yaml
+# ddp-activities.lock.yaml — generated; commit it, do not edit it
+activity-codes:
+  number-systems: hb34gpvahn
+  sorting: nlc90ezf5z
+  welcome: cu4afwoa23
+```
+
+- **Groups decide the module:** `quizzes`, `tutors`, `writing`, `coding`. Each
+  entry gives either `file` (relative to `base-url`, which must end in `/`) or
+  an absolute `url`, plus any of `start`/`end` (ISO 8601 **with an offset or
+  `Z`**, whole seconds), `note`, and an `llm: {provider, model}` override.
+- **Keys are yours and must be unique across all groups** — lowercase letters,
+  digits and hyphens. Your material references the key; the lock file maps it to
+  the code.
+- **Re-runs are safe.** An entry whose activity, window and model override match
+  an existing code of yours **reuses** that code; only entries without a match
+  are minted. So `codes sync` after every edit is the normal workflow, and the
+  first run against already-minted codes should report all-reused.
+- **Changing a window or override mints a NEW code.** The old one is not touched
+  (it keeps working) and is reported as superseded — delete it in the web app
+  when the class has moved on. Changing only the `note` never forks a code.
+- `--dry-run` shows what would happen without minting or writing anything;
+  `--json` prints the machine-readable report; `--lock <path>` puts the lock file
+  somewhere else.
+- One broken activity does not stop the run: it is reported as `failed`, the
+  other entries still sync, the lock keeps that entry's previous code, and the
+  command exits 1.
+- **A key keeps its code.** Two keys may point at the same activity on purpose
+  (one quiz linked from two chapters, each with its own statistics); they get one
+  code each, and neither moves on a later run.
+- Unknown extra keys are ignored, so you can annotate entries freely — but an
+  entry with nothing under it is an error, not an annotation, because that is
+  what a mis-indented entry looks like.
+- The `# yaml-language-server:` line on top is optional: it gives editors with
+  YAML support field completion, hover help and a warning on a misspelled group
+  name. `codes sync` is still the authority — it checks things a schema cannot,
+  such as key uniqueness and whether `end` is after `start`.
+
+Publications read the lock file offline. In a Quarto book, for example, add
+`metadata-files: [ddp-activities.lock.yaml]` to `_quarto.yml` and let the
+shortcode look the key up in `activity-codes` — the book then renders without
+ever calling the app.
 
 ## Triaging student reports (teacher account required)
 
