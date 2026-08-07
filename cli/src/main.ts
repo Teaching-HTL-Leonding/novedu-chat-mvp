@@ -6,6 +6,7 @@ import { registerFiles } from "./commands/files";
 import { registerImages } from "./commands/images";
 import { registerLogin } from "./commands/login";
 import { registerLogout } from "./commands/logout";
+import { registerPrompts } from "./commands/prompts";
 import { registerReports } from "./commands/reports";
 import { registerValidate } from "./commands/validate";
 import { registerWhoami } from "./commands/whoami";
@@ -19,8 +20,9 @@ const { version } = JSON.parse(
 ) as { version: string };
 
 // Entry point for the `novedu-cli` CLI. Each feature registers itself as a
-// subcommand: offline validation (`validate`), auth (`login`/`logout`/`whoami`),
-// and the JSON management commands (`codes`, `files`).
+// subcommand: offline validation (`validate`) and prompt inspection (`prompts`),
+// auth (`login`/`logout`/`whoami`), and the JSON management commands
+// (`codes`, `files`).
 const program = new Command();
 
 program
@@ -29,6 +31,7 @@ program
   .version(version);
 
 registerValidate(program);
+registerPrompts(program);
 registerLogin(program);
 registerLogout(program);
 registerWhoami(program);

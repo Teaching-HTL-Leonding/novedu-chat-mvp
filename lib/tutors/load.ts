@@ -46,6 +46,7 @@ export async function loadAndBuildTutorPrompt(
   // don't have to re-parse the YAML to learn which model to drive.
   return {
     ok: true,
+    id: tutor.id,
     prompt: assembled.prompt,
     model: tutor.llm.model,
     provider: tutor.llm.provider,

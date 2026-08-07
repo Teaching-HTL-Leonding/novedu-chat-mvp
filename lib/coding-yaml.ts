@@ -20,6 +20,12 @@ import { readFragmentBlock } from "./prompt-fragments/block";
 
 /** A parsed coding activity. `instructions` and `model` are server-side only. */
 export interface Coding {
+  /**
+   * The activity's own `id`. Never student-facing — it names the activity in teacher
+   * tooling (the `@novedu/cli prompts` dump). Falls back to `"coding"` when this lenient
+   * read finds none (the strict authoring schema requires one).
+   */
+  id: string;
   /** Student-facing display name. Optional — the surfaces fall back to a default. */
   title?: string;
   /** The model id that answers. SERVER-ONLY — the proxy pins it. */
@@ -98,6 +104,7 @@ export function parseCoding(content: string): CodingParseResult {
   return {
     ok: true,
     coding: {
+      id: asString(root.id) ?? "coding",
       title: asString(root.title),
       model,
       provider,

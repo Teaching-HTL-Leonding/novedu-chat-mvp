@@ -1,7 +1,6 @@
 import { Agent } from "@mastra/core/agent";
 import type { RequestContext } from "@mastra/core/request-context";
 import { Memory } from "@mastra/memory";
-import { z } from "zod";
 import { resolveLanguageModel } from "@/lib/llm/model";
 import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
 
@@ -13,15 +12,12 @@ import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "@/lib/
 //
 // SERVER-ONLY: resolves models through the `lib/llm` seam.
 
-// The grader's structured verdict. The self-hosted vLLM endpoint honors
-// OpenAI-compatible `response_format: json_schema` (verified against gemma-4 at
-// design time), which is exactly what Mastra emits for `structuredOutput` — so
-// no `jsonPromptInjection` fallback is needed. Kept terse; the student sees the
-// mapped wording from `verdictLabel`, never these raw values.
-export const QUIZ_VERDICT_SCHEMA = z.object({
-  result: z.enum(["correct", "partial", "incorrect"]),
-  feedback: z.string(),
-});
+// The grader's structured verdict. The zod source of truth lives in the PURE
+// `lib/quiz-verdict-schema.ts` so the CLI's prompt dump can emit it as JSON Schema
+// without importing anything under `app/mastra/` (whose graph does a top-level-await
+// network call at import time). Re-exported here so agent-adjacent code keeps finding
+// it next to the agents that use it.
+export { QUIZ_VERDICT_SCHEMA } from "@/lib/quiz-verdict-schema";
 
 // RequestContext keys. Distinct per agent so a request for one can never satisfy
 // the other (defense in depth on top of the runtime route's agent gating).

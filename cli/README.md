@@ -5,7 +5,8 @@ requires Node >= 20). It covers two jobs:
 
 - **Validate activity YAML** — tutors, fragment libraries, quizzes, writing
   activities, and coding activities — with the app's exact validation pipeline,
-  offline and without signing in.
+  offline and without signing in. `prompts` dumps the exact system prompts an
+  activity produces, the same way.
 - **Manage the app as a teacher** — sign in with Microsoft Entra ID, then mint
   activity codes, upload app-hosted YAML files and images, and triage student
   reports, straight from the terminal (or from a coding agent, see below).
@@ -41,6 +42,54 @@ npx @novedu/cli validate ./my-quiz.yaml --kind quiz --json
   app accepts — no separate, drifting rules. Validating a tutor also fully
   validates every fragment library it references.
 - Exit code `0` = valid, `1` = errors found — usable as a pre-commit / CI gate.
+
+## Seeing the exact prompts: `prompts`
+
+`prompts` prints the **exact system prompts** an activity YAML produces — the
+strings the app really sends to the model. Offline and sign-in-free, exactly like
+`validate`.
+
+```bash
+# A tutor's assembled system prompt (summary: kind, id, model, size per prompt)
+npx @novedu/cli prompts ./activities/examples/sorting-algorithms/sorting-tutor.yaml
+
+# A quiz: one grading prompt per question + the discussion prompt, full text as JSON
+npx @novedu/cli prompts ./sorting-quiz.yaml --kind quiz --json
+
+# A writing activity's coach prompt, a coding activity's injected system prompt
+npx @novedu/cli prompts ./my-writing.yaml --kind writing
+npx @novedu/cli prompts ./my-coding.yaml --kind coding
+
+# A published activity by URL (same argument as `validate`)
+npx @novedu/cli prompts https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/examples/sorting-algorithms/sorting-tutor.yaml
+
+# Pull out one question's grading prompt
+npx @novedu/cli prompts ./sorting-quiz.yaml --kind quiz --json \
+  | jq -r '.grading.questions[] | select(.id=="q3") | .system'
+```
+
+- The argument is a **local path or a public `http(s)` URL**, exactly like
+  `validate`'s; relative `fragment_files` / `quiz_files` / `text_files` resolve
+  against the activity's own location (sibling file, or sibling URL). "Offline"
+  means no app server, no database and no LLM call — not "no network".
+- `--kind` accepts `tutor` (default), `quiz`, `writing` or `coding` — the same
+  caller-declared flag as `validate`. There is no `fragment` kind: a library has
+  no prompt of its own; its fragments appear **rendered in place** inside the
+  activity that places them.
+- Every dump comes out of the app's own prompt builders and runtime loaders (no
+  re-implementation), so what you see is what the model gets: fragments resolved,
+  and — for a compound quiz — every `quiz_files` include fetched, each imported
+  question carrying its source quiz's preamble.
+- Every dump carries `{ kind, id, llm: { provider, model } }`. A **quiz** adds
+  `grading` (a `system` prompt per question, the user-message templates and the
+  grader's JSON-Schema response contract) and `discussion` (the chat's `system`
+  prompt, the three seed-message templates and the verdict wording). A **coding**
+  activity also reports `upstreamSystemMessage` — what the proxy puts on the wire.
+- The **activity's own** `llm` block is reported; a code's per-code LLM override
+  is not applied (a dump describes a file, and a file has no code).
+- This runs the runtime load path, so a file that cannot be loaded exits `1` with
+  JSON errors on stderr. Use `validate` for the strict authoring check — the two
+  are complementary.
 
 ## Authentication
 

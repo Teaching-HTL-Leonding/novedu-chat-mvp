@@ -260,6 +260,24 @@ The validator checks, in order:
 2. The activity has the correct structure — no missing or misspelled fields, an
    `llm.model`, and a non-empty `instructions` block.
 
+### See the exact prompt
+
+Your `instructions` never reach the student's coding agent — the server adds them
+on the way to the model. To see exactly what gets added:
+
+```bash
+novedu-cli prompts ./coding/my-coding.yaml --kind coding
+novedu-cli prompts ./coding/my-coding.yaml --kind coding --json   # the full text
+```
+
+The dump shows your `instructions` with every `{{fragment …}}` and `{{file …}}`
+marker replaced by the text it stands for, plus `upstreamSystemMessage` — the
+system message the server actually sends. Your text is always **appended after**
+anything the student's agent sends as a system message, so you have the last word;
+the dump lets you confirm what that word is. Nothing is uploaded and no sign-in is
+needed; the command only reads your file. Like the file itself, the output is
+written for teachers, not students.
+
 ### Common problems and how to fix them
 
 | Reported problem      | What it means                                                  | How to fix                                    |

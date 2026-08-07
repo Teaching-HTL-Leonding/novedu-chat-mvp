@@ -255,6 +255,23 @@ The validator checks, in order:
 2. The activity has the correct structure — no missing or misspelled fields, an
    `llm.model`, and a non-empty `instructions` block.
 
+### See the exact prompt
+
+To check what the writing coach is really told — especially when your
+`instructions` pull in shared fragments — dump the prompt:
+
+```bash
+novedu-cli prompts ./writings/my-writing.yaml --kind writing
+novedu-cli prompts ./writings/my-writing.yaml --kind writing --json   # the full text
+```
+
+You get the **complete system prompt the coach receives**: your `instructions`
+with every `{{fragment …}}` and `{{file …}}` marker replaced by the text it stands
+for. That is what the coach is told before it ever sees the student's draft, so it
+is the place to look when a rule of yours seems to be ignored. Nothing is uploaded
+and no sign-in is needed; the command only reads your file. Like the file itself,
+the output is written for teachers, not students.
+
 ### Common problems and how to fix them
 
 | Reported problem       | What it means                                                  | How to fix                                    |

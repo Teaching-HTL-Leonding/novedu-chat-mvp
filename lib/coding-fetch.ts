@@ -5,50 +5,25 @@ import {
   codingBaseUrl,
   DEFAULT_CODING_MODEL_NAME,
 } from "@/lib/coding-connection";
-import { type Coding, parseCoding } from "@/lib/coding-yaml";
-import { assembleFragmentPrompt, EMPTY_FRAGMENT_BLOCK } from "@/lib/prompt-fragments";
+import { type LoadCodingResult, resolveCoding } from "@/lib/coding-resolve";
+import { parseCoding } from "@/lib/coding-yaml";
 
 // Loads + leniently parses the coding YAML behind a (verified) code's file_url, via the
-// shared `loadAppHostedYaml`, and derives the non-secret connection props the three
-// render surfaces hand to `<CodingConnection>`. The single definition the
+// shared `loadAppHostedYaml`, hands the parsed document to the PURE `resolveCoding`
+// (lib/coding-resolve.ts) for fragment assembly, and derives the non-secret connection
+// props the three render surfaces hand to `<CodingConnection>`. The single definition the
 // OpenAI-compatible proxy route and the student/teacher surfaces all use, so they read
-// the same activity the same way. SERVER-ONLY: touches the database and fetches URLs.
+// the same activity the same way.
+//
+// This file owns ONLY the app-hosted/DB seam; the resolution itself is shared verbatim
+// with the prompt dump / CLI (`loadCodingFrom`), so a dumped system prompt is the exact
+// production one. SERVER-ONLY: touches the database and fetches URLs.
 
-export type LoadCodingResult = { ok: true; coding: Coding } | { ok: false; message: string };
+export type { LoadCodingResult } from "@/lib/coding-resolve";
 
 export function loadCoding(url: string): Promise<LoadCodingResult> {
-  return loadAppHostedYaml(
-    url,
-    parseCoding,
-    "coding activity",
-    async (parsed, { url, fetcher }) => {
-      // Per-request streaming hot path: render `instructions` as the host template with
-      // consistency over the referenced fragments only (`validateLibraries: false`); no
-      // extra passes. Assembly lives in this load layer, never in `lib/llm/endpoint.ts`
-      // (which stays provider-blind + side-effect-free).
-      const resolved = await assembleFragmentPrompt(
-        parsed.coding.fragmentBlock,
-        url,
-        fetcher,
-        { validateLibraries: false },
-        parsed.coding.instructions,
-      );
-      if (!resolved.ok) {
-        // Fail closed — the proxy surfaces this as its existing upstream-load error.
-        return {
-          ok: false,
-          message: "This coding activity's prompt fragments could not be loaded.",
-        };
-      }
-      return {
-        ok: true,
-        coding: {
-          ...parsed.coding,
-          fragmentBlock: EMPTY_FRAGMENT_BLOCK,
-          instructions: resolved.prompt,
-        },
-      };
-    },
+  return loadAppHostedYaml(url, parseCoding, "coding activity", (parsed, { url, fetcher }) =>
+    resolveCoding(parsed.coding, url, fetcher),
   );
 }
 

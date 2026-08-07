@@ -415,6 +415,27 @@ The validator checks, in order:
 4. For a compound quiz, **every referenced quiz file is fetched and fully
    checked** the same way — a broken chapter quiz blocks the final quiz.
 
+### See the exact prompt
+
+Validation tells you the quiz is *well-formed*. When you want to know what the AI
+is actually told — why an answer was graded the way it was, or whether your
+`instructions` really reach the grader — dump the prompts:
+
+```bash
+novedu-cli prompts ./quizzes/my-quiz.yaml --kind quiz          # a summary
+novedu-cli prompts ./quizzes/my-quiz.yaml --kind quiz --json   # the full text
+```
+
+For **each question** you get the complete grading prompt: your quiz-level
+`instructions` (with any `{{fragment …}}` markers replaced by the text they stand
+for), the question as the student sees it, and your `evaluation` criteria, wrapped
+in the frame that asks the model for a verdict and feedback. You also get the
+**discussion** chat's prompt and the messages that discussion starts from. For a
+compound quiz the list covers every imported question, each carrying its own
+chapter's `instructions` — exactly the way it will be graded.
+
+Nothing is uploaded and no sign-in is needed; the command only reads your file.
+
 ### Common problems and how to fix them
 
 | Reported problem            | What it means                                                  | How to fix                                    |
