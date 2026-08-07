@@ -83,6 +83,12 @@ export type ErrorCode =
   // The quiz's RESOLVED question pool is empty: no own `questions` and no
   // `quiz_files` includes to supply any.
   | "QUIZ_NO_QUESTIONS"
+  // The RUNTIME loader could not read or resolve the activity (bad YAML, a missing
+  // essential field, an unresolvable fragment/include). Carries the loader's friendly,
+  // student-facing message. Emitted by the prompt dump (`lib/prompt-dump.ts`), which
+  // runs the lenient runtime loaders on purpose — `validate` remains the structured
+  // authoring gate.
+  | "ACTIVITY_LOAD_FAILED"
   // App-only: the YAML names an LLM provider this server does not have configured
   // (e.g. `Azure Foundry` without AZURE_FOUNDRY_ENDPOINT). Emitted by the app's
   // authoring gate (lib/file-validators.ts), never by the CLI-bundled loadAndCheck*
@@ -142,6 +148,12 @@ export interface ValidationWarning {
 export type BuildResult =
   | {
       ok: true;
+      /**
+       * The tutor's own `id` — the counterpart of `quizId` / `writingId` / `codingId`
+       * on the other kinds' check results. Names the activity in tooling (the
+       * `@novedu/cli prompts` dump envelope); never student-facing.
+       */
+      id: string;
       prompt: string;
       model: string;
       /**

@@ -7,37 +7,19 @@ import {
 } from "@/app/mastra/quiz-agents";
 import { effectiveLlm } from "@/lib/code-store";
 import { providerUnavailableReason } from "@/lib/llm/availability";
+import { buildDiscussionInstructions } from "@/lib/quiz-discussion-prompt";
 import { loadQuiz } from "@/lib/quiz-fetch";
-import type { Quiz } from "@/lib/quiz-yaml";
 import type { CodeModuleDef } from "./registry";
 
 // The quiz module: the per-question discussion chat (the grader runs only inside
-// submitAnswer, never through the runtime route). The discussion agent's system
-// prompt is the quiz-level `instructionsPreamble` (the rendered `instructions` host
-// text — shared safety/persona/language rules, the SAME preamble the grader receives)
-// followed by a default frame and the quiz's optional `discussionInstructions`; the
-// question/answer/verdict are the thread's seed messages, recalled from memory, NOT
-// repeated here. The teacher detail is the shared conversation stats ("Discussions").
-//
-// A compound quiz's imported questions each carry their SOURCE quiz's preamble
-// (`sourcePreamble`), but that applies to GRADING only (`buildGradingPrompt`): the
-// discussion prompt uses ONLY the compound file's own instructions — consistent with
-// every other include-level field (`llm`, `anonymous`, `shuffle`, ...), which the
-// compound file governs too. Mixing all chapters' preambles into one prompt would put
-// conflicting persona/language rules in force at once; the question/answer/verdict the
-// discussion needs are recalled from the thread's seed messages regardless.
-function buildDiscussionInstructions(quiz: Quiz): string {
-  const base =
-    "You are helping a student understand a single quiz question. The conversation " +
-    "already contains the question, the student's submitted answer, and the verdict " +
-    "with feedback — use that context. Be concise and encouraging, and stay on this " +
-    "question.";
-  const frame = quiz.discussionInstructions
-    ? `${base}\n\n${quiz.discussionInstructions.trim()}`
-    : base;
-  // Compound preamble → frame; empty pieces drop out.
-  return [quiz.instructionsPreamble, frame].filter(Boolean).join("\n\n");
-}
+// submitAnswer, never through the runtime route). The discussion agent's system prompt
+// is built by `buildDiscussionInstructions` in the pure, CLI-safe
+// `lib/quiz-discussion-prompt.ts` (imported, never copied, so
+// `@novedu/cli prompts --kind quiz` dumps the byte-identical production prompt): the
+// quiz-level `instructionsPreamble` followed by a default frame and the quiz's optional
+// `discussionInstructions`. The question/answer/verdict are the thread's seed messages,
+// recalled from memory, NOT repeated here. The teacher detail is the shared conversation
+// stats ("Discussions").
 
 export const quizModule: CodeModuleDef = {
   fileKind: "quiz",

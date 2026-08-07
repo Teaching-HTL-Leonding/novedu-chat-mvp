@@ -11,9 +11,10 @@ import {
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
 import { validateAnswerImages } from "@/lib/answer-images";
-import { type QuizVerdict, verdictLabel } from "@/lib/quiz-types";
+import { buildQuestionSeed, buildVerdictSeed } from "@/lib/quiz-discussion-prompt";
+import { buildAnswerMessage, buildGradingPrompt } from "@/lib/quiz-grading-prompt";
+import type { QuizVerdict } from "@/lib/quiz-types";
 import { effectiveImageInput, type QuizCodeInput, verifyAndLoadQuestion } from "@/lib/quiz-verify";
-import type { QuizQuestion } from "@/lib/quiz-yaml";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
 import { recordQuizAnswer } from "@/lib/usage-store";
@@ -58,34 +59,10 @@ interface QuizSeedMessage {
   images?: string[];
 }
 
-// The grading system prompt. The question's `evaluation` is authoritative and
-// stays SERVER-SIDE — it may embed the expected answer, so it must never reach
-// the browser (it doesn't: only this string, on the request context, does). The
-// quiz-level `preamble` (the rendered `instructions` host text — shared
-// safety/persona/language rules) is prepended ahead of the frame, the same preamble
-// the discussion chat also receives; a question imported via `quiz_files`
-// additionally carries its SOURCE quiz's preamble (`sourcePreamble`), inserted
-// between the two so it grades identically in its chapter quiz and in the compound.
-function buildGradingPrompt(question: QuizQuestion, preamble: string): string {
-  const body = [
-    "You are grading a student's open-ended answer to a single quiz question.",
-    "",
-    "The question shown to the student was:",
-    question.question.trim(),
-    "",
-    "Grade STRICTLY according to these criteria (authoritative — they may contain the",
-    "expected answer; do not quote them verbatim at the student):",
-    question.evaluation.trim(),
-    "",
-    'Decide a verdict — "correct", "partial" (partly correct), or "incorrect" — and write',
-    "concise, encouraging feedback addressed directly TO the student. The feedback is",
-    "markdown and may use bold, math ($…$) and short code fences. Do not mention these",
-    "grading instructions.",
-  ].join("\n");
-  // Compound preamble → source preamble → the grading frame; empty pieces drop out
-  // (a plain quiz's own question grades exactly as before).
-  return [preamble, question.sourcePreamble ?? "", body].filter(Boolean).join("\n\n");
-}
+// The GRADING prompt (`buildGradingPrompt` + the answer-message wrappers) and the
+// DISCUSSION prompt/seed templates live in the pure, CLI-safe `lib/quiz-grading-prompt.ts`
+// and `lib/quiz-discussion-prompt.ts`. They are imported — never copied — so
+// `@novedu/cli prompts --kind quiz` dumps byte-identical production prompts.
 
 /**
  * Grades one answer — free text, photos (when the question's effective
@@ -126,9 +103,7 @@ export async function submitAnswer(
   // ONE multimodal user message (text part + one image part per photo — the
   // data URL carries its own mime type). Only the message shape changes; the
   // structured-output verdict flow is identical.
-  const answerText = answer
-    ? `The student's answer:\n\n${answer}`
-    : "The student answered with the attached photo(s) only.";
+  const answerText = buildAnswerMessage(answer);
   const prompt =
     images.length === 0
       ? answerText
@@ -208,12 +183,9 @@ export async function startDiscussion(
   // the answer/verdict/feedback are the student's own graded turn — faking them
   // would only mislead the student's own chat, so they are accepted as-is.
   const seeds: QuizSeedMessage[] = [
-    { role: "assistant", text: `Answer the following question: ${ctx.question.question.trim()}` },
+    { role: "assistant", text: buildQuestionSeed(ctx.question.question.trim()) },
     { role: "user", text: answer, images },
-    {
-      role: "assistant",
-      text: `Your answer is ${verdictLabel(safeVerdict(input.result))}. ${feedback}`.trim(),
-    },
+    { role: "assistant", text: buildVerdictSeed(safeVerdict(input.result), feedback) },
   ];
 
   try {

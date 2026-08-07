@@ -269,6 +269,17 @@ export function parseQuiz(content: string): QuizParseResult {
 }
 
 /**
+ * A question's EFFECTIVE photo-answers flag: the per-question override when set, the
+ * quiz-level `llm.imageInput` otherwise. The ONE definition of that two-level rule —
+ * re-exported by `lib/quiz-verify.ts` for the server actions (which re-derive it on
+ * every request, never trusting the client), applied by `toPublicQuiz` below, and
+ * reported per question by the prompt dump.
+ */
+export function effectiveImageInput(quiz: Quiz, question: QuizQuestion): boolean {
+  return question.imageInput ?? quiz.imageInput;
+}
+
+/**
  * The student-facing projection — strips every server-only field, above all the
  * `evaluation` grading prompts, the per-question `sourcePreamble`s, the `instructions`
  * host text, the `fragmentBlock`/`quizFiles`, and the rendered `instructionsPreamble`,
@@ -284,7 +295,7 @@ export function toPublicQuiz(quiz: Quiz): QuizPublic {
     image: q.image,
     // Resolve the two-level flag here so the client sees ONE effective boolean
     // per question (the server actions re-derive it — the client is never trusted).
-    imageInput: q.imageInput ?? quiz.imageInput,
+    imageInput: effectiveImageInput(quiz, q),
   }));
   return {
     id: quiz.id,

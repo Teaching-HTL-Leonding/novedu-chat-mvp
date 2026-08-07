@@ -190,6 +190,15 @@ Read before adding a test or tagging one `@live`.
 - Prefer fast, secret-free unit/component tests; `@live` only when the real DB/LLM/storage is genuinely needed, always with exactly one of `@live-db` / `@live-llm` / `@live-storage`. CI runs hermetic + `@live-db` only.
 - Mock the I/O seams, but keep security-critical pure modules (e.g. `lib/thread-token.ts`) real.
 
+### CLI prompt dumps → `docs/cli-prompts.md`
+
+Read before touching: `lib/prompt-dump.ts`, `lib/quiz-grading-prompt.ts`, `lib/quiz-discussion-prompt.ts`, `lib/quiz-verdict-schema.ts`, `lib/{quiz,writing,coding}-resolve.ts`, `cli/src/commands/prompts.ts`, or any prompt-assembly code a dump must mirror.
+
+- `novedu-cli prompts <pathOrUrl> [--kind …] [--json]` prints the EXACT prompts an activity YAML produces — offline, sign-in-free, same argument conventions as `validate`. It runs the LENIENT RUNTIME loaders (so the output is what the model really gets); `validate` stays the strict authoring gate.
+- `lib/prompt-dump.ts` is a Layer-2 seam keyed by `FileKind`, the read-only sibling of `lib/file-validators.ts`. Every dumper CALLS the production builders/loaders — **never a copy**; two grep-guards in `lib/prompt-dump.unit.test.ts` enforce that plus the purity rule below.
+- The dump seam and the pure modules it reaches for must import **nothing** from `app/**` (`app/mastra/scch.ts` does a top-level `await` network call at import time, pulled in via `lib/llm/model.ts`), the DB, or `lib/llm/model.ts`, and carry no `"use server"`. Each runtime loader is split accordingly: pure `*-resolve.ts` (shared with the CLI) + app-hosted `*-fetch.ts` (the DB seam).
+- A dump describes a FILE: the activity's own `llm` is reported; a code's per-code LLM override is out of scope.
+
 ### CLI publishing → `docs/cli-publish.md`
 
 Read before touching: `cli/package.json`, `.github/workflows/publish-cli.yml`, or cutting a CLI release.

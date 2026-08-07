@@ -3,14 +3,18 @@ name: novedu-tutor-cli
 description: >-
   Work with `novedu-cli`, the Novedu chat app's command-line companion: validate
   any activity YAML — a tutor, fragment library, quiz, writing, or coding
-  activity — with the exact validation pipeline the app enforces; sign in to
+  activity — with the exact validation pipeline the app enforces; dump the exact
+  LLM prompts an activity produces; sign in to
   Microsoft Entra ID; and, as a signed-in teacher, mint/list activity codes,
   upload/list app-hosted YAML files and images, and triage student reports. Use
   this skill
   whenever the user wants to validate, check, lint, or verify an activity YAML
   ("is this tutor valid?", "check my quiz", "why won't this file load?"), debug
   a schema or template error, sanity-check `tutor_instructions` /
-  `fragment_files` / `questions` / `instructions`, authenticate the CLI ("log in
+  `fragment_files` / `questions` / `instructions`, see what the model actually
+  receives ("show me the exact prompt", "what does the grader see for this
+  question?", "did my safety fragment make it into the prompt?", "dump the
+  prompts for an eval"), authenticate the CLI ("log in
   to novedu", "who am I signed in as?", "sign out"), share or host an activity
   ("create a code for this quiz", "upload this YAML to the app", "what codes do
   I have?", "list my hosted files", "upload this diagram so the quiz can show
@@ -45,6 +49,7 @@ it.
 
 ```
 validate <pathOrUrl> [--kind tutor|fragment|quiz|writing|coding] [--json]
+prompts  <pathOrUrl> [--kind tutor|quiz|writing|coding] [--json]
 
 login [--device-code]        logout        whoami [--server <url>]
 
@@ -66,9 +71,9 @@ reports resolve <id...>
 
 Behaviors an agent must know:
 
-- **`validate` needs no sign-in**; everything under `codes` / `files` /
-  `images` / `reports` needs a signed-in **teacher** (a non-teacher gets a
-  generic 403 — check with `whoami`, `Teacher: yes`).
+- **`validate` and `prompts` need no sign-in**; everything under `codes` /
+  `files` / `images` / `reports` needs a signed-in **teacher** (a non-teacher
+  gets a generic 403 — check with `whoami`, `Teacher: yes`).
 - **JSON I/O contract** (`codes`/`files`/`images`/`reports`): success objects
   verbatim
   on stdout, exit 0; every failure a JSON `{ message }` or `{ errors: [...] }`
@@ -145,6 +150,42 @@ Act on the specific error code rather than just relaying it:
 | `FETCH_FAILED` | A file/URL couldn't be read (missing file, bad URL, network). |
 
 When a schema error is vague, re-run with `--json` for the underlying detail.
+
+## `prompts`: what the model actually receives
+
+`prompts` prints the EXACT system prompts an activity YAML produces, built by the
+app's own prompt builders and runtime loaders — never a re-derivation. Use it
+whenever the question is about BEHAVIOR rather than validity ("why does the
+grader accept this?", "does my safety fragment reach the tutor?", "show me the
+grading prompt for question 3"), and when preparing prompt evals. Offline, no
+sign-in; `--kind` is caller-declared like `validate`'s, minus `fragment` (a
+library has no prompt of its own — its fragments show up rendered inside the
+activity that places them).
+
+```bash
+npm run cli --silent -- prompts ./my-quiz.yaml --kind quiz --json | jq -r '.grading.questions[0].system'
+npx @novedu/cli prompts ./my-tutor.yaml           # human summary: id, model, chars per prompt
+npx @novedu/cli prompts https://raw.githubusercontent.com/…/my-tutor.yaml   # published activity
+```
+
+- The argument is a **path or a public `http(s)` URL** (`<pathOrUrl>`, same as
+  `validate`); relative `fragment_files` / `quiz_files` / `text_files` resolve
+  against the activity's own location — sibling file, or sibling URL. "Offline"
+  means no server, no DB and no LLM call, not "no network".
+- Envelope: `{ kind, id, llm: { provider, model } }` — the FILE's own `llm`; a
+  code's per-code LLM override is not applied.
+- **quiz** adds `grading` (`questions[].system` — the full grading prompt per
+  question, `imageInput`, the `userMessageTemplate` /
+  `userMessagePhotosOnly` wrappers, and `responseSchema`, the grader's JSON
+  Schema) and `discussion` (`system`, the three `seedMessages` templates,
+  `verdictLabels`). For a compound quiz the questions are the RESOLVED pool:
+  namespaced `"<alias>/<id>"` ids, each carrying its source quiz's preamble.
+- **tutor** / **writing** give `system`; **coding** gives `system` plus
+  `upstreamSystemMessage` (what the proxy puts on the wire — appended to the
+  calling agent's last system message so the teacher has the final word).
+- It runs the RUNTIME load path, so failures are one `ACTIVITY_LOAD_FAILED` JSON
+  error on stderr, exit 1. For structured authoring errors run `validate` — the
+  two are complementary, and a confusing prompt usually wants both.
 
 ## Signing in: the human must finish `login`
 
@@ -260,6 +301,11 @@ is deliberately bulk-only in the web UI.
 ```bash
 # Inside the repo: validate a known-good sample tutor (exit 0)
 npm run cli -- validate activities/examples/sorting-algorithms/sorting-tutor.yaml
+
+# See the assembled system prompt, then one question's grading prompt
+npm run cli --silent -- prompts activities/examples/sorting-algorithms/sorting-tutor.yaml --json | jq -r .system
+npm run cli --silent -- prompts activities/examples/sorting-algorithms/sorting-quiz.yaml --kind quiz --json \
+  | jq -r '.grading.questions[0].system'
 
 # Host a quiz and mint a code for it (new name → --kind required)
 npx @novedu/cli files upload sorting-quiz --kind quiz --file ./sorting-quiz.yaml

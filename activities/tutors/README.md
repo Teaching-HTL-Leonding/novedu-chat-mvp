@@ -629,6 +629,24 @@ that fragment ids are unique, and that **every** fragment's template renders
 against its own `input_schema` — so undeclared-variable typos and Handlebars
 syntax errors surface before any tutor references the library.
 
+### See the exact prompt
+
+The assembled prompt is also available straight from the terminal, and it is
+worth a look whenever your tutor behaves oddly:
+
+```bash
+novedu-cli prompts ./tutors/my-tutor.yaml
+novedu-cli prompts ./tutors/my-tutor.yaml --json    # the full text
+```
+
+You see the **complete system prompt your tutor sends to the model**: your
+`tutor_instructions` with every `{{fragment …}}` and `{{file …}}` marker replaced
+by the text it stands for. That is exactly what the tutor is told before it reads
+a single student message — so when a rule seems to be ignored, check here first
+whether it really made it into the prompt.
+
+Nothing is uploaded and no sign-in is needed; the command only reads your file.
+
 ### Common problems and how to fix them
 
 | Reported problem                                    | What it means                                                  | How to fix                                       |

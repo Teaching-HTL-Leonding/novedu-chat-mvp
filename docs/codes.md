@@ -86,6 +86,14 @@ siblings) AND by code-create (fetcher = `appHostedFetcher`; url = the row's
   `anonymous` field to read). The lenient runtime read is `parseCoding`
   (`lib/coding-yaml.ts`) — see `docs/coding.md`.
 
+**Layer 2, read-only sibling — the prompt-dump registry** (`lib/prompt-dump.ts`):
+`promptDumpers[kind].dump(url, fetcher, opts)` answers the other file-level
+question — "which exact LLM prompts does this YAML produce?" — for the four
+prompt-producing kinds (`PromptKind = Exclude<FileKind, "fragment">`). Like the
+validators it derives from the FILE alone, and it never re-implements assembly:
+every dumper calls the production builders/loaders. It backs the
+`novedu-cli prompts` command — see `docs/cli-prompts.md`.
+
 **Layer 3 — the `CodeModule` registry** (`lib/code-modules/`): the registry of
 shareable activities.
 

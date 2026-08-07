@@ -1,4 +1,5 @@
 import type { CodingCheckResult } from "@/lib/coding-validate";
+import type { PromptDump } from "@/lib/prompt-dump";
 import {
   type BuildResult,
   type FragmentCheckResult,
@@ -189,5 +190,28 @@ export function formatCodingResult(result: CodingCheckResult, source: string): s
     lines.push(yellow(`${result.warnings.length} warning(s):`));
     lines.push(...renderWarnings(result.warnings));
   }
+  return lines.join("\n");
+}
+
+/**
+ * Renderer for a prompt dump (`prompts`). Kind-agnostic by construction: the envelope
+ * (kind / id / provider+model) plus one line per prompt with its character count — the
+ * sections come from `promptSections`, so a new kind needs no change here. `--json`
+ * carries the prompt text itself.
+ */
+export function formatPromptDump(
+  dump: PromptDump,
+  sections: { name: string; text: string }[],
+  source: string,
+): string {
+  const lines = [green(`✔ Prompts — ${dump.kind}`) + dim(` — ${source}`)];
+  lines.push(`  id: ${dump.id}`);
+  lines.push(`  provider: ${dump.llm.provider}   model: ${dump.llm.model}`);
+  lines.push(`  prompts: ${sections.length}`);
+  for (const section of sections) {
+    lines.push(`    ${section.name}: ${section.text.length} chars`);
+  }
+  lines.push("");
+  lines.push(dim("  Run again with --json for the full prompt text."));
   return lines.join("\n");
 }

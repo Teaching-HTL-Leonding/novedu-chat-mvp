@@ -71,9 +71,9 @@ export async function verifyAndLoadQuestion(
   };
 }
 
-// The question's EFFECTIVE photo-answers flag: the per-question override when
-// set, the quiz-level `llm.imageInput` otherwise. Re-derived server-side on
-// every action — the client's resolved copy is never trusted.
-export function effectiveImageInput(quiz: Quiz, question: QuizQuestion): boolean {
-  return question.imageInput ?? quiz.imageInput;
-}
+// The question's EFFECTIVE photo-answers flag now lives in the pure `lib/quiz-yaml.ts`
+// (next to `toPublicQuiz`, which resolves the same two-level flag) so the CLI's prompt
+// dump can report it without importing this DB-backed module. Re-exported here so the
+// server actions keep importing it from their verification preamble — and it is still
+// re-derived server-side on every action; the client's resolved copy is never trusted.
+export { effectiveImageInput } from "@/lib/quiz-yaml";
