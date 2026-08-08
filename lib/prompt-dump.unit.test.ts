@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, normalize } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PROMPT_KINDS, promptDumpers, verdictResponseJsonSchema } from "@/lib/prompt-dump";
 
@@ -57,6 +57,82 @@ describe("prompt-dump purity invariant", () => {
 
   it("exposes exactly one dumper per prompt-producing FileKind", () => {
     expect(Object.keys(promptDumpers).sort()).toEqual([...PROMPT_KINDS].sort());
+  });
+
+  // The list-based checks above document the SEAM files; this walk closes the gap they
+  // leave: modules the dump reaches only transitively (lib/coding-proxy.ts,
+  // lib/quiz-yaml.ts, lib/quiz-types.ts, lib/tutors/**, lib/prompt-fragments/**) and
+  // specifier forms the simple regex misses (relative paths like "./llm/model",
+  // side-effect imports, `export … from` re-exports, dynamic `import()`).
+  it("keeps the ENTIRE transitive import closure app-free and 'use server'-free", () => {
+    // Repo-relative paths whose import — even type-only, even N levels deep — must fail
+    // the guard. Matched against the RESOLVED path, so "./db", "@/lib/db" and
+    // "../lib/db" are all the same offender.
+    const FORBIDDEN: RegExp[] = [
+      /^app\//, // pulls in app/mastra/scch.ts (top-level-await network call) sooner or later
+      /^auth\.ts$/,
+      /^lib\/db(\/|\.ts$)/,
+      /^lib\/llm\/model\.ts$/,
+      /^lib\/file-store\.ts$/,
+      /^lib\/code-store\.ts$/,
+      /^lib\/app-hosted-yaml\.ts$/,
+      /^lib\/app-hosted-fetcher\.ts$/,
+    ];
+
+    /** Every static/dynamic/side-effect/re-export specifier in a module's source. */
+    const importSpecifiers = (src: string): string[] =>
+      [
+        ...src.matchAll(/\bfrom\s+["']([^"']+)["']/g), // import/export … from "x"
+        ...src.matchAll(/^\s*import\s+["']([^"']+)["']/gm), // import "x" (side effect)
+        ...src.matchAll(/\b(?:import|require)\s*\(\s*["']([^"']+)["']/g), // import("x")
+      ].map((m) => m[1] ?? "");
+
+    /**
+     * Resolve a specifier to a repo-relative path. Bare package / node: specifiers
+     * return null; an unresolvable repo path is still returned (exists: false) so the
+     * FORBIDDEN check sees it either way.
+     */
+    const resolveImport = (
+      spec: string,
+      importerRel: string,
+    ): { rel: string; exists: boolean } | null => {
+      let base: string;
+      if (spec.startsWith("@/")) base = spec.slice(2);
+      else if (spec.startsWith(".")) base = join(dirname(importerRel), spec);
+      else return null;
+      base = normalize(base).replace(/\\/g, "/");
+      for (const rel of [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`]) {
+        const abs = join(REPO_ROOT, rel);
+        if (existsSync(abs) && statSync(abs).isFile()) return { rel, exists: true };
+      }
+      return { rel: base, exists: false };
+    };
+
+    const visited = new Set<string>();
+    const offenders: string[] = [];
+    const queue = ["lib/prompt-dump.ts"];
+    while (queue.length > 0) {
+      const rel = queue.pop() as string;
+      if (visited.has(rel)) continue;
+      visited.add(rel);
+      const src = read(rel);
+      if (/^\s*["']use server["']/m.test(src)) offenders.push(`${rel}: "use server"`);
+      for (const spec of importSpecifiers(src)) {
+        const target = resolveImport(spec, rel);
+        if (!target) continue;
+        if (FORBIDDEN.some((pattern) => pattern.test(target.rel))) {
+          offenders.push(`${rel} → ${spec}`);
+        } else if (target.exists && /\.tsx?$/.test(target.rel)) {
+          queue.push(target.rel);
+        }
+      }
+    }
+    expect(offenders, `server-only reach from the dump seam:\n${offenders.join("\n")}`).toEqual([]);
+    // Anti-vacuous sanity: the walk must have actually reached every documented seam
+    // module (a broken resolver would otherwise make this test pass on nothing).
+    for (const mod of PURE_MODULES) {
+      expect(visited.has(mod), `${mod} was not reached by the import walk`).toBe(true);
+    }
   });
 });
 
