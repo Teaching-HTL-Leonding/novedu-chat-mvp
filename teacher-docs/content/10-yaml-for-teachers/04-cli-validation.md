@@ -67,8 +67,6 @@ An invalid file gets a list of errors, each naming the specific problem: a field
 
 The report separates errors from warnings. Errors mean the app would reject the file; warnings mean it still works, but something deserves a look.
 
-One version note: if your activity sets `llm.provider` (choosing where the AI runs), you need CLI version 0.6.0 or newer. Older versions reject that field. Running `npx @novedu/cli@latest validate …` always uses the newest release.
-
 ## Let an AI assistant do it for you
 
 The Novedu repository bundles a skill that teaches AI coding assistants (such as Claude Code) how to use the CLI. If you author your activities in a copy of the repository with such an assistant, you can simply ask it "is my quiz valid?" or "why won't this tutor load?". The assistant runs the validation for you, reads the error messages, and explains in plain language what to change, so you never have to decode an error on your own.

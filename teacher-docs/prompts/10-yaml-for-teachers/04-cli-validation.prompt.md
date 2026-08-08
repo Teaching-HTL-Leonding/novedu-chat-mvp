@@ -19,8 +19,9 @@ Get right:
 - --kind is required for everything except a tutor; leaving it off validates the file
   as a tutor and fails confusingly.
 - Validating a URL checks the published file, so commit and push first.
-- Setting a provider needs a recent CLI version (activities/README.md names the floor);
-  state the requirement, verify the version against the current source.
+- No version history and no version floors. The app is under heavy development, so a
+  version number is stale within weeks. Describe how the command behaves now and leave
+  release history out of the chapter entirely.
 - Use verbatim commands from cli/README.md, not invented ones.
 
 Look: cli/README.md, .agents/skills/novedu-tutor-cli/SKILL.md.
