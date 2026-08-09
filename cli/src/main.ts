@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { registerCodes } from "./commands/codes";
+import { registerEval } from "./commands/eval";
 import { registerFiles } from "./commands/files";
 import { registerImages } from "./commands/images";
 import { registerLogin } from "./commands/login";
@@ -10,28 +10,22 @@ import { registerPrompts } from "./commands/prompts";
 import { registerReports } from "./commands/reports";
 import { registerValidate } from "./commands/validate";
 import { registerWhoami } from "./commands/whoami";
-
-// Read the version from package.json so `--version` always matches the published
-// package (no hand-kept duplicate to drift). Both src/main.ts (dev via tsx) and
-// dist/main.js (built/published) sit one level under the package root, so
-// `../package.json` resolves the same in every context.
-const { version } = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
-) as { version: string };
+import { cliVersion } from "./version";
 
 // Entry point for the `novedu-cli` CLI. Each feature registers itself as a
 // subcommand: offline validation (`validate`) and prompt inspection (`prompts`),
-// auth (`login`/`logout`/`whoami`), and the JSON management commands
-// (`codes`, `files`).
+// grader evaluation (`eval`), auth (`login`/`logout`/`whoami`), and the JSON
+// management commands (`codes`, `files`).
 const program = new Command();
 
 program
   .name("novedu-cli")
   .description("Command-line companion for the Novedu chat app")
-  .version(version);
+  .version(cliVersion());
 
 registerValidate(program);
 registerPrompts(program);
+registerEval(program);
 registerLogin(program);
 registerLogout(program);
 registerWhoami(program);

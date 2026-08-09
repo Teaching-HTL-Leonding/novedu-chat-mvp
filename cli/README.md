@@ -1,15 +1,17 @@
 # @novedu/cli
 
 Command-line companion for the Novedu chat app (installed command: `novedu-cli`;
-requires Node >= 20). It covers two jobs:
+requires Node >= 22 — `eval`'s glob expansion uses the built-in `fs.globSync`,
+and Node 20 is end-of-life). It covers two jobs:
 
 - **Validate activity YAML** — tutors, fragment libraries, quizzes, writing
-  activities, and coding activities — with the app's exact validation pipeline,
-  offline and without signing in. `prompts` dumps the exact system prompts an
-  activity produces, the same way.
+  activities, coding activities, and golden-answer evals — with the app's exact
+  validation pipeline, offline and without signing in. `prompts` dumps the exact
+  system prompts an activity produces, the same way.
 - **Manage the app as a teacher** — sign in with Microsoft Entra ID, then mint
-  activity codes, upload app-hosted YAML files and images, and triage student
-  reports, straight from the terminal (or from a coding agent, see below).
+  activity codes, upload app-hosted YAML files and images, triage student
+  reports, and **measure a quiz's grading rubric** (`eval`), straight from the
+  terminal (or from a coding agent, see below).
 
 No install needed:
 
@@ -30,12 +32,15 @@ npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding
 npx @novedu/cli validate ./activities/examples/shared/general-fragments.yaml --kind fragment
 npx @novedu/cli validate ./activities/examples/sorting-algorithms/sorting-quiz.yaml --kind quiz
 
+# A golden-answer eval (also strict-checks the quiz it targets)
+npx @novedu/cli validate ./sorting-quiz.eval.yaml --kind eval
+
 # Machine-readable output (the raw validation result)
 npx @novedu/cli validate ./my-quiz.yaml --kind quiz --json
 ```
 
-- `--kind` accepts `tutor` (default), `fragment`, `quiz`, `writing`, or
-  `coding`; it is caller-declared, not auto-detected.
+- `--kind` accepts `tutor` (default), `fragment`, `quiz`, `writing`, `coding`, or
+  `eval`; it is caller-declared, not auto-detected.
 - The CLI reuses the app's exact validation pipeline (`lib/prompt-fragments`,
   `lib/tutors`, `lib/quiz-validate`, `lib/writing-validate`,
   `lib/coding-validate`), so an activity that passes here is the same one the
@@ -90,6 +95,92 @@ npx @novedu/cli prompts ./sorting-quiz.yaml --kind quiz --json \
 - This runs the runtime load path, so a file that cannot be loaded exits `1` with
   JSON errors on stderr. Use `validate` for the strict authoring check — the two
   are complementary.
+
+## Measuring a quiz's grading rubric: `eval`
+
+A quiz's `evaluation` prompt is a rubric, and a rubric is only as good as its
+behavior on real answers. Write an **eval file** — student answers with the verdict
+each one must get — and `eval` replays them through the **real grader**, then reports
+what it actually did. This is the one command that both **runs the model** and needs
+you signed in (`novedu-cli login`); everything else about it is local.
+
+```yaml
+# sorting-quiz.eval.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+id: sorting-quiz-eval
+target: ./sorting-quiz.yaml     # relative to THIS file, or an http(s) URL
+questions:
+  - question: bubble-sort-complexity      # the quiz's question id
+    answers:
+      - expect: correct
+        answer: |
+          O(n²) in the average and worst case.
+      - expect: [partial, incorrect]      # more than one grading is defensible
+        answer: |
+          It's quadratic-ish.
+```
+
+```bash
+# Run it (grading prompts are assembled locally, so an unpushed file works)
+npx @novedu/cli eval ./sorting-quiz.eval.yaml
+
+# A whole course part — quote the pattern so the CLI expands it (** included)
+npx @novedu/cli eval "./part-1/**/*.eval.yaml"
+
+# Is the grader stable? 3 runs per answer, majority verdict
+npx @novedu/cli eval ./sorting-quiz.eval.yaml --repeats 3
+
+# How would this rubric do on another model? (both flags, always together)
+npx @novedu/cli eval ./sorting-quiz.eval.yaml \
+  --llm-provider "Azure Foundry" --llm-model gpt-5-mini
+
+# Machine-readable, for CI
+npx @novedu/cli eval ./sorting-quiz.eval.yaml --json --out eval-report.json
+
+# A readable Markdown report to share or commit
+npx @novedu/cli eval ./sorting-quiz.eval.yaml --report eval-report.md
+```
+
+- Check the file first, for free: `npx @novedu/cli validate ./x.eval.yaml --kind eval`
+  (offline; it also strict-checks the quiz the eval targets).
+- **`expect`** is one of `correct` / `partial` / `incorrect`, or a list of the
+  acceptable ones. **`question`** must be a question id of the resolved quiz — for a
+  question imported via `quiz_files` that is the namespaced `"<alias>/<id>"` id.
+- **Report semantics.** A **case** is one golden answer; `--repeats` are repeated
+  observations of that case, and the case's verdict is the **majority** (a tie passes
+  only if every tied verdict is expected). Totals, mismatches, the confusion matrix
+  and the exit code are all over case verdicts, so `--repeats 3` is never harsher
+  than `--repeats 1`. Cases whose repeats disagreed are reported as **`unstable`** —
+  the interesting `--repeats` signal — but never fail the run.
+- The **false-correct rate** counts answers you marked as not acceptable that the
+  grader called `correct` — the dangerous direction. The confusion matrix is keyed by
+  the sorted expected set (`correct|partial`), so list order never matters.
+- **Exit code** `0` only when every file is valid, `failed = 0`, `errored = 0` and
+  `skipped = 0` — a CI gate like `validate`. Progress and the run's scope go to
+  stderr; stdout stays clean for `--json`.
+- **Multi-file runs** grade files one after another (`--concurrency`, default 4,
+  bounds cases *within* a file), print a per-file summary + grand totals, and isolate
+  a broken file instead of aborting the batch. `--json` / `--out` always carry the
+  same batch shape `{ files: [...], passed, totals }`, single file or not — `passed`
+  is the exit-code verdict, per batch and per file.
+- **`--report <file.md>`** additionally writes a readable **Markdown** report — an
+  overview table over the files, then the question, the golden answer and the grader's
+  feedback for every mismatched, errored or unstable case (passing cases stay in the
+  JSON). It composes with `--json` / `--out` and leaves stdout untouched.
+- **Token totals.** The reports show what a run cost —
+  `tokens: 15,420 in (12,300 cached) / 2,810 out` — summed over the grading calls that
+  **succeeded**, so it is a lower bound (a retried or failed call reports nothing), and
+  nothing at all is printed when the server reports no usage.
+- **Failure handling**: a 5xx or network hiccup is retried (4 attempts, linear
+  backoff); any 4xx is terminal; an auth failure aborts the run with one message; and
+  three consecutive errored cases trip a circuit breaker so a down server fails fast.
+  After an abort, untried cases are reported as **`skipped`**, not errored. If EVERY
+  case errors at once, suspect the server, not the rubric: the target must actually
+  offer `/api/eval/grade` (point `--server` at one that does), and a 1-case smoke
+  run localises the problem for the cost of a single grading call.
+- **Caveat**: a green run certifies **the file you ran it on**, not the app-hosted
+  copy a live code serves — upload it (`files upload`) afterwards. An override run
+  certifies the override pair, not the quiz's configured `llm`.
 
 ## Authentication
 

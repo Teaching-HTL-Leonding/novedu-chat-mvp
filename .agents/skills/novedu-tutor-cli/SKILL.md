@@ -3,10 +3,12 @@ name: novedu-tutor-cli
 description: >-
   Work with `novedu-cli`, the Novedu chat app's command-line companion: validate
   any activity YAML — a tutor, fragment library, quiz, writing, or coding
-  activity — with the exact validation pipeline the app enforces; dump the exact
+  activity, or a golden-answer eval — with the exact validation pipeline the app
+  enforces; dump the exact
   LLM prompts an activity produces; sign in to
   Microsoft Entra ID; and, as a signed-in teacher, mint/list activity codes,
-  upload/list app-hosted YAML files and images, and triage student reports. Use
+  upload/list app-hosted YAML files and images, triage student reports, and run
+  a quiz's golden answers through the real grader (`eval`). Use
   this skill
   whenever the user wants to validate, check, lint, or verify an activity YAML
   ("is this tutor valid?", "check my quiz", "why won't this file load?"), debug
@@ -14,7 +16,10 @@ description: >-
   `fragment_files` / `questions` / `instructions`, see what the model actually
   receives ("show me the exact prompt", "what does the grader see for this
   question?", "did my safety fragment make it into the prompt?", "dump the
-  prompts for an eval"), authenticate the CLI ("log in
+  prompts for an eval"), measure or regression-test a quiz's grading rubric
+  ("run the eval", "test my grading rubric", "did my rubric change break
+  anything?", "is the grader consistent?", "how would this quiz grade on
+  Foundry?", "grade these golden answers"), authenticate the CLI ("log in
   to novedu", "who am I signed in as?", "sign out"), share or host an activity
   ("create a code for this quiz", "upload this YAML to the app", "what codes do
   I have?", "list my hosted files", "upload this diagram so the quiz can show
@@ -48,8 +53,12 @@ it.
 ## Command reference
 
 ```
-validate <pathOrUrl> [--kind tutor|fragment|quiz|writing|coding] [--json]
+validate <pathOrUrl> [--kind tutor|fragment|quiz|writing|coding|eval] [--json]
 prompts  <pathOrUrl> [--kind tutor|quiz|writing|coding] [--json]
+
+eval <evalPathOrUrl...> [--server <url>] [--concurrency <n>=4] [--repeats <n>=1]
+                        [--llm-provider <p> --llm-model <m>] [--json] [--out <file>]
+                        [--report <file.md>]
 
 login [--device-code]        logout        whoami [--server <url>]
 
@@ -72,7 +81,8 @@ reports resolve <id...>
 Behaviors an agent must know:
 
 - **`validate` and `prompts` need no sign-in**; everything under `codes` /
-  `files` / `images` / `reports` needs a signed-in **teacher** (a non-teacher
+  `files` / `images` / `reports`, and `eval` (it runs the model), needs a
+  signed-in **teacher** (a non-teacher
   gets a generic 403 — check with `whoami`, `Teacher: yes`).
 - **JSON I/O contract** (`codes`/`files`/`images`/`reports`): success objects
   verbatim
@@ -108,7 +118,7 @@ Behaviors an agent must know:
   activity YAML by NAME with `hosted: true` (e.g. a quiz question's
   `image: { src: <name>, hosted: true, alt: … }`); the `url` in `images list`
   is a short-lived SAS link for previewing, never for embedding.
-- `whoami`, `codes`, `files`, `images`, and `reports` accept `--server <url>` (beats the
+- `whoami`, `codes`, `files`, `images`, `reports`, and `eval` accept `--server <url>` (beats the
   `NOVEDU_SERVER` env var, which beats the production default) — pass
   `--server http://localhost:3000` against a local dev server.
 
@@ -116,7 +126,9 @@ Behaviors an agent must know:
 
 `--kind` is caller-declared, not auto-detected. Tell-tales: a **tutor** has
 top-level `prompt`; a **quiz** has `questions`; **writing**/**coding** have
-`instructions`; a **fragment library** has `fragments` and none of the others.
+`instructions`; a **fragment library** has `fragments` and none of the others;
+an **eval** has `target` plus `questions[].answers` (see the `eval` section below —
+`--kind eval` also strict-checks the quiz it targets).
 Careful: quiz/writing/coding may ALSO carry a top-level `fragments:` (their
 document-level fragment block), so `fragments` alone doesn't mean "library".
 
@@ -148,6 +160,10 @@ Act on the specific error code rather than just relaying it:
 | `VARIABLE_TYPE_MISMATCH` | A supplied variable has the wrong type. |
 | `FRAGMENT_TEMPLATE_ERROR` | A fragment template failed to render — Handlebars syntax, or an undeclared variable; `fragment`/`file` context points at the offender. |
 | `FETCH_FAILED` | A file/URL couldn't be read (missing file, bad URL, network). |
+| `EVAL_READ` / `EVAL_PARSE` | The eval file couldn't be read / isn't valid YAML. |
+| `EVAL_SCHEMA` | Eval document wrong — the dotted path leads the message (e.g. `questions.0.answers.1.expect`). |
+| `EVAL_TARGET_ERROR` | The eval's `target` quiz couldn't be resolved or loaded (path wrong, or the quiz itself is broken). |
+| `EVAL_UNKNOWN_QUESTION` | The eval names a question id the quiz doesn't have — for an imported question use the namespaced `"<alias>/<id>"` form. |
 
 When a schema error is vague, re-run with `--json` for the underlying detail.
 
@@ -186,6 +202,95 @@ npx @novedu/cli prompts https://raw.githubusercontent.com/…/my-tutor.yaml   # 
 - It runs the RUNTIME load path, so failures are one `ACTIVITY_LOAD_FAILED` JSON
   error on stderr, exit 1. For structured authoring errors run `validate` — the
   two are complementary, and a confusing prompt usually wants both.
+
+## `eval`: does the grading rubric actually work?
+
+`prompts` shows what the grader is TOLD; `eval` shows what it DOES. Write an eval
+file of golden answers next to the quiz, then replay them through the real grader.
+Reach for it whenever the user changes an `evaluation` prompt, suspects the grader
+is too lenient/strict, or wants a regression gate before publishing a quiz.
+
+```yaml
+# 0010-welcome-quiz.eval.yaml — next to the quiz
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+id: welcome-quiz-eval
+target: ./0010-welcome-quiz.yaml     # relative to THIS file, or an http(s) URL
+questions:
+  - question: what-is-a-type         # a question id of the RESOLVED quiz
+    answers:
+      - expect: correct
+        answer: |
+          A type describes which values a variable may hold.
+      - expect: [partial, incorrect] # more than one grading is defensible
+        answer: |
+          Something about variables.
+```
+
+```bash
+npm run cli --silent -- validate ./0010-welcome-quiz.eval.yaml --kind eval   # free, offline
+npm run cli --silent -- eval ./0010-welcome-quiz.eval.yaml                   # runs the model
+npm run cli --silent -- eval "./part-1/**/*.eval.yaml"                       # quote the glob
+npm run cli --silent -- eval ./x.eval.yaml --repeats 3                       # stability check
+npm run cli --silent -- eval ./x.eval.yaml --json --out eval-report.json     # for CI / drilling in
+npm run cli --silent -- eval ./x.eval.yaml --report eval-report.md          # readable report for the teacher
+```
+
+What an agent must know before running it:
+
+- **It grades THROUGH the Novedu server** (`POST /api/eval/grade`) — the target
+  server must actually offer the feature. Against one that doesn't (e.g. a
+  deployment predating it), every case errors with "the server's response is not a
+  grading verdict"; a passing `whoami` proves nothing about this route. The remedy
+  is `--server` (e.g. `--server http://localhost:3000` for a local dev server).
+- **It spends real tokens.** The run prints its scope
+  (`N case(s) × R repeat(s) = M grading call(s)`) before the first call — tell the
+  user the number for anything large, and use `validate --kind eval` first so a typo
+  never costs a run. `--repeats 3` triples the cost.
+- **Smoke-test before a large run**: one throwaway eval file with a single answer
+  localises any server/auth/provider problem for the cost of ONE grading call —
+  always worth it before firing hundreds.
+- **`validate` takes ONE file per call; only `eval` takes globs.** For many files,
+  loop: `for f in ./part-1/*.eval.yaml; do npm run cli --silent -- validate "$f"
+  --kind eval; done`.
+- **Grading prompts are assembled LOCALLY** from the file on disk, so an unpushed
+  edit is what gets evaluated. A green run therefore certifies **your local file**,
+  not the app-hosted copy a live code serves — follow up with `files upload`.
+- **Report hierarchy**: a *case* is one golden answer; `--repeats` are repeated
+  observations of it, and the case verdict is the **majority** (a tie passes only if
+  every tied verdict is expected). Totals, the confusion matrix, the false-correct
+  rate and the exit code are all over case verdicts. `unstable` (repeats disagreed)
+  is reported but never fails the run — report it to the user as "the grader is
+  nondeterministic on these", not as a bug in the rubric.
+- Read the **false-correct rate** out loud when it is non-zero: those are answers the
+  teacher marked as not acceptable that the grader accepted — usually the rubric
+  needs a sharper "grade `incorrect` when…" clause.
+- **Exit `0`** only when every file is valid, `failed = 0`, `errored = 0` and
+  `skipped = 0`. A mismatch is a rubric finding, not a CLI error — fix the
+  `evaluation` prompt (or the golden answer, if the expectation was wrong) and
+  re-run.
+- `--llm-provider` + `--llm-model` (**both or neither**) grade with a different
+  backend for comparison — run once without and once with, then diff the reports.
+- **`--report <file.md>`** writes a Markdown report for the teacher (overview table,
+  then question + golden answer + grader feedback for every mismatched/errored/unstable
+  case; passing cases stay in the JSON). It composes with `--json`/`--out` and never
+  touches stdout — hand the file to the user when they ask "what went wrong?".
+- **Token totals** are reported (`tokens: … in (… cached) / … out`) in the terminal
+  report, the JSON (`totals.usage`) and the Markdown report. They cover only the
+  gradings that SUCCEEDED, so quote them as a lower bound on what the run cost.
+  This is a per-RUN override; it never touches a code's stored LLM override.
+- Multi-file runs grade files one after another with a per-file summary + grand
+  totals; one invalid file is isolated (`invalid` in the report) instead of aborting
+  the batch. `--json`/`--out` always carry the same `{ files, totals }` shape.
+  Progress and the scope banner go to **stderr**, the report to **stdout** — so
+  `--json > report.json` (and piping in general) stays clean.
+- Failures are handled for you: 5xx/network is retried (4 attempts, linear backoff),
+  any 4xx is terminal, an auth failure aborts the run (`login` again), and three
+  consecutive errored cases trip a circuit breaker — if you see that, the server is
+  down, unreachable, or lacks the feature (see the first bullet), not the rubric.
+  After an abort, untried cases are reported as **`skipped`**, not errored — a
+  "3 errored, 249 skipped" report means ~3 real failures, not 252.
+- `--concurrency` defaults to 4; 6–8 is comfortable against your own dev server.
+  Raise it before reaching for anything fancier on big batches.
 
 ## Signing in: the human must finish `login`
 

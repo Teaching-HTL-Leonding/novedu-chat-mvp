@@ -16,13 +16,19 @@ and referenced by a `# yaml-language-server:` modeline for editor IntelliSense:
 | [`coding/`](coding/README.md) | OpenAI-compatible coding endpoint | [coding/README.md](coding/README.md) |
 | [`fragments/`](fragments/README.md) | Reusable prompt-fragment libraries (cross-cutting) | [fragments/README.md](fragments/README.md) |
 
-One more folder holds an editor schema without being a module:
-[`registry/`](registry/registry-yaml.schema.json) carries
-`registry-yaml.schema.json` for the **activity registry** — the hand-written file a
-publication keeps in its own repo listing the activities it embeds, reconciled by
-`novedu-cli codes sync`. It is not an activity and has no authoring guide here; the
-format is documented in [`../docs/registry.md`](../docs/registry.md) and
-[`../cli/README.md`](../cli/README.md).
+Two more folders hold editor schemas without being modules:
+
+- [`registry/`](registry/registry-yaml.schema.json) carries
+  `registry-yaml.schema.json` for the **activity registry** — the hand-written file a
+  publication keeps in its own repo listing the activities it embeds, reconciled by
+  `novedu-cli codes sync`. It is not an activity and has no authoring guide here; the
+  format is documented in [`../docs/registry.md`](../docs/registry.md) and
+  [`../cli/README.md`](../cli/README.md).
+- [`evals/`](evals/README.md) carries `eval-yaml.schema.json` for a **golden-answer
+  eval** — a test file for a quiz's grading: made-up student answers plus the verdict
+  each must get, replayed through the real grader by `novedu-cli eval`. Students never
+  see it and it never gets a code. Guide: [evals/README.md](evals/README.md),
+  engineering reference: [`../docs/cli-eval.md`](../docs/cli-eval.md).
 
 **Prompt fragments are a cross-cutting capability of all four kinds.** A fragment is a
 reusable, parameterized prompt piece — a persona, a safety policy, a set of ground

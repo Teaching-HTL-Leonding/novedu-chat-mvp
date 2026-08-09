@@ -89,6 +89,19 @@ export type ErrorCode =
   // runs the lenient runtime loaders on purpose — `validate` remains the structured
   // authoring gate.
   | "ACTIVITY_LOAD_FAILED"
+  // The eval file (`docs/cli-eval.md`) could not be read / did not parse as YAML /
+  // does not match `EvalYamlSchema` (one error per zod issue, its dotted path in the
+  // message, e.g. `questions.0.answers.1.expect`).
+  | "EVAL_READ"
+  | "EVAL_PARSE"
+  | "EVAL_SCHEMA"
+  // The eval's `target` quiz could not be resolved or loaded: an unusable URL, a
+  // blocked scheme, or the quiz itself failing to load/validate. Carries the resolved
+  // target URL.
+  | "EVAL_TARGET_ERROR"
+  // An eval question id that the resolved target quiz does not have (a typo, or a
+  // question removed from the quiz since the eval was written). Carries `questionId`.
+  | "EVAL_UNKNOWN_QUESTION"
   // App-only: the YAML names an LLM provider this server does not have configured
   // (e.g. `Azure Foundry` without AZURE_FOUNDRY_ENDPOINT). Emitted by the app's
   // authoring gate (lib/file-validators.ts), never by the CLI-bundled loadAndCheck*

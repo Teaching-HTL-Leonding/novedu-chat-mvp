@@ -15,6 +15,12 @@
 // bearer token accepted (the CLI supplies one via NOVEDU_TOKEN). It is a test
 // double, never a second implementation — anything policy-relevant belongs in
 // the app's route and its own tests.
+//
+// The same goes for `/api/eval/grade` (`novedu-cli eval`): the fake grader is
+// DETERMINISTIC — it answers `correct` unless the answer carries a
+// `[grade:<verdict>]` marker, with a plausible `usage` block so token totals are
+// exercised — and `options.evalFailures` makes the first N requests answer 504 so
+// the CLI's retry path is exercised offline.
 
 import { readFile } from "node:fs/promises";
 import http from "node:http";
@@ -29,19 +35,24 @@ const ACTIVITIES_ROOT = fileURLToPath(new URL("./activities/", import.meta.url))
  * failure (e.g. EADDRINUSE) instead of leaving the caller hanging.
  *
  * `options.codes` seeds the fake `/api/codes` store (the array is used as-is, so
- * a caller can inspect what a run minted).
+ * a caller can inspect what a run minted). `options.evalFailures` makes the first
+ * N `/api/eval/grade` requests answer 504 (retry testing); every graded request is
+ * appended to the returned `evalRequests` array.
  *
  * The typed return is what TypeScript consumers (the CLI integration test) see —
  * `allowJs` picks this JSDoc up straight from the implementation, so there is no
  * separate declaration file to drift.
  *
  * @param {number} [port]
- * @param {{ codes?: Array<Record<string, unknown>> }} [options]
- * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>> }>}
+ * @param {{ codes?: Array<Record<string, unknown>>, evalFailures?: number }} [options]
+ * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>>, evalRequests: Array<Record<string, unknown>> }>}
  */
 export function startFixturesServer(port = 0, options = {}) {
   const codes = options.codes ?? [];
   let minted = 0;
+  /** @type {Array<Record<string, unknown>>} */
+  const evalRequests = [];
+  const evalState = { remainingFailures: options.evalFailures ?? 0 };
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -53,6 +64,10 @@ export function startFixturesServer(port = 0, options = {}) {
       }
       if (url.pathname === "/api/codes") {
         await handleCodes(req, res, codes, () => `synced${String(++minted).padStart(4, "0")}`);
+        return;
+      }
+      if (url.pathname === "/api/eval/grade") {
+        await handleEvalGrade(req, res, evalState, evalRequests);
         return;
       }
       const rel = decodeURIComponent(url.pathname).replace(/^\/+/, "");
@@ -77,7 +92,7 @@ export function startFixturesServer(port = 0, options = {}) {
     server.listen(port, "127.0.0.1", () => {
       const address = server.address();
       const actualPort = typeof address === "object" && address ? address.port : port;
-      resolve({ server, baseUrl: `http://127.0.0.1:${actualPort}`, codes });
+      resolve({ server, baseUrl: `http://127.0.0.1:${actualPort}`, codes, evalRequests });
     });
   });
 }
@@ -153,6 +168,62 @@ async function handleCodes(req, res, codes, nextCode) {
   };
   codes.push(entry);
   sendJson(res, 201, entry);
+}
+
+/** Read a request body as JSON, or `undefined` when it is not parseable. */
+async function readJsonBody(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The fake `POST /api/eval/grade` (app/api/eval/grade/route.ts): bearer required,
+ * POST only, the same required fields — then a DETERMINISTIC verdict so an
+ * integration test can assert exact counts: `correct` unless the answer carries a
+ * `[grade:partial]` / `[grade:incorrect]` / `[grade:correct]` marker. The first
+ * `evalFailures` requests answer 504 instead, exercising the CLI's retry path.
+ */
+async function handleEvalGrade(req, res, state, requests) {
+  if (!/^Bearer .+/.test(req.headers.authorization ?? "")) {
+    sendJson(res, 401, { message: "Unauthorized" });
+    return;
+  }
+  if (req.method !== "POST") {
+    sendJson(res, 405, { message: "Method not allowed" });
+    return;
+  }
+  const body = await readJsonBody(req);
+  if (body === undefined) {
+    sendJson(res, 400, { message: "The request body must be JSON." });
+    return;
+  }
+  if (!body?.llm?.model || !body?.system || !body?.answer) {
+    sendJson(res, 400, { message: "llm.model, system and answer are required." });
+    return;
+  }
+
+  if (state.remainingFailures > 0) {
+    state.remainingFailures -= 1;
+    sendJson(res, 504, { message: "Gateway timeout" });
+    return;
+  }
+
+  requests.push(body);
+  const marker = /\[grade:(correct|partial|incorrect)\]/.exec(String(body.answer));
+  const result = marker ? marker[1] : "correct";
+  // A plausible, DETERMINISTIC `usage` block (same wire shape as the real route's
+  // optional one), so the CLI's token aggregation is exercised end to end offline.
+  const usage = {
+    input: 1000 + String(body.system).length,
+    cachedInput: 256,
+    output: 40 + String(body.answer).length,
+  };
+  sendJson(res, 200, { result, feedback: `fixtures grader says ${result}`, usage });
 }
 
 // Run directly (Playwright webServer): listen on a fixed port and stay up.

@@ -2,8 +2,9 @@
 
 The `prompts` command prints the **exact system prompts** an activity YAML
 produces — the strings the app really sends to the model. Teachers use it to see
-what their file turns into; the eval harness uses it to grade prompts without
-re-implementing (and slowly drifting from) our assembly rules.
+what their file turns into; the eval harness (`novedu-cli eval`, `docs/cli-eval.md`)
+uses it to grade prompts without re-implementing (and slowly drifting from) our
+assembly rules.
 
 Like `validate`, it is **offline and sign-in-free**: a local path or a `file:` /
 `http(s)` URL, no server, no database, no LLM call.

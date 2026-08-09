@@ -18,6 +18,9 @@ const writingsDir = fileURLToPath(
 const codingDir = fileURLToPath(
   new URL("../../../test-fixtures/activities/coding/", import.meta.url),
 );
+const evalsDir = fileURLToPath(
+  new URL("../../../test-fixtures/activities/evals/", import.meta.url),
+);
 
 describe("runValidate — tutors (local files)", () => {
   it("accepts a valid tutor and reports its model", async () => {
@@ -164,6 +167,40 @@ describe("runValidate — coding activities (local files)", () => {
     expect(outcome.result.ok).toBe(false);
     if (!outcome.result.ok) {
       expect(outcome.result.errors[0]?.code).toBe("FETCH_FAILED");
+    }
+  });
+});
+
+describe("runValidate — evals (local files)", () => {
+  it("accepts a valid eval and reports its target + case count", async () => {
+    const outcome = await runValidate(`${evalsDir}test-eval.yaml`, "eval");
+
+    expect(outcome.kind).toBe("eval");
+    expect(outcome.result.ok).toBe(true);
+    if (outcome.kind === "eval" && outcome.result.ok) {
+      expect(outcome.result.evalFile.id).toBe("test-eval");
+      expect(outcome.result.targetUrl).toMatch(/quizzes\/test-quiz\.yaml$/);
+      expect(outcome.result.caseCount).toBe(2);
+      // The target's grading prompts come from the app's own dump seam.
+      expect(outcome.result.quizDump.grading.questions[0]?.id).toBe("q1");
+    }
+  });
+
+  it("rejects the committed broken eval with EVAL_SCHEMA errors", async () => {
+    const outcome = await runValidate(`${evalsDir}broken-eval.yaml`, "eval");
+
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors[0]?.code).toBe("EVAL_SCHEMA");
+    }
+  });
+
+  it("reports a missing eval file as an EVAL_READ error (no throw)", async () => {
+    const outcome = await runValidate(`${evalsDir}does-not-exist.yaml`, "eval");
+
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors[0]?.code).toBe("EVAL_READ");
     }
   });
 });

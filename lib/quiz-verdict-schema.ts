@@ -19,3 +19,12 @@ export const QUIZ_VERDICT_SCHEMA = z.object({
   result: z.enum(["correct", "partial", "incorrect"]),
   feedback: z.string(),
 });
+
+// The verdict ENUM on its own, so anything that needs the three literals (the eval
+// format's `expect` field, `lib/eval-schema.ts`) reuses the grader's own schema node
+// instead of restating the list — a mirrored copy is exactly the drift this repo
+// grep-guards against elsewhere.
+export const QUIZ_VERDICT_ENUM = QUIZ_VERDICT_SCHEMA.shape.result;
+
+/** The three verdict literals, in the canonical best→worst order. */
+export const QUIZ_VERDICT_VALUES = QUIZ_VERDICT_ENUM.options;

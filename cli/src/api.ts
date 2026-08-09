@@ -20,6 +20,17 @@ export function failJson(value: unknown): void {
 }
 
 /**
+ * The outcome of one API request. A failure additionally reports WHY, so a caller that
+ * retries (`novedu-cli eval`) can tell the three cases apart without re-parsing the
+ * payload: `status` is the HTTP status on a non-2xx and ABSENT on a network failure
+ * (the retryable case), and `authFailed` marks the two outcomes that must abort a whole
+ * run rather than be retried — no token at all, and the server's 401/403.
+ */
+export type ApiRequestResult =
+  | { ok: true; payload: unknown }
+  | { ok: false; error: unknown; status?: number; authFailed?: boolean };
+
+/**
  * Performs one authenticated API request. On ANY failure (not signed in,
  * network, non-2xx) it prints the JSON error to stderr per the contract —
  * server error bodies (`{ message }` — incl. the generic 401/403 — or
@@ -41,10 +52,13 @@ export async function performApiRequest(options: {
   method?: "GET" | "POST" | "PUT";
   body?: unknown;
   quiet?: boolean;
-}): Promise<{ ok: true; payload: unknown } | { ok: false; error: unknown }> {
-  const fail = (value: unknown): { ok: false; error: unknown } => {
+}): Promise<ApiRequestResult> {
+  const fail = (
+    value: unknown,
+    extra: { status?: number; authFailed?: boolean } = {},
+  ): ApiRequestResult => {
     if (!options.quiet) failJson(value);
-    return { ok: false, error: value };
+    return { ok: false, error: value, ...extra };
   };
 
   let token: string;
@@ -52,7 +66,9 @@ export async function performApiRequest(options: {
     token = await getAccessToken();
   } catch (error) {
     if (error instanceof NotSignedInError) {
-      return fail({ message: error.message });
+      // No status: this never reached the server. Marked as an auth failure so a
+      // long run aborts instead of retrying a condition that cannot improve.
+      return fail({ message: error.message }, { authFailed: true });
     }
     throw error;
   }
@@ -82,7 +98,10 @@ export async function performApiRequest(options: {
   }
 
   if (!response.ok) {
-    return fail(payload ?? { message: `${server} rejected the request: HTTP ${response.status}` });
+    return fail(payload ?? { message: `${server} rejected the request: HTTP ${response.status}` }, {
+      status: response.status,
+      ...(response.status === 401 || response.status === 403 ? { authFailed: true } : {}),
+    });
   }
   return { ok: true, payload };
 }

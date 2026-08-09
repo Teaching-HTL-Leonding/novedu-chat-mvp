@@ -10,8 +10,9 @@ Cover:
 - What validation does and why: it runs the same checks the app runs, so problems show
   up before students do.
 - The command: the validate command with a file path or URL, and the --kind option
-  (tutor is the default; fragment, quiz, writing, and coding are the others). Quote the
-  real commands.
+  (tutor is the default; fragment, quiz, writing, coding, and eval are the others).
+  Quote the real commands. Mention eval only in passing here — it validates a
+  golden-answer file for a quiz's grading and gets its own chapter (06).
 - Reading the result: success versus a failure that names the specific problem.
 - The bundled AI skill: teachers can ask it to run validation and explain an error.
 

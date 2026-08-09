@@ -21,6 +21,12 @@ the `--chart-*` tokens in `app/globals.css`, and the `/usage` entry in
 - Two **KPIs**: **Chats** (distinct Mastra threads with a user message) and **Quiz
   answers graded** (`SUM(quiz_answers)`).
 
+The code pie (and the module pie) may show a **`cli-eval` pseudo-code / `eval`
+module** row: that is a teacher's `novedu-cli eval` run, metered under a sentinel
+code rather than a real one (`docs/cli-eval.md`, `docs/usage-metering.md`). It has no
+`novedu_codes` row, so the LEFT JOIN leaves its metadata NULL and it is labelled by
+its raw code — and it can never collide with a minted 10-character code.
+
 A single **time filter** — `Last 24 hours / 7 days / 30 days / 365 days` — governs
 **every** panel, including the KPIs.
 

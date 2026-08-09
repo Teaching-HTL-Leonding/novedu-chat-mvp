@@ -1,0 +1,199 @@
+import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import type { Server } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { startFixturesServer } from "../../test-fixtures/serve.mjs";
+
+// `novedu-cli eval` end to end through the REAL built CLI binary (`node dist/main.js`)
+// against the fixtures server's fake `/api/eval/grade` — fully offline, no sign-in (the
+// CLI reads NOVEDU_TOKEN, see cli/src/auth.ts). The eval files and the quiz they target
+// are the committed fixtures, so the grading prompts are the app's own.
+//
+// Run via `npm run test:cli` — it builds the CLI first, so `dist/main.js` exists.
+
+const cli = fileURLToPath(new URL("../dist/main.js", import.meta.url));
+const evalsDir = fileURLToPath(new URL("../../test-fixtures/activities/evals/", import.meta.url));
+const okEval = join(evalsDir, "test-eval.yaml");
+const mismatchEval = join(evalsDir, "mismatch-eval.yaml");
+const brokenEval = join(evalsDir, "broken-eval.yaml");
+
+let fixtures:
+  | { server: Server; baseUrl: string; evalRequests: Array<Record<string, unknown>> }
+  | undefined;
+let retryFixtures: { server: Server; baseUrl: string } | undefined;
+let dir: string;
+
+beforeAll(async () => {
+  fixtures = await startFixturesServer(0);
+  // A second server whose first two grading calls answer 504, for the retry path.
+  retryFixtures = await startFixturesServer(0, { evalFailures: 2 });
+  dir = mkdtempSync(join(tmpdir(), "novedu-eval-integration-"));
+});
+
+afterAll(async () => {
+  for (const handle of [fixtures?.server, retryFixtures?.server]) {
+    if (handle) await new Promise<void>((resolve) => handle.close(() => resolve()));
+  }
+  if (dir) rmSync(dir, { recursive: true, force: true });
+});
+
+function baseUrl(): string {
+  if (!fixtures) throw new Error("fixtures server not started");
+  return fixtures.baseUrl;
+}
+
+interface Run {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+function runCli(args: string[]): Promise<Run> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(process.execPath, [cli, ...args], {
+      env: { ...process.env, NOVEDU_TOKEN: "integration-test-token" },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => {
+      stdout += d;
+    });
+    child.stderr.on("data", (d) => {
+      stderr += d;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => resolvePromise({ code: code ?? -1, stdout, stderr }));
+  });
+}
+
+describe("novedu-cli eval", () => {
+  it("grades a local eval file and exits 0 when every case matches", async () => {
+    const { code, stdout, stderr } = await runCli(["eval", okEval, "--server", baseUrl()]);
+
+    expect(code).toBe(0);
+    expect(stderr).toContain("2 case(s) × 1 repeat(s) = 2 grading call(s)");
+    expect(stdout).toContain("Eval passed");
+    expect(stdout).toContain("passed: 2");
+    // The server really saw the app's grading prompt for q1.
+    const seen = fixtures?.evalRequests.at(-1) as { system?: string } | undefined;
+    expect(seen?.system).toContain("The answer is 4.");
+  });
+
+  it("grades an eval served over http and writes the batch JSON with --out", async () => {
+    const out = join(dir, "report.json");
+
+    const { code, stdout } = await runCli([
+      "eval",
+      `${baseUrl()}/evals/test-eval.yaml`,
+      "--json",
+      "--out",
+      out,
+      "--server",
+      baseUrl(),
+    ]);
+
+    expect(code).toBe(0);
+    const payload = JSON.parse(stdout);
+    expect(payload.files).toHaveLength(1);
+    expect(payload.files[0].result.id).toBe("test-eval");
+    expect(payload.files[0].passed).toBe(true);
+    expect(payload.passed).toBe(true);
+    expect(payload.totals).toMatchObject({ files: 1, cases: 2, passed: 2, failed: 0 });
+    // The fake grader reports usage, so the aggregation really ran end to end.
+    expect(payload.totals.usage.input).toBeGreaterThan(0);
+    expect(payload.totals.usage.output).toBeGreaterThan(0);
+    expect(payload.totals.usage.cachedInput).toBe(2 * 256);
+    expect(payload.files[0].result.cases[0].repeats[0].usage.input).toBeGreaterThan(0);
+    expect(JSON.parse(readFileSync(out, "utf8"))).toEqual(payload);
+  });
+
+  it("writes a readable Markdown report with --report, alongside --json", async () => {
+    const out = join(dir, "report.json");
+    const report = join(dir, "report.md");
+
+    const { code, stdout } = await runCli([
+      "eval",
+      mismatchEval,
+      "--json",
+      "--out",
+      out,
+      "--report",
+      report,
+      "--server",
+      baseUrl(),
+    ]);
+
+    expect(code).toBe(1);
+    // stdout stays the JSON — `--report` is a side channel.
+    expect(JSON.parse(stdout).passed).toBe(false);
+    const md = readFileSync(report, "utf8");
+    expect(md).toContain("# Eval report — ❌ failed");
+    expect(md).toContain("| File | Eval | Cases |");
+    expect(md).toContain("### `q1` #1");
+    expect(md).toContain("fixtures grader says");
+    expect(md).toMatch(/- \*\*Tokens\*\* [\d,]+ in/);
+  });
+
+  it("exits 1 on a mismatch and names the case", async () => {
+    const { code, stdout } = await runCli(["eval", mismatchEval, "--server", baseUrl()]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain("q1#1");
+    expect(stdout).toContain("Eval failed");
+  });
+
+  it("retries a 504 and still finishes green", async () => {
+    if (!retryFixtures) throw new Error("retry fixtures server not started");
+
+    const { code, stdout } = await runCli([
+      "eval",
+      okEval,
+      "--concurrency",
+      "1",
+      "--server",
+      retryFixtures.baseUrl,
+    ]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("passed: 2");
+  }, 60_000);
+
+  it("reports an unusable eval file as JSON on stderr, exit 1", async () => {
+    const { code, stdout, stderr } = await runCli(["eval", brokenEval, "--server", baseUrl()]);
+
+    expect(code).toBe(1);
+    expect(stdout).toBe("");
+    const payload = JSON.parse(stderr);
+    expect(payload.errors[0].code).toBe("EVAL_SCHEMA");
+  });
+
+  it("runs a multi-file batch, isolating the invalid file and exiting 1", async () => {
+    const { code, stdout } = await runCli(["eval", okEval, brokenEval, "--server", baseUrl()]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain("Evaluated 2 file(s)");
+    expect(stdout).toContain("test-eval.yaml");
+    expect(stdout).toContain("invalid");
+    expect(stdout).toContain("TOTAL: 2 case(s), 2 passed, 0 failed, 0 errored");
+  });
+});
+
+describe("novedu-cli validate --kind eval", () => {
+  it("validates an eval offline, strict-checking the quiz it targets", async () => {
+    const { code, stdout } = await runCli(["validate", okEval, "--kind", "eval"]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("Valid eval");
+    expect(stdout).toContain("cases: 2");
+  });
+
+  it("exits 1 on a broken eval", async () => {
+    const { code, stdout } = await runCli(["validate", brokenEval, "--kind", "eval"]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain("Invalid eval");
+  });
+});

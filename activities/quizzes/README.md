@@ -436,6 +436,45 @@ chapter's `instructions` — exactly the way it will be graded.
 
 Nothing is uploaded and no sign-in is needed; the command only reads your file.
 
+### Testing the grading itself: golden answers (`eval`)
+
+The prompt dump shows what the AI is *told*. To find out what it actually *does*,
+write a small **eval file** next to your quiz: student answers you make up, each
+with the verdict it must get. `novedu-cli eval` then grades them with the real
+grader and tells you where your rubric disagreed with you.
+
+```yaml
+# my-quiz.eval.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+id: my-quiz-eval
+target: ./my-quiz.yaml            # relative to THIS file
+questions:
+  - question: q1                  # a question id of your quiz
+    answers:
+      - expect: correct
+        answer: |
+          The full, correct answer.
+      - expect: [partial, incorrect]   # either grading would be fine
+        answer: |
+          Half of the answer.
+      - expect: incorrect
+        answer: |
+          A confident, wrong answer.
+```
+
+```bash
+novedu-cli validate ./my-quiz.eval.yaml --kind eval   # free: checks the eval AND the quiz
+novedu-cli eval ./my-quiz.eval.yaml                   # runs the real grader (sign-in required)
+```
+
+A few good answers per question already catch a lot — especially the *confidently
+wrong* ones, which is where a lenient `evaluation` shows up as a **false-correct**
+in the report. The eval also makes rubric edits safe: re-run it after every change
+and you will see immediately whether you fixed one case and broke another.
+
+The full guide (report semantics, `--repeats`, comparing models, running a whole
+folder at once) is in [`../evals/README.md`](../evals/README.md).
+
 ### Common problems and how to fix them
 
 | Reported problem            | What it means                                                  | How to fix                                    |

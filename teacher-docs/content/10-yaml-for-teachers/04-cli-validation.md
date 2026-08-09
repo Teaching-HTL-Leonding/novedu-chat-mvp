@@ -4,9 +4,10 @@ description: Run the Novedu CLI's validate command on an activity file, pick the
 sidebar:
   order: 4
 audience: teacher
-keywords: [validate, CLI, novedu-cli, check YAML, kind, error, quiz, tutor]
+keywords: [validate, CLI, novedu-cli, check YAML, kind, error, quiz, tutor, eval]
 related:
   - 10-yaml-for-teachers/03-json-schemas-vscode
+  - 10-yaml-for-teachers/06-testing-the-grader
   - 20-building-activities/01-handling-yaml
   - 20-building-activities/02-available-llms
 generated: true
@@ -19,7 +20,7 @@ generated: true
 
 Before you hand an activity to a class, you can check it with the Novedu CLI, a small command-line tool. Its `validate` command runs the same checks the app itself runs when it loads your file, so any problem shows up on your screen instead of in front of your students. If the CLI says your file is valid, the app will accept it.
 
-You don't need to install anything permanently. With Node.js (version 20 or newer) on your machine, `npx` fetches and runs the CLI on demand.
+You don't need to install anything permanently. With Node.js (version 22 or newer) on your machine, `npx` fetches and runs the CLI on demand.
 
 ## Run the validate command
 
@@ -48,7 +49,9 @@ npx @novedu/cli validate ./activities/examples/review-writing/restaurant-review-
 npx @novedu/cli validate ./activities/examples/sorting-algorithms/sorting-visualizer.yaml --kind coding
 ```
 
-`--kind` accepts `tutor` (the default), `fragment`, `quiz`, `writing`, or `coding`. Getting it right matters: if you validate a quiz without `--kind quiz`, the CLI checks it against the rules for a tutor and reports errors that have nothing to do with your quiz. When a perfectly good file seems to fail, check the `--kind` first.
+`--kind` accepts `tutor` (the default), `fragment`, `quiz`, `writing`, `coding`, or `eval`. Getting it right matters: if you validate a quiz without `--kind quiz`, the CLI checks it against the rules for a tutor and reports errors that have nothing to do with your quiz. When a perfectly good file seems to fail, check the `--kind` first.
+
+The `eval` kind checks a golden-answer file, a small test file for a quiz's grading, together with the quiz it points at. The chapter on testing how a quiz grades explains what those files are and how to run them.
 
 Two more things worth knowing:
 

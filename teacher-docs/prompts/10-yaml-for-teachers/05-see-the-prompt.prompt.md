@@ -37,8 +37,11 @@ Cover:
      sample student answers, running them all through the same prompt, and looking at
      whether the results are what you want. Useful before a class meets the activity,
      and for comparing the results before and after you change your instructions.
-     Because the command prints exactly what the model receives, it is the starting
-     point for such a run.
+     Then say that Novedu does this natively: the eval command (the next chapter,
+     "Testing how a quiz grades") replays a file of sample answers through the real
+     grader and reports the differences — prompts is how you READ what the grader is
+     told, eval is how you MEASURE what it does. Do not describe any manual
+     run-the-answers-by-hand workflow; forward-link to the next chapter instead.
 - Why this is a command rather than a screen in the app: it is meant to be used by an
   AI assistant at least as much as by a person, the assistant runs it and explains the
   answer, and it needs no sign-in and uploads nothing. A screen in the app can follow

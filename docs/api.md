@@ -4,10 +4,11 @@ Deep reference for the app's second auth channel: CLI commands (and any other
 non-browser client, e.g. a future MCP server) calling app API routes with an
 Entra **bearer token** instead of a session cookie. Read it before touching
 `lib/api-auth.ts`, `app/api/me/**`, `app/api/codes/**`, `app/api/files/**`
-(the bearer handlers), `app/api/images/**`, `app/api/reports/**`, the services
+(the bearer handlers), `app/api/images/**`, `app/api/reports/**`,
+`app/api/eval/**`, the services
 they share with the web actions (`lib/code-service.ts`, `lib/file-service.ts`,
 `lib/image-service.ts`), the CLI commands (`cli/src/auth.ts`, `cli/src/api.ts`,
-`cli/src/commands/{login,logout,whoami,codes,files,images,reports}.ts`), or when
+`cli/src/commands/{login,logout,whoami,codes,files,images,reports,eval}.ts`), or when
 adding a bearer-protected endpoint. Cookie sessions, teacher roles and student
 mode live in `docs/auth.md`.
 
@@ -178,10 +179,33 @@ stored `origin` column, which is operator-only).
   failure → `503`. **Resolve is the only mutation on this channel — reopen and
   delete stay web-only** (an agent should never destroy a student's report;
   `docs/reports.md`).
+- **`POST /api/eval/grade`** (`app/api/eval/grade/route.ts`, teacher-only) — grades
+  ONE golden answer for `novedu-cli eval` (`docs/cli-eval.md`). Body
+  `{ llm: { provider?, model }, system, answer }` (`provider` defaults to SCCH; an
+  unknown one is `400`, never silently defaulted); `200` with
+  `{ result: "correct" | "partial" | "incorrect", feedback, usage? }`, the OPTIONAL
+  `usage: { input, cachedInput, output }` carrying this call's tokens when the model
+  reported any (`input` includes the cached part; the field is omitted entirely when
+  there is no usage — `docs/cli-eval.md`). It runs the **exact**
+  production grading path — the memory-less `quizEvaluator` with
+  `QUIZ_VERDICT_SCHEMA` structured output over `buildAnswerMessage(answer.trim())`,
+  the same call `submitAnswer` makes — and **persists nothing** (no queue, no run
+  history: one request = one graded answer, so the CLI can fan out and retry).
+  Failures: `400` for a malformed body, an unknown provider, a provider this
+  deployment cannot serve (`providerUnavailableReason` — deliberately terminal so
+  the CLI does not retry it), or an answer that is empty after trimming; `413` above
+  the **256 KB** body cap; `401`/`403` from the bearer gate; `502` when the grader
+  throws or returns no structured object. Stated plainly: this is a **teacher-scoped,
+  verdict-schema-constrained LLM pass-through** — a teacher may send arbitrary
+  `system`/`answer` text through it. That is a deliberate property under this repo's
+  trust model (teachers already author every activity prompt), and it is why the
+  gate is `requireBearerTeacher` and the grading prompt comes from the client so the
+  server-held quiz `evaluation` prompts never leave the server. Usage is metered
+  under the `cli-eval` pseudo-code + `eval` module (`docs/usage-metering.md`).
 - **Proxy exclusion, per route:** bearer routes must not hit the cookie gate
   (a CLI has no session), so each one gets its own **path-bounded** entry in
   the `proxy.ts` matcher (`api/me(?:/|$)`, `api/codes(?:/|$)`,
-  `api/reports(?:/|$)`, `api/images(?:/|$)`) — never a blanket `/api` prefix. The files handlers ride
+  `api/reports(?:/|$)`, `api/images(?:/|$)`, `api/eval(?:/|$)`) — never a blanket `/api` prefix. The files handlers ride
   the pre-existing public `api/files` exclusion and self-gate. Adding a bearer endpoint = new route
   file gated by `requireBearerUser`/`requireBearerTeacher` + its own matcher
   exclusion + documentation here.
@@ -246,6 +270,17 @@ stored `origin` column, which is operator-only).
   everything in one call; `reports resolve <id…>` sends every id in one
   `POST /api/reports/resolve`. Reopen and delete are deliberately **not** here —
   they stay web-only.
+- **`eval <evalPathOrUrl…>`** (`cli/src/commands/eval.ts`) is the second exception
+  to the JSON-only rule, for the same reason as `codes sync`: it makes MANY requests
+  (one `POST /api/eval/grade` per golden answer × `--repeats`, bounded by
+  `--concurrency`) and prints a run report, keeping the machine-readable batch shape
+  behind `--json` / `--out`. It is the first command that both talks to the server
+  and does substantial offline work: the grading prompts are assembled locally
+  through the app's own dump seam. Per-case failures are handled by the command
+  (`performApiRequest({ quiet: true })` + the new `status` / `authFailed` markers:
+  retry 5xx and network, abort the whole run on 401/403); hard failures — no usable
+  eval file, half an `--llm-*` pair, an unwritable `--out` — stay JSON on stderr with
+  exit 1. See `docs/cli-eval.md`.
 - **Token cache** `~/.novedu/token-cache.json` — plain JSON via an MSAL
   `ICachePlugin` (az-CLI model), directory `0700`, file `0600`. It holds the
   refresh token; treat it like a credential.
@@ -260,7 +295,11 @@ stored `origin` column, which is operator-only).
   calls `GET <server>/api/me` — server base from `--server`, then
   `NOVEDU_SERVER`, then the production default (`cli/src/server-url.ts`).
 - Not-signed-in state is the typed `NotSignedInError` →
-  `Not signed in — run "novedu-cli login".`, exit 1.
+  `Not signed in — run "novedu-cli login".`, exit 1. `performApiRequest` reports it
+  back as a failure carrying `authFailed: true` (and NO `status`, since nothing was
+  sent), alongside the HTTP `status` it sets on a non-2xx — the two markers a
+  many-request command needs to tell "retry", "give up on this item" and "abort the
+  whole run" apart.
 
 ## Testing (hermetic; validation stays real)
 
@@ -288,7 +327,12 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   `lib/report-store` + `getConversationMessages` and assert the 400 on unknown
   enum values / malformed `ids`, the 404 cases, the chat-embeds-`messages` /
   quiz-doesn't / deleted-code → `[]` shapes, and that resolve passes the token
-  `oid` as `teacherId`.
+  `oid` as `teacherId`. `app/api/eval/grade/route.unit.test.ts` keeps the gate real
+  the same way and mocks `@/app/mastra` (like `lib/quiz-actions.unit.test.ts`): the
+  401/403 matrix, the 400 matrix (bad body, unknown provider, unavailable provider,
+  empty-after-trim answer), the 413 cap, the 200 wire shape, the 502s, and — the
+  production-parity assertion — that the agent receives `buildAnswerMessage` of the
+  TRIMMED answer plus the `QUIZ_EVAL_*` and usage-sentinel RequestContext values.
 - **e2e:** `e2e/api-auth.setup.ts` generates the keypair once into the
   gitignored `e2e/.auth/` (once, not per run — the server caches the JWKS
   after the first bearer request); `playwright.config.ts` injects
