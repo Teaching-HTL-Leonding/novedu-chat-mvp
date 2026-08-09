@@ -4,12 +4,13 @@ description: Write a quiz file with open-ended questions and private grading gui
 sidebar:
   order: 4
 audience: teacher
-keywords: [quiz, questions, grading, evaluation, rubric, shuffle, photo answer, imageInput, discussion, fragments, quiz_files, compound quiz, final quiz, question_count, attempt length]
+keywords: [quiz, questions, grading, evaluation, rubric, shuffle, photo answer, imageInput, discussion, fragments, quiz_files, compound quiz, final quiz, question_count, attempt length, eval, golden answers, test the grader]
 related:
   - 20-building-activities/01-handling-yaml
   - 20-building-activities/02-available-llms
   - 20-building-activities/07-fragments
   - 10-yaml-for-teachers/04-cli-validation
+  - 10-yaml-for-teachers/06-testing-the-grader
   - 30-sharing-activities/04-anonymous-vs-per-user
 generated: true
 ---
@@ -231,3 +232,5 @@ Validate the file before you hand out a link: an invalid quiz cannot be saved in
 ```bash
 novedu-cli validate ./quizzes/my-quiz.yaml --kind quiz
 ```
+
+A valid quiz can still grade differently from how you meant it. You can test the grading itself before students meet it: write a few sample answers with the marks they should get, and the CLI's `eval` command grades them with the real grader and reports where it disagreed with you. The chapter on testing how a quiz grades walks through it.

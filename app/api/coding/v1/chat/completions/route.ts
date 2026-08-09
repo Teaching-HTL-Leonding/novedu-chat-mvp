@@ -1,3 +1,4 @@
+import { readBoundedJson } from "@/lib/bounded-json";
 import { checkCode, effectiveLlm } from "@/lib/code-store";
 import { loadCoding } from "@/lib/coding-fetch";
 import {
@@ -86,60 +87,8 @@ function errorResponse(
   return Response.json(openaiError(message, type, code), { status });
 }
 
-// Reads + parses the JSON body under a running byte cap. The Content-Length check in
-// the handler is only a fast reject for honest clients; THIS is the real bound — a
-// chunked body that omits or understates Content-Length is streamed here and aborted
-// the moment it crosses the cap, so it can never be buffered unbounded into memory.
-async function readBoundedJson(
-  req: Request,
-  maxBytes: number,
-): Promise<
-  | { ok: true; value: Record<string, unknown> }
-  | { ok: false; status: number; message: string; code: string | null }
-> {
-  const tooLarge = {
-    ok: false as const,
-    status: 413,
-    message: "Request body is too large.",
-    code: "request_too_large",
-  };
-  const notObject = {
-    ok: false as const,
-    status: 400,
-    message: "Request body must be a JSON object.",
-    code: null,
-  };
-
-  if (!req.body) return notObject;
-  const reader = req.body.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  let total = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel();
-        return tooLarge;
-      }
-      text += decoder.decode(value, { stream: true });
-    }
-    text += decoder.decode();
-  } catch {
-    return notObject;
-  }
-
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    return notObject;
-  }
-  if (typeof json !== "object" || json === null || Array.isArray(json)) return notObject;
-  return { ok: true, value: json as Record<string, unknown> };
-}
+// The bounded body read lives in `lib/bounded-json.ts` — shared verbatim with the
+// teacher-only `/api/eval/grade`, the other route that buffers a client-supplied body.
 
 export async function POST(req: Request): Promise<Response> {
   // 1. The code is the Bearer key.

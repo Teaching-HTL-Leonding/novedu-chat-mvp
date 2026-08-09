@@ -4,7 +4,7 @@
 // `lib/coding-schema.ts`, `lib/registry-schema.ts`); the teacher prose lives in inline
 // `.meta({ description })`.
 //
-// `npm run generate:schemas` (scripts/generate-activity-schemas.ts) writes the six
+// `npm run generate:schemas` (scripts/generate-activity-schemas.ts) writes the seven
 // files below; the hermetic drift-guard test (`generated-schemas.unit.test.ts`)
 // deep-equals a fresh in-memory generation against the committed files, so an
 // edited zod schema committed WITHOUT regenerating fails CI. Nothing in `app/` or
@@ -13,6 +13,7 @@
 
 import { z } from "zod";
 import { CodingYamlSchema } from "@/lib/coding-schema";
+import { EvalYamlSchema } from "@/lib/eval-schema";
 import { FragmentFileSchema } from "@/lib/prompt-fragments";
 import { QuizYamlSchema } from "@/lib/quiz-schema";
 import { RegistryYamlSchema } from "@/lib/registry-schema";
@@ -46,7 +47,7 @@ export interface SchemaRegistryEntry {
 
 /**
  * Every YAML kind that generates a JSON Schema. One flat top-level type each. Most are
- * activity kinds; `fragment` and `registry` are the cross-cutting exceptions.
+ * activity kinds; `fragment`, `registry` and `eval` are the cross-cutting exceptions.
  */
 export const schemaRegistry: readonly SchemaRegistryEntry[] = [
   {
@@ -106,6 +107,16 @@ export const schemaRegistry: readonly SchemaRegistryEntry[] = [
     description:
       "Schema for an activity registry: the hand-written file listing a publication's activities under stable keys, reconciled by `novedu codes sync`.",
     sourceFile: "lib/registry-schema.ts",
+  },
+  {
+    kind: "eval",
+    root: EvalYamlSchema,
+    outPath: "activities/evals/eval-yaml.schema.json",
+    id: `${RAW_BASE}/evals/eval-yaml.schema.json`,
+    title: "Grader Eval YAML",
+    description:
+      "Schema for a golden-answer eval: teacher-written student answers with the verdict each one must be graded with, replayed against a quiz's rubric by `novedu-cli eval`.",
+    sourceFile: "lib/eval-schema.ts",
   },
 ] as const;
 

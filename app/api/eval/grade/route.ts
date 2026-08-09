@@ -1,0 +1,178 @@
+import { RequestContext } from "@mastra/core/request-context";
+import { z } from "zod";
+import { mastra } from "@/app/mastra";
+import {
+  QUIZ_EVAL_INSTRUCTIONS,
+  QUIZ_EVAL_MODEL,
+  QUIZ_EVAL_PROVIDER,
+  QUIZ_VERDICT_SCHEMA,
+} from "@/app/mastra/quiz-agents";
+import { ApiAuthError, requireBearerTeacher } from "@/lib/api-auth";
+import { readBoundedJson } from "@/lib/bounded-json";
+import { providerUnavailableReason } from "@/lib/llm/availability";
+import { DEFAULT_PROVIDER, parseLenientProvider } from "@/lib/llm/provider";
+import { buildAnswerMessage } from "@/lib/quiz-grading-prompt";
+import type { QuizVerdict } from "@/lib/quiz-types";
+import { recordError } from "@/lib/telemetry";
+import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
+import { authErrorResponse, json } from "../../shared";
+
+// CLI/API bearer route backing `novedu-cli eval` (docs/cli-eval.md): grade ONE golden
+// answer with the EXACT production grading path — the same memory-less `quizEvaluator`
+// agent, the same `QUIZ_VERDICT_SCHEMA` structured output, the same trimmed answer
+// message `submitAnswer` builds. Stateless by design: one HTTP request = one graded
+// answer, nothing queued, nothing persisted; the CLI does the fan-out and the retries.
+//
+// SECURITY (deliberate, documented amendment — AGENTS.md, docs/codes.md): this is the
+// ONE other caller of `quizEvaluator` besides `submitAnswer`. It stays safe because
+//   * the gate is `requireBearerTeacher` — never reachable by a student, and the
+//     CopilotKit runtime route still 404s the agent,
+//   * the grading `system` prompt comes from the CLIENT, so the server-held quiz
+//     `evaluation` prompts still never leave the server (the CLI assembled its copy
+//     offline from the teacher's own YAML),
+//   * the agent is memory-less and this route writes nothing — the same privacy
+//     property as `submitAnswer`.
+// It is therefore, stated plainly, a teacher-scoped, verdict-schema-constrained LLM
+// pass-through: a teacher may send arbitrary `system`/`answer` text. Acceptable under
+// this repo's trust model — teachers already author every activity prompt.
+
+export const dynamic = "force-dynamic";
+
+// A grading prompt plus one student answer. Far above any real case (the PoC's largest
+// question prompt is a few KB), while bounding worst-case memory on a buffered body.
+const MAX_BODY_BYTES = 256 * 1024;
+
+/**
+ * The pseudo-code every eval grading is metered against. Not a `novedu_codes` row —
+ * minted codes are 10 random chars, so a collision is impossible and the usage
+ * dashboard's LEFT JOIN simply shows it with NULL metadata. (`route.ts` may only export
+ * HTTP handlers + Next's route config, so these stay module-local.)
+ */
+const EVAL_USAGE_CODE = "cli-eval";
+
+/** The usage module label for eval runs (its own group in the dashboard). */
+const EVAL_USAGE_MODULE = "eval";
+
+/**
+ * The token usage of ONE grading call, in the shape the CLI aggregates
+ * (`docs/cli-eval.md`): `input` is the total input as the provider reported it —
+ * cached tokens INCLUDED — `cachedInput` the cache-read portion of it, `output` the
+ * completion tokens. Read off Mastra's generate result: `totalUsage` (across all
+ * steps) with the last step's `usage` as the fallback, both `LanguageModelUsage`
+ * (`@mastra/core/dist/stream/types.d.ts`) = the AI-SDK v5 shape
+ * `{ inputTokens, outputTokens, cachedInputTokens, … }`. A provider that reports no
+ * usage at all yields `undefined`, and the route then OMITS the field rather than
+ * inventing zeros — a missing measurement is not a measurement of zero.
+ */
+function gradeUsage(
+  result: unknown,
+): { input: number; cachedInput: number; output: number } | undefined {
+  const holder = result as { totalUsage?: unknown; usage?: unknown } | null | undefined;
+  const source = (holder?.totalUsage ?? holder?.usage) as
+    | { inputTokens?: unknown; outputTokens?: unknown; cachedInputTokens?: unknown }
+    | undefined;
+  if (!source || typeof source !== "object") return undefined;
+  const reported = [source.inputTokens, source.outputTokens, source.cachedInputTokens];
+  if (!reported.some((value) => typeof value === "number" && Number.isFinite(value))) {
+    return undefined;
+  }
+  const count = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+  return {
+    input: count(source.inputTokens),
+    cachedInput: count(source.cachedInputTokens),
+    output: count(source.outputTokens),
+  };
+}
+
+const GradeBodySchema = z.strictObject({
+  llm: z.strictObject({
+    provider: z.string().optional(),
+    model: z.string().min(1).max(256),
+  }),
+  system: z.string().min(1),
+  answer: z.string().min(1),
+});
+
+/**
+ * Grades one golden answer. Body
+ * `{ llm: { provider?, model }, system, answer }` → `200 { result, feedback, usage? }`,
+ * where the OPTIONAL `usage: { input, cachedInput, output }` carries this call's token
+ * counts when the provider reported any (see {@link gradeUsage}).
+ * `400` on a malformed body, an unknown or unavailable provider, or an answer that is
+ * empty after trimming; `413` over the 256 KB cap; `401`/`403` from the bearer gate;
+ * `502` when the grader throws or returns no structured object.
+ */
+export async function POST(request: Request): Promise<Response> {
+  try {
+    const user = await requireBearerTeacher(request);
+
+    // Fast reject for honest clients; the streaming read below is the real bound.
+    const declaredLength = Number(request.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+      return json({ message: "Request body is too large." }, 413);
+    }
+
+    const read = await readBoundedJson(request, MAX_BODY_BYTES);
+    if (!read.ok) return json({ message: read.message }, read.status);
+
+    const parsed = GradeBodySchema.safeParse(read.value);
+    if (!parsed.success) {
+      return json({ message: "Provide `llm: { provider?, model }`, `system` and `answer`." }, 400);
+    }
+    const body = parsed.data;
+
+    // An UNKNOWN provider string is rejected rather than silently defaulted — a
+    // Foundry-intended run must never quietly grade on SCCH. Absent means the YAML
+    // default, exactly like every activity loader.
+    const provider =
+      body.llm.provider === undefined ? DEFAULT_PROVIDER : parseLenientProvider(body.llm.provider);
+    if (provider === undefined) {
+      return json({ message: `Unknown LLM provider "${body.llm.provider}".` }, 400);
+    }
+
+    // TERMINAL, not retryable: a deployment without Azure Foundry can never grade a
+    // Foundry eval, so it must fail fast with the reason instead of burning the CLI's
+    // whole retry budget on every single case.
+    const unavailable = providerUnavailableReason(provider);
+    if (unavailable) return json({ message: unavailable }, 400);
+
+    // `submitAnswer` trims before `buildAnswerMessage`; golden answers written as YAML
+    // block scalars ALWAYS carry a trailing newline, so skipping this would break the
+    // "exact production prompt" promise.
+    const answer = body.answer.trim();
+    if (!answer) return json({ message: "The answer is empty." }, 400);
+
+    const requestContext = new RequestContext();
+    requestContext.set(QUIZ_EVAL_INSTRUCTIONS, body.system);
+    requestContext.set(QUIZ_EVAL_MODEL, body.llm.model);
+    requestContext.set(QUIZ_EVAL_PROVIDER, provider);
+    // Usage attribution: evals are metered under their own pseudo-code + module, so a
+    // teacher's eval spend shows as its own group in the dashboard and can never be
+    // mistaken for a class's usage (docs/usage-metering.md).
+    requestContext.set(USAGE_CODE, EVAL_USAGE_CODE);
+    requestContext.set(USAGE_USER_ID, user.userId);
+    requestContext.set(USAGE_MODULE, EVAL_USAGE_MODULE);
+
+    try {
+      const res = await mastra.getAgent("quizEvaluator").generate(buildAnswerMessage(answer), {
+        structuredOutput: { schema: QUIZ_VERDICT_SCHEMA },
+        requestContext,
+      });
+      const object = res.object as { result: QuizVerdict; feedback: string } | undefined;
+      if (!object) return json({ message: "The grader returned no verdict." }, 502);
+      const usage = gradeUsage(res);
+      return json(
+        { result: object.result, feedback: object.feedback, ...(usage ? { usage } : {}) },
+        200,
+      );
+    } catch (error) {
+      recordError(error, { "novedu.area": "api-eval" });
+      return json({ message: "The answer could not be graded right now." }, 502);
+    }
+  } catch (error) {
+    if (error instanceof ApiAuthError) return authErrorResponse(error);
+    recordError(error, { "novedu.area": "api-eval" });
+    return json({ message: "Internal server error" }, 500);
+  }
+}

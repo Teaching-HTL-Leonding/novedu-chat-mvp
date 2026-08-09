@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Command } from "commander";
 import { type CodingCheckResult, loadAndCheckCoding } from "@/lib/coding-validate";
+import { type EvalCheckResult, loadAndCheckEval } from "@/lib/eval-validate";
 import {
   type BuildResult,
   type FragmentCheckResult,
@@ -13,6 +14,7 @@ import { loadAndCheckWriting, type WritingCheckResult } from "@/lib/writing-vali
 import { cliFetcher } from "../file-fetcher";
 import {
   formatCodingResult,
+  formatEvalResult,
   formatFragmentResult,
   formatQuizResult,
   formatResult,
@@ -20,7 +22,7 @@ import {
 } from "../format";
 
 /** What the input YAML is validated AS — declared by the caller, never auto-detected. */
-export type ValidateKind = "tutor" | "fragment" | "quiz" | "writing" | "coding";
+export type ValidateKind = "tutor" | "fragment" | "quiz" | "writing" | "coding" | "eval";
 
 /** Every kind the `--kind` flag accepts (used for the option help + guard). */
 export const VALIDATE_KINDS: readonly ValidateKind[] = [
@@ -29,6 +31,7 @@ export const VALIDATE_KINDS: readonly ValidateKind[] = [
   "quiz",
   "writing",
   "coding",
+  "eval",
 ];
 
 /** The CLI-local outcome: the raw core result tagged with the kind that produced it, so the command can pick a formatter without re-deriving it. */
@@ -37,7 +40,8 @@ export type ValidateOutcome =
   | { kind: "fragment"; result: FragmentCheckResult }
   | { kind: "quiz"; result: QuizCheckResult }
   | { kind: "writing"; result: WritingCheckResult }
-  | { kind: "coding"; result: CodingCheckResult };
+  | { kind: "coding"; result: CodingCheckResult }
+  | { kind: "eval"; result: EvalCheckResult };
 
 /**
  * Turn the CLI argument into a URL the tutor core understands: an http(s) URL is
@@ -80,6 +84,14 @@ export function runValidate(pathOrUrl: string, kind: ValidateKind): Promise<Vali
         kind,
         result,
       }));
+    case "eval":
+      // `strictTarget` runs the SAME strict quiz check `--kind quiz` runs on the
+      // resolved target, so validating an eval never asserts less about its quiz.
+      return loadAndCheckEval(url, cliFetcher, {
+        allowedSchemes,
+        validateLibraries: true,
+        strictTarget: true,
+      }).then((result) => ({ kind, result }));
     default:
       return loadAndBuildTutorPrompt(url, cliFetcher, {
         allowedSchemes,
@@ -92,11 +104,11 @@ export function registerValidate(program: Command): void {
   program
     .command("validate")
     .description(
-      "Validate a tutor (default), fragment library, quiz, writing or coding YAML by local path or public http(s) URL",
+      "Validate a tutor (default), fragment library, quiz, writing, coding or eval YAML by local path or public http(s) URL",
     )
     .argument(
       "<pathOrUrl>",
-      "path to a tutor, fragment, quiz, writing or coding YAML file, or a public http(s) URL",
+      "path to a tutor, fragment, quiz, writing, coding or eval YAML file, or a public http(s) URL",
     )
     .option(
       "--kind <kind>",
@@ -118,6 +130,9 @@ Examples:
   $ novedu-cli validate ./activities/quizzes/my-quiz.yaml --kind quiz
   $ novedu-cli validate ./activities/writings/my-writing.yaml --kind writing
   $ novedu-cli validate ./activities/coding/my-coding.yaml --kind coding
+
+  # Validate a golden-answer eval (also strict-checks the quiz it targets)
+  $ novedu-cli validate ./my-quiz.eval.yaml --kind eval
 
   # Machine-readable output for CI
   $ novedu-cli validate https://example.com/tutor.yaml --json`,
@@ -153,6 +168,8 @@ function formatOutcome(outcome: ValidateOutcome, source: string): string {
       return formatWritingResult(outcome.result, source);
     case "coding":
       return formatCodingResult(outcome.result, source);
+    case "eval":
+      return formatEvalResult(outcome.result, source);
     default:
       return formatResult(outcome.result, source);
   }

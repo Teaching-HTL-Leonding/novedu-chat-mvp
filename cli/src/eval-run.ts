@@ -1,0 +1,522 @@
+import { EVAL_VERDICTS, type EvalVerdict, expectedKey, normalizeExpect } from "@/lib/eval-schema";
+import type { EvalCheckOk } from "@/lib/eval-validate";
+import type { PromptKind } from "@/lib/prompt-dump";
+import { mapWithConcurrency, withRetry } from "./retry";
+
+// The PURE core of `novedu-cli eval`: turn a checked eval file into a finished run
+// report by calling an injected `GradeFn` (the HTTP seam) once per grading call. No
+// fetch, no auth, no I/O — everything the command needs to be unit-testable.
+//
+// ONE HIERARCHY governs the whole report:
+//
+//   a CASE is (questionId, answerIndex) — one golden answer;
+//   a REPEAT is an OBSERVATION of that case (`--repeats N`).
+//
+// The case VERDICT is the majority over its successfully graded repeats (a tie passes
+// only if EVERY tied verdict is expected); a case that was ATTEMPTED but got zero
+// verdicts is `errored`, and a case never attempted at all (the run had already
+// aborted) is `skipped` — reported honestly instead of inflating the errored count.
+// Totals, mismatches, the confusion matrix, the false-correct rate and the exit code
+// are ALL over case verdicts — never per-repeat rows, which would make `--repeats 3`
+// strictly harsher than `--repeats 1` and the majority vote decorative. Per-repeat rows
+// stay in the JSON as detail, plus an `unstable` count (cases whose repeats disagreed)
+// that is REPORTED but never gates: grader nondeterminism is the actually interesting
+// `--repeats` signal.
+
+/** The eval kinds — quiz only for v1; the seam is ready for the others. */
+export type EvalKind = Extract<PromptKind, "quiz">;
+
+export const EVAL_KINDS: readonly EvalKind[] = ["quiz"];
+
+/**
+ * Token usage, in the shape `POST /api/eval/grade` reports it: `input` is the total
+ * input as the provider counted it — cached tokens INCLUDED — `cachedInput` the
+ * cache-read portion of that, `output` the completion tokens.
+ *
+ * SEMANTICS (documented in docs/cli-eval.md): only SUCCESSFUL grading calls carry
+ * usage, so every total built from it is a LOWER BOUND — the tokens a failed or
+ * retried attempt burned are never counted, and a server that reports no usage at all
+ * simply contributes nothing.
+ */
+export interface EvalUsage {
+  input: number;
+  cachedInput: number;
+  output: number;
+}
+
+const ZERO_USAGE: EvalUsage = { input: 0, cachedInput: 0, output: 0 };
+
+/** Add one call's usage into an accumulator (mutating it — internal to the sums below). */
+function addUsage(total: EvalUsage, usage: EvalUsage | undefined): void {
+  if (!usage) return;
+  total.input += usage.input;
+  total.cachedInput += usage.cachedInput;
+  total.output += usage.output;
+}
+
+/** One grading call's outcome, as the HTTP seam reports it. */
+export type GradeResult =
+  | { ok: true; verdict: EvalVerdict; feedback: string; usage?: EvalUsage }
+  | {
+      ok: false;
+      /** Worth another attempt: a 5xx or a true network failure. Any 4xx is terminal. */
+      retryable: boolean;
+      /** 401/403/not-signed-in — aborts the WHOLE run, never retried. */
+      auth?: boolean;
+      /** The failure payload, verbatim, for the report. */
+      error: unknown;
+    };
+
+/** The injected HTTP seam: grade one answer with one grading prompt. */
+export type GradeFn = (request: { system: string; answer: string }) => Promise<GradeResult>;
+
+export interface EvalRunOptions {
+  grade: GradeFn;
+  /** Cases in flight at once (repeats of a case run sequentially within it). */
+  concurrency?: number;
+  repeats?: number;
+  /** The EFFECTIVE llm the grade calls use — recorded in the result, never used here. */
+  llm: EvalRunLlm;
+  /** Live counter; `done` counts completed GRADING CALLS out of `total`. */
+  onProgress?: (progress: { done: number; total: number }) => void;
+  /** Retry knobs, injected end to end so tests need no timers. */
+  retry?: { attempts?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> };
+}
+
+/** Which LLM a run actually graded with, and whether that came from `--llm-*`. */
+export interface EvalRunLlm {
+  provider: string;
+  model: string;
+  /** The quiz's own pair, kept alongside the effective one when overridden. */
+  overrides?: { provider: string; model: string };
+}
+
+export interface EvalRepeatRow {
+  repeatIndex: number;
+  got?: EvalVerdict;
+  feedback?: string;
+  /** This ONE grading call's tokens, when the server reported them. */
+  usage?: EvalUsage;
+  /** Present when this observation never produced a verdict. */
+  error?: unknown;
+}
+
+export interface EvalCaseResult {
+  questionId: string;
+  /** 0-based index of the golden answer within its question. */
+  answerIndex: number;
+  expected: EvalVerdict[];
+  /** The golden answer, verbatim (the report shows a snippet). */
+  answer: string;
+  /**
+   * `errored` = attempted but no verdict; `skipped` = never attempted because the run
+   * had already aborted (empty `repeats`). Both gate the exit code; only `errored`
+   * appears in the mismatch listing (an aborted run must not print hundreds of lines).
+   */
+  status: "passed" | "failed" | "errored" | "skipped";
+  /** The majority verdict over the graded repeats; absent when errored/skipped. */
+  verdict?: EvalVerdict;
+  /** The repeats disagreed — reported, never gating. */
+  unstable: boolean;
+  repeats: EvalRepeatRow[];
+}
+
+export interface EvalConfusionRow {
+  /** The canonical SORTED expected set, e.g. `correct|partial`. */
+  expected: string;
+  got: EvalVerdict;
+  count: number;
+}
+
+export interface EvalRunResult {
+  id: string;
+  target: string;
+  llm: EvalRunLlm;
+  totals: {
+    cases: number;
+    passed: number;
+    failed: number;
+    errored: number;
+    /** Cases never attempted because the run aborted first. */
+    skipped: number;
+    unstable: number;
+    repeats: number;
+    /** Grading calls this run intended to make (cases × repeats). */
+    calls: number;
+    /** Summed over every repeat row that reported usage — a LOWER bound ({@link EvalUsage}). */
+    usage: EvalUsage;
+  };
+  /** Every case that did not pass, in file order — what the human report lists. */
+  mismatches: EvalCaseResult[];
+  cases: EvalCaseResult[];
+  /**
+   * The evaluated questions' TEXT (id + Markdown), in eval-file order — so a report
+   * can show the question a mismatched answer belongs to without re-reading the quiz.
+   */
+  questions: { id: string; text: string }[];
+  confusion: EvalConfusionRow[];
+  /**
+   * Cases the grader called `correct` although `correct` was NOT acceptable, over ALL
+   * cases whose expected set excludes `correct` (the pinned denominator).
+   */
+  falseCorrect: { count: number; denominator: number; rate: number };
+  /** Set when the run stopped early; the untouched cases are reported as `skipped`. */
+  aborted?: { reason: "auth" | "circuit-breaker"; message: string };
+}
+
+export interface EvalRunner {
+  run(checked: EvalCheckOk, options: EvalRunOptions): Promise<EvalRunResult>;
+}
+
+/** Consecutive fully-errored cases that mean "the server is down, stop now". */
+const CIRCUIT_BREAKER_LIMIT = 3;
+
+interface PlannedCase {
+  questionId: string;
+  answerIndex: number;
+  expected: EvalVerdict[];
+  answer: string;
+  system: string | undefined;
+}
+
+/** Flatten questions × answers into cases, each carrying its grading prompt. */
+function planCases(checked: EvalCheckOk): PlannedCase[] {
+  const systemById = new Map(
+    checked.quizDump.grading.questions.map((question) => [question.id, question.system]),
+  );
+  const cases: PlannedCase[] = [];
+  for (const question of checked.evalFile.questions) {
+    question.answers.forEach((answer, answerIndex) => {
+      cases.push({
+        questionId: question.question,
+        answerIndex,
+        expected: normalizeExpect(answer.expect),
+        answer: answer.answer,
+        system: systemById.get(question.question),
+      });
+    });
+  }
+  return cases;
+}
+
+/**
+ * The majority verdict over the graded repeats. Returns the winner plus whether the
+ * case PASSES: a unique majority passes when it is expected; a TIE passes only when
+ * every tied verdict is expected (so a coin-flip between two acceptable gradings is a
+ * pass, and one between an acceptable and an unacceptable one is not).
+ */
+function majority(
+  graded: EvalVerdict[],
+  expected: readonly EvalVerdict[],
+): { verdict: EvalVerdict; passed: boolean } | undefined {
+  if (graded.length === 0) return undefined;
+  const counts = new Map<EvalVerdict, number>();
+  for (const verdict of graded) counts.set(verdict, (counts.get(verdict) ?? 0) + 1);
+  const top = Math.max(...counts.values());
+  const tied = [...counts.entries()]
+    .filter(([, count]) => count === top)
+    .map(([verdict]) => verdict)
+    .sort((a, b) => EVAL_VERDICTS.indexOf(a) - EVAL_VERDICTS.indexOf(b));
+  return {
+    // Canonical pick so a tie always reports the same verdict for the same repeats.
+    verdict: tied[0] as EvalVerdict,
+    passed: tied.every((verdict) => expected.includes(verdict)),
+  };
+}
+
+const quizEvalRunner: EvalRunner = {
+  async run(checked, options) {
+    const repeats = Math.max(1, Math.floor(options.repeats ?? 1));
+    const concurrency = Math.max(1, Math.floor(options.concurrency ?? 4));
+    const planned = planCases(checked);
+    const total = planned.length * repeats;
+    const questionTexts = new Map(checked.quizQuestions.map((q) => [q.id, q.text]));
+
+    let done = 0;
+    let consecutiveErrored = 0;
+    let aborted: EvalRunResult["aborted"];
+
+    const progress = () => {
+      done += 1;
+      options.onProgress?.({ done, total });
+    };
+
+    const results = await mapWithConcurrency(
+      planned,
+      concurrency,
+      async (plan): Promise<EvalCaseResult> => {
+        const rows: EvalRepeatRow[] = [];
+        for (let repeatIndex = 0; repeatIndex < repeats; repeatIndex++) {
+          // Once the run is aborted, remaining repeats are simply not attempted — no
+          // filler error rows; a case with ZERO rows becomes `skipped` below.
+          if (aborted) break;
+          if (plan.system === undefined) {
+            // Unreachable after `loadAndCheckEval` (unknown ids are rejected there);
+            // fail the CASE rather than the run if it ever happens.
+            rows.push({
+              repeatIndex,
+              error: { message: `The quiz has no question "${plan.questionId}".` },
+            });
+            progress();
+            continue;
+          }
+          const outcome = await withRetry(
+            () => options.grade({ system: plan.system as string, answer: plan.answer }),
+            {
+              attempts: options.retry?.attempts,
+              baseDelayMs: options.retry?.baseDelayMs,
+              sleep: options.retry?.sleep,
+              // ONLY 5xx + true network failures. Auth failures and any other 4xx are
+              // terminal — retrying them would just burn the budget.
+              shouldRetry: (value) => !value.ok && value.retryable && value.auth !== true,
+            },
+          );
+          progress();
+          if (outcome.ok) {
+            rows.push({
+              repeatIndex,
+              got: outcome.verdict,
+              feedback: outcome.feedback,
+              // Absent on a server that reports no usage — tolerated everywhere, never
+              // faked as zeros (see EvalUsage).
+              ...(outcome.usage ? { usage: outcome.usage } : {}),
+            });
+            continue;
+          }
+          rows.push({ repeatIndex, error: outcome.error });
+          if (outcome.auth) {
+            // Token expiry mid-run is a real risk on a 252 × 3 run; abort with ONE
+            // clear message instead of hundreds of per-case auth errors.
+            aborted ??= {
+              reason: "auth",
+              message: "Authentication failed — the run was aborted. Run `novedu-cli login`.",
+            };
+            break;
+          }
+        }
+
+        const graded = rows.flatMap((row) => (row.got ? [row.got] : []));
+        const winner = majority(graded, plan.expected);
+        const status: EvalCaseResult["status"] =
+          rows.length === 0 ? "skipped" : !winner ? "errored" : winner.passed ? "passed" : "failed";
+
+        // Circuit breaker: a down server must fail the run in seconds, not after
+        // 252 × 4 attempts × backoff. Counted over COMPLETIONS; any graded case resets.
+        // `skipped` cases are consequences of an abort, never causes — they don't count.
+        if (status === "errored") {
+          consecutiveErrored += 1;
+          if (consecutiveErrored >= CIRCUIT_BREAKER_LIMIT) {
+            aborted ??= {
+              reason: "circuit-breaker",
+              message: `${CIRCUIT_BREAKER_LIMIT} cases failed in a row — the run was aborted.`,
+            };
+          }
+        } else if (status !== "skipped") {
+          consecutiveErrored = 0;
+        }
+
+        return {
+          questionId: plan.questionId,
+          answerIndex: plan.answerIndex,
+          expected: plan.expected,
+          answer: plan.answer,
+          status,
+          ...(winner ? { verdict: winner.verdict } : {}),
+          unstable: new Set(graded).size > 1,
+          repeats: rows,
+        };
+      },
+    );
+
+    // Tokens over every SUCCESSFUL grading call of the run (failed/retried attempts
+    // report nothing, so this is honestly a lower bound). Always present — zeros mean
+    // "nothing was reported", which the renderers read as "print no tokens line".
+    const usage: EvalUsage = { ...ZERO_USAGE };
+    for (const result of results) for (const row of result.repeats) addUsage(usage, row.usage);
+
+    const totals = {
+      cases: results.length,
+      passed: results.filter((c) => c.status === "passed").length,
+      failed: results.filter((c) => c.status === "failed").length,
+      errored: results.filter((c) => c.status === "errored").length,
+      skipped: results.filter((c) => c.status === "skipped").length,
+      unstable: results.filter((c) => c.unstable).length,
+      repeats,
+      calls: total,
+      usage,
+    };
+
+    // Confusion matrix over CASE verdicts: rows keyed by the canonical sorted expected
+    // set (never "first-listed", which would make the matrix depend on the author's
+    // list order with zero semantic difference). Errored cases have no verdict and are
+    // therefore not in the matrix — `totals.errored` accounts for them.
+    const confusionCounts = new Map<string, number>();
+    for (const result of results) {
+      if (!result.verdict) continue;
+      const key = `${expectedKey(result.expected)} ${result.verdict}`;
+      confusionCounts.set(key, (confusionCounts.get(key) ?? 0) + 1);
+    }
+    const confusion: EvalConfusionRow[] = [...confusionCounts.entries()]
+      .map(([key, count]) => {
+        const [expected = "", got = ""] = key.split(" ");
+        return { expected, got: got as EvalVerdict, count };
+      })
+      .sort((a, b) => a.expected.localeCompare(b.expected) || a.got.localeCompare(b.got));
+
+    // False-correct rate: the grader accepted an answer the teacher marked as NOT
+    // acceptable — the dangerous direction. Denominator = every case whose expected
+    // set excludes `correct` (errored ones included, so it cannot be gamed by failures).
+    const strictCases = results.filter((result) => !result.expected.includes("correct"));
+    const falseCorrectCount = strictCases.filter((result) => result.verdict === "correct").length;
+
+    return {
+      id: checked.evalFile.id,
+      target: checked.targetUrl,
+      llm: options.llm,
+      totals,
+      // The evaluated questions' text, deduped in eval-file order. Carried in the JSON
+      // (and used by the Markdown report) so a reader never has to open the quiz to
+      // understand a mismatch. A question the quiz text could not be re-read for keeps
+      // its id with an empty text rather than disappearing.
+      questions: [...new Set(checked.evalFile.questions.map((question) => question.question))].map(
+        (id) => ({ id, text: questionTexts.get(id) ?? "" }),
+      ),
+      // `skipped` is deliberately NOT listed here: an aborted 252-case run must print
+      // one abort line + a count, not hundreds of identical rows. It still gates.
+      mismatches: results.filter(
+        (result) => result.status === "failed" || result.status === "errored",
+      ),
+      cases: results,
+      confusion,
+      falseCorrect: {
+        count: falseCorrectCount,
+        denominator: strictCases.length,
+        rate: strictCases.length === 0 ? 0 : falseCorrectCount / strictCases.length,
+      },
+      ...(aborted ? { aborted } : {}),
+    };
+  },
+};
+
+/** The seam: one runner per eval kind (mirrors `promptDumpers`). */
+export const evalRunners: Record<EvalKind, EvalRunner> = {
+  quiz: quizEvalRunner,
+};
+
+/** Run ONE checked eval file — the single entry point the command uses. */
+export function runEval(
+  kind: EvalKind,
+  checked: EvalCheckOk,
+  options: EvalRunOptions,
+): Promise<EvalRunResult> {
+  return evalRunners[kind].run(checked, options);
+}
+
+// --- batch mode (§ multi-file runs) -----------------------------------------------
+// A run over several eval files is a pure CLI-side loop over the same single-file
+// runner: files are checked up front and then graded ONE AFTER ANOTHER, so the server
+// sees exactly the load of N separate invocations. Per-entry isolation, same philosophy
+// as `codes sync`: one invalid file never aborts the batch.
+
+/**
+ * One file's place in a batch as the COMMAND assembles it: either a finished run, or
+ * the validation issues. `summarizeBatch` turns it into an {@link EvalBatchFile} by
+ * stamping the per-file verdict on it.
+ */
+export interface EvalBatchFileInput {
+  /** The resolved source URL (what `toUrl` made of the argument). */
+  source: string;
+  status: "ok" | "invalid";
+  result?: EvalRunResult;
+  errors?: EvalBatchIssue[];
+}
+
+/** A batch entry in the emitted report — the input plus its own pass/fail verdict. */
+export interface EvalBatchFile extends EvalBatchFileInput {
+  /**
+   * This file alone would pass the CI gate: it is valid AND has no failed, errored or
+   * skipped case. Always `false` for an `invalid` file. Carried so a script can point
+   * at the offending file without re-deriving the rule.
+   */
+  passed: boolean;
+}
+
+/** The structured validation issues of an invalid file (`ValidationError` shape). */
+export interface EvalBatchIssue {
+  code: string;
+  message: string;
+  [key: string]: unknown;
+}
+
+export interface EvalBatchResult {
+  files: EvalBatchFile[];
+  /** Exactly the {@link batchPassed} verdict — the run's exit-code rule, precomputed. */
+  passed: boolean;
+  totals: {
+    files: number;
+    invalid: number;
+    cases: number;
+    passed: number;
+    failed: number;
+    errored: number;
+    skipped: number;
+    unstable: number;
+    /** Every file's usage added up — a LOWER bound ({@link EvalUsage}). */
+    usage: EvalUsage;
+  };
+}
+
+/** One file's own verdict: valid, graded, and not a single non-passing case. */
+function filePassed(file: EvalBatchFileInput): boolean {
+  if (file.status === "invalid" || !file.result) return false;
+  const { failed, errored, skipped } = file.result.totals;
+  return failed === 0 && errored === 0 && skipped === 0;
+}
+
+/**
+ * Grand totals across a batch. This is the ONE machine-readable shape `--json` /
+ * `--out` emit, single file or not, so scripts never branch on the file count.
+ */
+export function summarizeBatch(files: EvalBatchFileInput[]): EvalBatchResult {
+  const totals = {
+    files: files.length,
+    invalid: files.filter((file) => file.status === "invalid").length,
+    cases: 0,
+    passed: 0,
+    failed: 0,
+    errored: 0,
+    skipped: 0,
+    unstable: 0,
+    usage: { ...ZERO_USAGE },
+  };
+  for (const file of files) {
+    if (!file.result) continue;
+    totals.cases += file.result.totals.cases;
+    totals.passed += file.result.totals.passed;
+    totals.failed += file.result.totals.failed;
+    totals.errored += file.result.totals.errored;
+    totals.skipped += file.result.totals.skipped;
+    totals.unstable += file.result.totals.unstable;
+    addUsage(totals.usage, file.result.totals.usage);
+  }
+  // `passed` is DERIVED from `batchPassed`, never a second implementation of the rule.
+  return {
+    files: files.map((file) => ({ ...file, passed: filePassed(file) })),
+    passed: batchPassed({ totals }),
+    totals,
+  };
+}
+
+/**
+ * The CI gate: every file valid, and not a single failed, errored, or skipped CASE —
+ * an aborted (and therefore incomplete) run must never read as a pass. The single
+ * source of truth for the exit code AND for `EvalBatchResult.passed`.
+ */
+export function batchPassed(batch: { totals: EvalBatchResult["totals"] }): boolean {
+  return (
+    batch.totals.invalid === 0 &&
+    batch.totals.failed === 0 &&
+    batch.totals.errored === 0 &&
+    batch.totals.skipped === 0
+  );
+}

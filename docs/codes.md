@@ -561,9 +561,13 @@ in-page discussion live in `app/[code]/_quiz/`.
   the **code** (`checkCode`), re-loads the quiz, finds the question, builds the
   grading prompt (frame + the question's `evaluation`) onto a `RequestContext`, and
   runs the agent with `structuredOutput: { schema: QUIZ_VERDICT_SCHEMA }`. No
-  `Memory` → a `generate()` persists nothing. **The grader is never web-reachable**
-  — it is not any module's `runtime.agentId`, so `agent/quizEvaluator/*` 404s on
-  the runtime route; only `submitAnswer` calls it.
+  `Memory` → a `generate()` persists nothing. **The grader is never web-reachable
+  by students** — it is not any module's `runtime.agentId`, so
+  `agent/quizEvaluator/*` 404s on the runtime route, and `submitAnswer` is its only
+  student-facing caller. The **one other caller** is the teacher-only bearer route
+  `POST /api/eval/grade` (`novedu-cli eval`, `docs/cli-eval.md`), which supplies its
+  OWN system prompt from the client: the server-only `evaluation` prompts still
+  never leave the server, and that route persists nothing either.
 - **Discussion** is **non-negotiably in-page**: clicking "Chat about this" opens a
   native modal `<dialog>` over the page (`quiz-runner.tsx` drives
   `showModal()`/`close()`; Escape, a Close button, and a backdrop click all close

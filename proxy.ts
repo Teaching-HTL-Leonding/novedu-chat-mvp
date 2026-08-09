@@ -18,7 +18,8 @@ export const config = {
   // boundary (`api/coding(?:/|$)`) so the exclusion cannot silently widen to a
   // future, unrelated `/api/coding-*` route.
   // The /api/me identity probe, the /api/codes list/create endpoints, the
-  // /api/reports list/detail/resolve endpoints, and the /api/images
+  // /api/reports list/detail/resolve endpoints, the /api/eval grader-eval
+  // endpoint (teacher-only; docs/cli-eval.md), and the /api/images
   // list/upload/confirm endpoints (all teacher-only; unlike /api/files there
   // is NO public GET under that prefix) are
   // CLI/API bearer-token routes: they self-gate via requireBearerUser /
@@ -37,6 +38,6 @@ export const config = {
   // /api/files-export must NOT ride the /api/files exclusion past the cookie
   // gate).
   matcher: [
-    "/((?!api/auth(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|api/reports(?:/|$)|api/images(?:/|$)|docs(?:/|$)|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|api/reports(?:/|$)|api/images(?:/|$)|api/eval(?:/|$)|docs(?:/|$)|_next/static|_next/image|favicon.ico).*)",
   ],
 };

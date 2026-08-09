@@ -1,5 +1,5 @@
 // The coupling guarantee that makes zod the PERMANENT single source of truth for the
-// authoring JSON Schemas. Two hermetic, secret-free checks over all six kinds:
+// authoring JSON Schemas. Two hermetic, secret-free checks over all seven kinds:
 //
 //  1. Drift guard — the committed `activities/**/*-yaml.schema.json` is byte-identical
 //     to a fresh in-memory generation. Editing a zod schema (or its `.meta()` prose)

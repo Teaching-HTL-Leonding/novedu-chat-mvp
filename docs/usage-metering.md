@@ -73,6 +73,7 @@ value — negligible for a cost aggregate).
 |---|---|---|
 | tokens + tool calls — tutor, quiz discussion, writing, quiz grader | Mastra observability exporter | `MODEL_GENERATION` + tool-call spans, attributed via `requestContext` |
 | tokens — coding proxy | the coding route | taps the passthrough response for the `usage` chunk; per-code only |
+| tokens — CLI grader evals | `POST /api/eval/grade` | the same exporter path (it runs `quizEvaluator`), tagged with the `cli-eval` sentinel keys below |
 | user messages | CopilotKit route (`run`) | `after()` → `recordUserMessage` |
 | quiz answers | `submitAnswer` (`lib/quiz-actions.ts`) | `after()` → `recordQuizAnswer` on a successful grade |
 | writing saves | `saveWriting` (`lib/writing-actions.ts`) | `after()` → `recordWritingSave` after a successful save |
@@ -82,6 +83,16 @@ Agent attribution rides three RequestContext keys — `usageCode`, `usageUserId`
 the CopilotKit route sets them on `built.context` before `getLocalAgents`; the quiz
 grader sets them on the RequestContext it builds for `submitAnswer`. `usageUserId` is
 set for **all** codes including anonymous ones (it only ever reaches `usage_by_user`).
+
+**CLI grader evals** (`novedu-cli eval`, `docs/cli-eval.md`) ride the identical
+pipeline with a **sentinel attribution**: `usageCode = "cli-eval"`,
+`usageModule = "eval"`, `usageUserId` = the teacher's `oid`. No pipeline change was
+needed — the route just sets the three keys like every other agent seam. `cli-eval`
+is deliberately **not** a `novedu_codes` row: minted codes are 10 random characters,
+so a collision is impossible, and a teacher's eval spend lands in its own
+`usage_by_code` row (and its own module group) instead of being mistaken for a
+class's usage. `usage_by_user` still gets the teacher's own bucket, unlinked as
+always.
 
 ## The observability exporter — `app/mastra/usage-exporter.ts`
 

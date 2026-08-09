@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json",
+  "$comment": "Generated from lib/eval-schema.ts by `npm run generate:schemas` — do not edit by hand.",
+  "title": "Grader Eval YAML",
+  "description": "Schema for a golden-answer eval: teacher-written student answers with the verdict each one must be graded with, replayed against a quiz's rubric by `novedu-cli eval`.",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Stable identifier of this eval, shown in the run report. Letters, digits, dot, dash and underscore."
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The quiz YAML this eval grades against — a path relative to THIS file, or an absolute http(s) URL."
+    },
+    "questions": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The question id in the target quiz. For a question imported through quiz_files this is the namespaced \"<alias>/<id>\" form."
+          },
+          "answers": {
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "expect": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "correct",
+                        "partial",
+                        "incorrect"
+                      ]
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "correct",
+                          "partial",
+                          "incorrect"
+                        ]
+                      }
+                    }
+                  ],
+                  "description": "The verdict this answer must be graded with: one of \"correct\", \"partial\", \"incorrect\", or a non-empty list of acceptable verdicts (e.g. [correct, partial]) when more than one grading is defensible."
+                },
+                "answer": {
+                  "type": "string",
+                  "minLength": 1,
+                  "description": "The student answer to grade, verbatim. Written as a YAML block scalar (|) for multi-line answers."
+                }
+              },
+              "required": [
+                "expect",
+                "answer"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The golden answers for this question — at least one."
+          }
+        },
+        "required": [
+          "question",
+          "answers"
+        ],
+        "additionalProperties": false
+      },
+      "description": "The evaluated questions — at least one, each with its golden answers."
+    }
+  },
+  "required": [
+    "id",
+    "target",
+    "questions"
+  ],
+  "additionalProperties": false
+}

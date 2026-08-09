@@ -29,9 +29,10 @@ import { loadWritingFrom } from "@/lib/writing-resolve";
 // The PROMPT-DUMP seam, keyed by `FileKind` — the read-only sibling of the validator
 // seam (`lib/file-validators.ts`, Layer 2 of the codes architecture). A dumper derives
 // from the FILE alone (never from a code entry): "which exact LLM prompts does this
-// activity YAML produce?" Consumed by `@novedu/cli prompts` and, in time, the eval
-// harness; the app itself never needs it, but the answer must be the app's, so every
-// dumper calls the SAME builders and loaders production runs — never a copy:
+// activity YAML produce?" Consumed by `@novedu/cli prompts` and by the eval harness
+// (`lib/eval-validate.ts` → `novedu-cli eval`, docs/cli-eval.md); the app itself never
+// needs it, but the answer must be the app's, so every dumper calls the SAME builders
+// and loaders production runs — never a copy:
 //
 //   tutor    loadAndBuildTutorPrompt      (lib/tutors)
 //   quiz     loadQuizFrom + buildGradingPrompt / buildDiscussionInstructions

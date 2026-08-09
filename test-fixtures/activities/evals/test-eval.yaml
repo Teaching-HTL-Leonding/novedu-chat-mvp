@@ -1,0 +1,14 @@
+# Golden answers for test-quiz.yaml, tuned to the fixtures server's fake grader:
+# it answers `correct` unless the answer carries a `[grade:<verdict>]` marker.
+# Every case here MATCHES, so a run over this file exits 0.
+id: test-eval
+target: ../quizzes/test-quiz.yaml
+questions:
+  - question: q1
+    answers:
+      - expect: correct
+        answer: |
+          4 — two plus two.
+      - expect: [partial, incorrect]
+        answer: |
+          [grade:partial] Something around four, I think.

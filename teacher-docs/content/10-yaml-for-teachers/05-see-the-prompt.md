@@ -7,6 +7,7 @@ audience: teacher
 keywords: [prompt, prompts, CLI, novedu-cli, debugging, fragment, grading prompt, evaluation, JSON]
 related:
   - 10-yaml-for-teachers/04-cli-validation
+  - 10-yaml-for-teachers/06-testing-the-grader
   - 20-building-activities/07-fragments
   - 20-building-activities/04-quizzes
 generated: true
@@ -123,7 +124,7 @@ npx @novedu/cli prompts ./sorting-quiz.yaml --kind quiz --json \
 
 In AI work, an evaluation means checking a prompt on purpose rather than by feel. Instead of trying two or three answers by hand and hoping the rest go well, you collect a set of sample student answers, run all of them through the same prompt, and look at whether the results are what you want: does the good answer pass, does the half-correct one get the feedback you'd give, does the wrong one get corrected kindly?
 
-The `prompts` command is where such a check starts, because it hands you exactly the text the model receives. It's also how you compare fairly after you change something: dump the prompt before your edit and after it, and you can see what really changed rather than guessing. If you have an AI assistant to hand, it can run the sample answers for you and summarise where the results differ.
+Novedu does this for you. The CLI's `eval` command, covered in the chapter on testing how a quiz grades, replays a file of your own sample answers through the real grader and reports where the marks differ from what you expected. The two commands are partners: `prompts` is how you read what the grader is told, `eval` is how you measure what it does. When an eval reports a surprising mark, dumping the grading prompt for that question is usually the fastest way to see why.
 
 ## Ask an AI assistant instead of typing flags
 

@@ -1,26 +1,14 @@
-import type { ApiAuthError } from "@/lib/api-auth";
 import type { ReportListRow, ReportStatusFilter } from "@/lib/report-store";
 import { isReportReaction, type ReportReaction } from "@/lib/report-types";
 
-// Shared plumbing for the three CLI/API bearer report routes (docs/api.md,
-// docs/reports.md). Every route is force-dynamic, answers `Cache-Control:
-// no-store`, and every failure body is `{ message }` (the ONE failure key on
-// this channel). Timestamps are ISO 8601 UTC or `null`.
+// REPORTS-specific plumbing for the three CLI/API bearer report routes (docs/api.md,
+// docs/reports.md): the id guard, the filter parsers, and the wire shape. The generic
+// channel helpers (`json`, `authErrorResponse`, `NO_STORE`) moved to the neutral
+// `app/api/shared.ts` when `/api/eval/grade` needed them too — they are channel
+// plumbing, not reports logic. Re-exported here so the report routes keep one import.
+// Timestamps are ISO 8601 UTC or `null`.
 
-export const NO_STORE = { "Cache-Control": "no-store" };
-
-export function json(body: unknown, status: number): Response {
-  return Response.json(body, { status, headers: NO_STORE });
-}
-
-export function authErrorResponse(error: ApiAuthError): Response {
-  // Generic body; the validation detail stays server-side (telemetry).
-  // `{ message }` is the ONE failure key on the bearer channel (docs/api.md).
-  return Response.json(
-    { message: error.message },
-    { status: error.status, headers: { ...NO_STORE, "WWW-Authenticate": "Bearer" } },
-  );
-}
+export { authErrorResponse, json, NO_STORE } from "../shared";
 
 // A canonical UUID — the shape `randomUUID` mints for a report id. Mirrors the
 // guard the web bulk actions use (lib/report-actions.ts `UUID_PATTERN`) so a

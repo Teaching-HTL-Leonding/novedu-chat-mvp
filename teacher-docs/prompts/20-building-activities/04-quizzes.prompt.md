@@ -27,6 +27,12 @@ Cover:
 - Attempt length (`question_count`): cap how many questions one attempt asks (useful
   when the pool is large), or set it above the pool size for drill/practice mode where
   questions repeat. Explain the shuffle interplay in teacher terms.
+- Before you share a quiz: after validating, the grading itself can be tested — the
+  eval command replays a file of your own sample answers through the real grader and
+  reports where the verdicts differ from what you expect. One or two sentences plus a
+  link to the "Testing how a quiz grades" chapter; the mechanics live there, not here.
+  Include eval in the chapter's keywords/related front matter so the feature is
+  discoverable from this page.
 
 Get right:
 - A compound quiz uses its OWN settings (model, anonymity, shuffle, attempt length,

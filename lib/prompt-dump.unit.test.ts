@@ -26,7 +26,19 @@ const PURE_MODULES = [
   "lib/quiz-resolve.ts",
   "lib/writing-resolve.ts",
   "lib/coding-resolve.ts",
+  // The eval format layer (docs/cli-eval.md) is bundled into the CLI too and calls
+  // straight into the dump seam, so it lives under the identical purity rule.
+  "lib/eval-schema.ts",
+  "lib/eval-validate.ts",
 ];
+
+/**
+ * The roots of the transitive closure walk below. `lib/eval-validate.ts` is a second
+ * entry point into the CLI-bundled graph (it CALLS the dump seam rather than being
+ * reached from it), so walking only the dump would leave it — and everything it adds —
+ * unguarded.
+ */
+const CLOSURE_ROOTS = ["lib/prompt-dump.ts", "lib/eval-validate.ts"];
 
 describe("prompt-dump purity invariant", () => {
   it.each(PURE_MODULES)("%s imports nothing from app/ or the DB", (relPath) => {
@@ -63,7 +75,8 @@ describe("prompt-dump purity invariant", () => {
   // leave: modules the dump reaches only transitively (lib/coding-proxy.ts,
   // lib/quiz-yaml.ts, lib/quiz-types.ts, lib/tutors/**, lib/prompt-fragments/**) and
   // specifier forms the simple regex misses (relative paths like "./llm/model",
-  // side-effect imports, `export … from` re-exports, dynamic `import()`).
+  // side-effect imports, `export … from` re-exports, dynamic `import()`). Both CLI
+  // entry points into that graph are walked (`CLOSURE_ROOTS`).
   it("keeps the ENTIRE transitive import closure app-free and 'use server'-free", () => {
     // Repo-relative paths whose import — even type-only, even N levels deep — must fail
     // the guard. Matched against the RESOLVED path, so "./db", "@/lib/db" and
@@ -110,7 +123,7 @@ describe("prompt-dump purity invariant", () => {
 
     const visited = new Set<string>();
     const offenders: string[] = [];
-    const queue = ["lib/prompt-dump.ts"];
+    const queue = [...CLOSURE_ROOTS];
     while (queue.length > 0) {
       const rel = queue.pop() as string;
       if (visited.has(rel)) continue;

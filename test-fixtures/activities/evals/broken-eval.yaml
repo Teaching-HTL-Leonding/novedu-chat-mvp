@@ -1,0 +1,10 @@
+# Deliberately unusable: a misspelled `answr` key (schema error) AND a question id
+# the target quiz does not have. Used for the invalid-file paths.
+id: broken-eval
+target: ../quizzes/test-quiz.yaml
+questions:
+  - question: does-not-exist
+    answers:
+      - expect: correct
+        answr: |
+          The key above is misspelled.

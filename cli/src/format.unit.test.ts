@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { BuildResult, FragmentCheckResult } from "@/lib/prompt-fragments";
 import type { QuizCheckResult } from "@/lib/quiz-validate";
 import type { WritingCheckResult } from "@/lib/writing-validate";
+import type { EvalBatchFileInput, EvalRunResult } from "./eval-run";
+import { summarizeBatch } from "./eval-run";
 import {
+  formatEvalBatchReport,
+  formatEvalReport,
   formatFragmentResult,
   formatQuizResult,
   formatResult,
@@ -154,5 +158,72 @@ describe("formatWritingResult", () => {
 
     expect(out).toContain("WRITING_SCHEMA_ERROR");
     expect(out).toContain("instructions: Invalid input: expected string");
+  });
+});
+
+/** A minimal finished run — only the fields the eval report renders. */
+function runResult(usage: { input: number; cachedInput: number; output: number }): EvalRunResult {
+  return {
+    id: "demo-eval",
+    target: "file:///quiz.yaml",
+    llm: { provider: "SCCH", model: "gemma-4" },
+    totals: {
+      cases: 1,
+      passed: 1,
+      failed: 0,
+      errored: 0,
+      skipped: 0,
+      unstable: 0,
+      repeats: 1,
+      calls: 1,
+      usage,
+    },
+    mismatches: [],
+    cases: [],
+    questions: [],
+    confusion: [],
+    falseCorrect: { count: 0, denominator: 0, rate: 0 },
+  } as EvalRunResult;
+}
+
+describe("formatEvalReport — token totals", () => {
+  it("prints one tokens line when the run reported usage", () => {
+    const out = formatEvalReport(
+      runResult({ input: 15_420, cachedInput: 12_300, output: 2810 }),
+      "demo.eval.yaml",
+    );
+
+    expect(out).toContain("tokens: 15,420 in (12,300 cached) / 2,810 out");
+  });
+
+  it("drops the cached parenthetical when the provider reported no cache reads", () => {
+    const out = formatEvalReport(runResult({ input: 900, cachedInput: 0, output: 30 }), "x.yaml");
+
+    expect(out).toContain("tokens: 900 in / 30 out");
+  });
+
+  it("prints NO tokens line when nothing was reported", () => {
+    const out = formatEvalReport(runResult({ input: 0, cachedInput: 0, output: 0 }), "x.yaml");
+
+    expect(out).not.toContain("tokens:");
+  });
+
+  it("adds the batch's grand token total under TOTAL", () => {
+    const files: EvalBatchFileInput[] = [
+      {
+        source: "file:///a.eval.yaml",
+        status: "ok",
+        result: runResult({ input: 10, cachedInput: 4, output: 2 }),
+      },
+      {
+        source: "file:///b.eval.yaml",
+        status: "ok",
+        result: runResult({ input: 5, cachedInput: 0, output: 1 }),
+      },
+    ];
+
+    const out = formatEvalBatchReport(summarizeBatch(files));
+
+    expect(out).toContain("tokens: 15 in (4 cached) / 3 out");
   });
 });

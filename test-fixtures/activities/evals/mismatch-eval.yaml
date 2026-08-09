@@ -1,0 +1,13 @@
+# One matching and one deliberately MISMATCHING case, so a run over this file
+# reports a mismatch and exits 1 (the CI-gate path).
+id: mismatch-eval
+target: ../quizzes/test-quiz.yaml
+questions:
+  - question: q1
+    answers:
+      - expect: correct
+        answer: |
+          4 — two plus two.
+      - expect: correct
+        answer: |
+          [grade:incorrect] Five.
