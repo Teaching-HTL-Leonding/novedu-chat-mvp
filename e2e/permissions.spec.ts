@@ -52,6 +52,9 @@ test.describe("as a student", () => {
       "href",
       "/docs",
     );
+    await expect(
+      page.getByRole("navigation", { name: "Primary" }).getByRole("link").last(),
+    ).toHaveText("Teacher Guide");
     await expect(page.getByRole("link", { name: "YAML Files" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Codes", exact: true })).toHaveCount(0);
   });
@@ -81,6 +84,9 @@ test.describe("as a teacher", () => {
       "href",
       "/docs",
     );
+    await expect(
+      page.getByRole("navigation", { name: "Primary" }).getByRole("link").last(),
+    ).toHaveText("Teacher Guide");
     await expect(page.getByRole("link", { name: "YAML Files" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Codes", exact: true })).toBeVisible();
   });

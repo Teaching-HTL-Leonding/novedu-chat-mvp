@@ -16,12 +16,6 @@ const BRAND = "HTBLA Leonding - Novedu";
 const NAV_ITEMS = [
   { href: "/", label: "Chat", heading: "Chat Prototype", teacherOnly: false },
   {
-    href: "/docs",
-    label: "Teacher Guide",
-    heading: "Teacher Guide",
-    teacherOnly: false,
-  },
-  {
     href: "/codes",
     label: "Codes",
     heading: "Codes",
@@ -32,6 +26,12 @@ const NAV_ITEMS = [
   { href: "/images", label: "Images", heading: "Images", teacherOnly: true },
   { href: "/usage", label: "Usage", heading: "Usage Dashboard", teacherOnly: true },
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
+  {
+    href: "/docs",
+    label: "Teacher Guide",
+    heading: "Teacher Guide",
+    teacherOnly: false,
+  },
 ] as const;
 
 // Dynamic routes have no fixed NAV_ITEMS entry, but they still need a status-bar
