@@ -107,6 +107,12 @@ export interface TutorPromptDump extends PromptDumpBase {
   kind: "tutor";
   /** The assembled tutor system prompt (`tutor_instructions` with fragments placed). */
   system: string;
+  /**
+   * The tutor's opted-in built-in tools (top-level `tools:`, [] by default).
+   * Part of what the model receives: each name's definition goes on the wire
+   * alongside the system prompt (docs/tutor-tools.md).
+   */
+  tools: string[];
 }
 
 export interface QuizPromptDump extends PromptDumpBase {
@@ -175,6 +181,7 @@ const tutorDumper: PromptDumper = {
         id: result.id,
         llm: { provider: result.provider, model: result.model },
         system: result.prompt,
+        tools: result.tools,
       },
     };
   },

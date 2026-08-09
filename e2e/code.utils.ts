@@ -25,6 +25,8 @@ export const BROKEN_TUTOR_URL = `${FIXTURES_BASE}/tutors/broken-tutor.yaml`;
 export const LIVE_TUTOR_URL = `${FIXTURES_BASE}/tutors/live-tutor.yaml`;
 // A REAL-model tutor with image input enabled for the @live-llm image round-trip.
 export const VISION_TUTOR_URL = `${FIXTURES_BASE}/tutors/vision-tutor.yaml`;
+// A REAL-model tutor with the random_number tool for the @live-llm tool-call spec.
+export const LIVE_TOOLS_TUTOR_URL = `${FIXTURES_BASE}/tutors/live-tools-tutor.yaml`;
 // A valid CODING activity URL — coding has a strict authoring gate, so a coding
 // code must point at a real coding YAML (a tutor URL would fail CODING_SCHEMA_ERROR).
 export const VALID_CODING_URL = `${FIXTURES_BASE}/coding/test-coding.yaml`;

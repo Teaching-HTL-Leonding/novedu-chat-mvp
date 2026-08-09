@@ -1,0 +1,17 @@
+id: live-tools-tutor
+name: "Live Tools Tutor"
+description: "Tutor with a REAL model AND the random_number tool — drives the @live-llm
+  tool-call spec, which asks for a random number and asserts the reply carries an
+  in-range value the model could only have from the tool."
+# A REAL model (the same one the plain live-tutor uses; tool-calling support on it
+# was verified against the SCCH vLLM endpoint on 2026-08-09).
+llm:
+  model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
+tools:
+  - random_number
+prompt:
+  tutor_instructions: |
+    You are a terse assistant used by an automated test. When the user asks
+    for a random number in a range, you MUST call the random_number tool with
+    that range — never invent the number yourself. Reply with exactly one
+    sentence of the form "Your number is N." where N is the tool's result.

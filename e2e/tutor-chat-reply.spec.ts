@@ -1,7 +1,7 @@
 import { loadEnvConfig } from "@next/env";
 import { expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
+import { LIVE_TOOLS_TUTOR_URL, LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 
 // A REAL end-to-end chat, run once per LLM PROVIDER: open a tutor code, send
 // "Hi!", and assert the tutor streams back a non-empty answer (content doesn't
@@ -85,6 +85,41 @@ test("sending a message gets a non-empty reply from the tutor", {
 }, async ({ page }) => {
   await page.goto(`/${await mintTutorCode({ tutor: LIVE_TUTOR_URL })}`);
   await sendAndExpectReply(page);
+});
+
+// The tool round-trip: a tutor with `tools: [random_number]` is asked for a random
+// number in a range the tool must be called for. Asserts the full server-side tool
+// path (per-request tools resolver → Mastra tool execution → the result woven into
+// the reply): the answer must carry a number INSIDE the requested range. A model
+// inventing a plausible number could theoretically land in range too — but a broken
+// tools path fails loudly (resolver throw = no reply; tool never called = gemma has
+// no number to echo), so in-range + no error is a faithful smoke of the wiring.
+// @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
+test("a tutor with the random_number tool weaves a tool result into its reply", {
+  tag: ["@live", "@live-llm"],
+}, async ({ page }) => {
+  await page.goto(`/${await mintTutorCode({ tutor: LIVE_TOOLS_TUTOR_URL })}`);
+
+  const composer = page.getByTestId("copilot-chat-textarea");
+  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await composer.fill("Give me a random number between 100000 and 999999.");
+  await page.getByTestId("copilot-send-button").click();
+
+  // After a tool round-trip the reply renders as TWO nodes with this testid (a
+  // hidden tool-call wrapper + the visible text message) — take the last one.
+  const assistant = page.getByTestId("copilot-assistant-message").last();
+  await expect(assistant).toBeVisible({ timeout: 60_000 });
+  await expect
+    .poll(
+      async () => {
+        const text = (await assistant.innerText()).trim();
+        const match = text.match(/\b(\d{6})\b/);
+        return match ? Number(match[1]) : 0;
+      },
+      { timeout: 60_000 },
+    )
+    .toBeGreaterThanOrEqual(100_000);
+  await expect(page.getByText(/not found after runtime sync/i)).toHaveCount(0);
 });
 
 test.describe("via Azure Foundry", () => {

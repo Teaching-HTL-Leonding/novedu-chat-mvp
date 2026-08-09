@@ -72,6 +72,7 @@ export function formatResult(result: BuildResult, source: string): string {
           ? `   exampleQuestions: ${result.exampleQuestions.length}`
           : ""),
     );
+    if (result.tools.length) lines.push(`  tools: ${result.tools.join(", ")}`);
     if (result.warnings.length) {
       lines.push("");
       lines.push(yellow(`${result.warnings.length} warning(s):`));
@@ -393,6 +394,10 @@ export function formatPromptDump(
   const lines = [green(`✔ Prompts — ${dump.kind}`) + dim(` — ${source}`)];
   lines.push(`  id: ${dump.id}`);
   lines.push(`  provider: ${dump.llm.provider}   model: ${dump.llm.model}`);
+  // A tutor's opted-in built-in tools ship to the model alongside the prompt.
+  if (dump.kind === "tutor" && dump.tools.length > 0) {
+    lines.push(`  tools: ${dump.tools.join(", ")}`);
+  }
   lines.push(`  prompts: ${sections.length}`);
   for (const section of sections) {
     lines.push(`    ${section.name}: ${section.text.length} chars`);
