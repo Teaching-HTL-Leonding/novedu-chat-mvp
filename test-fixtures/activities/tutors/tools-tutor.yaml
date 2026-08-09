@@ -1,0 +1,12 @@
+# Synthetic tutor that opts into the built-in random_number tool — exercises the
+# top-level `tools:` field through the real validators and the prompt dump.
+id: tools-tutor
+name: "Tools Test Tutor"
+description: "Synthetic tutor used only by automated tests — not a real activity."
+llm:
+  model: test-model
+tools:
+  - random_number
+prompt:
+  tutor_instructions: |
+    TOOLS-INSTRUCTIONS-MARKER use the random_number tool for practice values.

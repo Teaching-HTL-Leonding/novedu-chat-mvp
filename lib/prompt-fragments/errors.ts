@@ -178,6 +178,12 @@ export type BuildResult =
       /** Whether students may attach images in the chat (tutor `llm.imageInput`, default true). */
       imageInput: boolean;
       /**
+       * The tutor's opted-in built-in tool names (top-level `tools:`, default []).
+       * Values mirror `TutorToolName` in `lib/tutor-tools/names.ts` (kept as plain
+       * strings so this module stays import-free) — update both together.
+       */
+      tools: string[];
+      /**
        * When true (the default), the user↔chat link is NOT persisted — chats
        * stay anonymous. A tutor opts into attribution with `anonymous: false`.
        */

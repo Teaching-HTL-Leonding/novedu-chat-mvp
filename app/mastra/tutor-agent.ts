@@ -6,6 +6,7 @@ import { resolveLanguageModel } from "@/lib/llm/model";
 import { type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
 import { defaultFetcher } from "@/lib/prompt-fragments";
 import { loadAndBuildTutorPrompt } from "@/lib/tutors";
+import { selectTutorTools } from "./tutor-tools";
 
 // A single agent that is configured entirely by a tutor-definition YAML. The
 // tutor's URL arrives per request via `requestContext` (set by the CopilotKit
@@ -25,6 +26,8 @@ interface LoadedTutor {
   prompt: string;
   model: string;
   provider: LlmProvider;
+  /** The YAML's validated `tools:` opt-in (docs/tutor-tools.md), [] by default. */
+  tools: string[];
 }
 
 // A built prompt is NEVER cached across requests: the YAML is fetched + assembled
@@ -64,7 +67,7 @@ function loadTutor(requestContext: RequestContext): Promise<LoadedTutor> {
       // Checked on the EFFECTIVE provider, so an override is gated too.
       const unavailable = providerUnavailableReason(provider);
       if (unavailable) throw new Error(unavailable);
-      return { prompt: result.prompt, model, provider };
+      return { prompt: result.prompt, model, provider, tools: result.tools };
     },
   );
 
@@ -107,6 +110,10 @@ export const tutorAgent = new Agent({
     const loaded = await loadTutor(requestContext);
     return resolveLanguageModel(loaded.provider, loaded.model);
   },
+  // The YAML's opt-in tool selection (top-level `tools:`, docs/tutor-tools.md) —
+  // an empty map for the (default) tool-less tutor. The platform never mentions
+  // tools in the prompt; authors reference them in `tutor_instructions`.
+  tools: async ({ requestContext }) => selectTutorTools((await loadTutor(requestContext)).tools),
   // Persist the conversation so the tutor remembers earlier turns. No explicit
   // storage here: Memory inherits the Mastra instance's Azure SQL store (see
   // `index.ts`), so threads/messages land in the `mastra_*` tables. The thread

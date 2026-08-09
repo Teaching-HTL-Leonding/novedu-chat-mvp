@@ -53,10 +53,29 @@ describe("runValidate — tutors (local files)", () => {
     }
   });
 
+  it("accepts a tutor that opts into a built-in tool", async () => {
+    const outcome = await runValidate(`${tutorsDir}tools-tutor.yaml`, "tutor");
+
+    expect(outcome.kind).toBe("tutor");
+    expect(outcome.result.ok).toBe(true);
+    if (outcome.kind === "tutor" && outcome.result.ok) {
+      expect(outcome.result.tools).toEqual(["random_number"]);
+    }
+  });
+
+  it("rejects a tutor naming a tool the catalog does not offer", async () => {
+    const outcome = await runValidate(`${tutorsDir}broken-tools-tutor.yaml`, "tutor");
+
+    expect(outcome.result.ok).toBe(false);
+    if (!outcome.result.ok) {
+      expect(outcome.result.errors[0]?.code).toBe("TUTOR_SCHEMA_ERROR");
+    }
+  });
+
   // The @live-llm fixture tutors are consumed only by local-only e2e specs, so
   // this CI-run check is the ONLY gate keeping them schema-valid: a break here
   // would otherwise surface days later as an opaque chat timeout in a live run.
-  it.each(["vision-tutor.yaml", "live-tutor.yaml"])(
+  it.each(["vision-tutor.yaml", "live-tutor.yaml", "live-tools-tutor.yaml"])(
     "keeps the live e2e fixture %s valid",
     async (fixture) => {
       const outcome = await runValidate(`${tutorsDir}${fixture}`, "tutor");

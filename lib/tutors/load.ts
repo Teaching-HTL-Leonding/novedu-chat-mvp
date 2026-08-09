@@ -51,6 +51,7 @@ export async function loadAndBuildTutorPrompt(
     model: tutor.llm.model,
     provider: tutor.llm.provider,
     imageInput: tutor.llm.imageInput ?? true,
+    tools: tutor.tools,
     anonymous: tutor.anonymous ?? true,
     title: tutor.title,
     description: tutor.description,

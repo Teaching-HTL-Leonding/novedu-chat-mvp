@@ -79,6 +79,8 @@ prompt:
       provider: SCCH            # optional; default SCCH. "Azure Foundry" serves an
                                 # Azure OpenAI deployment; model is then the deployment name
       imageInput: false         # optional; default true, set false to disable image uploads
+    tools:                      # optional; default [] (no tools) — built-in server-side
+      - random_number           # tools the model may call during the chat
     prompt:
       fragment_files: []        # optional; omit for single-file tutors
       tutor_instructions: |     # required; a Handlebars host template that
@@ -94,6 +96,13 @@ prompt:
     - `anonymous`: by default (`true`) the app stores NO link between the
       student and their chat. Set `false` to attribute chats (e.g. graded
       work) — and remind the teacher to tell the students.
+    - `tools`: opt-in built-in tools the model may call. The complete list:
+      `random_number` (a uniformly random integer between `min` and `max`,
+      both inclusive, with true server-side randomness — use it for practice
+      problems, since models repeat the same "random" numbers on their own).
+      An unknown name fails validation. The app never mentions tools in the
+      prompt: tell the model in `tutor_instructions` when to use each tool,
+      e.g. "use the random_number tool to pick practice values".
     - `prompt.fragment_files` declares the libraries with a local alias:
 
       ```yaml

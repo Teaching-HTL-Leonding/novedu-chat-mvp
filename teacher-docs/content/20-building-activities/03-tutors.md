@@ -4,7 +4,7 @@ description: The fields that make a tutor YAML file, what students see on the em
 sidebar:
   order: 3
 audience: teacher
-keywords: [tutor, tutor_instructions, instructions, fragments, fragment library, starter questions, exampleQuestions, greeting, YAML]
+keywords: [tutor, tutor_instructions, instructions, fragments, fragment library, starter questions, exampleQuestions, greeting, tools, random_number, built-in tools, YAML]
 related:
   - 00-introduction/03-tutors-overview
   - 20-building-activities/02-available-llms
@@ -67,6 +67,30 @@ exampleQuestions:
 ```
 
 You can define any number of starter questions, but students see at most five. With more than five, a random selection of five appears on each page load, kept in the order you wrote them, so order them deliberately, for example from easy to hard.
+
+## Built-in tools
+
+A tutor can give its AI model access to built-in tools: small helpers that run on the Novedu server while the tutor chats. The model decides when to call a tool, the server runs it, and the model uses the result in its answer. Students only see the finished reply.
+
+You opt in with a top-level `tools:` list. Without it, a tutor has no tools.
+
+```yaml
+tools:
+  - random_number
+```
+
+The complete list of available tools:
+
+| Tool            | What it does                                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------------------- |
+| `random_number` | Returns a random whole number between `min` and `max` (both included), with true server-side randomness. |
+
+Why `random_number` matters: AI models are surprisingly bad at being random. Ask a model to "pick a random number" and it tends to produce the same few values in every session, so your students end up practising with the same exercises. The tool draws a genuinely random number instead, which gives every student varied practice problems.
+
+Two rules to get right:
+
+- **Validation checks the names.** A tool name that Novedu doesn't offer fails validation, so a typo can't slip through quietly.
+- **Tell the tutor to use its tools.** Novedu never mentions the tools in the prompt for you. Say it in your `tutor_instructions`, for example: "When the student asks for a practice problem, use the random_number tool to pick the values. Don't invent the numbers yourself."
 
 ## Fragments: reusable pieces of prompt
 

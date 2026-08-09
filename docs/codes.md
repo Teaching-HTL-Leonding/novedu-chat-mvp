@@ -172,6 +172,12 @@ because CopilotKit appends sub-paths like `/info` to the runtime URL). It
 `RequestContext`, and runs that one agent. `resourceId` is the **code** for every
 module. One access check, one header scheme, module-driven agent selection.
 
+The tutor agent additionally resolves the YAML's opt-in **built-in tools**
+(top-level `tools:`, default `[]`) per request, alongside its prompt and model —
+see `docs/tutor-tools.md`. Tool grants live in the YAML only; the code row and
+the runtime route know nothing about them, and the per-code LLM override never
+affects them.
+
 Every consumption of the activity's `llm.provider`/`llm.model` goes through
 `effectiveLlm(entry, activityLlm)` (`lib/code-store.ts`): the code's LLM override
 pair wins wholesale when set. The five sites: the tutor agent (the descriptor

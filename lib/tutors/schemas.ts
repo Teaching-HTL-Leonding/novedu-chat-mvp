@@ -17,6 +17,7 @@
 import { z } from "zod";
 import { providerSchema } from "@/lib/llm/provider";
 import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
+import { tutorToolNameSchema } from "@/lib/tutor-tools/names";
 
 /**
  * An example question offered to students on the welcome screen: the `title` is
@@ -77,6 +78,20 @@ export const TutorSchema = z.strictObject({
       }),
     })
     .meta({ id: "llm", description: "The model and provider that back this tutor." }),
+  // Opt-in server-side tools (docs/tutor-tools.md). A flat list of well-known
+  // names — the enum makes an unknown name a schema error and autocompletes in
+  // editors. Deliberately a TOP-LEVEL field, not part of `llm:`: a code's LLM
+  // override replaces the llm pair wholesale and must not touch tool grants.
+  // The platform never mentions tools in the prompt — authors should reference
+  // enabled tools in `tutor_instructions` themselves.
+  tools: z
+    .array(tutorToolNameSchema)
+    .default([])
+    .meta({
+      description:
+        "Optional built-in tools the tutor's model may call (e.g. random_number). " +
+        "Off by default; mention enabled tools in tutor_instructions so the model uses them.",
+    }),
   prompt: z
     .strictObject({
       fragment_files: z

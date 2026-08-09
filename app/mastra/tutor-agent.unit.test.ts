@@ -38,6 +38,7 @@ type Resolver<T> = (args: { requestContext: unknown }) => Promise<T>;
 const config = (tutorAgent as unknown as { config: Record<string, unknown> }).config;
 const instructions = config.instructions as Resolver<string>;
 const model = config.model as Resolver<unknown>;
+const tools = config.tools as Resolver<Record<string, { execute: unknown }>>;
 
 // A fresh per-request context object (the real one is a RequestContext; the agent
 // only calls get(), and uses the OBJECT IDENTITY as the WeakMap build-cache key).
@@ -54,6 +55,7 @@ beforeEach(() => {
     prompt: "YAML PROMPT",
     model: "yaml-model",
     provider: "SCCH",
+    tools: [],
   });
   resolveLanguageModel.mockReturnValue("resolved-model");
 });
@@ -98,5 +100,60 @@ describe("tutorAgent per-request resolution", () => {
       [TUTOR_MODEL_OVERRIDE]: "gpt-4o",
     });
     await expect(model({ requestContext: ctx })).rejects.toThrow(/override is invalid/);
+  });
+});
+
+describe("tutorAgent tools resolution", () => {
+  it("exposes NO tools for a tutor without a tools opt-in", async () => {
+    const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
+    await expect(tools({ requestContext: ctx })).resolves.toEqual({});
+  });
+
+  it("exposes exactly the opted-in tools, sharing the request-scoped build", async () => {
+    loadAndBuildTutorPrompt.mockResolvedValue({
+      ok: true,
+      prompt: "YAML PROMPT",
+      model: "yaml-model",
+      provider: "SCCH",
+      tools: ["random_number"],
+    });
+    const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
+    await instructions({ requestContext: ctx });
+    const toolset = await tools({ requestContext: ctx });
+    expect(Object.keys(toolset)).toEqual(["random_number"]);
+    // All three resolvers (instructions/model/tools) share ONE build per request.
+    expect(loadAndBuildTutorPrompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("the resolved random_number tool actually executes the catalog logic", async () => {
+    loadAndBuildTutorPrompt.mockResolvedValue({
+      ok: true,
+      prompt: "YAML PROMPT",
+      model: "yaml-model",
+      provider: "SCCH",
+      tools: ["random_number"],
+    });
+    const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
+    const toolset = await tools({ requestContext: ctx });
+    const randomNumber = toolset.random_number;
+    expect(randomNumber).toBeDefined();
+    const execute = randomNumber?.execute as (input: {
+      min: number;
+      max: number;
+    }) => Promise<{ value: number }>;
+    // min === max pins the crypto RNG's only possible answer.
+    await expect(execute({ min: 7, max: 7 })).resolves.toEqual({ value: 7 });
+  });
+
+  it("throws on a selection the catalog does not know (wiring bug guard)", async () => {
+    loadAndBuildTutorPrompt.mockResolvedValue({
+      ok: true,
+      prompt: "YAML PROMPT",
+      model: "yaml-model",
+      provider: "SCCH",
+      tools: ["radix_conversion"],
+    });
+    const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
+    await expect(tools({ requestContext: ctx })).rejects.toThrow(/Unknown tutor tool/);
   });
 });

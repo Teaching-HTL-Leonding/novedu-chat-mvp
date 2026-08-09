@@ -37,6 +37,14 @@
     "llm": {
       "$ref": "#/$defs/llm"
     },
+    "tools": {
+      "default": [],
+      "description": "Optional built-in tools the tutor's model may call (e.g. random_number). Off by default; mention enabled tools in tutor_instructions so the model uses them.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tutorToolName"
+      }
+    },
     "prompt": {
       "$ref": "#/$defs/prompt"
     }
@@ -98,6 +106,13 @@
       ],
       "additionalProperties": false,
       "description": "The model and provider that back this tutor."
+    },
+    "tutorToolName": {
+      "type": "string",
+      "enum": [
+        "random_number"
+      ],
+      "description": "Name of a built-in tutor tool."
     },
     "prompt": {
       "type": "object",

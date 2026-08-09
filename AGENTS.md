@@ -75,6 +75,13 @@ Read before touching: `lib/prompt-fragments/**`, `lib/tutors/**`, or a consumer'
 - `lib/prompt-fragments/` is the ONE home of Handlebars: `handlebars` is imported by exactly three files (grep-guarded); every consumer only calls `assembleFragmentPrompt`.
 - `text_files` content is spliced **verbatim, never compiled**; an activity declaring neither file list gets its host text byte-verbatim.
 
+### Tutor tools → `docs/tutor-tools.md`
+
+Read before touching: `lib/tutor-tools/**`, `app/mastra/tutor-tools.ts`, the tutor schema's `tools:` field, `app/mastra/tutor-agent.ts` tools resolver.
+
+- `lib/tutor-tools/` is the pure, CLI-bundled catalog (names, schemas, executors with injected effects) — it sits inside the prompt-dump grep-guard closure; the Mastra `createTool` binding lives ONLY in `app/mastra/tutor-tools.ts`.
+- Tool grants are top-level `tools:` (enum-validated, default `[]`) — independent of `llm:` and the per-code LLM override; the platform never mentions tools in the prompt (authors do, in `tutor_instructions`).
+
 ### Writing → `docs/writing.md`
 
 Read before touching: `lib/writing-*.ts`, `app/[code]/_writing/**`, `app/codes/[code]/s/**`, `app/mastra/writing-agents.ts`, `novedu_writing_submissions`.

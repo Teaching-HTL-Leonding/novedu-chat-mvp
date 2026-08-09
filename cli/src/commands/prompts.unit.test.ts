@@ -47,12 +47,21 @@ describe("runPrompts — the common envelope", () => {
 });
 
 describe("runPrompts — tutor", () => {
-  it("dumps the assembled system prompt", async () => {
+  it("dumps the assembled system prompt (and [] tools without an opt-in)", async () => {
     const result = await runPrompts(`${tutorsDir}test-tutor.yaml`, "tutor");
 
     expect(result.ok).toBe(true);
     if (!result.ok || result.dump.kind !== "tutor") return;
     expect(result.dump.system.length).toBeGreaterThan(0);
+    expect(result.dump.tools).toEqual([]);
+  });
+
+  it("dumps the opted-in built-in tools — they ship to the model with the prompt", async () => {
+    const result = await runPrompts(`${tutorsDir}tools-tutor.yaml`, "tutor");
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.dump.kind !== "tutor") return;
+    expect(result.dump.tools).toEqual(["random_number"]);
   });
 });
 

@@ -198,6 +198,8 @@ llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model serves this tutor
   provider: SCCH # optional: omit for default SCCH; "Azure Foundry" uses an Azure OpenAI deployment
   imageInput: false # optional: omit for default true; set false to disable image uploads
+tools: # optional: omit for default [] (no tools); built-in tools the model may call
+  - random_number
 prompt:
   fragment_files: [...] # optional: the libraries you pull fragments from
   text_files: [...] # optional: plain-text files you embed with {{file ...}}
@@ -260,6 +262,41 @@ llm:
   model: gpt-5.4-mini
   provider: Azure Foundry
 ```
+
+### `tools`
+
+Optional, default `[]` (no tools). A list of **built-in tools** the tutor's
+model may call while chatting. Tools run on the Novedu server; the model decides
+when to call one, receives the result, and continues its answer. An unknown tool
+name fails validation, so typos cannot slip through.
+
+Available tools (this list is exhaustive):
+
+| Tool            | What it does                                                                                          |
+| --------------- | ----------------------------------------------------------------------------------------------------- |
+| `random_number` | Returns a uniformly random integer between `min` and `max` (both inclusive), using true server-side randomness. |
+
+Use `random_number` when the tutor generates practice problems: language models
+are poor at inventing random values on their own — they repeat the same "random"
+numbers across sessions, so students end up with the same exercises.
+
+The platform never tells the model about its tools in the system prompt —
+**mention enabled tools in your `tutor_instructions`** so the model actually
+uses them:
+
+```yaml
+tools:
+  - random_number
+
+prompt:
+  tutor_instructions: |
+    ...
+    When the student asks for a practice problem, use the random_number tool
+    to pick the values — do not invent the numbers yourself.
+```
+
+`novedu-cli prompts` lists a tutor's enabled tools alongside its assembled
+system prompt.
 
 ### `prompt.fragment_files`
 

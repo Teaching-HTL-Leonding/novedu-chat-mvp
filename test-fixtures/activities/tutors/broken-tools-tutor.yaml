@@ -1,0 +1,12 @@
+# Synthetic BROKEN tutor: names a tool the catalog does not offer. The `tools:`
+# enum must reject it at schema validation (TUTOR_SCHEMA_ERROR).
+id: broken-tools-tutor
+name: "Broken Tools Tutor"
+description: "Synthetic tutor used only by automated tests — not a real activity."
+llm:
+  model: test-model
+tools:
+  - radix_conversion
+prompt:
+  tutor_instructions: |
+    This tutor never validates.

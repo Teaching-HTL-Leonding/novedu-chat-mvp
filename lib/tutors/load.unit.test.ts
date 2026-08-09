@@ -96,6 +96,45 @@ describe("loadAndBuildTutorPrompt — anonymous flag", () => {
   });
 });
 
+describe("loadAndBuildTutorPrompt — tools opt-in", () => {
+  // The fixture declares no `tools:`; these variants prepend the top-level field.
+  const withTools = (yamlList: string) => `tools:${yamlList}\n${TUTOR_YAML}`;
+
+  it("normalizes an omitted tools field to an empty selection", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.tools).toEqual([]);
+  });
+
+  it("surfaces an explicit random_number opt-in", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withTools("\n  - random_number"))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.tools).toEqual(["random_number"]);
+  });
+
+  it("accepts an explicitly empty tools list", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withTools(" []"))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.tools).toEqual([]);
+  });
+
+  it("TUTOR_SCHEMA_ERROR for an unknown tool name", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withTools("\n  - radix_conversion"))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("TUTOR_SCHEMA_ERROR");
+  });
+
+  it("TUTOR_SCHEMA_ERROR for a non-list tools value", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withTools(" random_number"))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("TUTOR_SCHEMA_ERROR");
+  });
+});
+
 describe("loadAndBuildTutorPrompt — title & description", () => {
   it("surfaces the tutor's title and description for the welcome screen", async () => {
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());

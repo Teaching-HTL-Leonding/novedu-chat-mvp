@@ -106,7 +106,10 @@ dump describes a file, and a file has no code.
 
 ### Per kind
 
-- **tutor** → `system`: the assembled `tutor_instructions`, fragments placed inline.
+- **tutor** → `system`: the assembled `tutor_instructions`, fragments placed
+  inline; plus `tools`: the opted-in built-in tool names (top-level `tools:`,
+  `[]` by default) — their definitions ship to the model alongside the prompt
+  (`docs/tutor-tools.md`). The human summary lists them when non-empty.
 - **writing** → `system`: the coach's whole system prompt. Writing has exactly
   **one** host text (`instructions`); `placeholder` is editor starter text, not a
   prompt, and the agent's only tool (`getCurrentText`) carries no teacher text.
