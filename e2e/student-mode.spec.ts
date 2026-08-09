@@ -28,6 +28,7 @@ test("a teacher can enter student mode, is treated as a student, and can exit ag
   await expect(page.getByRole("img", { name: "Teacher" })).toHaveCount(0);
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Teacher Guide" })).toHaveAttribute("href", "/docs");
   await expect(page.getByRole("link", { name: "YAML Files" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Codes", exact: true })).toHaveCount(0);
 

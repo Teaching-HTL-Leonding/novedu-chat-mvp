@@ -16,6 +16,12 @@ const BRAND = "HTBLA Leonding - Novedu";
 const NAV_ITEMS = [
   { href: "/", label: "Chat", heading: "Chat Prototype", teacherOnly: false },
   {
+    href: "/docs",
+    label: "Teacher Guide",
+    heading: "Teacher Guide",
+    teacherOnly: false,
+  },
+  {
     href: "/codes",
     label: "Codes",
     heading: "Codes",
@@ -91,16 +97,22 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
           <ul>
             {items.map((item) => (
               <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    MENU_ITEM,
-                    item.href === pathname && "bg-foreground/5 font-semibold",
-                  )}
-                  onClick={() => setOpen(false)}
-                >
-                  {item.label}
-                </Link>
+                {item.href === "/docs" ? (
+                  <a href={item.href} className={MENU_ITEM} onClick={() => setOpen(false)}>
+                    {item.label}
+                  </a>
+                ) : (
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      MENU_ITEM,
+                      item.href === pathname && "bg-foreground/5 font-semibold",
+                    )}
+                    onClick={() => setOpen(false)}
+                  >
+                    {item.label}
+                  </Link>
+                )}
               </li>
             ))}
           </ul>
