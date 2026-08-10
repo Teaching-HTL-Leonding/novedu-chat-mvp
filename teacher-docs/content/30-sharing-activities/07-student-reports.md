@@ -9,6 +9,7 @@ related:
   - 30-sharing-activities/04-anonymous-vs-per-user
   - 30-sharing-activities/02-viewing-usage
   - 30-sharing-activities/05-deleting-codes
+  - 00-introduction/07-novedu-cli
   - 10-yaml-for-teachers/04-cli-validation
   - 20-building-activities/01-handling-yaml
 generated: true

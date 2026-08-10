@@ -56,7 +56,9 @@ Cover:
   roughly compare the cost of two models. Keep it to a short paragraph; one honest
   clause that the count covers the calls that succeeded is enough.
 - The bundled AI skill: the teacher can ask it to write the golden answers, run the
-  eval, and explain the mismatches, instead of typing flags.
+  eval, and explain the mismatches, instead of typing flags. Don't explain what the
+  skill is or how to install it, that's the introduction chapter "The Novedu CLI and
+  its AI skill"; point at it instead.
 - A short "how many answers" paragraph of practical advice: three or four per question
   you care about is already useful; you do not need to cover every question; the
   confidently-wrong answers are the ones that find a lenient rubric.

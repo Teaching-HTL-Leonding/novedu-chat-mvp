@@ -7,6 +7,7 @@ audience: teacher
 keywords: [prompt, prompts, CLI, novedu-cli, debugging, fragment, grading prompt, evaluation, JSON]
 related:
   - 10-yaml-for-teachers/04-cli-validation
+  - 00-introduction/07-novedu-cli
   - 10-yaml-for-teachers/06-testing-the-grader
   - 20-building-activities/07-fragments
   - 20-building-activities/04-quizzes
@@ -128,6 +129,6 @@ Novedu does this for you. The CLI's `eval` command, covered in the chapter on te
 
 ## Ask an AI assistant instead of typing flags
 
-The Novedu repository bundles a skill that teaches AI coding assistants (such as Claude Code) how to use the CLI. With such an assistant, you can ask "show me the grading prompt for question 3" or "did my safety fragment reach the tutor?", and it runs the command, reads the output, and answers in plain language.
+With the Novedu skill installed in your AI coding assistant, you can ask "show me the grading prompt for question 3" or "did my safety fragment reach the tutor?", and it runs the command, reads the output, and answers in plain language. The introduction chapter on the Novedu CLI and its AI skill shows how to install that skill.
 
 That's also why this lives in a command rather than as a screen in the app: it's meant to be used by an assistant at least as much as by a person, it works without signing in, and it uploads nothing. A screen in the app can follow later if teachers ask for one.

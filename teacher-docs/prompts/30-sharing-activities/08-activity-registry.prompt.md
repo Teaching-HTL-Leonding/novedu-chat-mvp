@@ -39,8 +39,9 @@ Cover:
 Get right:
 - This is a command-line feature; there is no registry page in the web app. Say so
   once, early, and link to "Creating a shared code" for the single-activity path.
-- The command needs the teacher sign-in; link to "Validating with the CLI" for how to
-  install and sign in rather than repeating it.
+- The command needs the teacher sign-in; point at the introduction chapter "The Novedu
+  CLI and its AI skill" for what the CLI is and how to set it up, rather than
+  repeating it.
 - Codes are never edited or deleted by this feature; that is why a parameter change
   produces a new code. Link to "Deleting a code" for retiring the old one.
 - The window rules and the both-or-nothing model override are the same ones the normal

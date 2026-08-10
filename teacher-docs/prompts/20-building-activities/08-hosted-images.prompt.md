@@ -14,7 +14,8 @@ Cover:
   add a credit/attribution line; the image appears in your list.
 - Uploading with the CLI: `images upload <name> --file <path> [--credit <text>]`
   and `images list` — for teachers already working in the terminal or through a
-  coding agent (cross-link the CLI chapter, 10/04).
+  coding agent (cross-link the introduction chapter "The Novedu CLI and its AI skill"
+  for the CLI itself; the images commands need a signed-in teacher).
 - Referencing from YAML: by NAME with `hosted: true` (for example a quiz
   question's `image:` block with `src`, `hosted: true`, and an `alt` text) —
   never by pasting a download link.

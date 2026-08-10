@@ -48,7 +48,8 @@ Cover:
   later if teachers ask for one. Keep this short and matter-of-fact, one short section.
 - The bundled AI skill: the same skill that helps with validation also drives this
   command, so a teacher can ask "show me the grading prompt for question 3" instead of
-  typing flags.
+  typing flags. Don't explain what the skill is or how to install it, that's the
+  introduction chapter "The Novedu CLI and its AI skill"; point at it instead.
 
 Get right:
 - prompts and validate are complementary, never alternatives. Do not present prompts as

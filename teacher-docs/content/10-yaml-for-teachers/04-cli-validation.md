@@ -6,6 +6,7 @@ sidebar:
 audience: teacher
 keywords: [validate, CLI, novedu-cli, check YAML, kind, error, quiz, tutor, eval]
 related:
+  - 00-introduction/07-novedu-cli
   - 10-yaml-for-teachers/03-json-schemas-vscode
   - 10-yaml-for-teachers/06-testing-the-grader
   - 20-building-activities/01-handling-yaml
@@ -20,7 +21,7 @@ generated: true
 
 Before you hand an activity to a class, you can check it with the Novedu CLI, a small command-line tool. Its `validate` command runs the same checks the app itself runs when it loads your file, so any problem shows up on your screen instead of in front of your students. If the CLI says your file is valid, the app will accept it.
 
-You don't need to install anything permanently. With Node.js (version 22 or newer) on your machine, `npx` fetches and runs the CLI on demand.
+You don't need to install anything permanently: `npx` fetches and runs the CLI on demand. The introduction chapter on the Novedu CLI and its AI skill covers what you need on your machine and everything else the CLI can do.
 
 ## Run the validate command
 
@@ -72,4 +73,4 @@ The report separates errors from warnings. Errors mean the app would reject the 
 
 ## Let an AI assistant do it for you
 
-The Novedu repository bundles a skill that teaches AI coding assistants (such as Claude Code) how to use the CLI. If you author your activities in a copy of the repository with such an assistant, you can simply ask it "is my quiz valid?" or "why won't this tutor load?". The assistant runs the validation for you, reads the error messages, and explains in plain language what to change, so you never have to decode an error on your own.
+With the Novedu skill installed in your AI coding assistant, you never have to type the validate command yourself. Ask "is my quiz valid?" or "why won't this tutor load?", and the assistant runs the validation, reads the error messages, and explains in plain language what to change. The introduction chapter on the Novedu CLI and its AI skill shows how to install that skill.
