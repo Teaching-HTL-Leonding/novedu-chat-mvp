@@ -10,6 +10,7 @@ related:
   - 30-sharing-activities/04-anonymous-vs-per-user
   - 30-sharing-activities/06-coding-special-case
   - 20-building-activities/02-available-llms
+  - 00-introduction/07-novedu-cli
 generated: true
 ---
 

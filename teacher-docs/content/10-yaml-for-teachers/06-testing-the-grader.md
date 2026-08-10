@@ -7,6 +7,7 @@ audience: teacher
 keywords: [eval, golden answers, grading, test the grader, rubric, evaluation, false-correct, repeats, unstable, quiz, report, tokens, cost]
 related:
   - 10-yaml-for-teachers/04-cli-validation
+  - 00-introduction/07-novedu-cli
   - 10-yaml-for-teachers/05-see-the-prompt
   - 20-building-activities/04-quizzes
 generated: true
@@ -197,4 +198,4 @@ Two current limits: eval files are text-only, so photo answers can't be tested t
 
 ## Ask an AI assistant instead
 
-The Novedu repository bundles a skill that teaches AI coding assistants (such as Claude Code) how to use the CLI. With such an assistant you can say "write golden answers for my sorting quiz", "run the eval", or "explain these mismatches", and it drafts the file, runs the commands, and tells you which `evaluation` sentence to sharpen, so you never have to remember a flag.
+With the Novedu skill installed in your AI coding assistant, you can say "write golden answers for my sorting quiz", "run the eval", or "explain these mismatches", and it drafts the file, runs the commands, and tells you which `evaluation` sentence to sharpen, so you never have to remember a flag. The introduction chapter on the Novedu CLI and its AI skill shows how to install that skill.

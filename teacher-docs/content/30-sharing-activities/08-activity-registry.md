@@ -7,6 +7,7 @@ audience: teacher
 keywords: [registry, codes sync, lock file, many quizzes, course material, book, activity-codes, key]
 related:
   - 30-sharing-activities/01-creating-codes
+  - 00-introduction/07-novedu-cli
   - 10-yaml-for-teachers/04-cli-validation
   - 30-sharing-activities/03-time-limitation
   - 30-sharing-activities/05-deleting-codes
@@ -29,7 +30,7 @@ The registry is a command-line feature. There is no registry page in Novedu, and
 
 The registry lives next to your material, usually at the top of the git repository that holds it. To use it you need:
 
-- The Novedu CLI, installed and signed in with your teacher account. Sign-in is one browser step, and every later command runs without asking again.
+- The Novedu CLI, ready to run and signed in with your teacher account. The introduction chapter on the Novedu CLI and its AI skill covers what the CLI is and how to set it up. Sign-in is one browser step, and every later command runs without asking again.
 - Your activity files reachable at a public web address, for example the raw addresses of a public GitHub repository, or addresses from Novedu's file store.
 
 ## Write the registry file

@@ -15,8 +15,13 @@ Cover:
   golden-answer file for a quiz's grading and gets its own chapter (06).
 - Reading the result: success versus a failure that names the specific problem.
 - The bundled AI skill: teachers can ask it to run validation and explain an error.
+  Keep it to what the assistant does for validation and point at the introduction
+  chapter "The Novedu CLI and its AI skill" for installing the skill.
 
 Get right:
+- What the CLI is in general, and how to install the AI skill, belong to the
+  introduction chapter "The Novedu CLI and its AI skill". Don't repeat either here:
+  one line that the CLI runs on demand with npx is enough.
 - --kind is required for everything except a tutor; leaving it off validates the file
   as a tutor and fails confusingly.
 - Validating a URL checks the published file, so commit and push first.

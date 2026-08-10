@@ -7,6 +7,7 @@ audience: teacher
 keywords: [publish, YAML file, GitHub, raw URL, upload, Files page, file URL, edit file]
 related:
   - 10-yaml-for-teachers/04-cli-validation
+  - 00-introduction/07-novedu-cli
   - 30-sharing-activities/01-creating-codes
   - 20-building-activities/02-available-llms
 generated: true

@@ -23,6 +23,7 @@ _What Novedu is. Concepts and pedagogy, no deep configuration detail._
 | 04 | Quizzes overview | ✎ `00-introduction/04-quizzes-overview.prompt.md` | `activities/quizzes/README.md` |
 | 05 | Writing overview | ✎ `00-introduction/05-writing-overview.prompt.md` | `activities/writings/README.md` |
 | 06 | Coding overview | ✎ `00-introduction/06-coding-overview.prompt.md` | `activities/coding/README.md` |
+| 07 | The CLI and its AI skill | ✎ `00-introduction/07-novedu-cli.prompt.md` | `cli/README.md` (intro), `.agents/skills/novedu-tutor-cli/SKILL.md`, `https://github.com/vercel-labs/skills#readme` |
 
 ## 10: YAML for teachers
 _Enough YAML, tooling, and validation to author activities confidently._

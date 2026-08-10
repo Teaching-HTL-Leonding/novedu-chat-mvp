@@ -9,6 +9,7 @@ related:
   - 20-building-activities/04-quizzes
   - 20-building-activities/01-handling-yaml
   - 10-yaml-for-teachers/04-cli-validation
+  - 00-introduction/07-novedu-cli
 generated: true
 ---
 
@@ -43,8 +44,9 @@ you picked the right one.
 ## Upload an image with the CLI
 
 If you already work in the terminal, or you let a coding agent manage your
-activities, the `novedu-cli` command line does the same job (see the chapter on
-validating with the CLI for how to sign in):
+activities, the `novedu-cli` command line does the same job (the introduction
+chapter on the Novedu CLI and its AI skill covers the CLI itself; sign in once
+with `novedu-cli login`):
 
 ```bash
 npx @novedu/cli images upload compass-rose --file ./compass-rose.png --credit "CC BY 4.0"
