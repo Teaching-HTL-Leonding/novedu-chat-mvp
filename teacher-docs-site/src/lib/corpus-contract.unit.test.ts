@@ -6,6 +6,7 @@
  *
  * - frontmatter carries the required fields; `related:` slugs resolve
  * - no body H1 (the page title renders from frontmatter)
+ * - every section directory is declared in src/lib/sections.ts
  */
 // @vitest-environment node
 import { readdirSync, readFileSync } from "node:fs";
@@ -13,6 +14,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
+import { SECTIONS, sectionDir } from "./sections";
 
 const CONTENT_DIR = fileURLToPath(new URL("../../../teacher-docs/content", import.meta.url));
 
@@ -31,7 +33,7 @@ function loadChapters(): Chapter[] {
     for (const file of readdirSync(join(CONTENT_DIR, section.name))) {
       if (!file.endsWith(".md")) continue;
       const raw = readFileSync(join(CONTENT_DIR, section.name, file), "utf8");
-      const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+      const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
       if (!match) throw new Error(`${section.name}/${file}: no frontmatter block`);
       let inFence = false;
       const proseLines = (match[2] as string).split("\n").map((line) => {
@@ -76,6 +78,16 @@ describe("teacher-docs corpus contract", () => {
           true,
         );
       }
+    }
+  });
+
+  it("every section directory is declared in sections.ts", () => {
+    // sections.ts drives BOTH the sidebar and the llms.txt table of contents, so
+    // an undeclared directory would be invisible in the guide's navigation. The
+    // site build throws too; this fails faster and names the fix.
+    const declared = new Set(SECTIONS.map((section) => section.dir));
+    for (const dir of new Set(chapters.map((chapter) => sectionDir(chapter.id)))) {
+      expect(declared.has(dir), `corpus section "${dir}" missing from sections.ts`).toBe(true);
     }
   });
 

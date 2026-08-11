@@ -6,7 +6,7 @@ sidebar:
 audience: teacher
 keywords: [validate, CLI, novedu-cli, check YAML, kind, error, quiz, tutor, eval]
 related:
-  - 00-introduction/07-novedu-cli
+  - 40-ai-llms/01-novedu-cli
   - 10-yaml-for-teachers/03-json-schemas-vscode
   - 10-yaml-for-teachers/06-testing-the-grader
   - 20-building-activities/01-handling-yaml

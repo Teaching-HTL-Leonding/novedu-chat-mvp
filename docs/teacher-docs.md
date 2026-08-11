@@ -10,8 +10,10 @@ imports either.
 > regenerate via the `novedu-teacher-docs` skill — never hand-edit
 > `teacher-docs/content/`. To see the guide, `npm run docs:dev`
 > (http://localhost:4321/docs/). In production it ships **publicly at `/docs`
-> inside the web app**. The corpus-contract unit test and the site build
-> (`npm run docs:build`) are the corpus's consistency checks.
+> inside the web app**, with `/docs/llms.txt` (a table of contents), a `.md` twin
+> of every chapter, and `/docs/llms-full.txt` alongside it for AI agents. The
+> corpus-contract unit test and the site build (`npm run docs:build`) are the
+> corpus's consistency checks.
 
 ## The corpus (`teacher-docs/`)
 
@@ -66,8 +68,31 @@ inside the web app** — see "Serving at `/docs`" below. No custom CSS.
   `scripts/verify-dist.mjs`: a post-build check that the symlink is readable,
   that **every** corpus chapter `<section>/<chapter>.md` produced its
   `dist/<section>/<chapter>/index.html` (so it also catches partial builds),
-  and that `index.html`, `404.html`, and the Pagefind index exist. It fails the
-  build loudly in every pipeline that funnels through `npm run docs:build`.
+  that `index.html`, `404.html`, the Pagefind index and the sitemap files
+  exist, and that every chapter has its Markdown twin plus an entry in both
+  `llms.txt` and `llms-full.txt` (those come from their own `getCollection`
+  call in `src/lib/llms.ts`, which could drop chapters while the pages still
+  build; titles are not unique across the corpus, so the full-text check also
+  counts chapter headings rather than trusting per-title presence alone). It
+  fails the build loudly in every pipeline that funnels through
+  `npm run docs:build`.
+- **The [llms.txt](https://llmstxt.org) surface** is three own routes in
+  `src/pages/` over one builder (`src/lib/llms.ts`), not a plugin — see "llms.txt
+  and the Markdown twins" below.
+- Those routes need Astro's **`site`**, since the table of contents is nothing but
+  absolute URLs — hence the second single seam beside `base` in `astro.config.mjs`
+  (`https://novedu.at`, hardcoded; the CLI keeps its own overridable default in
+  `cli/src/server-url.ts`, and the root README's "Changing the public domain"
+  checklist ties every occurrence together). Knock-on effects to know about:
+  Starlight registers `@astrojs/sitemap` on every build and it was only inert for
+  want of a `site`, so `dist/` now also carries `sitemap-index.xml` +
+  `sitemap-0.xml` (HTML pages only — the `.md`/`.txt` routes are not listed), and
+  every page gains a canonical / `og:url` tag pointing at that origin. Both are
+  wanted for a public guide and neither is switchable.
+- **`src/lib/sections.ts`** holds the sections in reading order, mirroring
+  `CHAPTERS.md`. The Starlight `sidebar` config and the llms.txt table of contents
+  both derive from it; `sectionLabel()` throws on a corpus directory that is not
+  listed, so a new section fails the build rather than silently missing from either.
 - The schema extends Starlight's `docsSchema` with the corpus fields; `audience`,
   `keywords`, `generated` are required, `related` defaults to `[]`. A chapter
   violating the contract fails the build with a zod error naming the file.
@@ -76,6 +101,32 @@ inside the web app** — see "Serving at `/docs`" below. No custom CSS.
 - Every internal link derives from the **single `base` constant in
   `astro.config.mjs`** (`/docs`): the `.astro` components use
   `import.meta.env.BASE_URL` and join through `src/lib/paths.ts` `withBase()`.
+
+### llms.txt and the Markdown twins
+
+Three `src/pages/` routes over one builder (`src/lib/llms.ts`), deliberately
+hand-rolled rather than plugin-driven: the corpus is plain Markdown with no MDX or
+components, so the agent-facing output is the corpus **verbatim** — no HTML→Markdown
+round trip, and no plugin whose `llms.txt` is only a list of bundle files.
+(`starlight-llms-txt` was evaluated and dropped for exactly that reason; the
+alternatives fare worse — `@wave-rf/starlight-llm-tools` peer-depends on
+`starlight-glossary`, which this site deliberately does not have.)
+
+| Route | Output |
+| --- | --- |
+| `llms.txt.ts` | `/docs/llms.txt` — the table of contents: title, description, a preamble pointing agents at the `novedu-tutor-cli` skill chapter (the id is pinned as `CLI_CHAPTER_ID` in `src/lib/llms.ts` and build-verified against the corpus), then one `- [Title](absolute .md URL): description` line per chapter under its `## <section>` heading (sections from `sections.ts`, chapters by their frontmatter `sidebar.order` — the same key the Starlight sidebar sorts by). |
+| `[...slug].md.ts` | `/docs/<section>/<chapter>.md` — the chapter's **Markdown twin**: `# title`, `> description`, the body verbatim, and a footer linking the HTML page + the index. Pattern ends in `.md`, so it never collides with Starlight's `[...slug]` page catch-all. |
+| `llms-full.txt.ts` | `/docs/llms-full.txt` — every chapter concatenated in reading order behind a one-line `<SYSTEM>` header. |
+
+Two consequences worth knowing:
+
+- The only body transform is stripping the leading "GENERATED FILE" banner comment.
+  Twins therefore carry the source's straight quotes where the HTML pages show
+  Starlight's smart-typographed ones — intended, since the twin is the text a
+  teacher would edit.
+- Because it is our code, the corpus's own frontmatter carries the TOC: `title` and
+  `description` become the link text and its summary, which is why the chapter
+  contract's required `description` matters more than it used to.
 
 ### Related chapters
 
@@ -94,7 +145,8 @@ by the root vitest `unit` project (`**/*.unit.test.ts`), so it runs in
 `npm test` and `qa` with no extra wiring (the file declares the `node` vitest
 environment). `npm run docs:build` is the build-level check on top: schema
 validation, dead-slug build failure, Pagefind index, and the post-build
-`scripts/verify-dist.mjs` output check. Typechecking follows the `cli` pattern — every
+`scripts/verify-dist.mjs` output check (which also covers the llms.txt surface —
+every chapter has a Markdown twin and appears in both index and full text). Typechecking follows the `cli` pattern — every
 workspace is excluded from the root `tsc` program but gets its own leg in the
 root `typecheck` script: `tsc --noEmit` (app) + `tsc -p cli` + `astro check`
 (site, via `@astrojs/check`; covers `.astro` files and runs its own content
@@ -127,6 +179,20 @@ Entra sign-in in front of it. The moving parts:
 - **Local**: `npm run docs:stage` builds the site and copies it into
   `public/docs/` (gitignored) so `next dev`/`next start` serve `/docs` like
   production does.
+- **The non-HTML artifacts mostly need no wiring of their own.**
+  `/docs/llms.txt`, `/docs/llms-full.txt`, the per-chapter `/docs/<chapter>.md` twins,
+  `/docs/sitemap-index.xml` and `/docs/sitemap-0.xml` are public and correctly
+  typed purely by virtue of the mechanics above: `cp -r dist public/docs` carries
+  them, `public/`'s exact-path serving matches them before the `afterFiles`
+  rewrites get a look in (so no `/index.html` suffix is ever appended), and the
+  `docs(?:/|$)` proxy exclusion covers the whole prefix. No `Dockerfile` or
+  `proxy.ts` change was needed.
+- **The one exception is `next.config.ts` `headers()`**: `/docs/:path*.md` gets
+  `Content-Disposition: inline`, because Next types `.md` as `text/markdown`, which
+  browsers download instead of rendering. Agents don't care, humans do — and it
+  matches how other docs sites serve their twins. Path-bounded like the rewrites;
+  the HTML pages and the `.txt` files are unaffected (verified by probing a
+  `docs:stage`d `next dev`).
 
 ### CI/CD
 

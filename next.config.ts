@@ -46,6 +46,19 @@ const nextConfig: NextConfig = {
       ],
     };
   },
+  // Every guide chapter also ships as a Markdown twin at /docs/<chapter>.md for
+  // AI agents (see the llms.txt index). Next serves those with `Content-Type:
+  // text/markdown`, which browsers download instead of showing, so mark them
+  // inline — the twins are meant to be readable in a tab, like the .txt files
+  // beside them. Scoped to /docs/**.md; nothing else in the app serves Markdown.
+  async headers() {
+    return [
+      {
+        source: "/docs/:path*.md",
+        headers: [{ key: "Content-Disposition", value: "inline" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

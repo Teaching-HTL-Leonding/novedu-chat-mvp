@@ -7,7 +7,7 @@ audience: teacher
 keywords: [eval, golden answers, grading, test the grader, rubric, evaluation, false-correct, repeats, unstable, quiz, report, tokens, cost]
 related:
   - 10-yaml-for-teachers/04-cli-validation
-  - 00-introduction/07-novedu-cli
+  - 40-ai-llms/01-novedu-cli
   - 10-yaml-for-teachers/05-see-the-prompt
   - 20-building-activities/04-quizzes
 generated: true

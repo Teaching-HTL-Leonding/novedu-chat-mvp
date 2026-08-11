@@ -7,7 +7,7 @@ audience: teacher
 keywords: [registry, codes sync, lock file, many quizzes, course material, book, activity-codes, key]
 related:
   - 30-sharing-activities/01-creating-codes
-  - 00-introduction/07-novedu-cli
+  - 40-ai-llms/01-novedu-cli
   - 10-yaml-for-teachers/04-cli-validation
   - 30-sharing-activities/03-time-limitation
   - 30-sharing-activities/05-deleting-codes

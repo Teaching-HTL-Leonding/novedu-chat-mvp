@@ -7,7 +7,7 @@ audience: teacher
 keywords: [prompt, prompts, CLI, novedu-cli, debugging, fragment, grading prompt, evaluation, JSON]
 related:
   - 10-yaml-for-teachers/04-cli-validation
-  - 00-introduction/07-novedu-cli
+  - 40-ai-llms/01-novedu-cli
   - 10-yaml-for-teachers/06-testing-the-grader
   - 20-building-activities/07-fragments
   - 20-building-activities/04-quizzes
