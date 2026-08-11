@@ -193,9 +193,18 @@ stored `origin` column, which is operator-only).
   history: one request = one graded answer, so the CLI can fan out and retry).
   Failures: `400` for a malformed body, an unknown provider, a provider this
   deployment cannot serve (`providerUnavailableReason` — deliberately terminal so
-  the CLI does not retry it), or an answer that is empty after trimming; `413` above
-  the **256 KB** body cap; `401`/`403` from the bearer gate; `502` when the grader
-  throws or returns no structured object. Stated plainly: this is a **teacher-scoped,
+  the CLI does not retry it), an answer that is empty after trimming, or an upstream
+  model call that can never succeed as sent — a deployment name that does not exist
+  answers `400` naming the model and the upstream error code
+  (`classifyUpstreamLlmError`, `lib/llm/upstream-error.ts`), also terminal; `413`
+  above the **256 KB** body cap; `401`/`403` from the bearer gate; `502` when the
+  grader returns no structured object or fails for a reason worth retrying (outage,
+  rate limit, timeout — opaque by design; an upstream `401`/`403`, the provider
+  refusing the server's own credentials, also stays `502` but says so explicitly so
+  nobody chases a model-name typo through a credential outage). The endpoint URL and
+  the provider's
+  free-form text never cross back to the caller; they go to Application Insights
+  (`docs/ai-models.md`). Stated plainly: this is a **teacher-scoped,
   verdict-schema-constrained LLM pass-through** — a teacher may send arbitrary
   `system`/`answer` text through it. That is a deliberate property under this repo's
   trust model (teachers already author every activity prompt), and it is why the

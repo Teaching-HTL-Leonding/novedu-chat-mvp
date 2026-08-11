@@ -4,6 +4,7 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { APICallError } from "ai";
 import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,7 +12,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 // tokens) while Mastra is mocked like in `lib/quiz-actions.unit.test.ts`. Pins the
 // 401/403 matrix, the 400 matrix (bad body, unknown provider, unavailable provider,
 // empty-after-trim answer), the 413 cap, the 200 wire shape + no-store, the 502 on a
-// grader throw — and, crucially, that the agent receives `buildAnswerMessage` of the
+// grader throw, the terminal-vs-retryable split for upstream model failures (400 with a
+// named model vs. 502 opaque) — and, crucially, that the agent receives
+// `buildAnswerMessage` of the
 // TRIMMED answer plus the QUIZ_EVAL_* / usage RequestContext values (production parity
 // with `submitAnswer`).
 
@@ -277,5 +280,69 @@ describe("POST /api/eval/grade grading", () => {
     mocks.generate.mockResolvedValue({ object: undefined });
     const res = await postRequest(VALID_BODY, await mint());
     expect(res.status).toBe(502);
+  });
+
+  it("400s and names the model when the deployment does not exist", async () => {
+    // TERMINAL: a 502 here would make the CLI retry a request that can never succeed —
+    // four attempts and 30 s of backoff per case, all ending in the same 404.
+    mocks.generate.mockRejectedValue(
+      new APICallError({
+        message: "The API deployment for this resource does not exist.",
+        url: "https://example-resource.openai.azure.com/openai/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 404,
+        isRetryable: false,
+        data: { error: { code: "DeploymentNotFound", type: "invalid_request_error" } },
+      }),
+    );
+
+    const res = await postRequest(VALID_BODY, await mint());
+
+    expect(res.status).toBe(400);
+    const { message } = (await res.json()) as { message: string };
+    expect(message).toContain('"test-model"');
+    expect(message).toContain("DeploymentNotFound");
+    // The Foundry resource host must never reach the client (it is telemetry-only).
+    expect(message).not.toContain("openai.azure.com");
+  });
+
+  it("502s an upstream 401 as a server credential fault, keeping retries", async () => {
+    // NOT terminal: the caller's model name is fine — a rotated key or stale
+    // Managed-Identity role is the server's to fix, and a token refresh may cure it.
+    mocks.generate.mockRejectedValue(
+      new APICallError({
+        message: "Access denied due to invalid subscription key",
+        url: "https://example-resource.openai.azure.com/openai/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 401,
+        isRetryable: false,
+      }),
+    );
+
+    const res = await postRequest(VALID_BODY, await mint());
+
+    expect(res.status).toBe(502);
+    const { message } = (await res.json()) as { message: string };
+    expect(message).toContain("credentials");
+    expect(message).not.toContain("model name");
+  });
+
+  it("keeps a rate-limited grading retryable (502, opaque)", async () => {
+    mocks.generate.mockRejectedValue(
+      new APICallError({
+        message: "rate limit",
+        url: "https://example-resource.openai.azure.com/openai/v1/chat/completions",
+        requestBodyValues: {},
+        statusCode: 429,
+        isRetryable: true,
+      }),
+    );
+
+    const res = await postRequest(VALID_BODY, await mint());
+
+    expect(res.status).toBe(502);
+    expect(await res.json()).toMatchObject({
+      message: "The answer could not be graded right now.",
+    });
   });
 });
