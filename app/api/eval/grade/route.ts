@@ -11,6 +11,7 @@ import { ApiAuthError, requireBearerTeacher } from "@/lib/api-auth";
 import { readBoundedJson } from "@/lib/bounded-json";
 import { providerUnavailableReason } from "@/lib/llm/availability";
 import { DEFAULT_PROVIDER, parseLenientProvider } from "@/lib/llm/provider";
+import { classifyUpstreamLlmError } from "@/lib/llm/upstream-error";
 import { buildAnswerMessage } from "@/lib/quiz-grading-prompt";
 import type { QuizVerdict } from "@/lib/quiz-types";
 import { recordError } from "@/lib/telemetry";
@@ -99,9 +100,12 @@ const GradeBodySchema = z.strictObject({
  * `{ llm: { provider?, model }, system, answer }` → `200 { result, feedback, usage? }`,
  * where the OPTIONAL `usage: { input, cachedInput, output }` carries this call's token
  * counts when the provider reported any (see {@link gradeUsage}).
- * `400` on a malformed body, an unknown or unavailable provider, or an answer that is
- * empty after trimming; `413` over the 256 KB cap; `401`/`403` from the bearer gate;
- * `502` when the grader throws or returns no structured object.
+ * `400` on a malformed body, an unknown or unavailable provider, an answer that is empty
+ * after trimming, or an upstream model call that can never succeed as sent (a deployment
+ * name that does not exist — terminal, so the CLI does not retry it); `413` over the
+ * 256 KB cap; `401`/`403` from the bearer gate; `502` when the grader returns no
+ * structured object or fails for a reason worth retrying (outage, rate limit, timeout,
+ * or the provider refusing the server's own credentials — that one says so explicitly).
  */
 export async function POST(request: Request): Promise<Response> {
   try {
@@ -167,8 +171,13 @@ export async function POST(request: Request): Promise<Response> {
         200,
       );
     } catch (error) {
-      recordError(error, { "novedu.area": "api-eval" });
-      return json({ message: "The answer could not be graded right now." }, 502);
+      // A grading failure is either the CALLER's (a deployment name that does not
+      // exist) or the SERVER's/provider's (an outage). Only the first can be described
+      // and must not be retried — see lib/llm/upstream-error.ts for the split, and for
+      // why the endpoint URL and the provider's free-form text go to telemetry only.
+      const failure = classifyUpstreamLlmError(error, { provider, model: body.llm.model });
+      recordError(error, { "novedu.area": "api-eval", ...failure.telemetry });
+      return json({ message: failure.message }, failure.terminal ? 400 : 502);
     }
   } catch (error) {
     if (error instanceof ApiAuthError) return authErrorResponse(error);

@@ -137,6 +137,24 @@ A provider the deployment cannot serve (e.g. the quiz declares Azure Foundry on 
 SCCH-only server) is answered `400` with the reason — deliberately terminal, so it
 fails fast instead of burning the retry budget on every single case.
 
+The same holds one layer down, for the model itself: a `--llm-model` naming a
+deployment that does not exist is answered `400` with the model name and the upstream
+error code, e.g.
+
+```
+The model "gpt-5.6-sol" is not available on Azure Foundry: no deployment of that name
+answered (upstream 404 DeploymentNotFound). Check the spelling, or wait a moment and
+retry if you just created the deployment.
+```
+
+Terminal for the same reason — one attempt per case, not four. Rate limits, timeouts
+and outages stay `502` and keep their retries — as does an upstream `401`/`403`, the
+provider refusing the *server's* credentials, whose message says the fault is
+server-side and not your model name. The message deliberately stops at the
+upstream status + code: the endpoint URL and the provider's own prose are logged to
+Application Insights instead of being handed to the caller
+(`lib/llm/upstream-error.ts`).
+
 ### Troubleshooting a run-wide failure
 
 When **every** case errors immediately, the rubric is almost never the problem — the
@@ -150,7 +168,10 @@ server is. In rough order of likelihood:
    local `npm run dev`).
 2. **The effective provider isn't configured there** — the `400` with the
    availability reason, e.g. a Foundry override against an SCCH-only server.
-3. **Auth** — aborts the whole run with one message; `novedu-cli login`.
+3. **The model name doesn't exist on that provider** — the `400` naming the model
+   (above). On Azure Foundry this is a *deployment* name, so a model that works on one
+   resource errors on another simply because nobody deployed it there.
+4. **Auth** — aborts the whole run with one message; `novedu-cli login`.
 
 Cheapest diagnostic: a **1-case smoke run** (a throwaway eval file with a single
 answer) localises any of these for the cost of one grading call before a

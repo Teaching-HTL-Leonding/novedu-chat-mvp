@@ -74,10 +74,47 @@ learns which provider answered.
 - `lib/llm/foundry-endpoint.ts` — side-effect-free Foundry access (mirrors
   `lib/scch-endpoint.ts`): URL builders over `AZURE_FOUNDRY_ENDPOINT` (throwing
   only when *called* with it unset) and `foundryBearerToken()`.
+- `lib/llm/upstream-error.ts` — **the failure classifier**, provider-AGNOSTIC (it
+  interpolates the provider name, never branches on it):
+  `classifyUpstreamLlmError(error, { provider, model })` →
+  `{ terminal, message, telemetry }`. See "Reporting an upstream failure" below.
 
 Adding a provider = one branch in each of the three functions above + a name
 constant/mapping in `provider.ts` + the schema enum literal (+ docs). Nothing else
 changes.
+
+## Reporting an upstream failure
+
+When a model call fails, two different audiences need two different things, and
+`classifyUpstreamLlmError` (`lib/llm/upstream-error.ts`) is the one place that splits
+them. It reads the ai-sdk `APICallError` — `statusCode`, `isRetryable`, and the
+OpenAI-shaped `data.error.{code,type}` envelope both providers speak — digging it out
+of wrapper errors first (the ai-sdk's `RetryError`, Mastra's `cause` chain), so a
+wrapped failure classifies exactly like a raw one.
+
+- **`terminal`** — `true` when the request can never succeed as sent (a deployment name
+  that does not exist, a rejected parameter), so the caller answers `4xx` and no client
+  retries it. It reuses the ai-sdk's own retryability verdict, which keeps 408/409/**429**
+  and 5xx retryable — a rate limit is a 4xx that must NOT become terminal. Neither is an
+  upstream `401`/`403`: the provider refusing the *server's* credentials (a rotated key,
+  a stale Managed-Identity role) is a server fault a token refresh may cure, so the
+  caller gets a `502` that says so and retries stay live.
+- **`message`** — caller-safe: the provider and model the caller itself sent, the
+  upstream status, and the upstream error *code*. The commonest case, Azure's
+  `404 DeploymentNotFound`, gets its own wording because a teacher hits it routinely
+  (a wrong `--llm-model`) and can fix it alone — but only a proving code
+  (`DeploymentNotFound`, `model_not_found`) earns that claim. A bare `404` is worded to
+  cover a misconfigured server endpoint too, and a `content_filter` rejection points at
+  the failing text rather than the llm settings.
+- **`telemetry`** — the `recordError` attributes, and the ONLY channel for the endpoint
+  URL (the Foundry resource host) and, via `recordException`, the provider's free-form
+  message. Neither belongs in a response body: the host is infrastructure detail, and
+  the free-form field is the one most likely to grow to echo request content. An
+  operator reads both in Application Insights (`docs/telemetry.md`).
+
+Consumed by `POST /api/eval/grade` (`docs/api.md`, `docs/cli-eval.md`). The **student**
+paths deliberately do NOT use it: a student can neither fix a deployment nor be shown
+infrastructure detail, so `lib/quiz-actions.ts` keeps its single generic sentence.
 
 ## Foundry auth — Managed Identity with transparent refresh
 
