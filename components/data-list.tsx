@@ -1,5 +1,8 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { PageBody } from "@/components/page-main";
+import { buttonVariants } from "@/components/ui/button";
+import { lastPage, type PagedResult, type ParamRecord, pageHref } from "@/lib/db/paging";
 import { cn } from "@/lib/utils";
 
 // A column-driven list table for "filtered list" pages (see
@@ -52,6 +55,23 @@ export interface ListColumn<T> {
   srOnlyHeader?: boolean;
 }
 
+/**
+ * What the pager needs. `DataList` is a server component with no access to the
+ * URL, so the page hands over its own pathname plus the already-awaited search
+ * params; every param except `page`/`size` is carried onto the pager's links.
+ */
+export interface ListPagination {
+  /** The list route's pathname, e.g. `"/files"`. */
+  pathname: string;
+  /** The page's awaited `searchParams`. */
+  params: ParamRecord;
+  /**
+   * The store's `PagedResult` (structurally assignable) — `page` is the EFFECTIVE,
+   * clamped page, and `total` the exact COUNT the current filter matches.
+   */
+  result: Pick<PagedResult<unknown>, "page" | "pageSize" | "total">;
+}
+
 export interface DataListProps<T> {
   rows: T[];
   getRowKey: (row: T) => string;
@@ -70,6 +90,8 @@ export interface DataListProps<T> {
   emptyState: ReactNode;
   /** Body when a filter is applied but matched nothing. */
   noMatchState: ReactNode;
+  /** Opt into the pager below the table (see `docs/filtered-lists.md`). */
+  pagination?: ListPagination;
 }
 
 /** The bare table — column recipes included, no page shell or toolbar. */
@@ -135,6 +157,69 @@ export function ListTable<T>({
   );
 }
 
+// Prev/Next share one recipe; the unavailable end renders as a <span> instead of
+// a <Link> because `buttonVariants`' `disabled:` styles only bite on a <button>,
+// and swapping the element (rather than dropping it) keeps the row from shifting.
+const PAGER_STEP = buttonVariants({ variant: "outline", size: "sm" });
+
+function PagerStep({ href, label }: { href: string | undefined; label: string }) {
+  return href ? (
+    <Link href={href} className={PAGER_STEP}>
+      {label}
+    </Link>
+  ) : (
+    <span aria-disabled="true" className={cn(PAGER_STEP, "pointer-events-none opacity-50")}>
+      {label}
+    </span>
+  );
+}
+
+/**
+ * The server-rendered pager: a range label plus prev/next links that set `?page=`
+ * (plain <Link>s, so paging works without JS). Hrefs derive from the EFFECTIVE
+ * page in `pagination`, never from the URL — a clamped page must not offer a
+ * "Next" that doesn't exist.
+ */
+function Pager({ pagination, rowCount }: { pagination: ListPagination; rowCount: number }) {
+  const { pathname, params } = pagination;
+  const { page, pageSize, total } = pagination.result;
+  // No chrome for an empty list. `rowCount` is checked too: COUNT and the row
+  // query aren't in one transaction, so a concurrent delete can leave a total
+  // with no rows — better no pager than "Showing 21–20 of 137".
+  if (total === 0 || rowCount === 0) return null;
+
+  const from = (page - 1) * pageSize + 1;
+  const to = Math.min(from + rowCount - 1, total);
+  const hasMorePages = total > pageSize;
+
+  return (
+    <nav
+      aria-label="Pagination"
+      className="flex flex-wrap items-center justify-between gap-3 text-sm"
+    >
+      <p className="text-foreground/70">
+        Showing {from}–{to} of {total}
+      </p>
+      {hasMorePages ? (
+        <div className="flex items-center gap-2">
+          <PagerStep
+            href={page > 1 ? pageHref(pathname, params, page - 1, pageSize) : undefined}
+            label="‹ Previous"
+          />
+          <PagerStep
+            href={
+              page < lastPage(total, pageSize)
+                ? pageHref(pathname, params, page + 1, pageSize)
+                : undefined
+            }
+            label="Next ›"
+          />
+        </div>
+      ) : null}
+    </nav>
+  );
+}
+
 export function DataList<T>({
   rows,
   getRowKey,
@@ -146,6 +231,7 @@ export function DataList<T>({
   isFiltered,
   emptyState,
   noMatchState,
+  pagination,
 }: DataListProps<T>) {
   return (
     <PageBody>
@@ -167,9 +253,7 @@ export function DataList<T>({
         />
       )}
 
-      {/* PAGINATION SEAM: a future server-rendered pager (prev/next <Link>s that
-          set ?page=) goes here — one place, applies to every list. See
-          docs/filtered-lists.md. */}
+      {pagination ? <Pager pagination={pagination} rowCount={rows.length} /> : null}
     </PageBody>
   );
 }

@@ -20,7 +20,7 @@ a pure server concern later.
 
 | Piece | Where | Role |
 | --- | --- | --- |
-| URL search params | `?q=…&mine=…` (+ future `?page=`) | the filter state, shareable + back-button friendly |
+| URL search params | `?q=…&mine=…&page=…` | the filter + page state, shareable + back-button friendly |
 | Server page | `app/<list>/page.tsx` | `await searchParams`, parse, call the store, build rows + columns, render `DataList` |
 | Store query | `lib/*-store.ts` | the actual SQL filter (see below) |
 | `DataList<T>` | `components/data-list.tsx` (**server**) | the full list page body: `PageBody` shell + toolbar + empty/no-match + the pagination seam around a `ListTable` |
@@ -183,9 +183,93 @@ the wired DB delete is the `@live-db` case in `e2e/file-and-tutor-code-crud.spec
    `SelectionProvider`, prepend `selectionColumn`, and add `DeleteSelectedButton` to
    `actions` (see "Multi-delete" above).
 
-## Pagination (not built yet)
+## Pagination
 
-The seam is reserved: the store query is the single place to add `LIMIT/OFFSET`
-(via `.$dynamic()` if needed), and `DataList` has a marked spot below the table for
-a server-rendered pager (prev/next `<Link>`s that set `?page=`). Adding it lands in
-those two places and applies to every list at once.
+Same discipline as filtering: the **skip and the limit are SQL** (`OFFSET … FETCH`),
+never an in-memory `slice()`. The page lives in the URL like every other filter
+param. Page size is **20** (`DEFAULT_PAGE_SIZE`), with a hidden `?size=` override
+clamped to `1…100` — `size=1` is legal on purpose, it is how the e2e suite forces a
+two-page list out of two rows.
+
+| Piece | Where | Role |
+| --- | --- | --- |
+| `lib/db/paging.ts` | shared, **no DB import** | `DEFAULT_PAGE_SIZE`/`MAX_PAGE_SIZE`, `Paging`, `PagedResult<T>`, `PagingParams`, `parsePaging`, `pageHref`, `lastPage`, `paginate`, `unpagedResult` |
+| `lib/db/count.ts` | shared, server-only | `countRows(table, conditions, joins?)` — the one `COUNT(*)` every list runs |
+| store | `lib/*-store.ts` | a private `listConditions()` feeding that COUNT **and** a windowed row query |
+| `Pager` | inside `components/data-list.tsx` (**server**) | "Showing 21–40 of 137" + prev/next `<Link>`s; renders at the reserved seam below the table |
+| `ListFilterBar` | `components/list-filter-bar.tsx` | drops `page` on Apply (back to page 1), keeps a non-default `size` via a hidden input |
+
+`components/data-list.tsx` imports `pageHref` from `lib/db/paging.ts`, so that module
+must stay free of any `lib/db/index.ts` import — no driver code in the component graph.
+
+### Store: COUNT + a windowed row query over ONE conditions array
+
+```ts
+export async function listFiles(opts?: { search?; createdBy?; paging?: Paging }):
+  Promise<PagedResult<FileListEntry> | undefined> {
+  const conditions = listConditions(opts);          // built once — count and rows must never drift
+  try {
+    return await paginate({
+      paging: opts?.paging,
+      count: () => countRows(files, conditions),     // the shared COUNT(*) — lib/db/count.ts
+      rows: (window) => {                            // a FRESH builder per call — drizzle builders are stateful
+        const query = getDb().select({…}).from(files).where(and(...conditions))
+          .orderBy(desc(files.validFrom), asc(files.id));
+        return window ? query.offset(window.offset).fetch(window.limit) : query;
+      },
+    });
+  } catch (error) { console.error(…); return undefined; }   // unchanged never-throw contract
+}
+```
+
+Four things are load-bearing:
+
+- **mssql has no `.limit()`.** It is `.orderBy(…).offset(o).fetch(n)` — `orderBy`
+  unlocks `offset`, which unlocks `fetch`. No `$dynamic()` needed: the windowed and
+  unwindowed chains are two expressions inside the one `rows` closure.
+- **The ORDER BY must be unique.** `OFFSET/FETCH` over a non-unique sort can repeat or
+  skip rows between pages, so every list appends a primary-key tiebreaker
+  (`files.id`, `images.id`, `codes.code`, `reports.id`).
+- **The count repeats the joins.** `listReports` filters on `users`/`codes` columns, so
+  it passes both LEFT JOINs to `countRows` (join on primary keys only — a join that
+  could multiply rows would inflate the count).
+- **Filters that used to run after the query must move into the WHERE.** `listCodes`
+  used to drop unknown-`module` rows post-query; that would make a page short and
+  disagree with its total, so it is now an `inArray(codes.module, CODE_MODULES)`
+  condition (the post-filter stays as unreachable belt-and-braces).
+
+`paginate` runs the COUNT and the row query **in parallel** (one round-trip of
+latency) and re-issues the row query **once** if the requested page over-shot the
+data, returning the clamped page — so a stale `?page=` (a bookmark, or the last page
+emptied by a bulk delete + `router.refresh()`) self-corrects. The two queries aren't
+in one transaction, so `total` can drift by a row; that is why `DataList` keys its
+empty state on `rows.length`, not on `total`. Omitting `paging` skips the COUNT
+entirely and returns every match with `total: rows.length` — that is what the bearer
+API routes do (`docs/api.md`), and it keeps one code path per store.
+
+### Page wiring and the pager
+
+```tsx
+const paging = parsePaging(sp);
+const result = await listFiles({ search: q || undefined, createdBy: …, paging });
+// …
+<ListFilterBar … pageSize={result.pageSize}>…</ListFilterBar>
+<DataList … pagination={{ pathname: "/files", params: sp, result }} />
+```
+
+`result.page` is the **effective** (clamped) page from the store, and every pager
+href derives from it — never from the URL's `?page=`, which would otherwise offer a
+"Next" that doesn't exist. A clamped page therefore leaves the stale number in the
+address bar until the next click; the content is correct throughout.
+
+Aggregates over the list shrink to the page for free: `/codes` runs
+`getInteractionCounts()` over the 20 visible codes, `/images` mints 20 read-SAS
+tokens.
+
+**Select-all stays page-scoped.** `SelectionProvider` gets the rendered rows' ids and
+narrows the selection to them *at render* (not only in the prune effect), so the count
+and the delete payload can never carry a row from another page.
+
+**Known scaling limit.** The tiebreakers make the sort unindexed, and `OFFSET n` is
+O(n) — fine at teaching volumes. Keyset pagination is the upgrade path, and
+`PagedResult` doesn't preclude it.

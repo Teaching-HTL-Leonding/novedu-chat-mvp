@@ -33,20 +33,22 @@ export async function GET(request: Request) {
     const q = (params.get("q") ?? "").trim();
     const onlyMine = params.get("mine") !== "0"; // default ON; "0" widens to all
 
-    const rows = await listReports({
+    // No `paging`: this route deliberately returns the full match set (the CLI
+    // consumes it whole), so the store runs no COUNT and emits no OFFSET/FETCH.
+    const result = await listReports({
       status: status.value,
       reaction: reaction.value,
       search: q || undefined,
       codeCreatedBy: onlyMine ? user.userId : undefined,
     });
-    if (rows === undefined) {
+    if (result === undefined) {
       return json(
         { message: "Reports could not be loaded right now. Try again in a moment." },
         503,
       );
     }
 
-    return json(rows.map(toWire), 200);
+    return json(result.rows.map(toWire), 200);
   } catch (error) {
     if (error instanceof ApiAuthError) return authErrorResponse(error);
     recordError(error, { "novedu.area": "api-reports" });

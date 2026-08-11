@@ -16,6 +16,7 @@ import { iconButtonVariants } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { codeModuleLabels, isCodeModule } from "@/lib/code-modules/types";
+import { type PagingParams, parsePaging } from "@/lib/db/paging";
 import { listFiles } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
@@ -54,7 +55,7 @@ const KIND_TONES: Record<string, VariantProps<typeof badgeVariants>["tone"]> = {
 export default async function FilesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string | string[]; mine?: string | string[] }>;
+  searchParams: Promise<{ q?: string | string[]; mine?: string | string[] } & PagingParams>;
 }) {
   const denied = await requireTeacherPage();
   if (denied) return denied;
@@ -65,13 +66,15 @@ export default async function FilesPage({
   const sp = await searchParams;
   const q = (typeof sp.q === "string" ? sp.q : "").trim();
   const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
+  const paging = parsePaging(sp);
 
-  const entries = await listFiles({
+  const result = await listFiles({
     search: q || undefined,
     createdBy: onlyMine ? currentUserId : undefined,
+    paging,
   });
 
-  if (entries === undefined) {
+  if (result === undefined) {
     return (
       <Main>
         <Notice heading="Files temporarily unavailable">
@@ -86,7 +89,7 @@ export default async function FilesPage({
   const origin = await resolveAppOriginOr("");
   const fileUrl = (name: string) => filePublicUrl(origin, name);
 
-  const rows: FileRow[] = entries.map((entry) => ({
+  const rows: FileRow[] = result.rows.map((entry) => ({
     id: entry.id,
     name: entry.name,
     kind: entry.kind,
@@ -202,6 +205,7 @@ export default async function FilesPage({
             <ListFilterBar
               hasActiveFilter={q !== "" || !onlyMine}
               resetKey={`${q}|${onlyMine ? "1" : "0"}`}
+              pageSize={result.pageSize}
             >
               <Input
                 type="search"
@@ -222,6 +226,7 @@ export default async function FilesPage({
             </>
           }
           noMatchState="No files match your filter."
+          pagination={{ pathname: "/files", params: sp, result }}
         />
       </SelectionProvider>
     </Main>

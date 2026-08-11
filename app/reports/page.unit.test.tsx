@@ -42,6 +42,7 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/reports",
 }));
 
+import { unpagedResult } from "@/lib/db/paging";
 import ReportsPage from "./page";
 
 const OID = "teacher-oid-1";
@@ -78,7 +79,7 @@ async function renderPage(sp: Record<string, string> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   auth.mockResolvedValue({ user: { id: OID } });
-  listReports.mockResolvedValue([row()]);
+  listReports.mockResolvedValue(unpagedResult([row()]));
 });
 
 it("denies a non-teacher (or a teacher in student mode) without querying reports", async () => {
@@ -128,6 +129,20 @@ describe("teacher", () => {
   it("ignores an unknown reaction value", async () => {
     await renderPage({ reaction: "nonsense" });
     expect(listReports).toHaveBeenCalledWith(expect.objectContaining({ reaction: undefined }));
+  });
+
+  it("asks the store for the first page at the default size", async () => {
+    await renderPage();
+    expect(listReports).toHaveBeenCalledWith(
+      expect.objectContaining({ paging: { page: 1, pageSize: 20 } }),
+    );
+  });
+
+  it("passes ?page= and a clamped ?size= down to the store", async () => {
+    await renderPage({ page: "3", size: "1000" });
+    expect(listReports).toHaveBeenCalledWith(
+      expect.objectContaining({ paging: { page: 3, pageSize: 100 } }),
+    );
   });
 
   it("shows the unavailable notice when the store errors", async () => {

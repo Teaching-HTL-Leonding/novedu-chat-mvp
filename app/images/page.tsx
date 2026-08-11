@@ -11,6 +11,7 @@ import { selectionColumn } from "@/components/selection-column";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { type PagingParams, parsePaging } from "@/lib/db/paging";
 import { mintReadSas } from "@/lib/image-blob";
 import { listImages } from "@/lib/image-store";
 import { deleteSelectedImagesAction } from "@/lib/images-actions";
@@ -54,7 +55,7 @@ function formatBytes(bytes: number): string {
 export default async function ImagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string | string[]; mine?: string | string[] }>;
+  searchParams: Promise<{ q?: string | string[]; mine?: string | string[] } & PagingParams>;
 }) {
   const denied = await requireTeacherPage();
   if (denied) return denied;
@@ -65,13 +66,15 @@ export default async function ImagesPage({
   const sp = await searchParams;
   const q = (typeof sp.q === "string" ? sp.q : "").trim();
   const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
+  const paging = parsePaging(sp);
 
-  const entries = await listImages({
+  const result = await listImages({
     search: q || undefined,
     createdBy: onlyMine ? currentUserId : undefined,
+    paging,
   });
 
-  if (entries === undefined) {
+  if (result === undefined) {
     return (
       <Main>
         <Notice heading="Images temporarily unavailable">
@@ -87,10 +90,10 @@ export default async function ImagesPage({
   // empty src (that row's lightbox shows its fallback note) instead of rejecting
   // the whole page, which already loaded the list successfully.
   const viewUrls = await Promise.all(
-    entries.map((entry) => mintReadSas(entry.blobPath).catch(() => "")),
+    result.rows.map((entry) => mintReadSas(entry.blobPath).catch(() => "")),
   );
 
-  const rows: ImageRow[] = entries.map((entry, index) => ({
+  const rows: ImageRow[] = result.rows.map((entry, index) => ({
     id: entry.id,
     name: entry.name,
     mimeType: entry.mimeType,
@@ -175,6 +178,7 @@ export default async function ImagesPage({
             <ListFilterBar
               hasActiveFilter={q !== "" || !onlyMine}
               resetKey={`${q}|${onlyMine ? "1" : "0"}`}
+              pageSize={result.pageSize}
             >
               <Input
                 type="search"
@@ -195,6 +199,7 @@ export default async function ImagesPage({
             </>
           }
           noMatchState="No images match your filter."
+          pagination={{ pathname: "/images", params: sp, result }}
         />
       </SelectionProvider>
     </Main>

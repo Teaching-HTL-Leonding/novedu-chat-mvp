@@ -32,17 +32,19 @@ export async function GET(request: Request) {
     const q = (params.get("q") ?? "").trim();
     const onlyMine = params.get("mine") !== "0"; // default ON; "0" turns it off
 
-    const entries = await listFiles({
+    // No `paging`: this route deliberately returns the full match set (the CLI
+    // consumes it whole), so the store runs no COUNT and emits no OFFSET/FETCH.
+    const result = await listFiles({
       search: q || undefined,
       createdBy: onlyMine ? user.userId : undefined,
     });
-    if (entries === undefined) {
+    if (result === undefined) {
       return json({ message: "Files could not be loaded right now. Try again in a moment." }, 503);
     }
 
     const origin = await resolveAppOriginOr("");
     return json(
-      entries.map((entry) => ({
+      result.rows.map((entry) => ({
         name: entry.name,
         kind: entry.kind,
         title: entry.title,

@@ -20,6 +20,7 @@ vi.mock("@/lib/db", () => ({ getDb: () => ({}) }));
 vi.mock("@/lib/report-store", () => ({ listReports: mocks.listReports }));
 
 import { resetApiAuthForTests } from "@/lib/api-auth";
+import { unpagedResult } from "@/lib/db/paging";
 import { GET } from "./route";
 
 const TENANT_ID = "11111111-2222-3333-4444-555555555555";
@@ -111,7 +112,7 @@ const WIRE_ROW = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.listReports.mockResolvedValue([ROW]);
+  mocks.listReports.mockResolvedValue(unpagedResult([ROW]));
 });
 
 describe("GET /api/reports auth", () => {

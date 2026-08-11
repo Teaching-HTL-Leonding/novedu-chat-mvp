@@ -61,6 +61,30 @@ test("unticking 'only mine' sets mine=0; empty search is omitted", async () => {
   expect(url.searchParams.has("q")).toBe(false);
 });
 
+// Paging contract: the serializer builds the query from the form's own controls,
+// so `?page=` is dropped (Apply = back to page 1) while a non-default `?size=`
+// survives as a hidden input. "Clear" resets both, like every other filter.
+test("Apply drops ?page= and carries a non-default ?size= through", async () => {
+  push.mockClear();
+  const screen = await render(<ListFilterBar pageSize={50}>{controls()}</ListFilterBar>);
+
+  await screen.getByLabelText("Filter").fill("lists");
+  await screen.getByRole("button", { name: "Apply" }).click();
+
+  const url = new URL(`http://x${pushedUrl()}`);
+  expect(url.searchParams.has("page")).toBe(false);
+  expect(url.searchParams.get("size")).toBe("50");
+});
+
+test("the default page size needs no ?size= at all", async () => {
+  push.mockClear();
+  const screen = await render(<ListFilterBar pageSize={20}>{controls()}</ListFilterBar>);
+
+  await screen.getByRole("button", { name: "Apply" }).click();
+
+  expect(new URL(`http://x${pushedUrl()}`).searchParams.has("size")).toBe(false);
+});
+
 test("Clear navigates to the bare path when a filter is active", async () => {
   push.mockClear();
   const screen = await render(

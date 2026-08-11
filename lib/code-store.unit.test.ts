@@ -6,6 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fake = vi.hoisted(() => {
   const state = {
     rows: [] as unknown[],
+    // What the paginated list's COUNT(*) reports, plus every OFFSET/FETCH window
+    // the store asked for (so a test can pin the SQL-side paging).
+    total: 0,
+    windows: [] as { offset: number; limit: number }[],
     inserted: [] as Record<string, unknown>[],
     insertErrors: [] as unknown[],
     selectError: undefined as unknown,
@@ -18,16 +22,40 @@ const fake = vi.hoisted(() => {
   // The query tail is a lazy thenable (NOT an eager promise): the rejected
   // promise only comes into existence when the store actually awaits it, so
   // error-path tests don't leak unhandled rejections.
-  const queryTail = () => {
-    const run = () =>
-      state.selectError ? Promise.reject(state.selectError) : Promise.resolve(state.rows);
+  // The list's COUNT(*) goes through the same select/from/where chain as its rows,
+  // so the fake tells them apart by the projection: `{ n: … }` is the count.
+  const queryTail = (fields?: Record<string, unknown>) => {
+    const run = () => {
+      if (state.selectError) return Promise.reject(state.selectError);
+      const isCount = fields !== undefined && "n" in fields;
+      return Promise.resolve(isCount ? [{ n: state.total }] : state.rows);
+    };
     return {
-      orderBy: () => run(),
+      // `orderBy` returns a builder (not a promise) because the paged query
+      // continues with `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
+      orderBy: () => ({
+        offset: (offset: number) => ({
+          fetch: (limit: number) => {
+            state.windows.push({ offset, limit });
+            return run();
+          },
+        }),
+        // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
+        then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
+      }),
       // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
       then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
     };
   };
-  const select = () => ({ from: () => ({ where: () => queryTail() }) });
+  // `.from(...).$dynamic()` is how the shared `countRows` helper applies its joins
+  // in a loop; the tail still resolves through `queryTail`.
+  const dynamicTail = (fields?: Record<string, unknown>) => {
+    const tail = { leftJoin: () => tail, where: () => queryTail(fields) };
+    return tail;
+  };
+  const select = (fields?: Record<string, unknown>) => ({
+    from: () => ({ where: () => queryTail(fields), $dynamic: () => dynamicTail(fields) }),
+  });
   const insert = () => ({
     values: async (values: Record<string, unknown>) => {
       const error = state.insertErrors.shift();
@@ -104,6 +132,8 @@ const duplicateKeyError = () =>
 
 beforeEach(() => {
   fake.state.rows = [];
+  fake.state.total = 0;
+  fake.state.windows = [];
   fake.state.inserted = [];
   fake.state.insertErrors = [];
   fake.state.selectError = undefined;
@@ -402,10 +432,11 @@ describe("checkCode", () => {
 });
 
 describe("listCodes", () => {
-  it("returns all rows (no createdBy filter when none is given)", async () => {
+  it("returns all rows unpaged, without a COUNT or an OFFSET/FETCH", async () => {
     const rows = [entry(), entry({ code: "f6g7h8i9j0", createdBy: "another-teacher" })];
     fake.state.rows = rows.map(toRow);
-    await expect(listCodes()).resolves.toEqual(rows);
+    await expect(listCodes()).resolves.toEqual({ rows, total: 2, page: 1, pageSize: 2 });
+    expect(fake.state.windows).toEqual([]);
   });
 
   it("returns the rows the fake db yields when filters are supplied", async () => {
@@ -413,9 +444,22 @@ describe("listCodes", () => {
     // the configured rows (the WHERE/LIKE itself is covered by the @live e2e).
     const rows = [entry({ note: "linked lists" })];
     fake.state.rows = rows.map(toRow);
-    await expect(
-      listCodes({ search: "linked", createdBy: "teacher-sub-1", module: "tutor" }),
-    ).resolves.toEqual(rows);
+    const result = await listCodes({
+      search: "linked",
+      createdBy: "teacher-sub-1",
+      module: "tutor",
+    });
+    expect(result?.rows).toEqual(rows);
+  });
+
+  it("pushes the skip and the limit into SQL and reports the DB-side total", async () => {
+    fake.state.rows = [toRow(entry())];
+    fake.state.total = 137;
+
+    const result = await listCodes({ paging: { page: 3, pageSize: 20 } });
+
+    expect(fake.state.windows).toEqual([{ offset: 40, limit: 20 }]);
+    expect(result).toMatchObject({ total: 137, page: 3, pageSize: 20 });
   });
 
   it("returns undefined instead of throwing when the database is down", async () => {
@@ -466,11 +510,15 @@ describe("unknown module (forward-compat / corrupt row)", () => {
     await expect(getCode("a1b2c3d4e5")).resolves.toBeNull();
   });
 
+  // For the LIST the module check is a WHERE condition (`inArray`), so a row like
+  // this never comes back at all — which is what keeps a page's rows and its
+  // COUNT in agreement. The post-query filter below it stays as belt-and-braces;
+  // this fake ignores the WHERE, so it is what actually drops the row here.
   it("listCodes drops the row instead of yielding an unknown module", async () => {
     fake.state.rows = [toRow(entry()), unknownRow, toRow(entry({ code: "f6g7h8i9j0" }))];
     const result = await listCodes();
-    expect(result).toHaveLength(2);
-    expect(result?.every((e) => e.module === "tutor")).toBe(true);
+    expect(result?.rows).toHaveLength(2);
+    expect(result?.rows.every((e) => e.module === "tutor")).toBe(true);
   });
 });
 

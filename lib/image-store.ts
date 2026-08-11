@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNull, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { type DbExecutor, getDb } from "@/lib/db";
+import { countRows } from "@/lib/db/count";
+import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
 import { images } from "@/lib/db/schema";
 import { containsAny } from "@/lib/db/text-filter";
 import { validateFileName } from "@/lib/file-name";
@@ -62,17 +64,9 @@ function isDuplicateKeyError(error: unknown): boolean {
   return false;
 }
 
-/**
- * The active (non-deleted) images for the "Images" list, newest first. Filtering
- * happens IN THE DATABASE (see `docs/filtered-lists.md`), never in memory: an
- * optional `search` term is a case-insensitive contains-match over the name, and
- * `createdBy` narrows to one writer's images (the "Only my images" toggle).
- * `undefined` on a database error, which the page notes.
- */
-export async function listImages(opts?: {
-  search?: string;
-  createdBy?: string;
-}): Promise<ImageListEntry[] | undefined> {
+// The list's WHERE, built once and shared by the COUNT and the row query — they
+// must never drift, or a page's total would describe a different set than its rows.
+function listConditions(opts?: { search?: string; createdBy?: string }): SQL[] {
   const conditions: SQL[] = [isNull(images.validUntil)];
   const term = opts?.search?.trim();
   if (term) {
@@ -80,21 +74,52 @@ export async function listImages(opts?: {
     if (match) conditions.push(match);
   }
   if (opts?.createdBy) conditions.push(eq(images.createdBy, opts.createdBy));
+  return conditions;
+}
+
+/**
+ * The active (non-deleted) images for the "Images" list, newest first. Filtering
+ * happens IN THE DATABASE (see `docs/filtered-lists.md`), never in memory: an
+ * optional `search` term is a case-insensitive contains-match over the name, and
+ * `createdBy` narrows to one writer's images (the "Only my images" toggle).
+ * `undefined` on a database error, which the page notes.
+ *
+ * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
+ * with a COUNT for the total); omitting it returns every match, which is what the
+ * bearer API route wants.
+ */
+export async function listImages(opts?: {
+  search?: string;
+  createdBy?: string;
+  paging?: Paging;
+}): Promise<PagedResult<ImageListEntry> | undefined> {
+  const conditions = listConditions(opts);
   try {
-    return await getDb()
-      .select({
-        id: images.id,
-        name: images.name,
-        blobPath: images.blobPath,
-        mimeType: images.mimeType,
-        byteSize: images.byteSize,
-        credit: images.credit,
-        validFrom: images.validFrom,
-        createdBy: images.createdBy,
-      })
-      .from(images)
-      .where(and(...conditions))
-      .orderBy(desc(images.validFrom));
+    return await paginate({
+      paging: opts?.paging,
+      count: () => countRows(images, conditions),
+      // A FRESH builder per call — drizzle builders are stateful and `paginate`
+      // may invoke this twice (once more after clamping an over-shot page).
+      rows: (window) => {
+        const query = getDb()
+          .select({
+            id: images.id,
+            name: images.name,
+            blobPath: images.blobPath,
+            mimeType: images.mimeType,
+            byteSize: images.byteSize,
+            credit: images.credit,
+            validFrom: images.validFrom,
+            createdBy: images.createdBy,
+          })
+          .from(images)
+          .where(and(...conditions))
+          // `id` breaks ties: OFFSET/FETCH over a non-unique sort could otherwise
+          // repeat or skip a row between pages.
+          .orderBy(desc(images.validFrom), asc(images.id));
+        return window ? query.offset(window.offset).fetch(window.limit) : query;
+      },
+    });
   } catch (error) {
     console.error("image-store: listing images failed", error);
     return undefined;

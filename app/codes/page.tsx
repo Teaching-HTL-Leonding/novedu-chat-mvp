@@ -28,6 +28,7 @@ import {
 } from "@/lib/code-modules/types";
 import { getInteractionCounts } from "@/lib/code-stats-store";
 import { DISTANT_FUTURE, DISTANT_PAST, listCodes } from "@/lib/code-store";
+import { type PagingParams, parsePaging } from "@/lib/db/paging";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 import { LocalTime } from "../local-time";
 import { CopyCodeButton } from "./copy-code-button";
@@ -114,11 +115,9 @@ const MODULE_ROW_ACCENT: Record<CodeModule, string> = {
 export default async function CodesPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    q?: string | string[];
-    mine?: string | string[];
-    module?: string | string[];
-  }>;
+  searchParams: Promise<
+    { q?: string | string[]; mine?: string | string[]; module?: string | string[] } & PagingParams
+  >;
 }) {
   if (!(await isEffectiveTeacher())) {
     return (
@@ -135,14 +134,16 @@ export default async function CodesPage({
   const q = (typeof sp.q === "string" ? sp.q : "").trim();
   const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
   const moduleFilter = parseModuleParam(sp.module);
+  const paging = parsePaging(sp);
 
-  const entries = await listCodes({
+  const result = await listCodes({
     search: q || undefined,
     createdBy: onlyMine ? currentUserId : undefined,
     module: moduleFilter,
+    paging,
   });
 
-  if (entries === undefined) {
+  if (result === undefined) {
     return (
       <Main>
         <Notice heading="Codes temporarily unavailable">
@@ -152,12 +153,13 @@ export default async function CodesPage({
     );
   }
 
-  // One round trip for all interaction counts (no per-row query). `undefined` =
-  // the count query failed; the column then shows "—" rather than a wrong zero.
-  const counts = await getInteractionCounts(entries.map((entry) => entry.code));
+  // One round trip for all interaction counts (no per-row query), and only for
+  // the codes on THIS page. `undefined` = the count query failed; the column then
+  // shows "—" rather than a wrong zero.
+  const counts = await getInteractionCounts(result.rows.map((entry) => entry.code));
   const now = new Date();
 
-  const rows: CodeRow[] = entries.map((entry) => ({
+  const rows: CodeRow[] = result.rows.map((entry) => ({
     code: entry.code,
     module: entry.module,
     note: entry.note,
@@ -227,7 +229,11 @@ export default async function CodesPage({
             <StatsIcon />
           </Link>
           {row.status === "active" ? (
-            <Link
+            // A plain <a>, not <Link>: opening in a new tab is always a full
+            // document load (next/link bails out of client navigation for any
+            // target other than _self), so <Link> would only add a prefetch
+            // whose payload can never be used. Same as /files' "Open raw YAML".
+            <a
               href={`/${row.code}`}
               className={iconButtonVariants()}
               target="_blank"
@@ -236,7 +242,7 @@ export default async function CodesPage({
               title="Open in new tab"
             >
               <ExternalLinkIcon />
-            </Link>
+            </a>
           ) : null}
           <CopyCodeButton code={row.code} module={row.module} />
           <Link
@@ -279,6 +285,7 @@ export default async function CodesPage({
             <ListFilterBar
               hasActiveFilter={q !== "" || !onlyMine || moduleFilter !== undefined}
               resetKey={`${q}|${onlyMine ? "1" : "0"}|${moduleFilter ?? ""}`}
+              pageSize={result.pageSize}
             >
               <Input
                 type="search"
@@ -312,6 +319,7 @@ export default async function CodesPage({
             </>
           }
           noMatchState="No codes match your filter."
+          pagination={{ pathname: "/codes", params: sp, result }}
         />
       </SelectionProvider>
     </Main>

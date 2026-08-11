@@ -29,6 +29,7 @@ vi.mock("@/lib/code-service", () => ({ createCodeForUser: mocks.createCodeForUse
 vi.mock("@/lib/app-origin", () => ({ resolveAppOriginOr: mocks.resolveAppOriginOr }));
 
 import { resetApiAuthForTests } from "@/lib/api-auth";
+import { unpagedResult } from "@/lib/db/paging";
 import { GET, POST } from "./route";
 
 const TENANT_ID = "11111111-2222-3333-4444-555555555555";
@@ -119,7 +120,7 @@ const WIRE_ENTRY = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.listCodes.mockResolvedValue([ENTRY]);
+  mocks.listCodes.mockResolvedValue(unpagedResult([ENTRY]));
   mocks.createCodeForUser.mockResolvedValue({
     ok: true,
     entry: ENTRY,

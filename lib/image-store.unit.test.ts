@@ -12,6 +12,10 @@ const fake = vi.hoisted(() => {
     // What every `select(...).from(...).where(...)` resolves to (the existence
     // check in confirm, the active row in getActive / the delete pre-read, the list).
     rows: [] as Record<string, unknown>[],
+    // What the paginated list's COUNT(*) reports, plus every OFFSET/FETCH window
+    // the store asked for (so a test can pin the SQL-side paging).
+    total: 0,
+    windows: [] as { offset: number; limit: number }[],
     selectError: undefined as unknown,
     inserted: [] as Record<string, unknown>[],
     insertError: undefined as unknown,
@@ -20,16 +24,39 @@ const fake = vi.hoisted(() => {
     updateError: undefined as unknown,
   };
 
-  const selectRun = () =>
-    state.selectError ? Promise.reject(state.selectError) : Promise.resolve(state.rows);
-  // A lazy thenable so error cases only reject when actually awaited, and the
-  // builder still supports a trailing `.orderBy(...)` (the list query).
-  const queryTail = () => ({
-    orderBy: () => selectRun(),
+  // The list's COUNT(*) goes through the same select/from/where chain as its rows,
+  // so the fake tells them apart by the projection: `{ n: … }` is the count.
+  const selectRun = (fields?: Record<string, unknown>) => {
+    if (state.selectError) return Promise.reject(state.selectError);
+    const isCount = fields !== undefined && "n" in fields;
+    return Promise.resolve(isCount ? [{ n: state.total }] : state.rows);
+  };
+  // A lazy thenable so error cases only reject when actually awaited. `orderBy`
+  // returns a builder (not a promise) because the paged list query continues with
+  // `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
+  const queryTail = (fields?: Record<string, unknown>) => ({
+    orderBy: () => ({
+      offset: (offset: number) => ({
+        fetch: (limit: number) => {
+          state.windows.push({ offset, limit });
+          return selectRun(fields);
+        },
+      }),
+      // biome-ignore lint/suspicious/noThenProperty: mimicking drizzle's awaitable query builder
+      then: (...args: Parameters<Promise<unknown[]>["then"]>) => selectRun(fields).then(...args),
+    }),
     // biome-ignore lint/suspicious/noThenProperty: mimicking drizzle's awaitable query builder
-    then: (...args: Parameters<Promise<unknown[]>["then"]>) => selectRun().then(...args),
+    then: (...args: Parameters<Promise<unknown[]>["then"]>) => selectRun(fields).then(...args),
   });
-  const select = () => ({ from: () => ({ where: () => queryTail() }) });
+  // `.from(...).$dynamic()` is how the shared `countRows` helper applies its joins
+  // in a loop; the tail still resolves through `queryTail`.
+  const dynamicTail = (fields?: Record<string, unknown>) => {
+    const tail = { leftJoin: () => tail, where: () => queryTail(fields) };
+    return tail;
+  };
+  const select = (fields?: Record<string, unknown>) => ({
+    from: () => ({ where: () => queryTail(fields), $dynamic: () => dynamicTail(fields) }),
+  });
   const insert = () => ({
     values: async (values: Record<string, unknown>) => {
       if (state.insertError) throw state.insertError;
@@ -85,6 +112,8 @@ function activeRow(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   fake.state.rows = [];
+  fake.state.total = 0;
+  fake.state.windows = [];
   fake.state.selectError = undefined;
   fake.state.inserted = [];
   fake.state.insertError = undefined;
@@ -94,9 +123,25 @@ beforeEach(() => {
 });
 
 describe("listImages", () => {
-  it("returns the active rows", async () => {
+  it("returns the active rows, unpaged, without a COUNT or an OFFSET/FETCH", async () => {
     fake.state.rows = [activeRow()];
-    await expect(listImages()).resolves.toEqual([activeRow()]);
+    await expect(listImages()).resolves.toEqual({
+      rows: [activeRow()],
+      total: 1,
+      page: 1,
+      pageSize: 1,
+    });
+    expect(fake.state.windows).toEqual([]);
+  });
+
+  it("pushes the skip and the limit into SQL and reports the DB-side total", async () => {
+    fake.state.rows = [activeRow()];
+    fake.state.total = 42;
+
+    const result = await listImages({ paging: { page: 2, pageSize: 20 } });
+
+    expect(fake.state.windows).toEqual([{ offset: 20, limit: 20 }]);
+    expect(result).toMatchObject({ total: 42, page: 2, pageSize: 20 });
   });
 
   it("returns undefined on a database error", async () => {
