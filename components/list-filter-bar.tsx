@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useTransition } from "react";
+import { DEFAULT_PAGE_SIZE } from "@/lib/db/paging";
 import { Spinner } from "./spinner";
 import { Button } from "./ui/button";
 
@@ -16,14 +17,20 @@ import { Button } from "./ui/button";
 // Serialization rule (kept generic): text/select controls contribute their value
 // when non-empty; checkboxes always contribute "1" (checked) or "0" (unchecked),
 // so a server page reads e.g. `mine !== "0"` for a default-on toggle. "Apply"
-// resets to the first page (no `page` param is carried over).
+// resets to the first page (no `page` param is carried over) and keeps a
+// non-default `?size=` alive via the hidden input below; "Clear" drops both.
 export function ListFilterBar({
   children,
   hasActiveFilter = false,
   resetKey,
+  pageSize,
 }: {
   children: ReactNode;
   hasActiveFilter?: boolean;
+  // The list's CURRENT page size. A non-default one came from a `?size=` override,
+  // and the serializer only keeps what the form contains — so it rides along as a
+  // hidden input. "Clear" deliberately drops it with everything else.
+  pageSize?: number;
   // A signature of the CURRENTLY-APPLIED filter (from the URL). The controls are
   // uncontrolled (server-rendered `defaultValue`/`defaultChecked`), so React would
   // otherwise keep a typed value in the DOM after the URL changes — notably after
@@ -69,6 +76,9 @@ export function ListFilterBar({
       aria-busy={isPending}
     >
       {children}
+      {pageSize !== undefined && pageSize !== DEFAULT_PAGE_SIZE ? (
+        <input type="hidden" name="size" value={pageSize} />
+      ) : null}
       <Button type="submit" size="sm" disabled={isPending}>
         {isPending ? (
           <>

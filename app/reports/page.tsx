@@ -14,6 +14,7 @@ import { selectionColumn } from "@/components/selection-column";
 import { Badge } from "@/components/ui/badge";
 import { iconButtonVariants } from "@/components/ui/icon-button";
 import { Input, Select } from "@/components/ui/input";
+import { type PagingParams, parsePaging } from "@/lib/db/paging";
 import {
   deleteSelectedReportsAction,
   markSelectedReportsResolvedAction,
@@ -60,12 +61,14 @@ interface ReportRow extends ReportDetail {
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    status?: string | string[];
-    reaction?: string | string[];
-    q?: string | string[];
-    mine?: string | string[];
-  }>;
+  searchParams: Promise<
+    {
+      status?: string | string[];
+      reaction?: string | string[];
+      q?: string | string[];
+      mine?: string | string[];
+    } & PagingParams
+  >;
 }) {
   if (!(await isEffectiveTeacher())) {
     return (
@@ -86,14 +89,17 @@ export default async function ReportsPage({
   const q = (typeof sp.q === "string" ? sp.q : "").trim();
   const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
 
-  const entries = await listReports({
+  const paging = parsePaging(sp);
+
+  const result = await listReports({
     status,
     reaction,
     search: q || undefined,
     codeCreatedBy: onlyMine ? currentUserId : undefined,
+    paging,
   });
 
-  if (entries === undefined) {
+  if (result === undefined) {
     return (
       <Main>
         <Notice heading="Reports temporarily unavailable">
@@ -103,7 +109,7 @@ export default async function ReportsPage({
     );
   }
 
-  const rows: ReportRow[] = entries.map((entry) => ({
+  const rows: ReportRow[] = result.rows.map((entry) => ({
     id: entry.id,
     kind: entry.kind,
     reaction: entry.reaction,
@@ -228,6 +234,7 @@ export default async function ReportsPage({
             <ListFilterBar
               hasActiveFilter={hasActiveFilter}
               resetKey={`${status}|${reaction ?? ""}|${q}|${onlyMine ? "1" : "0"}`}
+              pageSize={result.pageSize}
             >
               <Select
                 name="status"
@@ -271,6 +278,7 @@ export default async function ReportsPage({
             </>
           }
           noMatchState="No reports match your filter."
+          pagination={{ pathname: "/reports", params: sp, result }}
         />
       </SelectionProvider>
     </Main>

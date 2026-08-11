@@ -78,7 +78,18 @@ export function SelectionProvider({ allIds, children }: { allIds: string[]; chil
     });
   }, [allKey]);
 
-  const selectedIds = useMemo(() => Array.from(selected), [selected]);
+  // The visible set, and the selection narrowed to it. The prune effect above
+  // already drops departed ids, but it runs AFTER paint — so with pagination the
+  // frame between "page 2 rendered" and "effect flushed" would otherwise show
+  // page 1's count. Narrowing here makes the page-scoped invariant a property of
+  // the render instead of the effect's timing; the effect stays so the Set itself
+  // can't grow unboundedly as a teacher pages around.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: allIds is captured by allKey
+  const allowed = useMemo(() => new Set(allIds), [allKey]);
+  const selectedIds = useMemo(
+    () => Array.from(selected).filter((id) => allowed.has(id)),
+    [selected, allowed],
+  );
 
   const value: SelectionContextValue = {
     isSelected: (id) => selected.has(id),
@@ -97,7 +108,9 @@ export function SelectionProvider({ allIds, children }: { allIds: string[]; chil
     runDelete: (action) =>
       new Promise<BulkDeleteResult>((resolve) => {
         startTransition(async () => {
-          const result = await action(Array.from(selected));
+          // `selectedIds`, not the raw Set: the payload must never carry a row
+          // that isn't on screen.
+          const result = await action(selectedIds);
           if (result.ok) {
             setSelected(new Set());
             router.refresh();

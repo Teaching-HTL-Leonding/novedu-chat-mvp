@@ -25,6 +25,7 @@ vi.mock("@/lib/file-store", async (importOriginal) => {
 vi.mock("@/lib/app-origin", () => ({ resolveAppOriginOr: mocks.resolveAppOriginOr }));
 
 import { resetApiAuthForTests } from "@/lib/api-auth";
+import { unpagedResult } from "@/lib/db/paging";
 import { GET } from "./route";
 
 const TENANT_ID = "11111111-2222-3333-4444-555555555555";
@@ -74,17 +75,19 @@ async function getRequest(query = "", token?: string): Promise<Response> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.listFiles.mockResolvedValue([
-    {
-      id: "v1-id",
-      name: "linked-lists",
-      kind: "tutor",
-      title: "Linked Lists",
-      description: "Intro",
-      validFrom: new Date("2026-07-07T08:00:00Z"),
-      createdBy: "teacher-oid-1",
-    },
-  ]);
+  mocks.listFiles.mockResolvedValue(
+    unpagedResult([
+      {
+        id: "v1-id",
+        name: "linked-lists",
+        kind: "tutor",
+        title: "Linked Lists",
+        description: "Intro",
+        validFrom: new Date("2026-07-07T08:00:00Z"),
+        createdBy: "teacher-oid-1",
+      },
+    ]),
+  );
   mocks.resolveAppOriginOr.mockResolvedValue("https://app.example");
 });
 
@@ -108,6 +111,8 @@ describe("GET /api/files", () => {
     const res = await getRequest("", await mint());
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
+    // No `paging` key: this route returns the full match set (the CLI reads it
+    // whole), so it must never ask the store for a page.
     expect(mocks.listFiles).toHaveBeenCalledWith({
       search: undefined,
       createdBy: "teacher-oid-1",

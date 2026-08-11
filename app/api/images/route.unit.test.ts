@@ -23,6 +23,7 @@ vi.mock("@/lib/image-store", () => ({ listImages: mocks.listImages }));
 vi.mock("@/lib/image-blob", () => ({ mintReadSas: mocks.mintReadSas }));
 
 import { resetApiAuthForTests } from "@/lib/api-auth";
+import { unpagedResult } from "@/lib/db/paging";
 import { GET } from "./route";
 
 const TENANT_ID = "11111111-2222-3333-4444-555555555555";
@@ -72,18 +73,20 @@ async function getRequest(query = "", token?: string): Promise<Response> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.listImages.mockResolvedValue([
-    {
-      id: "v1-id",
-      name: "diagram",
-      blobPath: "abc.png",
-      mimeType: "image/png",
-      byteSize: 1234,
-      credit: "CC BY 4.0",
-      validFrom: new Date("2026-07-07T08:00:00Z"),
-      createdBy: "teacher-oid-1",
-    },
-  ]);
+  mocks.listImages.mockResolvedValue(
+    unpagedResult([
+      {
+        id: "v1-id",
+        name: "diagram",
+        blobPath: "abc.png",
+        mimeType: "image/png",
+        byteSize: 1234,
+        credit: "CC BY 4.0",
+        validFrom: new Date("2026-07-07T08:00:00Z"),
+        createdBy: "teacher-oid-1",
+      },
+    ]),
+  );
   mocks.mintReadSas.mockResolvedValue("https://blob.example/abc.png?sas=read");
 });
 
@@ -131,28 +134,30 @@ describe("GET /api/images", () => {
   });
 
   it("returns url null for a row whose SAS minting fails, keeping the rest", async () => {
-    mocks.listImages.mockResolvedValue([
-      {
-        id: "v1",
-        name: "bad",
-        blobPath: "bad.png",
-        mimeType: "image/png",
-        byteSize: 1,
-        credit: null,
-        validFrom: new Date("2026-07-07T08:00:00Z"),
-        createdBy: "teacher-oid-1",
-      },
-      {
-        id: "v2",
-        name: "good",
-        blobPath: "good.png",
-        mimeType: "image/jpeg",
-        byteSize: 2,
-        credit: null,
-        validFrom: new Date("2026-07-07T09:00:00Z"),
-        createdBy: "teacher-oid-1",
-      },
-    ]);
+    mocks.listImages.mockResolvedValue(
+      unpagedResult([
+        {
+          id: "v1",
+          name: "bad",
+          blobPath: "bad.png",
+          mimeType: "image/png",
+          byteSize: 1,
+          credit: null,
+          validFrom: new Date("2026-07-07T08:00:00Z"),
+          createdBy: "teacher-oid-1",
+        },
+        {
+          id: "v2",
+          name: "good",
+          blobPath: "good.png",
+          mimeType: "image/jpeg",
+          byteSize: 2,
+          credit: null,
+          validFrom: new Date("2026-07-07T09:00:00Z"),
+          createdBy: "teacher-oid-1",
+        },
+      ]),
+    );
     mocks.mintReadSas.mockImplementation((blobPath: string) =>
       blobPath === "bad.png"
         ? Promise.reject(new Error("mint failed"))

@@ -87,6 +87,23 @@ describe("DeleteSelectedButton + selection", () => {
     await expect.element(screen.getByRole("checkbox", { name: "Select a" })).not.toBeChecked();
   });
 
+  test("a row set swap (paging, filtering) drops the selection in the same render", async () => {
+    // Page-scoped selection must be a property of the render, not of the prune
+    // effect's timing: the moment page 2's rows are on screen, page 1's selection
+    // is gone — no frame showing a stale count, no payload with hidden rows.
+    const action = vi.fn().mockResolvedValue({ ok: true, deleted: 1 });
+    const screen = await render(<Harness action={action} ids={["a", "b"]} />);
+
+    await screen.getByRole("button", { name: "Select all rows", exact: true }).click();
+    await expect.element(screen.getByRole("button", { name: /delete/i })).toBeEnabled();
+
+    await screen.rerender(<Harness action={action} ids={["c", "d"]} />);
+
+    await expect.element(screen.getByRole("button", { name: /delete/i })).toBeDisabled();
+    await expect.element(screen.getByRole("checkbox", { name: "Select c" })).not.toBeChecked();
+    expect(action).not.toHaveBeenCalled();
+  });
+
   test("a cancelled confirm deletes nothing and keeps the selection", async () => {
     confirmSpy.mockReturnValue(false);
     const action = vi.fn().mockResolvedValue({ ok: true, deleted: 1 });

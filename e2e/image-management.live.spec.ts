@@ -85,8 +85,9 @@ test.describe("image storage round-trip (seams)", () => {
       expect(active?.byteSize).toBe(bytes.length);
       expect(active?.credit).toBe("CC BY 4.0");
 
+      // Unpaged (no `paging`), so this is every match, not just a first page.
       const list = await listImages({ search: name });
-      expect(list?.some((entry) => entry.name === name)).toBe(true);
+      expect(list?.rows.some((entry) => entry.name === name)).toBe(true);
 
       // 5) Mint a read SAS and GET the bytes back — same content we PUT.
       const readUrl = await mintReadSas(blobPath);

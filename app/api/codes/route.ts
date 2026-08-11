@@ -82,18 +82,20 @@ export async function GET(request: Request) {
     const onlyMine = params.get("mine") !== "0"; // default ON; "0" turns it off
     const moduleFilter = parseModuleParam(params.get("module") ?? undefined);
 
-    const entries = await listCodes({
+    // No `paging`: this route deliberately returns the full match set (the CLI
+    // consumes it whole), so the store runs no COUNT and emits no OFFSET/FETCH.
+    const result = await listCodes({
       search: q || undefined,
       createdBy: onlyMine ? user.userId : undefined,
       module: moduleFilter,
     });
-    if (entries === undefined) {
+    if (result === undefined) {
       return json({ message: "Codes could not be loaded right now. Try again in a moment." }, 503);
     }
 
     const origin = await resolveAppOriginOr("");
     return json(
-      entries.map((entry) => toWire(entry, origin)),
+      result.rows.map((entry) => toWire(entry, origin)),
       200,
     );
   } catch (error) {

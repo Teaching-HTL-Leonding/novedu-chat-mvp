@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
+import { countRows } from "@/lib/db/count";
+import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
 import { codes, reports, users } from "@/lib/db/schema";
 import { containsAny } from "@/lib/db/text-filter";
 import type { QuizVerdict } from "@/lib/quiz-types";
@@ -199,13 +201,67 @@ export async function countQuizReports(
  * identity surfaced is the reporter's own (see the module header). Ordered so OPEN
  * `holysh` (urgent) reports float to the top, then newest first. Returns `undefined`
  * on a database error. Never throws.
+ *
+ * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
+ * with a COUNT for the total); omitting it returns every match, which is what the
+ * bearer API route wants.
  */
-export async function listReports(opts: {
+// The two reads that surface a report row — the list and `getReportById` — share
+// their projection, their joins and their row mapper, so the three can never drift
+// (and the "NEVER `novedu_user_chats`" invariant is stated in exactly one place).
+// Both join keys are primary keys, so a LEFT JOIN can't multiply rows — which is
+// also what keeps the list's `COUNT(*)` exact.
+const JOIN_REPORTER = eq(users.userId, reports.userId);
+const JOIN_CODE = eq(codes.code, reports.code);
+
+const REPORT_ROW_SELECTION = {
+  id: reports.id,
+  kind: reports.kind,
+  code: reports.code,
+  codeNote: codes.note,
+  userId: reports.userId,
+  displayName: users.displayName,
+  reaction: reports.reaction,
+  description: reports.description,
+  createdAt: reports.createdAt,
+  threadId: reports.threadId,
+  questionId: reports.questionId,
+  questionText: reports.questionText,
+  answerText: reports.answerText,
+  feedbackText: reports.feedbackText,
+  verdict: reports.verdict,
+  hadImages: reports.hadImages,
+  resolvedAt: reports.resolvedAt,
+  resolvedBy: reports.resolvedBy,
+};
+
+// The columns are stored as plain strings; narrow them to the union types the
+// callers rely on (an unknown value would already have failed validation on write).
+type RawReportRow = Omit<ReportListRow, "kind" | "reaction" | "verdict"> & {
+  kind: string;
+  reaction: string;
+  verdict: string | null;
+};
+
+function toListRow(row: RawReportRow): ReportListRow {
+  return {
+    ...row,
+    kind: row.kind as ReportKind,
+    reaction: row.reaction as ReportReaction,
+    verdict: (row.verdict as QuizVerdict | null) ?? null,
+  };
+}
+
+// The list's WHERE, built once and shared by the COUNT and the row query — they
+// must never drift, or a page's total would describe a different set than its rows.
+// The search and the "my codes" filter reach into the JOINED tables, which is why
+// both queries carry the same two LEFT JOINs.
+function listConditions(opts: {
   status: ReportStatusFilter;
   reaction?: ReportReaction;
   search?: string;
   codeCreatedBy?: string;
-}): Promise<ReportListRow[] | undefined> {
+}): SQL[] {
   const conditions: SQL[] = [];
   if (opts.status === "open") conditions.push(isNull(reports.resolvedAt));
   else if (opts.status === "resolved") conditions.push(isNotNull(reports.resolvedAt));
@@ -219,44 +275,46 @@ export async function listReports(opts: {
     codes.note,
   ]);
   if (match) conditions.push(match);
+  return conditions;
+}
 
+export async function listReports(opts: {
+  status: ReportStatusFilter;
+  reaction?: ReportReaction;
+  search?: string;
+  codeCreatedBy?: string;
+  paging?: Paging;
+}): Promise<PagedResult<ReportListRow> | undefined> {
+  const conditions = listConditions(opts);
   try {
-    const rows = await getDb()
-      .select({
-        id: reports.id,
-        kind: reports.kind,
-        code: reports.code,
-        codeNote: codes.note,
-        userId: reports.userId,
-        displayName: users.displayName,
-        reaction: reports.reaction,
-        description: reports.description,
-        createdAt: reports.createdAt,
-        threadId: reports.threadId,
-        questionId: reports.questionId,
-        questionText: reports.questionText,
-        answerText: reports.answerText,
-        feedbackText: reports.feedbackText,
-        verdict: reports.verdict,
-        hadImages: reports.hadImages,
-        resolvedAt: reports.resolvedAt,
-        resolvedBy: reports.resolvedBy,
-      })
-      .from(reports)
-      .leftJoin(users, eq(users.userId, reports.userId))
-      .leftJoin(codes, eq(codes.code, reports.code))
-      .where(and(...conditions))
-      // Open `holysh` reports first (the urgent working set), then newest first.
-      .orderBy(
-        sql`CASE WHEN ${reports.reaction} = 'holysh' AND ${reports.resolvedAt} IS NULL THEN 0 ELSE 1 END`,
-        desc(reports.createdAt),
-      );
-    return rows.map((row) => ({
-      ...row,
-      kind: row.kind as ReportKind,
-      reaction: row.reaction as ReportReaction,
-      verdict: (row.verdict as QuizVerdict | null) ?? null,
-    }));
+    return await paginate({
+      paging: opts.paging,
+      count: () =>
+        countRows(reports, conditions, [
+          { table: users, on: JOIN_REPORTER },
+          { table: codes, on: JOIN_CODE },
+        ]),
+      // A FRESH builder per call — drizzle builders are stateful and `paginate`
+      // may invoke this twice (once more after clamping an over-shot page).
+      rows: async (window) => {
+        const query = getDb()
+          .select(REPORT_ROW_SELECTION)
+          .from(reports)
+          .leftJoin(users, JOIN_REPORTER)
+          .leftJoin(codes, JOIN_CODE)
+          .where(and(...conditions))
+          // Open `holysh` reports first (the urgent working set), then newest
+          // first, then `id` — the leading CASE is far from unique, and
+          // OFFSET/FETCH over a non-unique sort could repeat or skip a row.
+          .orderBy(
+            sql`CASE WHEN ${reports.reaction} = 'holysh' AND ${reports.resolvedAt} IS NULL THEN 0 ELSE 1 END`,
+            desc(reports.createdAt),
+            asc(reports.id),
+          );
+        const rows = await (window ? query.offset(window.offset).fetch(window.limit) : query);
+        return rows.map(toListRow);
+      },
+    });
   } catch (error) {
     console.error("report-store: listing reports failed", error);
     return undefined;
@@ -274,38 +332,14 @@ export async function listReports(opts: {
 export async function getReportById(id: string): Promise<ReportListRow | null | undefined> {
   try {
     const rows = await getDb()
-      .select({
-        id: reports.id,
-        kind: reports.kind,
-        code: reports.code,
-        codeNote: codes.note,
-        userId: reports.userId,
-        displayName: users.displayName,
-        reaction: reports.reaction,
-        description: reports.description,
-        createdAt: reports.createdAt,
-        threadId: reports.threadId,
-        questionId: reports.questionId,
-        questionText: reports.questionText,
-        answerText: reports.answerText,
-        feedbackText: reports.feedbackText,
-        verdict: reports.verdict,
-        hadImages: reports.hadImages,
-        resolvedAt: reports.resolvedAt,
-        resolvedBy: reports.resolvedBy,
-      })
+      .select(REPORT_ROW_SELECTION)
       .from(reports)
-      .leftJoin(users, eq(users.userId, reports.userId))
-      .leftJoin(codes, eq(codes.code, reports.code))
+      .leftJoin(users, JOIN_REPORTER)
+      .leftJoin(codes, JOIN_CODE)
       .where(eq(reports.id, id));
     const row = rows[0];
     if (!row) return null;
-    return {
-      ...row,
-      kind: row.kind as ReportKind,
-      reaction: row.reaction as ReportReaction,
-      verdict: (row.verdict as QuizVerdict | null) ?? null,
-    };
+    return toListRow(row);
   } catch (error) {
     console.error("report-store: loading a report failed", error);
     return undefined;

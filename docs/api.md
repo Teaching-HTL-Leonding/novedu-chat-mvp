@@ -86,6 +86,11 @@ render); there is no third key for scripts to probe. All timestamps are ISO 8601
 `url` field is built from the request-time `resolveAppOrigin()` (never the
 stored `origin` column, which is operator-only).
 
+The four list routes (`/api/codes`, `/api/files`, `/api/images`, `/api/reports`) are
+deliberately **unpaged**: the CLI reads each result whole, so they call the store
+without `paging` and return every match as a bare JSON array. The teacher list PAGES
+do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wire one.
+
 - **`GET /api/me`** (`app/api/me/route.ts`) — the identity probe backing
   `novedu-cli whoami`: any valid token gets
   `{ name, userId, isTeacher }` (it reports the teacher flag rather than

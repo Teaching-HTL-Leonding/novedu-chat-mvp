@@ -32,17 +32,19 @@ export async function GET(request: Request) {
     const q = (params.get("q") ?? "").trim();
     const onlyMine = params.get("mine") !== "0"; // default ON; "0" turns it off
 
-    const entries = await listImages({
+    // No `paging`: this route deliberately returns the full match set (the CLI
+    // consumes it whole), so the store runs no COUNT and emits no OFFSET/FETCH.
+    const result = await listImages({
       search: q || undefined,
       createdBy: onlyMine ? user.userId : undefined,
     });
-    if (entries === undefined) {
+    if (result === undefined) {
       return json({ message: "Images could not be loaded right now. Try again in a moment." }, 503);
     }
 
     // One bad blob must not fail the whole list — mirror app/images/page.tsx.
     const rows = await Promise.all(
-      entries.map(async (entry) => ({
+      result.rows.map(async (entry) => ({
         name: entry.name,
         mimeType: entry.mimeType,
         byteSize: entry.byteSize,

@@ -291,6 +291,28 @@ test("multi-select Delete Selected removes every chosen file in one action", {
     await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(1);
   }
 
+  // DB-side paging over the same two files: `size=1` makes the filtered list two
+  // pages, so prev/next, the range label and the ?page= round trip are all exercised
+  // without seeding 21 rows (docs/filtered-lists.md).
+  await page.goto(`/files?q=${prefix}&size=1`);
+  const previous = page.getByRole("link", { name: /Previous/ });
+  const next = page.getByRole("link", { name: /Next/ });
+  await expect(page.getByText("Showing 1–1 of 2")).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: prefix })).toHaveCount(1);
+  await expect(previous).toHaveCount(0); // page 1: rendered as a disabled <span>
+  await next.click();
+  await expect(page).toHaveURL(/[?&]page=2/);
+  await expect(page.getByText("Showing 2–2 of 2")).toBeVisible();
+  await expect(next).toHaveCount(0); // last page
+  await expect(previous).toHaveCount(1);
+  // Applying a filter from page 2 goes back to page 1 but keeps the size override.
+  await applyFilter(page, "Filter files", prefix);
+  await expect(page).not.toHaveURL(/[?&]page=/);
+  await expect(page).toHaveURL(/[?&]size=1/);
+
+  await page.goto("/files");
+  await applyFilter(page, "Filter files", prefix);
+
   // "Delete Selected" is disabled until something is selected.
   const deleteSelected = page.getByRole("button", { name: /Delete .*selected/i });
   await expect(deleteSelected).toBeDisabled();

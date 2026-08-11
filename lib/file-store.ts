@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, isNull, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { type DbExecutor, getDb } from "@/lib/db";
+import { countRows } from "@/lib/db/count";
+import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
 import { files } from "@/lib/db/schema";
 import { containsAny } from "@/lib/db/text-filter";
 // The pure name/kind helpers live in `lib/file-name.ts` (no DB import) so the
@@ -83,6 +85,19 @@ function isDuplicateKeyError(error: unknown): boolean {
   return false;
 }
 
+// The list's WHERE, built once and shared by the COUNT and the row query — they
+// must never drift, or a page's total would describe a different set than its rows.
+function listConditions(opts?: { search?: string; createdBy?: string }): SQL[] {
+  const conditions: SQL[] = [isNull(files.validUntil)];
+  const term = opts?.search?.trim();
+  if (term) {
+    const match = containsAny(term, [files.name, files.title, files.description]);
+    if (match) conditions.push(match);
+  }
+  if (opts?.createdBy) conditions.push(eq(files.createdBy, opts.createdBy));
+  return conditions;
+}
+
 /**
  * The active (non-deleted) files for the "YAML Files" list, newest first.
  * Filtering happens IN THE DATABASE (see `docs/filtered-lists.md`), never in
@@ -91,32 +106,42 @@ function isDuplicateKeyError(error: unknown): boolean {
  * "Only my files" toggle). Content is intentionally NOT selected (it can be large
  * and the list never shows it). `undefined` on a database error, which the page
  * notes.
+ *
+ * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
+ * with a COUNT for the total); omitting it returns every match, which is what the
+ * bearer API route wants.
  */
 export async function listFiles(opts?: {
   search?: string;
   createdBy?: string;
-}): Promise<FileListEntry[] | undefined> {
-  const conditions: SQL[] = [isNull(files.validUntil)];
-  const term = opts?.search?.trim();
-  if (term) {
-    const match = containsAny(term, [files.name, files.title, files.description]);
-    if (match) conditions.push(match);
-  }
-  if (opts?.createdBy) conditions.push(eq(files.createdBy, opts.createdBy));
+  paging?: Paging;
+}): Promise<PagedResult<FileListEntry> | undefined> {
+  const conditions = listConditions(opts);
   try {
-    return await getDb()
-      .select({
-        id: files.id,
-        name: files.name,
-        kind: files.kind,
-        title: files.title,
-        description: files.description,
-        validFrom: files.validFrom,
-        createdBy: files.createdBy,
-      })
-      .from(files)
-      .where(and(...conditions))
-      .orderBy(desc(files.validFrom));
+    return await paginate({
+      paging: opts?.paging,
+      count: () => countRows(files, conditions),
+      // A FRESH builder per call — drizzle builders are stateful and `paginate`
+      // may invoke this twice (once more after clamping an over-shot page).
+      rows: (window) => {
+        const query = getDb()
+          .select({
+            id: files.id,
+            name: files.name,
+            kind: files.kind,
+            title: files.title,
+            description: files.description,
+            validFrom: files.validFrom,
+            createdBy: files.createdBy,
+          })
+          .from(files)
+          .where(and(...conditions))
+          // `id` breaks ties: OFFSET/FETCH over a non-unique sort could otherwise
+          // repeat or skip a row between pages.
+          .orderBy(desc(files.validFrom), asc(files.id));
+        return window ? query.offset(window.offset).fetch(window.limit) : query;
+      },
+    });
   } catch (error) {
     console.error("file-store: listing files failed", error);
     return undefined;

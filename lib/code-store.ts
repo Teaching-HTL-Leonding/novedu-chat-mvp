@@ -1,7 +1,9 @@
 import { randomInt } from "node:crypto";
-import { and, desc, eq, type SQL } from "drizzle-orm";
-import { type CodeModule, isCodeModule } from "@/lib/code-modules/types";
+import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { CODE_MODULES, type CodeModule, isCodeModule } from "@/lib/code-modules/types";
 import { getDb } from "@/lib/db";
+import { countRows } from "@/lib/db/count";
+import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
 import { codes } from "@/lib/db/schema";
 import { containsAny } from "@/lib/db/text-filter";
 import { type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
@@ -368,6 +370,27 @@ export async function checkCode(code: string, now: Date = new Date()): Promise<C
   return { ok: true, entry };
 }
 
+// The list's WHERE, built once and shared by the COUNT and the row query — they
+// must never drift, or a page's total would describe a different set than its rows.
+function listConditions(opts?: {
+  search?: string;
+  createdBy?: string;
+  module?: CodeModule;
+}): SQL[] {
+  // A row whose `module` the app doesn't know is not a usable code (see
+  // `toEntry`). Filtering it out HERE rather than after the query is what keeps a
+  // page's row count and its total in agreement.
+  const conditions: SQL[] = [inArray(codes.module, CODE_MODULES)];
+  const term = opts?.search?.trim();
+  if (term) {
+    const match = containsAny(term, [codes.note, codes.code]);
+    if (match) conditions.push(match);
+  }
+  if (opts?.createdBy) conditions.push(eq(codes.createdBy, opts.createdBy));
+  if (opts?.module) conditions.push(eq(codes.module, opts.module));
+  return conditions;
+}
+
 /**
  * Codes for the "Codes" page — ALL teachers' codes (a teacher may see/manage
  * every code; finer-grained RBAC is planned), newest first, including
@@ -377,27 +400,40 @@ export async function checkCode(code: string, now: Date = new Date()): Promise<C
  * teacher's codes (the "Only my codes" toggle), and `module` narrows to one
  * activity. Never throws — an unreachable database reads as `undefined`, which
  * the page notes.
+ *
+ * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
+ * with a COUNT for the total); omitting it returns every match, which is what the
+ * bearer API route wants.
  */
 export async function listCodes(opts?: {
   search?: string;
   createdBy?: string;
   module?: CodeModule;
-}): Promise<CodeEntry[] | undefined> {
-  const conditions: SQL[] = [];
-  const term = opts?.search?.trim();
-  if (term) {
-    const match = containsAny(term, [codes.note, codes.code]);
-    if (match) conditions.push(match);
-  }
-  if (opts?.createdBy) conditions.push(eq(codes.createdBy, opts.createdBy));
-  if (opts?.module) conditions.push(eq(codes.module, opts.module));
+  paging?: Paging;
+}): Promise<PagedResult<CodeEntry> | undefined> {
+  const conditions = listConditions(opts);
   try {
-    const rows = await getDb()
-      .select()
-      .from(codes)
-      .where(and(...conditions))
-      .orderBy(desc(codes.createdAt));
-    return rows.map(toEntry).filter((entry): entry is CodeEntry => entry !== null);
+    return await paginate({
+      paging: opts?.paging,
+      count: () => countRows(codes, conditions),
+      // A FRESH builder per call — drizzle builders are stateful and `paginate`
+      // may invoke this twice (once more after clamping an over-shot page).
+      rows: async (window) => {
+        const query = getDb()
+          .select()
+          .from(codes)
+          .where(and(...conditions))
+          // `code` breaks ties: OFFSET/FETCH over a non-unique sort could
+          // otherwise repeat or skip a row between pages.
+          .orderBy(desc(codes.createdAt), asc(codes.code));
+        const rows = await (window ? query.offset(window.offset).fetch(window.limit) : query);
+        // Unreachable now that the module check is a WHERE condition (a dropped
+        // row would make a page short and disagree with the COUNT) — kept so a
+        // future condition change can't silently reintroduce that mismatch.
+        // `getCode`/`checkCode` still exercise toEntry's corrupt-row logging.
+        return rows.map(toEntry).filter((entry): entry is CodeEntry => entry !== null);
+      },
+    });
   } catch (error) {
     console.error("code-store: listing codes failed", error);
     return undefined;

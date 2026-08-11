@@ -9,6 +9,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fake = vi.hoisted(() => {
   const state = {
     rows: [] as unknown[],
+    // What the paginated list's COUNT(*) reports, plus every OFFSET/FETCH window
+    // the store asked for (so a test can pin the SQL-side paging). The small
+    // count helpers keep resolving `rows` — only the LIST's count reads `total`.
+    total: 0,
+    windows: [] as { offset: number; limit: number }[],
     joins: [] as unknown[],
     selectError: undefined as unknown,
     inserted: [] as Record<string, unknown>[],
@@ -18,22 +23,48 @@ const fake = vi.hoisted(() => {
     deletes: 0,
     deleteError: undefined as unknown,
   };
-  const run = () =>
-    state.selectError ? Promise.reject(state.selectError) : Promise.resolve(state.rows);
-  // One chainable, thenable builder: from/leftJoin/where return it, orderBy (and
-  // awaiting it directly, for the COUNT selects) resolves the configured rows.
-  const builder = {
-    from: () => builder,
-    leftJoin: (table: unknown) => {
-      state.joins.push(table);
-      return builder;
-    },
-    where: () => builder,
-    orderBy: () => run(),
-    // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
-    then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
+  // One chainable, thenable builder PER `select(...)`: from/leftJoin/where return
+  // it, and awaiting it (directly for the COUNT selects, or after orderBy for a
+  // list) resolves the configured rows. It is per-call because what a query
+  // resolves to now depends on its own projection and joins.
+  const makeBuilder = (fields?: Record<string, unknown>) => {
+    let joined = false;
+    // The LIST's COUNT(*) is the one that carries the two LEFT JOINs — the small
+    // per-thread/per-question count helpers select `{ n }` with no join and keep
+    // resolving `state.rows`, so their tests are untouched.
+    const run = () => {
+      if (state.selectError) return Promise.reject(state.selectError);
+      const isListCount = fields !== undefined && "n" in fields && joined;
+      return Promise.resolve(isListCount ? [{ n: state.total }] : state.rows);
+    };
+    const builder = {
+      from: () => builder,
+      leftJoin: (table: unknown) => {
+        joined = true;
+        state.joins.push(table);
+        return builder;
+      },
+      where: () => builder,
+      // How the shared `countRows` helper applies its joins in a loop.
+      $dynamic: () => builder,
+      // `orderBy` returns a builder (not a promise) because the paged list query
+      // continues with `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
+      orderBy: () => ({
+        offset: (offset: number) => ({
+          fetch: (limit: number) => {
+            state.windows.push({ offset, limit });
+            return run();
+          },
+        }),
+        // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
+        then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
+      }),
+      // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
+      then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
+    };
+    return builder;
   };
-  const select = () => builder;
+  const select = (fields?: Record<string, unknown>) => makeBuilder(fields);
   const insert = () => ({
     values: async (values: Record<string, unknown>) => {
       if (state.insertError) throw state.insertError;
@@ -78,6 +109,8 @@ const REPORT_ID = "22222222-2222-2222-2222-222222222222";
 
 beforeEach(() => {
   fake.state.rows = [];
+  fake.state.total = 0;
+  fake.state.windows = [];
   fake.state.joins = [];
   fake.state.selectError = undefined;
   fake.state.inserted = [];
@@ -197,8 +230,9 @@ describe("listReports", () => {
     fake.state.rows = [rawRow];
     // Each filter combination exercises a different condition-building branch; the
     // fake yields the same rows regardless (the WHERE itself is an @live concern).
-    await expect(listReports({ status: "open" })).resolves.toEqual([rawRow]);
-    await expect(listReports({ status: "resolved" })).resolves.toEqual([rawRow]);
+    const expected = { rows: [rawRow], total: 1, page: 1, pageSize: 1 };
+    await expect(listReports({ status: "open" })).resolves.toEqual(expected);
+    await expect(listReports({ status: "resolved" })).resolves.toEqual(expected);
     await expect(
       listReports({
         status: "all",
@@ -206,7 +240,19 @@ describe("listReports", () => {
         search: "lists",
         codeCreatedBy: "teacher-1",
       }),
-    ).resolves.toEqual([rawRow]);
+    ).resolves.toEqual(expected);
+    // Unpaged: no COUNT, no OFFSET/FETCH.
+    expect(fake.state.windows).toEqual([]);
+  });
+
+  it("pushes the skip and the limit into SQL and reports the DB-side total", async () => {
+    fake.state.rows = [rawRow];
+    fake.state.total = 61;
+
+    const result = await listReports({ status: "open", paging: { page: 2, pageSize: 20 } });
+
+    expect(fake.state.windows).toEqual([{ offset: 20, limit: 20 }]);
+    expect(result).toMatchObject({ total: 61, page: 2, pageSize: 20 });
   });
 
   it("returns undefined instead of throwing when the database is down", async () => {
