@@ -2,10 +2,11 @@
 title: The Novedu CLI and its AI skill
 description: What the Novedu command-line companion does for you, and how to install and update the skill that lets your AI assistant use it.
 sidebar:
-  order: 7
+  order: 1
 audience: teacher
 keywords: [CLI, novedu-cli, command line, AI skill, skills.sh, install, update, assistant]
 related:
+  - 40-ai-llms/02-llms-txt
   - 10-yaml-for-teachers/04-cli-validation
   - 10-yaml-for-teachers/05-see-the-prompt
   - 10-yaml-for-teachers/06-testing-the-grader
@@ -15,7 +16,7 @@ generated: true
 
 <!--
   GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/00-introduction/07-novedu-cli.prompt.md and regenerate.
+  Edit the chapter prompt in teacher-docs/prompts/40-ai-llms/01-novedu-cli.prompt.md and regenerate.
 -->
 
 The Novedu CLI is a small companion tool for the app that you run from a terminal. It does two things for you. It checks the activity files you write, and it lets you do your teacher work without opening the website.

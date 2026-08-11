@@ -1,6 +1,6 @@
 # The Novedu CLI and its AI skill
 
-Output: teacher-docs/content/00-introduction/07-novedu-cli.md · order 7
+Output: teacher-docs/content/40-ai-llms/01-novedu-cli.md · order 1
 
 Job: A teacher who has met the four activity kinds and now wants the companion tool
 that goes with them. After this chapter they know what the Novedu CLI is and why they

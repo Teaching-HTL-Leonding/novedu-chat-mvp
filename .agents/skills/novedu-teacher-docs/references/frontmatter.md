@@ -25,12 +25,13 @@ generated: true
 Field notes:
 
 - **title**: teacher-facing, task-shaped. Not the app's internal noun.
-- **description**: one sentence, ≤ ~160 chars. Serves as both a page meta
-  description and the snippet a search/assistant layer would rank on, so make it a
-  faithful summary, not marketing.
+- **description**: one sentence, ≤ ~160 chars. Serves as the page meta
+  description and is published verbatim as the chapter's summary line in the
+  guide's machine-readable index (`/docs/llms.txt`, with `title` as the link
+  text), so make it a faithful summary, not marketing.
 - **sidebar.order**: position within the section; mirrors the chapter's numeric
-  prefix. Section grouping comes from the folder. (A common docs-site convention;
-  harmless if a given renderer ignores it.)
+  prefix. Section grouping comes from the folder. The published site sorts both
+  its sidebar and the machine-readable table of contents by this key.
 - **audience**: always `teacher` for this corpus. Present so a future mixed corpus
   can filter.
 - **keywords**: the words a teacher would actually search or ask. Useful for any

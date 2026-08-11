@@ -9,7 +9,7 @@ related:
   - 20-building-activities/04-quizzes
   - 20-building-activities/01-handling-yaml
   - 10-yaml-for-teachers/04-cli-validation
-  - 00-introduction/07-novedu-cli
+  - 40-ai-llms/01-novedu-cli
 generated: true
 ---
 

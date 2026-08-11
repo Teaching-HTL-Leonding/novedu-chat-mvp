@@ -54,6 +54,11 @@ teacher-docs/
 The skill (`.agents/skills/novedu-teacher-docs/`) holds the reusable *how*; the
 `teacher-docs/` folder holds the project-specific *what*.
 
+A **new section directory** under `content/` takes two declarations: a `## NN:`
+block in `teacher-docs/CHAPTERS.md` and a one-line entry in the docs site's
+section list (`teacher-docs-site/src/lib/sections.ts`). The site build fails
+loudly on an undeclared section, so a missing declaration cannot ship silently.
+
 ## Where the sources live
 
 Durable, folder-level orientation for discovery, never pin exact file paths in a

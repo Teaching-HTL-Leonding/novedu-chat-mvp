@@ -34,7 +34,7 @@ Azure SQL (authenticated via Entra — no SQL password).
 | **Usage metering** (`lib/usage-store.ts`, `app/mastra/usage-exporter.ts`) | Per-hour token / tool-call / activity counts written off the response path into two anonymity-preserving tables (`novedu_usage_by_code`, `novedu_usage_by_user`), surfaced on the teacher `/usage` dashboard. See [`docs/usage-metering.md`](docs/usage-metering.md) and [`docs/dashboard.md`](docs/dashboard.md). |
 | **LLM providers** (`lib/llm/`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | Two OpenAI-compatible upstreams behind one server-only seam: a self-hosted vLLM GPU server ("SCCH", the default) and — optionally, when `AZURE_FOUNDRY_ENDPOINT` is set — **Azure Foundry** (passwordless Entra auth, no API key). The activity YAML's `llm:` block picks provider + model, and a code can override the pair; endpoints, keys, and tokens stay server-side. See [`docs/ai-models.md`](docs/ai-models.md). |
 | **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate (Next 16 renamed `middleware` → `proxy.ts`). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). JWT sessions, no DB adapter. See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: Entra **bearer tokens** (the CLI is a public client of the same app registration), validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
-| **Teacher docs** (`teacher-docs/`, `teacher-docs-site/`) | The teacher-facing guide as a **generated Markdown corpus** (`teacher-docs/` — chapters are regenerated from human-owned prompts via the `novedu-teacher-docs` skill, never hand-edited) and an **Astro Starlight site** that renders it (`teacher-docs-site/`, an npm workspace). Served **publicly at `/docs`** inside this app — built into `public/docs/` by the Docker image build, deliberately excluded from the Entra gate. `npm run docs:dev` for local authoring; the corpus-contract test + site build are the consistency checks. See [`docs/teacher-docs.md`](docs/teacher-docs.md). |
+| **Teacher docs** (`teacher-docs/`, `teacher-docs-site/`) | The teacher-facing guide as a **generated Markdown corpus** (`teacher-docs/` — chapters are regenerated from human-owned prompts via the `novedu-teacher-docs` skill, never hand-edited) and an **Astro Starlight site** that renders it (`teacher-docs-site/`, an npm workspace) — as HTML pages plus an [llms.txt](https://llmstxt.org) surface for AI agents (`/docs/llms.txt`, `/docs/llms-full.txt`, and a `.md` twin of every chapter). Served **publicly at `/docs`** inside this app — built into `public/docs/` by the Docker image build, deliberately excluded from the Entra gate. `npm run docs:dev` for local authoring; the corpus-contract test + site build are the consistency checks. See [`docs/teacher-docs.md`](docs/teacher-docs.md). |
 | **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` (**public** OpenAI-compatible endpoint), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text; **bearer** PUT: upsert for `novedu-cli files upload`), `files` + `codes` (**bearer**, teacher-only: list/create for the CLI — see [`docs/api.md`](docs/api.md)), `reports` + `reports/<id>` + `reports/resolve` (**bearer**, teacher-only: report triage for the CLI; a chat report's detail embeds the conversation transcript), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
 
 ### Request flow
@@ -175,6 +175,24 @@ Notes:
 - In your Entra app registration, add the redirect URI
   `http://localhost:3000/api/auth/callback/microsoft-entra-id` (and the equivalent for any
   deployed origin).
+
+### Changing the public domain
+
+The public origin is deliberately **not** a single constant — most of these are
+deployment settings rather than code, and the two code occurrences mean different
+things. Moving to a new domain therefore means touching all of them:
+
+| Where | What it controls |
+| --- | --- |
+| `AUTH_URL` — production app setting, **not in the repo** | Pins the sign-in host and overrides `AUTH_TRUST_HOST`. Sign-in breaks if it still names the old domain. |
+| Entra app registration redirect URI | The callback URL for the new origin (see the bullet above). |
+| `CODE_ORIGIN` — env / app setting | Origin shown in generated code URLs (`https://<origin>/<code>`) and in the coding endpoint's connection snippet; read by `lib/app-origin.ts` (legacy name `TUTOR_CODE_ORIGIN` still honored). Display-only — falls back to the request's `x-forwarded-host`. |
+| `cli/src/server-url.ts` → `DEFAULT_SERVER` | The CLI's default server. A *default* only: `--server` and `NOVEDU_SERVER` override it per invocation. |
+| `teacher-docs-site/astro.config.mjs` → `site` | Canonical origin baked into the teacher guide's `llms.txt` links, sitemap and canonical tags. A *build-time* value, which is why it is not shared with the CLI's runtime default. |
+| Blob Storage CORS allowed origins | Browser uploads of teacher images (set in Azure; the current values are listed in `docs/images.md`). |
+
+`grep -rn 'novedu\.at'` finds every in-repo occurrence, including the docs prose and
+test fixtures that only mention it as an example.
 
 ## Running the app
 

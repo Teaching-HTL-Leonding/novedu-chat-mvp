@@ -23,7 +23,6 @@ _What Novedu is. Concepts and pedagogy, no deep configuration detail._
 | 04 | Quizzes overview | ✎ `00-introduction/04-quizzes-overview.prompt.md` | `activities/quizzes/README.md` |
 | 05 | Writing overview | ✎ `00-introduction/05-writing-overview.prompt.md` | `activities/writings/README.md` |
 | 06 | Coding overview | ✎ `00-introduction/06-coding-overview.prompt.md` | `activities/coding/README.md` |
-| 07 | The CLI and its AI skill | ✎ `00-introduction/07-novedu-cli.prompt.md` | `cli/README.md` (intro), `.agents/skills/novedu-tutor-cli/SKILL.md`, `https://github.com/vercel-labs/skills#readme` |
 
 ## 10: YAML for teachers
 _Enough YAML, tooling, and validation to author activities confidently._
@@ -64,6 +63,14 @@ _Turning an activity into a code and handing it to a class._
 | 06 | Special case: coding codes | ✎ `30-sharing-activities/06-coding-special-case.prompt.md` | `docs/coding.md` (behavior), `activities/coding/README.md` |
 | 07 | Student reports | ✎ `30-sharing-activities/07-student-reports.prompt.md` | `docs/reports.md` (behavior), `docs/codes.md` (anonymity) |
 | 08 | Many activities at once: the activity registry | ✎ `30-sharing-activities/08-activity-registry.prompt.md` | `docs/registry.md` (format + sync semantics), `cli/README.md` (`codes sync`) |
+
+## 40: Working with AI agents
+_Using Novedu together with AI assistants and agents: the CLI skill, and the guide's machine-readable form. More AI topics land here over time._
+
+| # | Chapter | Prompt | Where to look (hints) |
+| --- | --- | --- | --- |
+| 01 | The CLI and its AI skill | ✎ `40-ai-llms/01-novedu-cli.prompt.md` | `cli/README.md` (intro), `.agents/skills/novedu-tutor-cli/SKILL.md`, `https://github.com/vercel-labs/skills#readme` |
+| 02 | The guide for AI agents (llms.txt) | ✎ `40-ai-llms/02-llms-txt.prompt.md` | `docs/teacher-docs.md` (the llms.txt surface), `teacher-docs-site/README.md`, `https://llmstxt.org` |
 
 > Scope reminder for every chapter: the "Where to look" entries are engineer
 > references. Document only teacher-facing behavior, not how the app works inside
