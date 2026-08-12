@@ -17,7 +17,7 @@ documented in `docs/api.md`.
 
 | Surface | Path | Who | Notes |
 | --- | --- | --- | --- |
-| List | `/files` (`app/files/page.tsx`) | teacher | active versions only, contains-filter + "Only my files" (default on) |
+| List | `/files` (`app/files/page.tsx`) | teacher | active versions only, contains-filter + an **owner** dropdown (the signed-in teacher by default) |
 | Create | `/files/new` (`create-file-form.tsx`) | teacher | name + kind + CodeMirror editor + upload |
 | Edit | `/files/edit/[...name]` (`edit-file-form.tsx`) | teacher | preloaded with the active version; copyable public URL (delete is the list's "Delete Selected" only) |
 | Public GET | `/api/files/<name>` (`app/api/files/[name]/route.ts`) | **anyone** | active version as `text/yaml`, `no-store` (404 once deleted) |
@@ -76,8 +76,11 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
   `@/lib/yaml-files` facade (which must not import the DB-bound store).
 - `listFiles({ search?, createdBy? })` — active rows, newest first, **without**
   `content` (kept cheap). Optional filters are applied **in SQL** (a `WHERE`/`LIKE`
-  over name/title/description for `search`, `createdBy` for "Only my files") —
-  never in memory; see `docs/filtered-lists.md`.
+  over name/title/description for `search`, `createdBy` for the owner dropdown) —
+  never in memory; see `docs/filtered-lists.md`. The rows carry the owner's display
+  name from a LEFT JOIN on `novedu_users`; `listFileOwners()` is the dropdown's
+  option set. **"Owner" here is the LAST WRITER** — `created_by` belongs to the
+  active version, so saving someone else's file makes you its owner.
 - `getActiveFile(name)` — the active row **with** `content`; `null` = malformed
   name or no active version (unknown/deleted), `undefined` = DB error. Backs both
   the edit page and the GET endpoint.
@@ -204,9 +207,9 @@ forms show its "Upload file…" button — load a local file's text into the edi
 the writing surface reuses the editor in `markdown` mode with `upload={false}`, so
 the button is files-only). The
 list itself is the shared filtered-list concept — `@/components/data-list` +
-`@/components/list-filter-bar` — so its filtering ("Only my files" + contains-search
-over name/title/description) runs **in the database** via URL search params, not in
-memory (see `docs/filtered-lists.md`).
+`@/components/list-filter-bar` — so its filtering (the owner dropdown +
+contains-search over name/title/description) runs **in the database** via URL search
+params, not in memory (see `docs/filtered-lists.md`).
 
 ## Tests
 

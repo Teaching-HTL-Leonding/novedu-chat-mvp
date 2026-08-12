@@ -69,9 +69,11 @@ function isoToUnixSeconds(
 }
 
 /**
- * Lists codes with the /codes page's filter params and defaults: `q`
- * contains-matches note/code, `mine` defaults ON (`mine=0` widens to all
- * teachers), `module` narrows to one activity. Bare JSON array, newest first.
+ * Lists codes: `q` contains-matches note/code, `mine` defaults ON (`mine=0`
+ * widens to all teachers), `module` narrows to one activity. Bare JSON array,
+ * newest first. `mine` is the BEARER channel's ownership param and is unchanged
+ * by the /codes page's owner dropdown, which spells the same narrowing `?owner=`
+ * (docs/filtered-lists.md).
  */
 export async function GET(request: Request) {
   try {

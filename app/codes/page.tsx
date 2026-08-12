@@ -10,9 +10,10 @@ import {
   HelpCircleIcon,
   StatsIcon,
 } from "@/components/icons";
-import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
+import { ListFilterBar, OwnerFilter } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { AccessDenied, Notice } from "@/components/notice";
+import { ownerColumn } from "@/components/owner-column";
 import { Main } from "@/components/page-main";
 import { selectionColumn } from "@/components/selection-column";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +28,14 @@ import {
   parseModuleParam,
 } from "@/lib/code-modules/types";
 import { getInteractionCounts } from "@/lib/code-stats-store";
-import { CODE_SORT_COLUMNS, DISTANT_FUTURE, DISTANT_PAST, listCodes } from "@/lib/code-store";
+import {
+  CODE_SORT_COLUMNS,
+  DISTANT_FUTURE,
+  DISTANT_PAST,
+  listCodeOwners,
+  listCodes,
+} from "@/lib/code-store";
+import { type OwnerParams, parseOwner } from "@/lib/db/owner-filter";
 import { type PagingParams, parsePaging } from "@/lib/db/paging";
 import { parseSort, type SortParams } from "@/lib/db/sorting";
 import { isEffectiveTeacher } from "@/lib/student-mode";
@@ -59,7 +67,10 @@ interface CodeRow {
   module: CodeModule;
   note: string;
   fileUrl: string;
+  /** The creating teacher's oid — the OWNER, immutable for a code. */
   createdBy: string;
+  /** Its `novedu_users` resolution; `null` for a teacher with no row yet. */
+  ownerName: string | null;
   validFromSeconds: number | null;
   validUntilSeconds: number | null;
   status: WindowStatus;
@@ -107,9 +118,10 @@ const MODULE_ROW_ACCENT: Record<CodeModule, string> = {
 
 // Teacher-only: lists ALL codes across modules (any effective teacher may
 // see/manage every code — finer-grained RBAC is planned), with a contains-filter
-// over note/code, an "Only my codes" toggle, and a module filter — all applied IN
-// THE DATABASE via URL search params (see `docs/filtered-lists.md`), never in
-// memory. Each row shows its module, how many interactions the code has seen (one
+// over note/code, an owner dropdown (defaulting to the signed-in teacher), and a
+// module filter — all applied IN THE DATABASE via URL search params (see
+// `docs/filtered-lists.md`), never in memory. Each row shows its module, its
+// owner, how many interactions the code has seen (one
 // aggregate query for the whole filtered set), a link to detailed stats, an edit
 // link, and an irreversible delete. "Effective" teacher: a teacher in student
 // mode is denied like a student.
@@ -117,8 +129,7 @@ export default async function CodesPage({
   searchParams,
 }: {
   searchParams: Promise<
-    { q?: string | string[]; mine?: string | string[]; module?: string | string[] } & PagingParams &
-      SortParams
+    { q?: string | string[]; module?: string | string[] } & OwnerParams & PagingParams & SortParams
   >;
 }) {
   if (!(await isEffectiveTeacher())) {
@@ -134,18 +145,25 @@ export default async function CodesPage({
 
   const sp = await searchParams;
   const q = (typeof sp.q === "string" ? sp.q : "").trim();
-  const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
+  // Absent `?owner=` means the signed-in teacher, so the default view — and
+  // "Clear" — need no param at all (docs/filtered-lists.md).
+  const owner = parseOwner(sp, currentUserId);
   const moduleFilter = parseModuleParam(sp.module);
   const paging = parsePaging(sp);
   const sort = parseSort(sp, CODE_SORT_COLUMNS);
 
-  const result = await listCodes({
-    search: q || undefined,
-    createdBy: onlyMine ? currentUserId : undefined,
-    module: moduleFilter,
-    paging,
-    sort,
-  });
+  // The dropdown's options come from the whole (unfiltered) code set, so the owner
+  // a teacher just picked can never disappear from the control that picked them.
+  const [result, owners] = await Promise.all([
+    listCodes({
+      search: q || undefined,
+      createdBy: owner.createdBy,
+      module: moduleFilter,
+      paging,
+      sort,
+    }),
+    listCodeOwners(),
+  ]);
 
   if (result === undefined) {
     return (
@@ -169,6 +187,7 @@ export default async function CodesPage({
     note: entry.note,
     fileUrl: entry.fileUrl,
     createdBy: entry.createdBy,
+    ownerName: entry.ownerName,
     validFromSeconds: entry.validFrom ? seconds(entry.validFrom) : null,
     validUntilSeconds: entry.validUntil ? seconds(entry.validUntil) : null,
     status: windowStatus(entry, now),
@@ -205,6 +224,7 @@ export default async function CodesPage({
         </span>
       ),
     },
+    ownerColumn<CodeRow>(),
     {
       header: "Valid from",
       sortKey: "from",
@@ -276,9 +296,8 @@ export default async function CodesPage({
           rowClassName={(row) => MODULE_ROW_ACCENT[row.module]}
           hint={
             <>
-              All codes. Filter by note/code, activity, or tick “Only my codes”. Expired ones stay
-              here so you can review their stats; delete a code to remove it and all of its
-              conversation data.
+              All codes. Filter by note/code, activity, or owner. Expired ones stay here so you can
+              review their stats; delete a code to remove it and all of its conversation data.
             </>
           }
           actions={
@@ -291,22 +310,22 @@ export default async function CodesPage({
           }
           filterBar={
             <ListFilterBar
-              hasActiveFilter={q !== "" || !onlyMine || moduleFilter !== undefined}
-              resetKey={`${q}|${onlyMine ? "1" : "0"}|${moduleFilter ?? ""}`}
+              hasActiveFilter={q !== "" || owner.value !== "" || moduleFilter !== undefined}
+              resetKey={`${q}|${owner.value}|${moduleFilter ?? ""}`}
               pageSize={result.pageSize}
               sort={sort}
             >
               <Input
                 type="search"
                 name="q"
-                className="w-72"
+                className="w-56"
                 placeholder="Filter by note or code…"
                 defaultValue={q}
                 aria-label="Filter codes"
               />
               <Select
                 name="module"
-                className="w-72"
+                className="w-56"
                 defaultValue={moduleFilter ?? ""}
                 aria-label="Filter by activity"
               >
@@ -317,14 +336,21 @@ export default async function CodesPage({
                   </option>
                 ))}
               </Select>
-              <FilterCheckbox name="mine" label="Only my codes" defaultChecked={onlyMine} />
+              <OwnerFilter
+                className="w-56"
+                noun="codes"
+                options={owners}
+                value={owner.value}
+                currentUserId={currentUserId}
+                currentUserName={session?.user?.name}
+              />
             </ListFilterBar>
           }
-          isFiltered={q !== "" || moduleFilter !== undefined}
+          isFiltered={q !== "" || owner.value !== "" || moduleFilter !== undefined}
           emptyState={
             <>
               No codes yet. <Link href="/codes/new">Create one</Link> to share an activity with
-              students — or untick “Only my codes” to see codes from other teachers.
+              students — or pick “All owners” to see codes from other teachers.
             </>
           }
           noMatchState="No codes match your filter."

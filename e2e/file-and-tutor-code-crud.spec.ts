@@ -329,6 +329,27 @@ test("multi-select Delete Selected removes every chosen file in one action", {
   await nameHeader.click();
   await expect(page).not.toHaveURL(/[?&]sort=/);
 
+  // DB-side OWNER filter (docs/filtered-lists.md). The signed-in teacher wrote both
+  // files, so they own them: the column shows an owner and the default view needs no
+  // `?owner=` at all — which is also what makes "Clear" return to my own items.
+  await page.goto(`/files?q=${prefix}&size=1`);
+  const ownerSelect = page.getByLabel("Filter by owner");
+  await expect(ownerSelect).toHaveValue("");
+  await expect(firstRow.getByRole("cell").nth(4)).not.toBeEmpty();
+  // Widening to every owner is a URL param, and Apply still resets to page 1.
+  await ownerSelect.selectOption("all");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page).toHaveURL(/[?&]owner=all/);
+  await expect(page).not.toHaveURL(/[?&]page=/);
+  await expect(page.getByRole("row").filter({ hasText: prefix })).toHaveCount(1);
+  // The owner column sorts in SQL like every other one.
+  await page.getByRole("link", { name: "Owner" }).click();
+  await expect(page).toHaveURL(/[?&]sort=owner/);
+  await expect(page).toHaveURL(/[?&]owner=all/);
+  // Clear drops every param — back to my own files, no `?owner=`.
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(page).toHaveURL(/\/files$/);
+
   await page.goto("/files");
   await applyFilter(page, "Filter files", prefix);
 

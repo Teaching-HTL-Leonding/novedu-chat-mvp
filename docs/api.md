@@ -96,9 +96,11 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   `{ name, userId, isTeacher }` (it reports the teacher flag rather than
   requiring it — a diagnostic for misconfigured accounts).
 - **`GET /api/codes?q=&mine=&module=`** (`app/api/codes/route.ts`,
-  teacher-only) — the `/codes` page's exact filters and defaults: `q`
-  contains-matches note/code, `mine` defaults **on** (`mine=0` widens to all
-  teachers; `createdBy` = the token `oid`), `module` optional. Bare JSON
+  teacher-only) — the `/codes` list's filters, with the bearer channel's OWN
+  ownership param: `q` contains-matches note/code, `mine` defaults **on**
+  (`mine=0` widens to all teachers; `createdBy` = the token `oid`), `module`
+  optional. The web page spells the same narrowing `?owner=` (an oid, or `all`)
+  and has no `mine` — `docs/filtered-lists.md`. Bare JSON
   array, newest first, of
   `{ code, url, module, note, fileUrl, anonymous, validFrom, validUntil, llm, createdBy, createdAt }`
   (`url` the shareable link, `llm` the override pair or `null`).
@@ -110,8 +112,9 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   naive datetime is rejected with 400 (it would otherwise silently be
   interpreted in the server's timezone). `201` + the same code object shape.
 - **`GET /api/files?q=&mine=`** (`app/api/files/route.ts`, teacher-only) —
-  the `/files` page's filters and defaults (`q` over
-  name/title/description; `mine` default on). Bare JSON array of active
+  the `/files` list's filters, with the bearer channel's own ownership param
+  (`q` over name/title/description; `mine` default on, where the web page
+  spells it `?owner=`). Bare JSON array of active
   versions **without content**:
   `{ name, kind, title, description, createdBy, createdAt, url }` (`url` the
   public download URL; download itself needs nothing new — the per-name GET
@@ -125,8 +128,9 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   the name is 409 too). Body `{ kind?, content }`; `200` with
   `{ name, kind, url, action: "created" | "updated" }`.
 - **`GET /api/images?q=&mine=`** (`app/api/images/route.ts`, teacher-only) —
-  the `/images` page's filters and defaults (`q` over the name; `mine` default
-  on). Bare JSON array of active versions
+  the `/images` list's filters, with the bearer channel's own ownership param
+  (`q` over the name; `mine` default on, where the web page spells it
+  `?owner=`). Bare JSON array of active versions
   `{ name, mimeType, byteSize, credit, createdBy, createdAt, url }` — `url` is
   a **short-lived (~3 h) read SAS** straight to the blob (the bytes never pass
   through the app, `docs/images.md`), or `null` when minting fails for that

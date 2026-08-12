@@ -2,10 +2,12 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useTransition } from "react";
+import { ALL_OWNERS, type OwnerOption } from "@/lib/db/owner-filter";
 import { DEFAULT_PAGE_SIZE } from "@/lib/db/paging";
 import { formatSort, type Sort } from "@/lib/db/sorting";
 import { Spinner } from "./spinner";
 import { Button } from "./ui/button";
+import { Select } from "./ui/input";
 
 // The reusable filter bar for "filtered list" pages (see `docs/filtered-lists.md`).
 // It owns ONE thing: turning the filter controls into URL search params on
@@ -108,8 +110,61 @@ export function ListFilterBar({
   );
 }
 
+// The shared OWNER dropdown for the filter bar — one recipe for every list page
+// (codes, files, images); see `docs/filtered-lists.md`. The signed-in teacher is
+// always the FIRST option and carries the empty value, which is what makes the
+// default view param-free (the serializer above drops empty values) and what makes
+// "Clear" land back on their own items with no extra logic.
+//
+// `options` are the owners the list actually has (`lib/db/owners.ts`). The current
+// user is dropped from them — they are the first option already — and a selected oid
+// that is not among them (a stale bookmark, or an owner whose last item was deleted)
+// is appended so the control can never disagree with the URL.
+export function OwnerFilter({
+  noun,
+  options,
+  value,
+  currentUserId,
+  currentUserName,
+  className,
+}: {
+  /** What the list holds, for the first option's text: `My codes (Alex Muster)`. */
+  noun: string;
+  options: OwnerOption[];
+  /** `""` = me, `ALL_OWNERS`, or an oid — from `parseOwner`. */
+  value: string;
+  currentUserId: string;
+  /** The signed-in teacher's display name, when the session carries one. */
+  currentUserName?: string | null;
+  className?: string;
+}) {
+  const others = options.filter((option) => option.userId !== currentUserId);
+  // A URL that names MY oid explicitly is the same filter as the empty default, so
+  // it selects the first option rather than appending me as a nameless stranger.
+  const selected = value === currentUserId ? "" : value;
+  if (selected !== "" && selected !== ALL_OWNERS && !others.some((o) => o.userId === selected)) {
+    others.push({ userId: selected, label: selected });
+  }
+  return (
+    <Select name="owner" className={className} defaultValue={selected} aria-label="Filter by owner">
+      <option value="">{currentUserName ? `My ${noun} (${currentUserName})` : `My ${noun}`}</option>
+      <option value={ALL_OWNERS}>All owners</option>
+      {others.length > 0 ? (
+        <optgroup label="Other owners">
+          {others.map((option) => (
+            <option key={option.userId} value={option.userId}>
+              {option.label}
+            </option>
+          ))}
+        </optgroup>
+      ) : null}
+    </Select>
+  );
+}
+
 // The shared "Only my …" style checkbox control for the filter bar — one label
-// recipe for every list page (codes, files, images).
+// recipe for every list page (the /reports inbox; the three item lists use the
+// owner dropdown above).
 export function FilterCheckbox({
   name,
   label,

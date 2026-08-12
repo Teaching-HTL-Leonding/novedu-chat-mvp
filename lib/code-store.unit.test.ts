@@ -60,9 +60,17 @@ const fake = vi.hoisted(() => {
     const tail = { leftJoin: () => tail, where: () => queryTail(fields) };
     return tail;
   };
-  const select = (fields?: Record<string, unknown>) => ({
-    from: () => ({ where: () => queryTail(fields), $dynamic: () => dynamicTail(fields) }),
-  });
+  // `.from(...)` accepts the row query's `.leftJoin(users, …)` (the owner name) as
+  // well as the count's `$dynamic()`; both tails resolve through `queryTail`.
+  const fromTail = (fields?: Record<string, unknown>) => {
+    const tail = {
+      leftJoin: () => tail,
+      where: () => queryTail(fields),
+      $dynamic: () => dynamicTail(fields),
+    };
+    return tail;
+  };
+  const select = (fields?: Record<string, unknown>) => ({ from: () => fromTail(fields) });
   const insert = () => ({
     values: async (values: Record<string, unknown>) => {
       const error = state.insertErrors.shift();
@@ -85,7 +93,7 @@ const fake = vi.hoisted(() => {
       },
     }),
   });
-  return { state, db: { select, insert, delete: del, update } };
+  return { state, db: { select, selectDistinct: select, insert, delete: del, update } };
 });
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
@@ -98,6 +106,7 @@ import {
   effectiveLlm,
   generateCode,
   getCode,
+  listCodeOwners,
   listCodes,
   MAX_LLM_MODEL_LENGTH,
   MAX_NOTE_LENGTH,
@@ -447,6 +456,22 @@ describe("listCodes", () => {
     expect(fake.state.windows).toEqual([]);
   });
 
+  it("carries the owner's display name from the join — null when there is none", async () => {
+    const named = entry();
+    const unnamed = entry({ code: "f6g7h8i9j0", createdBy: "cli-only-teacher" });
+    fake.state.rows = [
+      { ...toRow(named), ownerName: "Alex Muster" },
+      // A teacher who has never signed in through the web app has no
+      // `novedu_users` row; the page falls back to the raw oid.
+      { ...toRow(unnamed), ownerName: null },
+    ];
+    const result = await listCodes();
+    expect(result?.rows).toEqual([
+      { ...named, ownerName: "Alex Muster" },
+      { ...unnamed, ownerName: null },
+    ]);
+  });
+
   it("returns the rows the fake db yields when filters are supplied", async () => {
     // The fake doesn't execute SQL — it just confirms the call shape resolves to
     // the configured rows (the WHERE/LIKE itself is covered by the @live e2e).
@@ -504,6 +529,27 @@ describe("getCode", () => {
   it("returns undefined instead of throwing when the database is down", async () => {
     fake.state.selectError = new Error("connection lost");
     await expect(getCode("a1b2c3d4e5")).resolves.toBeUndefined();
+  });
+});
+
+describe("listCodeOwners", () => {
+  it("maps the distinct owner rows to dropdown options", async () => {
+    fake.state.rows = [
+      { userId: "oid-1", label: "Alex Muster" },
+      // No display name: `lib/db/owners.ts` COALESCEs the oid into the label, so
+      // the option is still selectable and still sorts into the alphabet.
+      { userId: "oid-2", label: "oid-2" },
+    ];
+    await expect(listCodeOwners()).resolves.toEqual([
+      { userId: "oid-1", label: "Alex Muster" },
+      { userId: "oid-2", label: "oid-2" },
+    ]);
+  });
+
+  it("returns an empty list instead of throwing when the database is down", async () => {
+    // The page then renders just the "me" and "all owners" entries.
+    fake.state.selectError = new Error("connection lost");
+    await expect(listCodeOwners()).resolves.toEqual([]);
   });
 });
 

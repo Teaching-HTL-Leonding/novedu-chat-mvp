@@ -25,7 +25,7 @@ a pure server concern later.
 | Store query | `lib/*-store.ts` | the actual SQL filter (see below) |
 | `DataList<T>` | `components/data-list.tsx` (**server**) | the full list page body: `PageBody` shell + toolbar + empty/no-match + the pagination seam around a `ListTable` |
 | `ListTable<T>` | `components/data-list.tsx` (**server**) | the bare column-driven table; owns ALL table chrome incl. the per-column `kind` recipes — embedded tables (the per-code `ConversationStats`) render through it directly |
-| `ListFilterBar` | `components/list-filter-bar.tsx` (**client**) | the only interactive bit: controls + **Apply** → push a new query string; exports `FilterCheckbox` for the "Only my …" toggle |
+| `ListFilterBar` | `components/list-filter-bar.tsx` (**client**) | the only interactive bit: controls + **Apply** → push a new query string; exports `OwnerFilter` (the owner dropdown) and `FilterCheckbox` (the `/reports` "Only my codes" toggle) |
 | ui primitives | `components/ui/` (`Button`/`buttonVariants`, `Input`, `Badge`, `IconButton`) | the "New …" action, the search input, kind/status chips, row action buttons |
 
 ### Store: dynamic query, the Drizzle way
@@ -59,21 +59,25 @@ rendering (these pages are already dynamic via `auth()`). Parse, query, map to p
 row objects (convert `Date`s to unix seconds for `LocalTime`), and render:
 
 ```tsx
-const sp = await searchParams; // Promise<{ q?: string|string[]; mine?: string|string[] }>
+const sp = await searchParams; // Promise<{ q?: string|string[] } & OwnerParams & …>
 const q = typeof sp.q === "string" ? sp.q : "";
-const onlyMine = sp.mine !== "0";           // default ON; "0" turns it off
-const rows = await listFiles({ search: q || undefined, createdBy: onlyMine ? userId : undefined });
+const owner = parseOwner(sp, userId);       // absent ?owner= = the signed-in teacher
+const [rows, owners] = await Promise.all([
+  listFiles({ search: q || undefined, createdBy: owner.createdBy }),
+  listFileOwners(),
+]);
 return (
   <DataList
     rows={rows} getRowKey={(r) => r.id} columns={columns}
     actions={<Link href="/files/new" className={buttonVariants()}>New file</Link>}
     filterBar={
-      <ListFilterBar hasActiveFilter={q !== "" || !onlyMine}>
-        <Input type="search" name="q" defaultValue={q} aria-label="Filter files" placeholder="Filter…" className="w-72" />
-        <FilterCheckbox name="mine" label="Only my files" defaultChecked={onlyMine} />
+      <ListFilterBar hasActiveFilter={q !== "" || owner.value !== ""}>
+        <Input type="search" name="q" defaultValue={q} aria-label="Filter files" placeholder="Filter…" className="w-56" />
+        <OwnerFilter className="w-56" noun="files" options={owners} value={owner.value}
+          currentUserId={userId} currentUserName={session?.user?.name} />
       </ListFilterBar>
     }
-    isFiltered={q.trim() !== ""}
+    isFiltered={q.trim() !== "" || owner.value !== ""}
     emptyState={<>No files yet. <Link href="/files/new">Create one</Link>.</>}
     noMatchState="No files match your filter."
   />
@@ -98,6 +102,73 @@ to the first page). It uses `useRouter`/`usePathname` only — current values ar
 server-rendered into `defaultValue`/`defaultChecked`, so no `useSearchParams`
 (avoids its Suspense caveat). Any control with a `name` participates, so a future
 filter (a `<select>`, a date range) drops in without touching the bar.
+
+## The owner filter
+
+`/codes`, `/files` and `/images` all answer "whose is this?" the same way: a sortable
+**Owner** column and an **owner dropdown** that defaults to the signed-in teacher.
+It is one more instance of the one discipline — the person filter is a SQL `WHERE`,
+and the option list is its own small query.
+
+**"Owner" is the user-facing word on all three lists**, and it is deliberately
+looser than "creator": `novedu_codes.created_by` never changes, but `novedu_files`
+and `novedu_images` are append-only, so the active row's `created_by` is whoever
+saved the item LAST. The teacher guide says exactly that; the docs of those two
+subsystems repeat it.
+
+| Piece | Where | Role |
+| --- | --- | --- |
+| `lib/db/owner-filter.ts` | shared, **no DB or drizzle import** | `ALL_OWNERS`, `OwnerOption`, `OwnerParams`, `parseOwner` |
+| `lib/db/owners.ts` | shared, server-only | `listOwners(table, createdByColumn, conditions)` — the one DISTINCT query — plus the `ownerJoin` / `ownerLabel` SQL fragments every store reuses |
+| store | `lib/{code,file,image}-store.ts` | `list*Owners()` + the `ownerName` LEFT JOIN + the `owner` sort key |
+| `OwnerFilter` | `components/list-filter-bar.tsx` (**client**) | the `<select>`: me, all owners, then an `<optgroup>` of the rest |
+| `ownerColumn<T>()` | `components/owner-column.tsx` (**server-safe**) | the Owner cell recipe, one entry in a page's `columns` — the same shape as `selectionColumn`; width-capped and ellipsised, because the oid fallback is a 36-character GUID that would otherwise widen every table |
+
+### The URL grammar makes "Clear" free
+
+`?owner=` absent (or empty) = **the signed-in teacher**, `all` = every owner, anything
+else = that oid verbatim. Two existing `ListFilterBar` behaviors then do the work:
+the serializer drops empty `<select>` values, so the default view has NO query string,
+and "Clear" is a bare `router.push(pathname)` — which therefore lands back on the
+teacher's own items with no code of its own. (The old `?mine=0` checkbox is gone from
+these three pages; the bearer API routes keep their own `mine` param — `docs/api.md`.)
+
+An oid outside the option list — a stale bookmark, or an owner whose last item was
+deleted — is **kept**, not silently swapped for the default: it filters (and finds
+nothing) and `OwnerFilter` appends it as its own option, so the control can never
+claim a filter the query is not applying. That is the opposite of `parseSort`, whose
+allow-list makes an unknown key degrade to the default order; here degrading would
+hide that the URL asked for something.
+
+### The two queries
+
+The row query LEFT-JOINs `novedu_users` **by value** for `ownerName` (`null` → the
+page shows the raw oid), exactly like `lib/report-store.ts` does for a reporter. The
+join is on that table's primary key, and **no list condition reaches into `users`** —
+the search term deliberately does not match owner names — so `countRows` stays
+join-free and the COUNT can never drift from the rows.
+
+`listOwners` is a `SELECT DISTINCT created_by, COALESCE(display_name, created_by)`.
+Two things are load-bearing:
+
+- It gets the list's **base conditions only** (`isNull(validUntil)`, the known-module
+  guard), never the active search/module filter — otherwise the owner a teacher just
+  picked could vanish from the control that picked them.
+- The ORDER BY repeats the **selected** COALESCE expression: mssql requires every
+  `ORDER BY` term of a `SELECT DISTINCT` to appear in the select list. Ordering by
+  the coalesced label (not by `display_name`) is also what keeps an owner without a
+  `novedu_users` row inside the alphabet instead of leading it as a NULL.
+
+The same COALESCE is the `owner` entry of each store's `*_SORT_COLUMNS`, so the
+column sorts by what it displays — which is why it is the shared `ownerLabel()`
+rather than an expression each store spells out. (`/reports` sorts its `student`
+column by the bare joined name — NULLs first — because that list has no oid fallback
+in its ORDER BY.)
+
+A page therefore adds the whole feature with three lines: `parseOwner(sp, userId)`,
+`ownerColumn<Row>()` in its `columns`, and `<OwnerFilter>` in its filter bar. A
+selected oid equal to the signed-in teacher's is treated as the empty default, so
+`?owner=<my oid>` and no param at all render the same control.
 
 ## Multi-delete (row selection + "Delete Selected")
 
@@ -181,7 +252,9 @@ the wired DB delete is the `@live-db` case in `e2e/file-and-tutor-code-crud.spec
 6. Export a `SORT_COLUMNS` map from the store, hand it to `parseSort` in the page,
    give every column backed by that query a `sortKey`, and pass `sorting` to
    `DataList` + `sort` to `ListFilterBar` (see "Sorting" below).
-7. (Optional) Opt into multi-delete: add a bulk store function + a teacher-gated
+7. If the rows have an owner, add the `ownerName` join + a `list*Owners()` export to
+   the store and render `OwnerFilter` (see "The owner filter").
+8. (Optional) Opt into multi-delete: add a bulk store function + a teacher-gated
    server action that reuses the per-item delete helper, wrap the `DataList` in
    `SelectionProvider`, prepend `selectionColumn`, and add `DeleteSelectedButton` to
    `actions` (see "Multi-delete" above).

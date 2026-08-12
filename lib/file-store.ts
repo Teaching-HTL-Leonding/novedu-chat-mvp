@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { type DbExecutor, getDb } from "@/lib/db";
 import { countRows } from "@/lib/db/count";
+import type { OwnerOption } from "@/lib/db/owner-filter";
+import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
-import { files } from "@/lib/db/schema";
+import { files, users } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
@@ -47,6 +49,15 @@ export interface FileListEntry {
   /** oid of the writer of the active version = the file's "last writer". */
   createdBy: string;
 }
+
+/**
+ * A file as the `/files` LIST shows it: the entry plus its OWNER's display name,
+ * LEFT-JOINed from `novedu_users` by value — `null` when that teacher has never
+ * signed in through the web app, in which case the page falls back to the raw oid.
+ * "Owner" is the last writer here (see `createdBy` above), the word the UI and the
+ * teacher guide use.
+ */
+export type FileListRow = FileListEntry & { ownerName: string | null };
 
 /** The active version of one file, including its content (for the editor / GET). */
 export interface ActiveFile extends FileListEntry {
@@ -100,20 +111,35 @@ function listConditions(opts?: { search?: string; createdBy?: string }): SQL[] {
   return conditions;
 }
 
+// The row's owner name (display-only; see `ownerJoin`) and the label the `owner`
+// sort key orders by — the same coalesced expression the dropdown shows, so the
+// column sorts by exactly what it displays.
+const JOIN_OWNER = ownerJoin(files.createdBy);
+const OWNER_LABEL = ownerLabel(files.createdBy);
+
 /** The `/files` list's sortable columns (ORDER BY map + `parseSort` allow-list). */
 export const FILE_SORT_COLUMNS = {
   name: files.name,
   kind: files.kind,
   title: files.title,
+  owner: OWNER_LABEL,
   updated: files.validFrom,
 } satisfies SortColumns;
+
+/**
+ * The distinct owners (last writers) of the active files, for the `/files` owner
+ * dropdown. Base conditions only — see `listOwners`. Never throws.
+ */
+export async function listFileOwners(): Promise<OwnerOption[]> {
+  return listOwners(files, files.createdBy, listConditions());
+}
 
 /**
  * The active (non-deleted) files for the "YAML Files" list, newest first unless a
  * `sort` says otherwise. Filtering happens IN THE DATABASE (see `docs/filtered-lists.md`), never in
  * memory: an optional `search` term is a case-insensitive contains-match over
  * name/title/description, and `createdBy` narrows to one writer's files (the
- * "Only my files" toggle). Content is intentionally NOT selected (it can be large
+ * owner dropdown). Content is intentionally NOT selected (it can be large
  * and the list never shows it). `undefined` on a database error, which the page
  * notes.
  *
@@ -127,7 +153,7 @@ export async function listFiles(opts?: {
   createdBy?: string;
   paging?: Paging;
   sort?: Sort;
-}): Promise<PagedResult<FileListEntry> | undefined> {
+}): Promise<PagedResult<FileListRow> | undefined> {
   const conditions = listConditions(opts);
   try {
     return await paginate({
@@ -145,8 +171,10 @@ export async function listFiles(opts?: {
             description: files.description,
             validFrom: files.validFrom,
             createdBy: files.createdBy,
+            ownerName: users.displayName,
           })
           .from(files)
+          .leftJoin(users, JOIN_OWNER)
           .where(and(...conditions))
           .orderBy(
             ...sortOrder(opts?.sort, FILE_SORT_COLUMNS, [desc(files.validFrom)], asc(files.id)),

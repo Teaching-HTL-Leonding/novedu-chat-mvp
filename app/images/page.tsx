@@ -2,19 +2,21 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
-import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
+import { ListFilterBar, OwnerFilter } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { Notice } from "@/components/notice";
+import { ownerColumn } from "@/components/owner-column";
 import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { selectionColumn } from "@/components/selection-column";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { type OwnerParams, parseOwner } from "@/lib/db/owner-filter";
 import { type PagingParams, parsePaging } from "@/lib/db/paging";
 import { parseSort, type SortParams } from "@/lib/db/sorting";
 import { mintReadSas } from "@/lib/image-blob";
-import { IMAGE_SORT_COLUMNS, listImages } from "@/lib/image-store";
+import { IMAGE_SORT_COLUMNS, listImageOwners, listImages } from "@/lib/image-store";
 import { deleteSelectedImagesAction } from "@/lib/images-actions";
 import { LocalTime } from "../local-time";
 import { ViewImageButton } from "./view-image-button";
@@ -22,8 +24,10 @@ import { ViewImageButton } from "./view-image-button";
 // One active image as shown in the list. `viewUrl` is a short-lived read SAS
 // minted on the server (no app route serves image bytes) — the "View" button
 // opens it in the lightbox; `updatedSeconds` is the active version's write time as
-// unix seconds; `createdBy` is the writer's oid (drives the "Only my images"
-// filter, applied in the DB).
+// unix seconds; `createdBy` is the OWNER's oid — here the last writer, since the
+// table is append-only — which drives the owner filter, applied in the DB.
+// `ownerName` is its `novedu_users` resolution, `null` for a teacher who has never
+// signed in through the web app.
 interface ImageRow {
   id: string;
   name: string;
@@ -33,6 +37,7 @@ interface ImageRow {
   credit: string | null;
   updatedSeconds: number;
   createdBy: string;
+  ownerName: string | null;
 }
 
 // Renders a byte count as a short human-readable size (e.g. "512 B", "1.4 MB").
@@ -49,16 +54,15 @@ function formatBytes(bytes: number): string {
 }
 
 // Teacher-only: every app-hosted image (active versions only), with a
-// contains-filter over the name and an "Only my images" toggle — both applied IN
-// THE DATABASE via URL search params (see `docs/filtered-lists.md`), never in
+// contains-filter over the name and an owner dropdown (defaulting to the
+// signed-in teacher) — both applied IN THE DATABASE via URL search params
+// (see `docs/filtered-lists.md`), never in
 // memory. No row-level security: every teacher sees and maintains every image.
 // "Effective" teacher: a teacher in student mode is denied like a student.
 export default async function ImagesPage({
   searchParams,
 }: {
-  searchParams: Promise<
-    { q?: string | string[]; mine?: string | string[] } & PagingParams & SortParams
-  >;
+  searchParams: Promise<{ q?: string | string[] } & OwnerParams & PagingParams & SortParams>;
 }) {
   const denied = await requireTeacherPage();
   if (denied) return denied;
@@ -68,16 +72,18 @@ export default async function ImagesPage({
 
   const sp = await searchParams;
   const q = (typeof sp.q === "string" ? sp.q : "").trim();
-  const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
+  // Absent `?owner=` means the signed-in teacher, so the default view — and
+  // "Clear" — need no param at all (docs/filtered-lists.md).
+  const owner = parseOwner(sp, currentUserId);
   const paging = parsePaging(sp);
   const sort = parseSort(sp, IMAGE_SORT_COLUMNS);
 
-  const result = await listImages({
-    search: q || undefined,
-    createdBy: onlyMine ? currentUserId : undefined,
-    paging,
-    sort,
-  });
+  // The dropdown's options come from the whole (unfiltered) image set, so the owner
+  // a teacher just picked can never disappear from the control that picked them.
+  const [result, owners] = await Promise.all([
+    listImages({ search: q || undefined, createdBy: owner.createdBy, paging, sort }),
+    listImageOwners(),
+  ]);
 
   if (result === undefined) {
     return (
@@ -107,6 +113,7 @@ export default async function ImagesPage({
     credit: entry.credit,
     updatedSeconds: Math.floor(entry.validFrom.getTime() / 1000),
     createdBy: entry.createdBy,
+    ownerName: entry.ownerName,
   }));
 
   const columns: ListColumn<ImageRow, keyof typeof IMAGE_SORT_COLUMNS>[] = [
@@ -148,6 +155,7 @@ export default async function ImagesPage({
           "—"
         ),
     },
+    ownerColumn<ImageRow>(),
     {
       header: "Last updated",
       sortKey: "updated",
@@ -190,8 +198,8 @@ export default async function ImagesPage({
           }
           filterBar={
             <ListFilterBar
-              hasActiveFilter={q !== "" || !onlyMine}
-              resetKey={`${q}|${onlyMine ? "1" : "0"}`}
+              hasActiveFilter={q !== "" || owner.value !== ""}
+              resetKey={`${q}|${owner.value}`}
               pageSize={result.pageSize}
               sort={sort}
             >
@@ -203,10 +211,17 @@ export default async function ImagesPage({
                 defaultValue={q}
                 aria-label="Filter images"
               />
-              <FilterCheckbox name="mine" label="Only my images" defaultChecked={onlyMine} />
+              <OwnerFilter
+                className="w-56"
+                noun="images"
+                options={owners}
+                value={owner.value}
+                currentUserId={currentUserId}
+                currentUserName={session?.user?.name}
+              />
             </ListFilterBar>
           }
-          isFiltered={q !== ""}
+          isFiltered={q !== "" || owner.value !== ""}
           emptyState={
             <>
               No images yet. <Link href="/images/new">Upload one</Link> to reference it from your

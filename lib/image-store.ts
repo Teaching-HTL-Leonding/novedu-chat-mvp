@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { type DbExecutor, getDb } from "@/lib/db";
 import { countRows } from "@/lib/db/count";
+import type { OwnerOption } from "@/lib/db/owner-filter";
+import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
-import { images } from "@/lib/db/schema";
+import { images, users } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
@@ -40,6 +42,15 @@ export interface ImageListEntry {
   /** oid of the writer of the active version. */
   createdBy: string;
 }
+
+/**
+ * An image as the `/images` LIST shows it: the entry plus its OWNER's display name,
+ * LEFT-JOINed from `novedu_users` by value — `null` when that teacher has never
+ * signed in through the web app, in which case the page falls back to the raw oid.
+ * "Owner" is the last writer here (see `createdBy` above), the word the UI and the
+ * teacher guide use.
+ */
+export type ImageListRow = ImageListEntry & { ownerName: string | null };
 
 /** The active version of one image. Metadata only — the bytes live in Blob Storage. */
 export type ActiveImage = ImageListEntry;
@@ -79,21 +90,36 @@ function listConditions(opts?: { search?: string; createdBy?: string }): SQL[] {
   return conditions;
 }
 
+// The row's owner name (display-only; see `ownerJoin`) and the label the `owner`
+// sort key orders by — the same coalesced expression the dropdown shows, so the
+// column sorts by exactly what it displays.
+const JOIN_OWNER = ownerJoin(images.createdBy);
+const OWNER_LABEL = ownerLabel(images.createdBy);
+
 /** The `/images` list's sortable columns (ORDER BY map + `parseSort` allow-list). */
 export const IMAGE_SORT_COLUMNS = {
   name: images.name,
   mime: images.mimeType,
   size: images.byteSize,
   credit: images.credit,
+  owner: OWNER_LABEL,
   updated: images.validFrom,
 } satisfies SortColumns;
+
+/**
+ * The distinct owners (last writers) of the active images, for the `/images` owner
+ * dropdown. Base conditions only — see `listOwners`. Never throws.
+ */
+export async function listImageOwners(): Promise<OwnerOption[]> {
+  return listOwners(images, images.createdBy, listConditions());
+}
 
 /**
  * The active (non-deleted) images for the "Images" list, newest first unless a
  * `sort` says otherwise. Filtering
  * happens IN THE DATABASE (see `docs/filtered-lists.md`), never in memory: an
  * optional `search` term is a case-insensitive contains-match over the name, and
- * `createdBy` narrows to one writer's images (the "Only my images" toggle).
+ * `createdBy` narrows to one writer's images (the owner dropdown).
  * `undefined` on a database error, which the page notes.
  *
  * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
@@ -106,7 +132,7 @@ export async function listImages(opts?: {
   createdBy?: string;
   paging?: Paging;
   sort?: Sort;
-}): Promise<PagedResult<ImageListEntry> | undefined> {
+}): Promise<PagedResult<ImageListRow> | undefined> {
   const conditions = listConditions(opts);
   try {
     return await paginate({
@@ -125,8 +151,10 @@ export async function listImages(opts?: {
             credit: images.credit,
             validFrom: images.validFrom,
             createdBy: images.createdBy,
+            ownerName: users.displayName,
           })
           .from(images)
+          .leftJoin(users, JOIN_OWNER)
           .where(and(...conditions))
           .orderBy(
             ...sortOrder(opts?.sort, IMAGE_SORT_COLUMNS, [desc(images.validFrom)], asc(images.id)),

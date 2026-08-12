@@ -1,10 +1,12 @@
 import { randomInt } from "node:crypto";
-import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, inArray, type SQL } from "drizzle-orm";
 import { CODE_MODULES, type CodeModule, isCodeModule } from "@/lib/code-modules/types";
 import { getDb } from "@/lib/db";
 import { countRows } from "@/lib/db/count";
+import type { OwnerOption } from "@/lib/db/owner-filter";
+import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
-import { codes } from "@/lib/db/schema";
+import { codes, users } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
@@ -215,6 +217,15 @@ export interface CodeEntry {
   createdAt: Date;
 }
 
+/**
+ * A code as the `/codes` LIST shows it: the stored entry plus its owner's display
+ * name, LEFT-JOINed from `novedu_users` by value — `null` when that teacher has
+ * never signed in through the web app, in which case the page falls back to the raw
+ * `createdBy` oid. A superset of `CodeEntry`, so every `CodeEntry` consumer (the
+ * bearer route's wire shape included) is unaffected.
+ */
+export type CodeListRow = CodeEntry & { ownerName: string | null };
+
 // Row shape from the DB has `module` as a plain string column; narrow it to the
 // CodeModule union on read. A row whose module is not a known module — a corrupt
 // or forward-compat row (e.g. a module written to the DB before its registry entry
@@ -393,6 +404,12 @@ function listConditions(opts?: {
   return conditions;
 }
 
+// The row's owner name (display-only; see `ownerJoin`) and the label the `owner`
+// sort key orders by — the same coalesced expression the dropdown shows, so the
+// column sorts by exactly what it displays.
+const JOIN_OWNER = ownerJoin(codes.createdBy);
+const OWNER_LABEL = ownerLabel(codes.createdBy);
+
 /**
  * The `/codes` list's sortable columns (ORDER BY map + `parseSort` allow-list).
  * `module` sorts by the STORED value (coding, quiz, tutor, writing alphabetically),
@@ -403,9 +420,18 @@ function listConditions(opts?: {
 export const CODE_SORT_COLUMNS = {
   module: codes.module,
   note: codes.note,
+  owner: OWNER_LABEL,
   from: codes.validFrom,
   until: codes.validUntil,
 } satisfies SortColumns;
+
+/**
+ * The distinct owners (creating teachers) of the listed codes, for the `/codes`
+ * owner dropdown. Base conditions only — see `listOwners`. Never throws.
+ */
+export async function listCodeOwners(): Promise<OwnerOption[]> {
+  return listOwners(codes, codes.createdBy, listConditions());
+}
 
 /**
  * Codes for the "Codes" page — ALL teachers' codes (a teacher may see/manage
@@ -413,7 +439,7 @@ export const CODE_SORT_COLUMNS = {
  * otherwise, including not-yet-started and expired ones. Filtering happens IN THE DATABASE (see
  * `docs/filtered-lists.md`), never in memory: an optional `search` term is a
  * case-insensitive contains-match over note/code, `createdBy` narrows to one
- * teacher's codes (the "Only my codes" toggle), and `module` narrows to one
+ * teacher's codes (the owner dropdown), and `module` narrows to one
  * activity. Never throws — an unreachable database reads as `undefined`, which
  * the page notes.
  *
@@ -428,7 +454,7 @@ export async function listCodes(opts?: {
   module?: CodeModule;
   paging?: Paging;
   sort?: Sort;
-}): Promise<PagedResult<CodeEntry> | undefined> {
+}): Promise<PagedResult<CodeListRow> | undefined> {
   const conditions = listConditions(opts);
   try {
     return await paginate({
@@ -438,8 +464,11 @@ export async function listCodes(opts?: {
       // may invoke this twice (once more after clamping an over-shot page).
       rows: async (window) => {
         const query = getDb()
-          .select()
+          // The stored columns spread rather than restated, plus the joined owner
+          // name — so a schema change reaches the list without an edit here.
+          .select({ ...getTableColumns(codes), ownerName: users.displayName })
           .from(codes)
+          .leftJoin(users, JOIN_OWNER)
           .where(and(...conditions))
           .orderBy(
             ...sortOrder(opts?.sort, CODE_SORT_COLUMNS, [desc(codes.createdAt)], asc(codes.code)),
@@ -449,7 +478,12 @@ export async function listCodes(opts?: {
         // row would make a page short and disagree with the COUNT) — kept so a
         // future condition change can't silently reintroduce that mismatch.
         // `getCode`/`checkCode` still exercise toEntry's corrupt-row logging.
-        return rows.map(toEntry).filter((entry): entry is CodeEntry => entry !== null);
+        return rows
+          .map(({ ownerName, ...row }) => {
+            const entry = toEntry(row);
+            return entry && { ...entry, ownerName };
+          })
+          .filter((entry): entry is CodeListRow => entry !== null);
       },
     });
   } catch (error) {
