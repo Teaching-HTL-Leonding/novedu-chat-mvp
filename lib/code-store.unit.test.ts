@@ -1,3 +1,4 @@
+import { asc, desc } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Fake drizzle handle: just enough of the fluent query API for the store's
@@ -10,6 +11,9 @@ const fake = vi.hoisted(() => {
     // the store asked for (so a test can pin the SQL-side paging).
     total: 0,
     windows: [] as { offset: number; limit: number }[],
+    // The ORDER BY terms of the most recent row query, so a test can pin that an
+    // explicit sort replaced the default order and the tiebreaker still trails.
+    order: [] as unknown[],
     inserted: [] as Record<string, unknown>[],
     insertErrors: [] as unknown[],
     selectError: undefined as unknown,
@@ -33,16 +37,19 @@ const fake = vi.hoisted(() => {
     return {
       // `orderBy` returns a builder (not a promise) because the paged query
       // continues with `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
-      orderBy: () => ({
-        offset: (offset: number) => ({
-          fetch: (limit: number) => {
-            state.windows.push({ offset, limit });
-            return run();
-          },
-        }),
-        // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
-        then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
-      }),
+      orderBy: (...order: unknown[]) => {
+        state.order = order;
+        return {
+          offset: (offset: number) => ({
+            fetch: (limit: number) => {
+              state.windows.push({ offset, limit });
+              return run();
+            },
+          }),
+          // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
+          then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
+        };
+      },
       // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
       then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
     };
@@ -97,6 +104,7 @@ import {
   updateCode,
   validateCodeRequest,
 } from "@/lib/code-store";
+import { codes } from "@/lib/db/schema";
 
 const NOW = new Date("2026-06-10T12:00:00Z");
 
@@ -465,6 +473,14 @@ describe("listCodes", () => {
   it("returns undefined instead of throwing when the database is down", async () => {
     fake.state.selectError = new Error("connection lost");
     await expect(listCodes()).resolves.toBeUndefined();
+  });
+
+  it("lets an explicit sort replace the default order, keeping the tiebreaker last", async () => {
+    await listCodes({ sort: { key: "note", dir: "asc" } });
+    expect(fake.state.order).toEqual([asc(codes.note), asc(codes.code)]);
+
+    await listCodes();
+    expect(fake.state.order).toEqual([desc(codes.createdAt), asc(codes.code)]);
   });
 });
 

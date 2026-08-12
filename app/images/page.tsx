@@ -12,8 +12,9 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type PagingParams, parsePaging } from "@/lib/db/paging";
+import { parseSort, type SortParams } from "@/lib/db/sorting";
 import { mintReadSas } from "@/lib/image-blob";
-import { listImages } from "@/lib/image-store";
+import { IMAGE_SORT_COLUMNS, listImages } from "@/lib/image-store";
 import { deleteSelectedImagesAction } from "@/lib/images-actions";
 import { LocalTime } from "../local-time";
 import { ViewImageButton } from "./view-image-button";
@@ -55,7 +56,9 @@ function formatBytes(bytes: number): string {
 export default async function ImagesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string | string[]; mine?: string | string[] } & PagingParams>;
+  searchParams: Promise<
+    { q?: string | string[]; mine?: string | string[] } & PagingParams & SortParams
+  >;
 }) {
   const denied = await requireTeacherPage();
   if (denied) return denied;
@@ -67,11 +70,13 @@ export default async function ImagesPage({
   const q = (typeof sp.q === "string" ? sp.q : "").trim();
   const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
   const paging = parsePaging(sp);
+  const sort = parseSort(sp, IMAGE_SORT_COLUMNS);
 
   const result = await listImages({
     search: q || undefined,
     createdBy: onlyMine ? currentUserId : undefined,
     paging,
+    sort,
   });
 
   if (result === undefined) {
@@ -104,25 +109,33 @@ export default async function ImagesPage({
     createdBy: entry.createdBy,
   }));
 
-  const columns: ListColumn<ImageRow>[] = [
+  const columns: ListColumn<ImageRow, keyof typeof IMAGE_SORT_COLUMNS>[] = [
     // Leading multi-select column; the selection key is the image NAME, which is
     // what `deleteSelectedImagesAction` deletes by (and is unique among active images).
     selectionColumn<ImageRow>(
       (row) => row.name,
       (row) => row.name,
     ),
-    { header: "Name", className: "whitespace-nowrap font-mono", render: (row) => row.name },
+    {
+      header: "Name",
+      sortKey: "name",
+      className: "whitespace-nowrap font-mono",
+      render: (row) => row.name,
+    },
     {
       header: "Mime",
+      sortKey: "mime",
       render: (row) => <Badge className="font-mono tracking-wide">{row.mimeType}</Badge>,
     },
     {
       header: "Size",
+      sortKey: "size",
       className: "whitespace-nowrap tabular-nums",
       render: (row) => formatBytes(row.byteSize),
     },
     {
       header: "Credit",
+      sortKey: "credit",
       render: (row) =>
         row.credit ? (
           <span
@@ -137,6 +150,7 @@ export default async function ImagesPage({
     },
     {
       header: "Last updated",
+      sortKey: "updated",
       kind: "time",
       render: (row) => <LocalTime seconds={row.updatedSeconds} />,
     },
@@ -179,6 +193,7 @@ export default async function ImagesPage({
               hasActiveFilter={q !== "" || !onlyMine}
               resetKey={`${q}|${onlyMine ? "1" : "0"}`}
               pageSize={result.pageSize}
+              sort={sort}
             >
               <Input
                 type="search"
@@ -199,7 +214,10 @@ export default async function ImagesPage({
             </>
           }
           noMatchState="No images match your filter."
-          pagination={{ pathname: "/images", params: sp, result }}
+          pathname="/images"
+          params={sp}
+          pagination={result}
+          sorting={sort}
         />
       </SelectionProvider>
     </Main>

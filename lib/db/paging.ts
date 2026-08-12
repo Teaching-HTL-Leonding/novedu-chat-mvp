@@ -6,8 +6,9 @@
 //
 // This module is deliberately free of any database import: `components/data-list.tsx`
 // pulls `pageHref`/`ParamRecord` in to render the pager, and no driver code may
-// reach the component graph. If a third URL-shaped helper ever shows up here,
-// that is the signal to split the URL half into its own module.
+// reach the component graph. It owns the shared list-URL vocabulary — `ParamRecord`
+// and `carryParams` — that `lib/db/sorting.ts` builds its own hrefs on; neither
+// module touches the database.
 
 /** Rows per page unless a `?size=` override says otherwise. */
 export const DEFAULT_PAGE_SIZE = 20;
@@ -82,6 +83,21 @@ export function parsePaging(sp: ParamRecord): Paging {
 }
 
 /**
+ * Every search param except `drop`, first value wins — the shared base for a list
+ * URL. `pageHref` and `lib/db/sorting.ts`'s `sortHref` both start here, so a pager
+ * link and a sort link carry exactly the same filter state.
+ */
+export function carryParams(sp: ParamRecord, drop: readonly string[]): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(sp)) {
+    if (drop.includes(key)) continue;
+    const first = firstValue(value);
+    if (first) params.set(key, first);
+  }
+  return params;
+}
+
+/**
  * The list URL for `page`, preserving every other search param. `page` is
  * omitted at 1 and `size` at the default, so the first page's URL matches what
  * `ListFilterBar` produces on Apply.
@@ -92,12 +108,7 @@ export function pageHref(
   page: number,
   pageSize: number,
 ): string {
-  const params = new URLSearchParams();
-  for (const [key, value] of Object.entries(sp)) {
-    if (key === "page" || key === "size") continue;
-    const first = firstValue(value);
-    if (first) params.set(key, first);
-  }
+  const params = carryParams(sp, ["page", "size"]);
   if (page > 1) params.set("page", String(page));
   if (pageSize !== DEFAULT_PAGE_SIZE) params.set("size", String(pageSize));
   const qs = params.toString();

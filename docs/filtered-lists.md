@@ -178,7 +178,10 @@ the wired DB delete is the `@live-db` case in `e2e/file-and-tutor-code-crud.spec
    kind badge) use inline utilities or `<Badge>`/`<IconButton>` in the `render`
    function — per `docs/styling.md`, a recipe used by ≥2 pages moves into
    `components/ui/`.
-6. (Optional) Opt into multi-delete: add a bulk store function + a teacher-gated
+6. Export a `SORT_COLUMNS` map from the store, hand it to `parseSort` in the page,
+   give every column backed by that query a `sortKey`, and pass `sorting` to
+   `DataList` + `sort` to `ListFilterBar` (see "Sorting" below).
+7. (Optional) Opt into multi-delete: add a bulk store function + a teacher-gated
    server action that reuses the per-item delete helper, wrap the `DataList` in
    `SelectionProvider`, prepend `selectionColumn`, and add `DeleteSelectedButton` to
    `actions` (see "Multi-delete" above).
@@ -193,7 +196,7 @@ two-page list out of two rows.
 
 | Piece | Where | Role |
 | --- | --- | --- |
-| `lib/db/paging.ts` | shared, **no DB import** | `DEFAULT_PAGE_SIZE`/`MAX_PAGE_SIZE`, `Paging`, `PagedResult<T>`, `PagingParams`, `parsePaging`, `pageHref`, `lastPage`, `paginate`, `unpagedResult` |
+| `lib/db/paging.ts` | shared, **no DB import** | `DEFAULT_PAGE_SIZE`/`MAX_PAGE_SIZE`, `Paging`, `PagedResult<T>`, `ParamRecord`, `PagingParams`, `parsePaging`, `carryParams`, `pageHref`, `lastPage`, `paginate`, `unpagedResult` |
 | `lib/db/count.ts` | shared, server-only | `countRows(table, conditions, joins?)` — the one `COUNT(*)` every list runs |
 | store | `lib/*-store.ts` | a private `listConditions()` feeding that COUNT **and** a windowed row query |
 | `Pager` | inside `components/data-list.tsx` (**server**) | "Showing 21–40 of 137" + prev/next `<Link>`s; renders at the reserved seam below the table |
@@ -254,8 +257,13 @@ const paging = parsePaging(sp);
 const result = await listFiles({ search: q || undefined, createdBy: …, paging });
 // …
 <ListFilterBar … pageSize={result.pageSize}>…</ListFilterBar>
-<DataList … pagination={{ pathname: "/files", params: sp, result }} />
+<DataList … pathname="/files" params={sp} pagination={result} />
 ```
+
+`pathname` + `params` are top-level `DataList` props, not part of the `pagination`
+value: the pager AND the sortable headers build their links from the same list URL,
+so it is passed once. Both are needed for either to render — they are optional only
+because the writing module's embedded savers list has no route of its own to name.
 
 `result.page` is the **effective** (clamped) page from the store, and every pager
 href derives from it — never from the URL's `?page=`, which would otherwise offer a
@@ -273,3 +281,84 @@ and the delete payload can never carry a row from another page.
 **Known scaling limit.** The tiebreakers make the sort unindexed, and `OFFSET n` is
 O(n) — fine at teaching volumes. Keyset pagination is the upgrade path, and
 `PagedResult` doesn't preclude it.
+
+## Sorting
+
+The third instance of the one discipline: the **`ORDER BY` is SQL**. Because the list
+is paged, a sort has to span the whole filtered set — sorting the twenty rendered
+rows would reorder a page instead of the list. The sort lives in the URL like every
+other list param.
+
+The grammar is one param: **`?sort=name`** ascending, **`?sort=-name`** descending,
+absent = the list's default order. Clicking a header cycles **asc → desc → no sort**.
+One sort column, never nested. A key outside the list's allow-list — a typo, a
+hand-edited URL, a bookmark from before a column was dropped — reads as absent, so a
+bad URL degrades to the default order instead of failing.
+
+| Piece | Where | Role |
+| --- | --- | --- |
+| `lib/db/sorting.ts` | shared, **no DB or drizzle import** | `Sort`, `SortDirection`, `SortParams`, `parseSort`, `nextSort`, `formatSort`, `sortHref` |
+| `lib/db/sort-order.ts` | shared, server-only | `SortColumns`, `sortOrder(sort, columns, fallback)` — the one ORDER BY builder |
+| store | `lib/*-store.ts` | exports its `*_SORT_COLUMNS` map and takes an optional `sort` |
+| `ListColumn.sortKey` | `components/data-list.tsx` | opts one column into click-to-sort |
+| `DataList` | `components/data-list.tsx` (**server**) | `pathname`/`params` (shared with the pager) + `sorting={sort}`, the active sort |
+| `ListFilterBar` | `components/list-filter-bar.tsx` | keeps the active `sort` across Apply via a hidden input |
+
+`lib/db/sorting.ts` is imported by `components/data-list.tsx` **and** by the client
+`ListFilterBar`, so — like `lib/db/paging.ts` — it must stay free of drizzle and of
+`lib/db/index.ts`. That is the whole reason the ORDER BY builder is a second module.
+
+### The store owns the allow-list
+
+The sort-key → column map is declared **once**, in the store, and does double duty: it
+builds the `ORDER BY` and it *is* the allow-list the page hands `parseSort`.
+
+```ts
+export const FILE_SORT_COLUMNS = {
+  name: files.name, kind: files.kind, title: files.title, updated: files.validFrom,
+} satisfies SortColumns;
+// …
+  .orderBy(...sortOrder(opts?.sort, FILE_SORT_COLUMNS, [desc(files.validFrom)], asc(files.id)));
+```
+
+Two rules hold in every store:
+
+- **An explicit sort REPLACES the default order** (the `fallback` argument), it does
+  not layer on top of it. On `/reports` that is visible: the urgent-first
+  `holysh` `CASE` leads only while no column is sorted, and comes back when the sort
+  is cycled off.
+- **The primary-key tiebreaker always trails** (`files.id`, `images.id`, `codes.code`,
+  `reports.id`) — the same `OFFSET/FETCH` stability requirement paging already has.
+  It is the helper's last argument rather than something each store remembers to
+  append, so a new list cannot forget it.
+
+`sort` is optional, so the four bearer API routes (`docs/api.md`) stay unsorted and
+their JSON is unchanged.
+
+### Which columns are sortable
+
+Every column backed by a real column **of the list's own query** gets a `sortKey` —
+text, dates and numbers alike, it is the same code. Not sortable: the selection and
+Actions columns, and `/codes`' **Interactions**, which is a page-scoped aggregate over
+the Mastra-owned tables (a different pool, so it cannot be an `ORDER BY` term).
+
+`/reports` orders `Code` and `Student` by the JOINed `codes.note` / `users.displayName`
+— the values those cells lead with. Codes with an empty note therefore group together.
+
+**NULL ordering** is mssql's: NULLs first ascending, last descending (there is no
+`NULLS LAST`). It applies wherever a nullable column is sortable, and a few of those
+are worth knowing about: `/codes`' `Valid from`/`Valid until` (a windowless code is
+the common case, so ascending leads with all of them), `/reports`' `Status`
+(`resolved_at` is NULL while open, so ascending reads as "open first"), and
+`/reports`' `Code`/`Student` when the code row or the reporter is gone.
+
+### URL plumbing
+
+A sort link drops `?page=` (page 7 of a re-sorted list is a different set) and keeps
+everything else, `?size=` included. The other direction is free: `pageHref` already
+carries every param it does not own, so prev/next keep the sort. Both build on the
+shared `carryParams` in `lib/db/paging.ts`, so a pager link and a sort link can never
+disagree about the filter. (They can differ on `?size=`: `pageHref` re-emits it only
+when non-default, `sortHref` carries whatever the URL had. `parsePaging` clamps either
+way.) `ListFilterBar` keeps the sort across Apply the same
+way it keeps a non-default `size` — a hidden input; "Clear" drops both.

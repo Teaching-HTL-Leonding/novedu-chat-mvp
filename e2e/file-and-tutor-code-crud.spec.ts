@@ -310,6 +310,25 @@ test("multi-select Delete Selected removes every chosen file in one action", {
   await expect(page).not.toHaveURL(/[?&]page=/);
   await expect(page).toHaveURL(/[?&]size=1/);
 
+  // DB-side sorting over the same two files, still at `size=1` so the ORDER BY has
+  // to reach the SQL — sorting only the rendered page could never show `-b` first.
+  // The header cycles asc → desc → no sort (docs/filtered-lists.md).
+  const nameHeader = page.getByRole("link", { name: "Name" });
+  const firstRow = page.getByRole("row").filter({ hasText: prefix });
+  await nameHeader.click();
+  await expect(page).toHaveURL(/[?&]sort=name/);
+  await expect(firstRow).toContainText(`${prefix}-a`);
+  await nameHeader.click();
+  await expect(page).toHaveURL(/[?&]sort=-name/);
+  await expect(firstRow).toContainText(`${prefix}-b`);
+  // Re-filtering keeps the sort — it is not a form control, it rides a hidden input.
+  await applyFilter(page, "Filter files", prefix);
+  await expect(page).toHaveURL(/[?&]sort=-name/);
+  await expect(page).not.toHaveURL(/[?&]page=/);
+  // The third click clears it, back to the list's default order.
+  await nameHeader.click();
+  await expect(page).not.toHaveURL(/[?&]sort=/);
+
   await page.goto("/files");
   await applyFilter(page, "Filter files", prefix);
 

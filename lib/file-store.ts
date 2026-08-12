@@ -4,6 +4,8 @@ import { type DbExecutor, getDb } from "@/lib/db";
 import { countRows } from "@/lib/db/count";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
 import { files } from "@/lib/db/schema";
+import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
+import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
 // The pure name/kind helpers live in `lib/file-name.ts` (no DB import) so the
 // public GET route and the client-safe `@/lib/yaml-files` API can use them too.
@@ -98,9 +100,17 @@ function listConditions(opts?: { search?: string; createdBy?: string }): SQL[] {
   return conditions;
 }
 
+/** The `/files` list's sortable columns (ORDER BY map + `parseSort` allow-list). */
+export const FILE_SORT_COLUMNS = {
+  name: files.name,
+  kind: files.kind,
+  title: files.title,
+  updated: files.validFrom,
+} satisfies SortColumns;
+
 /**
- * The active (non-deleted) files for the "YAML Files" list, newest first.
- * Filtering happens IN THE DATABASE (see `docs/filtered-lists.md`), never in
+ * The active (non-deleted) files for the "YAML Files" list, newest first unless a
+ * `sort` says otherwise. Filtering happens IN THE DATABASE (see `docs/filtered-lists.md`), never in
  * memory: an optional `search` term is a case-insensitive contains-match over
  * name/title/description, and `createdBy` narrows to one writer's files (the
  * "Only my files" toggle). Content is intentionally NOT selected (it can be large
@@ -108,13 +118,15 @@ function listConditions(opts?: { search?: string; createdBy?: string }): SQL[] {
  * notes.
  *
  * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
- * with a COUNT for the total); omitting it returns every match, which is what the
- * bearer API route wants.
+ * with a COUNT for the total), and `sort` the ORDER BY — so a sort spans the whole
+ * filtered set, not one page. Omitting both returns every match in the default
+ * order, which is what the bearer API route wants.
  */
 export async function listFiles(opts?: {
   search?: string;
   createdBy?: string;
   paging?: Paging;
+  sort?: Sort;
 }): Promise<PagedResult<FileListEntry> | undefined> {
   const conditions = listConditions(opts);
   try {
@@ -136,9 +148,9 @@ export async function listFiles(opts?: {
           })
           .from(files)
           .where(and(...conditions))
-          // `id` breaks ties: OFFSET/FETCH over a non-unique sort could otherwise
-          // repeat or skip a row between pages.
-          .orderBy(desc(files.validFrom), asc(files.id));
+          .orderBy(
+            ...sortOrder(opts?.sort, FILE_SORT_COLUMNS, [desc(files.validFrom)], asc(files.id)),
+          );
         return window ? query.offset(window.offset).fetch(window.limit) : query;
       },
     });

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  carryParams,
   DEFAULT_PAGE_SIZE,
   lastPage,
   MAX_PAGE_SIZE,
@@ -34,6 +35,20 @@ describe("parsePaging", () => {
 
   it("takes the first value of a repeated param", () => {
     expect(parsePaging({ page: ["2", "9"] })).toEqual({ page: 2, pageSize: DEFAULT_PAGE_SIZE });
+  });
+});
+
+describe("carryParams", () => {
+  // The base both `pageHref` and `lib/db/sorting.ts`'s `sortHref` build on, so a
+  // pager link and a sort link can never carry different filter state.
+  it("keeps every param except the dropped ones", () => {
+    expect(carryParams({ q: "bio", mine: "0", page: "3" }, ["page"]).toString()).toBe(
+      "q=bio&mine=0",
+    );
+  });
+
+  it("omits blank values and takes the first value of a repeated param", () => {
+    expect(carryParams({ q: "", mine: ["0", "1"], sort: undefined }, []).toString()).toBe("mine=0");
   });
 });
 

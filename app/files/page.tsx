@@ -17,7 +17,8 @@ import { Input } from "@/components/ui/input";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { codeModuleLabels, isCodeModule } from "@/lib/code-modules/types";
 import { type PagingParams, parsePaging } from "@/lib/db/paging";
-import { listFiles } from "@/lib/file-store";
+import { parseSort, type SortParams } from "@/lib/db/sorting";
+import { FILE_SORT_COLUMNS, listFiles } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
 import { LocalTime } from "../local-time";
@@ -55,7 +56,9 @@ const KIND_TONES: Record<string, VariantProps<typeof badgeVariants>["tone"]> = {
 export default async function FilesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string | string[]; mine?: string | string[] } & PagingParams>;
+  searchParams: Promise<
+    { q?: string | string[]; mine?: string | string[] } & PagingParams & SortParams
+  >;
 }) {
   const denied = await requireTeacherPage();
   if (denied) return denied;
@@ -67,11 +70,13 @@ export default async function FilesPage({
   const q = (typeof sp.q === "string" ? sp.q : "").trim();
   const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
   const paging = parsePaging(sp);
+  const sort = parseSort(sp, FILE_SORT_COLUMNS);
 
   const result = await listFiles({
     search: q || undefined,
     createdBy: onlyMine ? currentUserId : undefined,
     paging,
+    sort,
   });
 
   if (result === undefined) {
@@ -99,16 +104,22 @@ export default async function FilesPage({
     createdBy: entry.createdBy,
   }));
 
-  const columns: ListColumn<FileRow>[] = [
+  const columns: ListColumn<FileRow, keyof typeof FILE_SORT_COLUMNS>[] = [
     // Leading multi-select column; the selection key is the file NAME, which is
     // what `deleteSelectedFilesAction` deletes by (and is unique among active files).
     selectionColumn<FileRow>(
       (row) => row.name,
       (row) => row.name,
     ),
-    { header: "Name", className: "whitespace-nowrap font-mono", render: (row) => row.name },
+    {
+      header: "Name",
+      sortKey: "name",
+      className: "whitespace-nowrap font-mono",
+      render: (row) => row.name,
+    },
     {
       header: "Kind",
+      sortKey: "kind",
       render: (row) => (
         <Badge caps solid tone={KIND_TONES[row.kind] ?? "green"}>
           {row.kind}
@@ -117,11 +128,13 @@ export default async function FilesPage({
     },
     {
       header: "Title",
+      sortKey: "title",
       className: "max-w-104 overflow-hidden text-ellipsis whitespace-nowrap",
       render: (row) => <span title={row.description ?? undefined}>{row.title ?? "—"}</span>,
     },
     {
       header: "Last updated",
+      sortKey: "updated",
       kind: "time",
       render: (row) => <LocalTime seconds={row.updatedSeconds} />,
     },
@@ -206,6 +219,7 @@ export default async function FilesPage({
               hasActiveFilter={q !== "" || !onlyMine}
               resetKey={`${q}|${onlyMine ? "1" : "0"}`}
               pageSize={result.pageSize}
+              sort={sort}
             >
               <Input
                 type="search"
@@ -226,7 +240,10 @@ export default async function FilesPage({
             </>
           }
           noMatchState="No files match your filter."
-          pagination={{ pathname: "/files", params: sp, result }}
+          pathname="/files"
+          params={sp}
+          pagination={result}
+          sorting={sort}
         />
       </SelectionProvider>
     </Main>

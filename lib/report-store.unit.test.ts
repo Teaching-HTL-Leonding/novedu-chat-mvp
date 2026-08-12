@@ -1,3 +1,4 @@
+import { asc } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Behavior-level tests over a fake drizzle handle — what rows come back and what
@@ -14,6 +15,9 @@ const fake = vi.hoisted(() => {
     // count helpers keep resolving `rows` — only the LIST's count reads `total`.
     total: 0,
     windows: [] as { offset: number; limit: number }[],
+    // The ORDER BY terms of the most recent row query, so a test can pin that an
+    // explicit sort replaced the default order and the tiebreaker still trails.
+    order: [] as unknown[],
     joins: [] as unknown[],
     selectError: undefined as unknown,
     inserted: [] as Record<string, unknown>[],
@@ -49,16 +53,19 @@ const fake = vi.hoisted(() => {
       $dynamic: () => builder,
       // `orderBy` returns a builder (not a promise) because the paged list query
       // continues with `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
-      orderBy: () => ({
-        offset: (offset: number) => ({
-          fetch: (limit: number) => {
-            state.windows.push({ offset, limit });
-            return run();
-          },
-        }),
-        // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
-        then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
-      }),
+      orderBy: (...order: unknown[]) => {
+        state.order = order;
+        return {
+          offset: (offset: number) => ({
+            fetch: (limit: number) => {
+              state.windows.push({ offset, limit });
+              return run();
+            },
+          }),
+          // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
+          then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
+        };
+      },
       // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
       then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
     };
@@ -90,7 +97,7 @@ const fake = vi.hoisted(() => {
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
-import { codes, userChats, users } from "@/lib/db/schema";
+import { codes, reports, userChats, users } from "@/lib/db/schema";
 import {
   countChatReports,
   countQuizReports,
@@ -258,6 +265,12 @@ describe("listReports", () => {
   it("returns undefined instead of throwing when the database is down", async () => {
     fake.state.selectError = new Error("connection lost");
     await expect(listReports({ status: "open" })).resolves.toBeUndefined();
+  });
+
+  it("lets an explicit sort replace the urgent-first default, keeping the tiebreaker last", async () => {
+    // `code` orders by the JOINED note the row leads with, not by `reports.code`.
+    await listReports({ status: "open", sort: { key: "code", dir: "asc" } });
+    expect(fake.state.order).toEqual([asc(codes.note), asc(reports.id)]);
   });
 
   it("LEFT-JOINs novedu_users + novedu_codes and NEVER novedu_user_chats", async () => {

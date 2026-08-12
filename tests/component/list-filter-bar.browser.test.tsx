@@ -85,6 +85,31 @@ test("the default page size needs no ?size= at all", async () => {
   expect(new URL(`http://x${pushedUrl()}`).searchParams.has("size")).toBe(false);
 });
 
+// Sorting contract: the active column sort lives in the URL, not in a control, so
+// it rides along as a hidden input — re-filtering must not silently re-sort the list.
+test("Apply keeps the active ?sort=", async () => {
+  push.mockClear();
+  const screen = await render(
+    <ListFilterBar sort={{ key: "name", dir: "desc" }}>{controls()}</ListFilterBar>,
+  );
+
+  await screen.getByLabelText("Filter").fill("lists");
+  await screen.getByRole("button", { name: "Apply" }).click();
+
+  const url = new URL(`http://x${pushedUrl()}`);
+  expect(url.searchParams.get("sort")).toBe("-name");
+  expect(url.searchParams.get("q")).toBe("lists");
+});
+
+test("an unsorted list emits no ?sort= at all", async () => {
+  push.mockClear();
+  const screen = await render(<ListFilterBar>{controls()}</ListFilterBar>);
+
+  await screen.getByRole("button", { name: "Apply" }).click();
+
+  expect(new URL(`http://x${pushedUrl()}`).searchParams.has("sort")).toBe(false);
+});
+
 test("Clear navigates to the bare path when a filter is active", async () => {
   push.mockClear();
   const screen = await render(
