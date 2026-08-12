@@ -5,7 +5,8 @@ import { filePublicUrl } from "@/lib/file-url";
 import { recordError } from "@/lib/telemetry";
 
 // CLI/API bearer route listing app-hosted YAML files (docs/api.md) with the
-// /files page's exact filters and defaults. Lives BESIDE the public per-name
+// /files list's filters, keeping this channel's own `mine` param (the page
+// spells that narrowing `?owner=`). Lives BESIDE the public per-name
 // GET (app/api/files/[name]/route.ts) under the /api/files prefix that is
 // already excluded from the proxy.ts session gate, so this handler's ONLY
 // access control is requireBearerTeacher. Active versions only, WITHOUT
@@ -20,7 +21,8 @@ function json(body: unknown, status: number): Response {
 
 /**
  * Lists active files: `q` contains-matches name/title/description, `mine`
- * defaults ON (`mine=0` widens to all teachers' files). Bare JSON array,
+ * defaults ON (`mine=0` widens to all teachers' files; the page's equivalent is
+ * `?owner=`). Bare JSON array,
  * newest first; `url` is the file's public download URL and `createdAt` the
  * active version's write time (ISO 8601 UTC).
  */

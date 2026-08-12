@@ -14,8 +14,14 @@ Cover:
 - What you set now versus later: the note, window, and override can be changed later;
   the activity file, the kind, and the anonymity setting are fixed when the code is
   created.
+- Finding a code again: the Codes list holds every teacher's codes. Filter by
+  note/code, by activity, or by **owner** — the dropdown starts on your own codes,
+  "All owners" widens it to the whole school, and "Clear" brings you back to yours.
+  An Owner column names the teacher on every row, and the column headers sort.
 
 Get right:
+- A code's owner is the teacher who created it, and it never changes hands — even
+  though anyone may edit or delete any code.
 - You do not choose the code text; it is generated.
 - Anonymity comes from the activity and is frozen at creation; link to
   "Anonymous vs. per-user".

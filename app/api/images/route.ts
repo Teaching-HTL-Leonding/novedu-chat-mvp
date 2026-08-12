@@ -4,7 +4,8 @@ import { listImages } from "@/lib/image-store";
 import { recordError } from "@/lib/telemetry";
 
 // CLI/API bearer route listing app-hosted images (docs/api.md) with the
-// /images page's exact filters and defaults. Unlike /api/files there is NO
+// /images list's filters, keeping this channel's own `mine` param (the page
+// spells that narrowing `?owner=`). Unlike /api/files there is NO
 // public GET under this prefix — the /api/images exclusion in proxy.ts exists
 // only so bearer requests (which carry no Entra session cookie) reach these
 // self-gating handlers. Active versions only; the bytes stay in Blob Storage

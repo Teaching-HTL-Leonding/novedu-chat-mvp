@@ -42,7 +42,7 @@ renders a `ResolvedImage` as a bounded thumbnail opening the shared
 
 | Surface | Path | Who | Notes |
 | --- | --- | --- | --- |
-| List | `/images` (`app/images/page.tsx`) | teacher | active versions only, contains-filter over name + "Only my images" (default on); a row's "View" button opens the image in the shared lightbox from a read SAS (no inline thumbnail) |
+| List | `/images` (`app/images/page.tsx`) | teacher | active versions only, contains-filter over name + an **owner** dropdown (the signed-in teacher by default); a row's "View" button opens the image in the shared lightbox from a read SAS (no inline thumbnail) |
 | Upload | `/images/new` (`upload-image-form.tsx`) | teacher | name + file picker; direct-to-blob PUT then confirm |
 | Bearer API / CLI | `GET /api/images`, `POST /api/images/<name>`, `POST /api/images/<name>/confirm` (`app/api/images/**`) | teacher (bearer token) | the CLI's `images upload/list` — the same confirm-only flow over `lib/image-service.ts`; see below and `docs/api.md` |
 
@@ -89,7 +89,10 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
 
 - `listImages({ search?, createdBy? })` — active rows, newest first. Filters
   apply **in SQL** (a case-insensitive contains-match over `name` for `search`,
-  `createdBy` for "Only my images") — never in memory; see `docs/filtered-lists.md`.
+  `createdBy` for the owner dropdown) — never in memory; see
+  `docs/filtered-lists.md`. The rows carry the owner's display name from a LEFT JOIN
+  on `novedu_users`; `listImageOwners()` is the dropdown's option set. **"Owner"
+  here is the LAST WRITER** — `created_by` belongs to the active version.
 - `getActiveImage(name)` — the active row; `null` = malformed name or no active
   version (unknown/deleted), `undefined` = DB error. Backs the resolver and the
   upload-time name-clash check.

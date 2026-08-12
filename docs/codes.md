@@ -273,11 +273,14 @@ valid and no YAML re-validation is needed.
 effective teacher may see and manage every code (RBAC planned) — via `listCodes({
 search, createdBy, module })`, newest first, active + not-yet-started (`upcoming`
 badge) + already-expired (`expired` badge), since codes are not garbage-collected.
-Filtering (a text contains-match over note/code, an "Only my codes" toggle, and a
-**module** `<select>`) happens **in the database** through URL search params,
-never in memory — the shared filtered-list concept (`docs/filtered-lists.md`).
-Each row: a **Module** badge, note (fallback code, `file_url` tooltip), window in
-local time (an open bound shows as **"No start"** / **"No end"**), an
+Filtering (a text contains-match over note/code, an **owner** `<select>` — the
+signed-in teacher by default — and a **module** `<select>`) happens **in the
+database** through URL search params, never in memory — the shared filtered-list
+concept (`docs/filtered-lists.md`).
+Each row: a **Module** badge, note (fallback code, `file_url` tooltip), the
+**owner** (the creating teacher's `novedu_users` display name, the raw oid when
+they have none), window in local time (an open bound shows as **"No start"** /
+**"No end"**), an
 **interaction** count (qualifying Mastra threads under
 `resourceId = code` — `getInteractionCounts`, ONE aggregate query for the whole
 filtered set, no per-row query), a stats link, an Open link (active codes only), a

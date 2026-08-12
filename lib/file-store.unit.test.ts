@@ -59,9 +59,17 @@ const fake = vi.hoisted(() => {
     const tail = { leftJoin: () => tail, where: () => queryTail(fields) };
     return tail;
   };
-  const select = (fields?: Record<string, unknown>) => ({
-    from: () => ({ where: () => queryTail(fields), $dynamic: () => dynamicTail(fields) }),
-  });
+  // `.from(...)` accepts the row query's `.leftJoin(users, …)` (the owner name) as
+  // well as the count's `$dynamic()`; both tails resolve through `queryTail`.
+  const fromTail = (fields?: Record<string, unknown>) => {
+    const tail = {
+      leftJoin: () => tail,
+      where: () => queryTail(fields),
+      $dynamic: () => dynamicTail(fields),
+    };
+    return tail;
+  };
+  const select = (fields?: Record<string, unknown>) => ({ from: () => fromTail(fields) });
   const insert = () => ({
     values: async (values: Record<string, unknown>) => {
       if (state.insertError) throw state.insertError;
@@ -79,6 +87,7 @@ const fake = vi.hoisted(() => {
   const tx = { select, insert, update };
   const db = {
     select,
+    selectDistinct: select,
     insert,
     update,
     transaction: async (cb: (t: typeof tx) => unknown) => cb(tx),

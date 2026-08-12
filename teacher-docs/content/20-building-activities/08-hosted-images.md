@@ -4,7 +4,7 @@ description: Upload an image in Novedu and show it in a quiz or tutor by name, w
 sidebar:
   order: 8
 audience: teacher
-keywords: [image, picture, diagram, upload, hosted, credit, alt text, quiz image]
+keywords: [image, picture, diagram, upload, hosted, credit, alt text, quiz image, owner]
 related:
   - 20-building-activities/04-quizzes
   - 20-building-activities/01-handling-yaml
@@ -37,9 +37,16 @@ Open the **Images** page in the app (you need a teacher account).
 5. Upload. The image appears in your list, and the name is ready to use in
    your YAML.
 
-The list shows your own images by default; you can widen it to all teachers'
-images and filter by name. The **View** button opens an image so you can check
-you picked the right one.
+The list holds every teacher's images, and it opens on your own: the **Owner**
+box starts on your name. Pick **All owners** to see everyone's images, pick a
+colleague to see only theirs, or select **Clear** to come back to your own. You
+can also filter by name, and sort by any column header. The **View** button
+opens an image so you can check you picked the right one.
+
+An image's owner is whoever saved it last, the same rule that applies to hosted
+activity files. Uploading an image under a name that is already taken is
+rejected, so an image only changes hands if someone deletes it and uploads a new
+one under the same name.
 
 ## Upload an image with the CLI
 

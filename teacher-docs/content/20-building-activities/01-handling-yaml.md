@@ -4,7 +4,7 @@ description: Make your activity file reachable for Novedu, either through a publ
 sidebar:
   order: 1
 audience: teacher
-keywords: [publish, YAML file, GitHub, raw URL, upload, Files page, file URL, edit file]
+keywords: [publish, YAML file, GitHub, raw URL, upload, Files page, file URL, edit file, owner]
 related:
   - 10-yaml-for-teachers/04-cli-validation
   - 40-ai-llms/01-novedu-cli
@@ -49,6 +49,12 @@ The Files page in Novedu lets you create and edit activity files without any hos
 5. Select **Validate & create** to save.
 
 Saving always validates first: an invalid file is never stored, so anything the Files page has published is a file Novedu can actually run. After saving, the edit page shows the file's **Public URL** with a copy button; that address is what you use when you create a code. The file list also offers a **Create code** shortcut next to each activity file, which starts the code form with the file already filled in.
+
+## Finding a file in the list
+
+The Files page holds every teacher's files, and it opens on your own: the **Owner** box starts on your name. Pick **All owners** to see everyone's files, pick a colleague to see only theirs, or select **Clear** to come back to your own. You can also filter by name, title, and description, and sort by any column header.
+
+A file's owner is whoever **saved it last**, not whoever created it. So if you edit a colleague's file, it becomes yours: it moves out of their default view and into yours. Nothing is lost, and everyone can still find it under **All owners** or by name, but it is worth knowing before you wonder where a file went.
 
 If you prefer the command line, the Novedu CLI can upload a file too, with `novedu-cli files upload <name> --file <path> --kind <kind>`, and it runs the same validation on the server.
 

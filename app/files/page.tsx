@@ -4,9 +4,10 @@ import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
 import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon } from "@/components/icons";
-import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
+import { ListFilterBar, OwnerFilter } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
 import { Notice } from "@/components/notice";
+import { ownerColumn } from "@/components/owner-column";
 import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { selectionColumn } from "@/components/selection-column";
@@ -16,16 +17,19 @@ import { iconButtonVariants } from "@/components/ui/icon-button";
 import { Input } from "@/components/ui/input";
 import { resolveAppOriginOr } from "@/lib/app-origin";
 import { codeModuleLabels, isCodeModule } from "@/lib/code-modules/types";
+import { type OwnerParams, parseOwner } from "@/lib/db/owner-filter";
 import { type PagingParams, parsePaging } from "@/lib/db/paging";
 import { parseSort, type SortParams } from "@/lib/db/sorting";
-import { FILE_SORT_COLUMNS, listFiles } from "@/lib/file-store";
+import { FILE_SORT_COLUMNS, listFileOwners, listFiles } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
 import { LocalTime } from "../local-time";
 
 // One active file as shown in the list (no content). `updatedSeconds` is the
-// active version's write time as unix seconds; `createdBy` is the last writer's
-// oid (drives the "Only my files" filter, applied in the DB).
+// active version's write time as unix seconds; `createdBy` is the OWNER's oid —
+// here the last writer, since the table is append-only — which drives the owner
+// filter, applied in the DB. `ownerName` is its `novedu_users` resolution, `null`
+// for a teacher who has never signed in through the web app.
 interface FileRow {
   id: string;
   name: string;
@@ -34,6 +38,7 @@ interface FileRow {
   description: string | null;
   updatedSeconds: number;
   createdBy: string;
+  ownerName: string | null;
 }
 
 // Kind → badge tone, shared visual language with the codes list: module kinds
@@ -48,17 +53,15 @@ const KIND_TONES: Record<string, VariantProps<typeof badgeVariants>["tone"]> = {
 };
 
 // Teacher-only: every app-hosted YAML file (active versions only), with a
-// contains-filter over name/title/description and an "Only my files" toggle —
-// both applied IN THE DATABASE via URL search params (see
-// `docs/filtered-lists.md`), never in memory. No row-level security: every
+// contains-filter over name/title/description and an owner dropdown (defaulting
+// to the signed-in teacher) — both applied IN THE DATABASE via URL search params
+// (see `docs/filtered-lists.md`), never in memory. No row-level security: every
 // teacher sees and maintains every file. "Effective" teacher: a teacher in
 // student mode is denied like a student.
 export default async function FilesPage({
   searchParams,
 }: {
-  searchParams: Promise<
-    { q?: string | string[]; mine?: string | string[] } & PagingParams & SortParams
-  >;
+  searchParams: Promise<{ q?: string | string[] } & OwnerParams & PagingParams & SortParams>;
 }) {
   const denied = await requireTeacherPage();
   if (denied) return denied;
@@ -68,16 +71,18 @@ export default async function FilesPage({
 
   const sp = await searchParams;
   const q = (typeof sp.q === "string" ? sp.q : "").trim();
-  const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
+  // Absent `?owner=` means the signed-in teacher, so the default view — and
+  // "Clear" — need no param at all (docs/filtered-lists.md).
+  const owner = parseOwner(sp, currentUserId);
   const paging = parsePaging(sp);
   const sort = parseSort(sp, FILE_SORT_COLUMNS);
 
-  const result = await listFiles({
-    search: q || undefined,
-    createdBy: onlyMine ? currentUserId : undefined,
-    paging,
-    sort,
-  });
+  // The dropdown's options come from the whole (unfiltered) file set, so the owner
+  // a teacher just picked can never disappear from the control that picked them.
+  const [result, owners] = await Promise.all([
+    listFiles({ search: q || undefined, createdBy: owner.createdBy, paging, sort }),
+    listFileOwners(),
+  ]);
 
   if (result === undefined) {
     return (
@@ -102,6 +107,7 @@ export default async function FilesPage({
     description: entry.description,
     updatedSeconds: Math.floor(entry.validFrom.getTime() / 1000),
     createdBy: entry.createdBy,
+    ownerName: entry.ownerName,
   }));
 
   const columns: ListColumn<FileRow, keyof typeof FILE_SORT_COLUMNS>[] = [
@@ -132,6 +138,7 @@ export default async function FilesPage({
       className: "max-w-104 overflow-hidden text-ellipsis whitespace-nowrap",
       render: (row) => <span title={row.description ?? undefined}>{row.title ?? "—"}</span>,
     },
+    ownerColumn<FileRow>(),
     {
       header: "Last updated",
       sortKey: "updated",
@@ -216,8 +223,8 @@ export default async function FilesPage({
           }
           filterBar={
             <ListFilterBar
-              hasActiveFilter={q !== "" || !onlyMine}
-              resetKey={`${q}|${onlyMine ? "1" : "0"}`}
+              hasActiveFilter={q !== "" || owner.value !== ""}
+              resetKey={`${q}|${owner.value}`}
               pageSize={result.pageSize}
               sort={sort}
             >
@@ -229,10 +236,17 @@ export default async function FilesPage({
                 defaultValue={q}
                 aria-label="Filter files"
               />
-              <FilterCheckbox name="mine" label="Only my files" defaultChecked={onlyMine} />
+              <OwnerFilter
+                className="w-56"
+                noun="files"
+                options={owners}
+                value={owner.value}
+                currentUserId={currentUserId}
+                currentUserName={session?.user?.name}
+              />
             </ListFilterBar>
           }
-          isFiltered={q !== ""}
+          isFiltered={q !== "" || owner.value !== ""}
           emptyState={
             <>
               No files yet. <Link href="/files/new">Create one</Link> to host a tutor, fragment or

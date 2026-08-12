@@ -4,7 +4,7 @@ description: Turn an activity into a short link for your class, with a note, an 
 sidebar:
   order: 1
 audience: teacher
-keywords: [code, share link, create code, note, availability window, model override, codes create]
+keywords: [code, share link, create code, note, availability window, model override, codes create, owner]
 related:
   - 30-sharing-activities/03-time-limitation
   - 30-sharing-activities/04-anonymous-vs-per-user
@@ -57,6 +57,12 @@ You can reopen any code from the list and edit three things at any time:
 Three things are fixed when the code is created and never change: the kind of activity, the activity file's address, and whether the activity records who did what (anonymous or per-user, taken from the activity file at creation time). To share a different file, create a new code.
 
 The code points at your file, not at a copy of it. If you edit the activity file itself, students get the new version the next time they open the link.
+
+## Finding a code in the list
+
+The Codes page holds every teacher's codes, and it opens on your own: the **Owner** box starts on your name. Pick **All owners** to see the whole staff room's codes, pick a colleague to see only theirs, or select **Clear** to come back to your own. You can also filter by note or code text and by kind of activity, and sort by any column header.
+
+A code's owner is the teacher who created it, and that never changes. Every teacher can still open, edit, and delete any code, so ownership is a way to find your own work quickly, not a lock.
 
 ## Creating codes from the command line
 
