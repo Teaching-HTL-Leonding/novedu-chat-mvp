@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { asc, desc } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Behaviour-level tests for the temporal IMAGE store: confirm (insert + name-taken
@@ -16,6 +17,9 @@ const fake = vi.hoisted(() => {
     // the store asked for (so a test can pin the SQL-side paging).
     total: 0,
     windows: [] as { offset: number; limit: number }[],
+    // The ORDER BY terms of the most recent row query, so a test can pin that an
+    // explicit sort replaced the default order and the tiebreaker still trails.
+    order: [] as unknown[],
     selectError: undefined as unknown,
     inserted: [] as Record<string, unknown>[],
     insertError: undefined as unknown,
@@ -35,16 +39,19 @@ const fake = vi.hoisted(() => {
   // returns a builder (not a promise) because the paged list query continues with
   // `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
   const queryTail = (fields?: Record<string, unknown>) => ({
-    orderBy: () => ({
-      offset: (offset: number) => ({
-        fetch: (limit: number) => {
-          state.windows.push({ offset, limit });
-          return selectRun(fields);
-        },
-      }),
-      // biome-ignore lint/suspicious/noThenProperty: mimicking drizzle's awaitable query builder
-      then: (...args: Parameters<Promise<unknown[]>["then"]>) => selectRun(fields).then(...args),
-    }),
+    orderBy: (...order: unknown[]) => {
+      state.order = order;
+      return {
+        offset: (offset: number) => ({
+          fetch: (limit: number) => {
+            state.windows.push({ offset, limit });
+            return selectRun(fields);
+          },
+        }),
+        // biome-ignore lint/suspicious/noThenProperty: mimicking drizzle's awaitable query builder
+        then: (...args: Parameters<Promise<unknown[]>["then"]>) => selectRun(fields).then(...args),
+      };
+    },
     // biome-ignore lint/suspicious/noThenProperty: mimicking drizzle's awaitable query builder
     then: (...args: Parameters<Promise<unknown[]>["then"]>) => selectRun(fields).then(...args),
   });
@@ -84,8 +91,10 @@ const fake = vi.hoisted(() => {
 const blob = vi.hoisted(() => ({ deleteBlob: vi.fn() }));
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
+
 vi.mock("@/lib/image-blob", () => ({ deleteBlob: blob.deleteBlob }));
 
+import { images } from "@/lib/db/schema";
 import { confirmImage, getActiveImage, listImages, softDeleteImages } from "@/lib/image-store";
 
 // A duplicate-key (unique index) violation as drizzle wraps it: cause chain with
@@ -147,6 +156,14 @@ describe("listImages", () => {
   it("returns undefined on a database error", async () => {
     fake.state.selectError = new Error("down");
     await expect(listImages()).resolves.toBeUndefined();
+  });
+
+  it("lets an explicit sort replace the default order, keeping the tiebreaker last", async () => {
+    await listImages({ sort: { key: "size", dir: "desc" } });
+    expect(fake.state.order).toEqual([desc(images.byteSize), asc(images.id)]);
+
+    await listImages();
+    expect(fake.state.order).toEqual([desc(images.validFrom), asc(images.id)]);
   });
 });
 

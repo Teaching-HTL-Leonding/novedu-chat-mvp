@@ -38,8 +38,8 @@ it("renders plain rows when rowClassName is omitted", () => {
 });
 
 describe("DataList pager", () => {
-  // Flat here so a case reads as `{ ...base, page: 3 }`; the prop nests the page
-  // numbers under `result` (they arrive as one `PagedResult` from the store).
+  // Flat here so a case reads as `{ ...base, page: 3 }`; the component takes the
+  // URL as two top-level props and the page numbers as one `PagedResult`.
   const renderList = (
     pagination?: {
       pathname: string;
@@ -58,15 +58,13 @@ describe("DataList pager", () => {
         isFiltered={false}
         emptyState="No rows yet."
         noMatchState="Nothing matches."
+        pathname={pagination?.pathname}
+        params={pagination?.params}
         pagination={
           pagination && {
-            pathname: pagination.pathname,
-            params: pagination.params,
-            result: {
-              page: pagination.page,
-              pageSize: pagination.pageSize,
-              total: pagination.total,
-            },
+            page: pagination.page,
+            pageSize: pagination.pageSize,
+            total: pagination.total,
           }
         }
       />,
@@ -104,5 +102,58 @@ describe("DataList pager", () => {
     const html = renderList({ ...base, total: 0 }, []);
     expect(html).toContain("No rows yet.");
     expect(html).not.toContain("Pagination");
+  });
+});
+
+describe("sortable headers", () => {
+  // A column opts in with `sortKey`; the table renders the link only when it is
+  // also given the `sorting` bag (embedded tables pass neither).
+  const sortableColumns = [
+    { header: "Id", sortKey: "id", render: (row: (typeof rows)[number]) => row.id },
+    { header: "Module", render: (row: (typeof rows)[number]) => row.module },
+  ];
+
+  const renderTable = (sort?: { key: string; dir: "asc" | "desc" }) =>
+    renderToStaticMarkup(
+      <ListTable
+        rows={rows}
+        getRowKey={(row) => row.id}
+        columns={sortableColumns}
+        sorting={{ pathname: "/files", params: { q: "a", page: "3" }, sort }}
+      />,
+    );
+
+  it("links an unsorted column ascending, keeping the filter and dropping the page", () => {
+    const html = renderTable();
+    expect(html).toContain('href="/files?q=a&amp;sort=id"');
+    expect(html).toContain('aria-sort="none"');
+  });
+
+  it("marks the active ascending column and offers descending next", () => {
+    const html = renderTable({ key: "id", dir: "asc" });
+    expect(html).toContain('aria-sort="ascending"');
+    expect(html).toContain('href="/files?q=a&amp;sort=-id"');
+  });
+
+  it("marks the active descending column and offers clearing the sort next", () => {
+    const html = renderTable({ key: "id", dir: "desc" });
+    expect(html).toContain('aria-sort="descending"');
+    expect(html).toContain('href="/files?q=a"');
+  });
+
+  it("leaves a column without a sortKey plain — no link, no aria-sort", () => {
+    const html = renderTable();
+    // Only the one sortable column carries the attribute.
+    expect(html.match(/aria-sort/g)).toHaveLength(1);
+    expect(html.match(/<a /g)).toHaveLength(1);
+  });
+
+  it("renders plain headers when the table gets no sorting bag", () => {
+    // The embedded ConversationStats / TokenSection path: a stray sortKey is inert.
+    const html = renderToStaticMarkup(
+      <ListTable rows={rows} getRowKey={(row) => row.id} columns={sortableColumns} />,
+    );
+    expect(html).not.toContain("aria-sort");
+    expect(html).not.toContain("<a ");
   });
 });

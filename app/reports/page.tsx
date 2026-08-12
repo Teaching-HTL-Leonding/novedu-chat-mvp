@@ -15,12 +15,13 @@ import { Badge } from "@/components/ui/badge";
 import { iconButtonVariants } from "@/components/ui/icon-button";
 import { Input, Select } from "@/components/ui/input";
 import { type PagingParams, parsePaging } from "@/lib/db/paging";
+import { parseSort, type SortParams } from "@/lib/db/sorting";
 import {
   deleteSelectedReportsAction,
   markSelectedReportsResolvedAction,
   reopenSelectedReportsAction,
 } from "@/lib/report-actions";
-import { listReports, type ReportStatusFilter } from "@/lib/report-store";
+import { listReports, REPORT_SORT_COLUMNS, type ReportStatusFilter } from "@/lib/report-store";
 import {
   isReportReaction,
   REPORT_REACTION_LABELS,
@@ -67,7 +68,8 @@ export default async function ReportsPage({
       reaction?: string | string[];
       q?: string | string[];
       mine?: string | string[];
-    } & PagingParams
+    } & PagingParams &
+      SortParams
   >;
 }) {
   if (!(await isEffectiveTeacher())) {
@@ -90,6 +92,7 @@ export default async function ReportsPage({
   const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
 
   const paging = parsePaging(sp);
+  const sort = parseSort(sp, REPORT_SORT_COLUMNS);
 
   const result = await listReports({
     status,
@@ -97,6 +100,7 @@ export default async function ReportsPage({
     search: q || undefined,
     codeCreatedBy: onlyMine ? currentUserId : undefined,
     paging,
+    sort,
   });
 
   if (result === undefined) {
@@ -128,7 +132,7 @@ export default async function ReportsPage({
     hadImages: entry.hadImages,
   }));
 
-  const columns: ListColumn<ReportRow>[] = [
+  const columns: ListColumn<ReportRow, keyof typeof REPORT_SORT_COLUMNS>[] = [
     // Leading multi-select column; the selection key is the report ID, which is
     // what the bulk resolve/reopen/delete actions operate on.
     selectionColumn<ReportRow>(
@@ -137,14 +141,17 @@ export default async function ReportsPage({
     ),
     {
       header: "Reaction",
+      sortKey: "reaction",
       render: (row) => <ReactionBadge reaction={row.reaction} />,
     },
     {
       header: "Kind",
+      sortKey: "kind",
       render: (row) => <Badge tone="neutral">{KIND_LABEL[row.kind]}</Badge>,
     },
     {
       header: "Code",
+      sortKey: "code",
       className: "max-w-72 overflow-hidden text-ellipsis whitespace-nowrap",
       render: (row) => (
         <Link href={`/codes/${row.code}`} className="underline" title={row.code}>
@@ -154,6 +161,7 @@ export default async function ReportsPage({
     },
     {
       header: "Student",
+      sortKey: "student",
       render: (row) => (
         <span className="block max-w-56 truncate" title={row.reporterId}>
           {row.reporter}
@@ -162,11 +170,13 @@ export default async function ReportsPage({
     },
     {
       header: "Created",
+      sortKey: "created",
       kind: "time",
       render: (row) => <LocalTime seconds={row.createdSeconds} />,
     },
     {
       header: "Status",
+      sortKey: "status",
       render: (row) => (
         <Badge tone={row.resolved ? "green" : "orange"} caps>
           {row.resolved ? "resolved" : "open"}
@@ -235,6 +245,7 @@ export default async function ReportsPage({
               hasActiveFilter={hasActiveFilter}
               resetKey={`${status}|${reaction ?? ""}|${q}|${onlyMine ? "1" : "0"}`}
               pageSize={result.pageSize}
+              sort={sort}
             >
               <Select
                 name="status"
@@ -278,7 +289,10 @@ export default async function ReportsPage({
             </>
           }
           noMatchState="No reports match your filter."
-          pagination={{ pathname: "/reports", params: sp, result }}
+          pathname="/reports"
+          params={sp}
+          pagination={result}
+          sorting={sort}
         />
       </SelectionProvider>
     </Main>

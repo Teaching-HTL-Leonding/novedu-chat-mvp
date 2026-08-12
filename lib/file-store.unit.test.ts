@@ -1,3 +1,4 @@
+import { asc, desc } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Behavior-level tests for the temporal file store: the create/update/delete
@@ -14,6 +15,9 @@ const fake = vi.hoisted(() => {
     // the store asked for (so a test can pin the SQL-side paging).
     total: 0,
     windows: [] as { offset: number; limit: number }[],
+    // The ORDER BY terms of the most recent row query, so a test can pin that an
+    // explicit sort replaced the default order and the tiebreaker still trails.
+    order: [] as unknown[],
     selectError: undefined as unknown,
     inserted: [] as Record<string, unknown>[],
     insertError: undefined as unknown,
@@ -33,16 +37,19 @@ const fake = vi.hoisted(() => {
   // returns a builder (not a promise) because the paged query continues with
   // `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
   const queryTail = (fields?: Record<string, unknown>) => ({
-    orderBy: () => ({
-      offset: (offset: number) => ({
-        fetch: (limit: number) => {
-          state.windows.push({ offset, limit });
-          return selectRun(fields);
-        },
-      }),
-      // biome-ignore lint/suspicious/noThenProperty: mimicking drizzle's awaitable query builder
-      then: (...args: Parameters<Promise<unknown[]>["then"]>) => selectRun(fields).then(...args),
-    }),
+    orderBy: (...order: unknown[]) => {
+      state.order = order;
+      return {
+        offset: (offset: number) => ({
+          fetch: (limit: number) => {
+            state.windows.push({ offset, limit });
+            return selectRun(fields);
+          },
+        }),
+        // biome-ignore lint/suspicious/noThenProperty: mimicking drizzle's awaitable query builder
+        then: (...args: Parameters<Promise<unknown[]>["then"]>) => selectRun(fields).then(...args),
+      };
+    },
     // biome-ignore lint/suspicious/noThenProperty: mimicking drizzle's awaitable query builder
     then: (...args: Parameters<Promise<unknown[]>["then"]>) => selectRun(fields).then(...args),
   });
@@ -81,6 +88,7 @@ const fake = vi.hoisted(() => {
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
+import { files } from "@/lib/db/schema";
 import {
   createFile,
   getActiveFile,
@@ -166,6 +174,14 @@ describe("listFiles", () => {
   it("returns undefined on a database error", async () => {
     fake.state.selectError = new Error("down");
     await expect(listFiles()).resolves.toBeUndefined();
+  });
+
+  it("lets an explicit sort replace the default order, keeping the tiebreaker last", async () => {
+    await listFiles({ sort: { key: "name", dir: "asc" } });
+    expect(fake.state.order).toEqual([asc(files.name), asc(files.id)]);
+
+    await listFiles();
+    expect(fake.state.order).toEqual([desc(files.validFrom), asc(files.id)]);
   });
 });
 

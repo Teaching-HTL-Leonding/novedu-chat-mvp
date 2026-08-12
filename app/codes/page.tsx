@@ -27,8 +27,9 @@ import {
   parseModuleParam,
 } from "@/lib/code-modules/types";
 import { getInteractionCounts } from "@/lib/code-stats-store";
-import { DISTANT_FUTURE, DISTANT_PAST, listCodes } from "@/lib/code-store";
+import { CODE_SORT_COLUMNS, DISTANT_FUTURE, DISTANT_PAST, listCodes } from "@/lib/code-store";
 import { type PagingParams, parsePaging } from "@/lib/db/paging";
+import { parseSort, type SortParams } from "@/lib/db/sorting";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 import { LocalTime } from "../local-time";
 import { CopyCodeButton } from "./copy-code-button";
@@ -116,7 +117,8 @@ export default async function CodesPage({
   searchParams,
 }: {
   searchParams: Promise<
-    { q?: string | string[]; mine?: string | string[]; module?: string | string[] } & PagingParams
+    { q?: string | string[]; mine?: string | string[]; module?: string | string[] } & PagingParams &
+      SortParams
   >;
 }) {
   if (!(await isEffectiveTeacher())) {
@@ -135,12 +137,14 @@ export default async function CodesPage({
   const onlyMine = sp.mine !== "0"; // default ON; "0" turns it off
   const moduleFilter = parseModuleParam(sp.module);
   const paging = parsePaging(sp);
+  const sort = parseSort(sp, CODE_SORT_COLUMNS);
 
   const result = await listCodes({
     search: q || undefined,
     createdBy: onlyMine ? currentUserId : undefined,
     module: moduleFilter,
     paging,
+    sort,
   });
 
   if (result === undefined) {
@@ -171,7 +175,7 @@ export default async function CodesPage({
     interactionCount: counts === undefined ? null : (counts.get(entry.code) ?? 0),
   }));
 
-  const columns: ListColumn<CodeRow>[] = [
+  const columns: ListColumn<CodeRow, keyof typeof CODE_SORT_COLUMNS>[] = [
     // Leading multi-select column; the selection key is the CODE, which is what
     // `deleteSelectedCodesAction` deletes by.
     selectionColumn<CodeRow>(
@@ -180,6 +184,7 @@ export default async function CodesPage({
     ),
     {
       header: "Module",
+      sortKey: "module",
       render: (row) => (
         <Badge tone={codeModuleLabels[row.module].tone} solid caps>
           {MODULE_ICONS[row.module]}
@@ -189,6 +194,7 @@ export default async function CodesPage({
     },
     {
       header: "Note",
+      sortKey: "note",
       className: "max-w-96 overflow-hidden text-ellipsis whitespace-nowrap",
       // The tooltip carries the activity YAML URL — the one piece of context that
       // does not fit a column.
@@ -201,11 +207,13 @@ export default async function CodesPage({
     },
     {
       header: "Valid from",
+      sortKey: "from",
       kind: "time",
       render: (row) => <LocalTime seconds={row.validFromSeconds} fallback="No start" />,
     },
     {
       header: "Valid until",
+      sortKey: "until",
       kind: "time",
       render: (row) => <LocalTime seconds={row.validUntilSeconds} fallback="No end" />,
     },
@@ -286,6 +294,7 @@ export default async function CodesPage({
               hasActiveFilter={q !== "" || !onlyMine || moduleFilter !== undefined}
               resetKey={`${q}|${onlyMine ? "1" : "0"}|${moduleFilter ?? ""}`}
               pageSize={result.pageSize}
+              sort={sort}
             >
               <Input
                 type="search"
@@ -319,7 +328,10 @@ export default async function CodesPage({
             </>
           }
           noMatchState="No codes match your filter."
-          pagination={{ pathname: "/codes", params: sp, result }}
+          pathname="/codes"
+          params={sp}
+          pagination={result}
+          sorting={sort}
         />
       </SelectionProvider>
     </Main>

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { PageBody } from "@/components/page-main";
 import { buttonVariants } from "@/components/ui/button";
 import { lastPage, type PagedResult, type ParamRecord, pageHref } from "@/lib/db/paging";
+import { type Sort, type SortDirection, sortHref } from "@/lib/db/sorting";
 import { cn } from "@/lib/utils";
 
 // A column-driven list table for "filtered list" pages (see
@@ -40,7 +41,7 @@ const CELL_KIND_CLASSES: Record<ListColumnKind, string> = {
   actions: "flex items-center justify-end gap-2 whitespace-nowrap",
 };
 
-export interface ListColumn<T> {
+export interface ListColumn<T, K extends string = string> {
   /** Header cell content. */
   header: ReactNode;
   /** Body cell content for one row (returns the cell content, not the <td>). */
@@ -53,29 +54,51 @@ export interface ListColumn<T> {
   headerClassName?: string;
   /** Visually hide the header label (e.g. the trailing Actions column). */
   srOnlyHeader?: boolean;
+  /**
+   * Opt this column into click-to-sort: its key in the list's `SORT_COLUMNS` map.
+   * A list page pins `K` to `keyof typeof ITS_SORT_COLUMNS`, so a key the store
+   * cannot order by is a compile error rather than a header that does nothing. Left
+   * off by a column backed by something other than the list's own query (an
+   * aggregate, a value derived in JS) — and inert without the URL props below.
+   */
+  sortKey?: K;
 }
 
 /**
- * What the pager needs. `DataList` is a server component with no access to the
- * URL, so the page hands over its own pathname plus the already-awaited search
- * params; every param except `page`/`size` is carried onto the pager's links.
+ * Where the pager's and the sortable headers' links point. `DataList` is a server
+ * component with no access to the URL, so the page hands over its own pathname plus
+ * the already-awaited search params; each link carries every param it does not own
+ * (`pageHref` drops `page`/`size`, `sortHref` drops `page`/`sort`).
  */
-export interface ListPagination {
+export interface ListUrl {
   /** The list route's pathname, e.g. `"/files"`. */
   pathname: string;
   /** The page's awaited `searchParams`. */
   params: ParamRecord;
-  /**
-   * The store's `PagedResult` (structurally assignable) — `page` is the EFFECTIVE,
-   * clamped page, and `total` the exact COUNT the current filter matches.
-   */
-  result: Pick<PagedResult<unknown>, "page" | "pageSize" | "total">;
 }
 
-export interface DataListProps<T> {
+/** What the sortable headers need on top of the list URL. */
+export interface ListSorting extends ListUrl {
+  /** The ACTIVE sort as the page parsed it; `undefined` = the list's default order. */
+  sort: Sort | undefined;
+}
+
+/**
+ * The store's `PagedResult` (structurally assignable) — `page` is the EFFECTIVE,
+ * clamped page, and `total` the exact COUNT the current filter matches.
+ */
+export type ListPagination = Pick<PagedResult<unknown>, "page" | "pageSize" | "total">;
+
+/**
+ * `pathname` + `params` (from `ListUrl`) are what the pager and the sortable headers
+ * build their links from, so BOTH are required for `pagination`/`sorting` to render
+ * anything. They are optional only because an embedded, unpaged list (the writing
+ * module's savers list) has no route of its own to name.
+ */
+export interface DataListProps<T, K extends string = string> extends Partial<ListUrl> {
   rows: T[];
   getRowKey: (row: T) => string;
-  columns: ListColumn<T>[];
+  columns: ListColumn<T, K>[];
   /** Optional per-row <tr> classes (e.g. the codes list's module accent stripe). */
   rowClassName?: (row: T) => string | undefined;
   /** Top-left slot — the "New …" button/link. */
@@ -90,33 +113,90 @@ export interface DataListProps<T> {
   emptyState: ReactNode;
   /** Body when a filter is applied but matched nothing. */
   noMatchState: ReactNode;
-  /** Opt into the pager below the table (see `docs/filtered-lists.md`). */
+  /** The store's `PagedResult` — opts into the pager below the table. */
   pagination?: ListPagination;
+  /**
+   * The page's ACTIVE sort. A column opts into click-to-sort with its own `sortKey`
+   * (and the URL props above make the links buildable); this only says which of them
+   * is currently sorted, so `undefined` means "sortable, none active".
+   */
+  sorting?: Sort;
+}
+
+// A sortable header is a plain <Link> — sorting works without JS, same as the pager.
+// The arrow sits in a fixed slot (a dimmed ↕ while the column is not the active
+// sort) so the header neither jumps on click nor hides that it is clickable. The
+// flex is `justify-between`-free on purpose: the link only wraps the label, so a
+// right-aligned (`numeric`) header keeps its alignment from the <th>.
+const SORT_LINK_CLASSES = "inline-flex items-center gap-1 hover:text-foreground";
+const SORT_ARROWS: Record<SortDirection, string> = { asc: "↑", desc: "↓" };
+
+// `aria-sort` belongs on the <th>, and only on a column that IS sortable here —
+// "none" on a static column would announce it to a screen reader as sortable.
+function ariaSort(
+  sorting: ListSorting | undefined,
+  sortKey: string | undefined,
+): "ascending" | "descending" | "none" | undefined {
+  if (!sorting || !sortKey) return undefined;
+  if (sorting.sort?.key !== sortKey) return "none";
+  return sorting.sort.dir === "asc" ? "ascending" : "descending";
+}
+
+function SortableHeader({
+  header,
+  sortKey,
+  sorting,
+}: {
+  header: ReactNode;
+  sortKey: string;
+  sorting: ListSorting;
+}) {
+  const active = sorting.sort?.key === sortKey ? sorting.sort : undefined;
+  return (
+    <Link
+      href={sortHref(sorting.pathname, sorting.params, sortKey, sorting.sort)}
+      className={SORT_LINK_CLASSES}
+    >
+      {header}
+      <span aria-hidden="true" className={active ? undefined : "text-foreground/30"}>
+        {active ? SORT_ARROWS[active.dir] : "↕"}
+      </span>
+    </Link>
+  );
 }
 
 /** The bare table — column recipes included, no page shell or toolbar. */
-export function ListTable<T>({
+export function ListTable<T, K extends string = string>({
   rows,
   getRowKey,
   columns,
   rowClassName,
+  sorting,
 }: {
   rows: T[];
   getRowKey: (row: T) => string;
-  columns: ListColumn<T>[];
+  columns: ListColumn<T, K>[];
   /** Optional per-row <tr> classes (e.g. the codes list's module accent stripe). */
   rowClassName?: (row: T) => string | undefined;
+  /**
+   * Opt into click-to-sort headers. Omitted — as the embedded tables do — every
+   * header renders plain, even for a column that carries a `sortKey`.
+   */
+  sorting?: ListSorting;
 }) {
   // Cell classes vary only by COLUMN, so merge them once per column here
-  // instead of once per cell inside the row loop.
-  const headerClasses = columns.map((column) =>
-    cn(
+  // instead of once per cell inside the row loop. `aria-sort` is per-column too,
+  // so the whole <th> attribute set is built here and spread below.
+  const headerProps = columns.map((column) => ({
+    scope: "col" as const,
+    className: cn(
       TH_CLASSES,
       column.kind && HEADER_KIND_CLASSES[column.kind],
       column.srOnlyHeader && "w-[1%]",
       column.headerClassName,
     ),
-  );
+    "aria-sort": ariaSort(sorting, column.sortKey),
+  }));
   const cellClasses = columns.map((column) =>
     cn(TD_CLASSES, column.kind && CELL_KIND_CLASSES[column.kind], column.className),
   );
@@ -130,9 +210,15 @@ export function ListTable<T>({
           <tr>
             {columns.map((column, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: columns are static per render — the index is a stable identity
-              <th key={index} scope="col" className={headerClasses[index]}>
+              <th key={index} {...headerProps[index]}>
                 {column.srOnlyHeader ? (
                   <span className="sr-only">{column.header}</span>
+                ) : sorting && column.sortKey ? (
+                  <SortableHeader
+                    header={column.header}
+                    sortKey={column.sortKey}
+                    sorting={sorting}
+                  />
                 ) : (
                   column.header
                 )}
@@ -180,9 +266,17 @@ function PagerStep({ href, label }: { href: string | undefined; label: string })
  * page in `pagination`, never from the URL — a clamped page must not offer a
  * "Next" that doesn't exist.
  */
-function Pager({ pagination, rowCount }: { pagination: ListPagination; rowCount: number }) {
-  const { pathname, params } = pagination;
-  const { page, pageSize, total } = pagination.result;
+function Pager({
+  url,
+  result,
+  rowCount,
+}: {
+  url: ListUrl;
+  result: ListPagination;
+  rowCount: number;
+}) {
+  const { pathname, params } = url;
+  const { page, pageSize, total } = result;
   // No chrome for an empty list. `rowCount` is checked too: COUNT and the row
   // query aren't in one transaction, so a concurrent delete can leave a total
   // with no rows — better no pager than "Showing 21–20 of 137".
@@ -220,7 +314,9 @@ function Pager({ pagination, rowCount }: { pagination: ListPagination; rowCount:
   );
 }
 
-export function DataList<T>({
+export function DataList<T, K extends string = string>({
+  pathname,
+  params,
   rows,
   getRowKey,
   columns,
@@ -232,7 +328,13 @@ export function DataList<T>({
   emptyState,
   noMatchState,
   pagination,
-}: DataListProps<T>) {
+  sorting,
+}: DataListProps<T, K>) {
+  // The one place the URL half is assembled: both the pager and the sortable
+  // headers need it, and neither can render without it.
+  const url: ListUrl | undefined =
+    pathname !== undefined && params !== undefined ? { pathname, params } : undefined;
+
   return (
     <PageBody>
       {hint ? <p className="text-foreground/70 text-sm">{hint}</p> : null}
@@ -250,10 +352,11 @@ export function DataList<T>({
           getRowKey={getRowKey}
           columns={columns}
           rowClassName={rowClassName}
+          sorting={url && { ...url, sort: sorting }}
         />
       )}
 
-      {pagination ? <Pager pagination={pagination} rowCount={rows.length} /> : null}
+      {url && pagination ? <Pager url={url} result={pagination} rowCount={rows.length} /> : null}
     </PageBody>
   );
 }

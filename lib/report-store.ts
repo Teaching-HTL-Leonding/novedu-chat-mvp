@@ -4,6 +4,8 @@ import { getDb } from "@/lib/db";
 import { countRows } from "@/lib/db/count";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
 import { codes, reports, users } from "@/lib/db/schema";
+import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
+import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
 import type { QuizVerdict } from "@/lib/quiz-types";
 import type { ReportKind, ReportReaction } from "@/lib/report-types";
@@ -198,13 +200,15 @@ export async function countQuizReports(
  * LEFT JOIN on `novedu_users` (BY VALUE, oid fallback is the caller's) and the code
  * note/creator from a LEFT JOIN on `novedu_codes`; a report whose code was deleted
  * still lists (both joins yield `null`). NEVER joins `novedu_user_chats` — the only
- * identity surfaced is the reporter's own (see the module header). Ordered so OPEN
- * `holysh` (urgent) reports float to the top, then newest first. Returns `undefined`
- * on a database error. Never throws.
+ * identity surfaced is the reporter's own (see the module header). By default ordered
+ * so OPEN `holysh` (urgent) reports float to the top, then newest first. Returns
+ * `undefined` on a database error. Never throws.
  *
  * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
- * with a COUNT for the total); omitting it returns every match, which is what the
- * bearer API route wants.
+ * with a COUNT for the total), and `sort` the ORDER BY — an explicit sort REPLACES
+ * the urgent-first default, and spans the whole filtered set rather than one page.
+ * Omitting both returns every match in the default order, which is what the bearer
+ * API route wants.
  */
 // The two reads that surface a report row — the list and `getReportById` — share
 // their projection, their joins and their row mapper, so the three can never drift
@@ -278,12 +282,34 @@ function listConditions(opts: {
   return conditions;
 }
 
+// The inbox's default lead: open `holysh` reports first — the urgent working set.
+// An explicit `?sort=` replaces it (see `sortOrder`); SQL objects are immutable
+// descriptors, so reusing this one is safe, like the JOIN constants above.
+const URGENT_FIRST = sql`CASE WHEN ${reports.reaction} = 'holysh' AND ${reports.resolvedAt} IS NULL THEN 0 ELSE 1 END`;
+
+/**
+ * The `/reports` list's sortable columns (ORDER BY map + `parseSort` allow-list).
+ * `code` and `student` order by the JOINED columns the rows lead with; a report
+ * whose code row is gone, or whose reporter has no `novedu_users` row, is NULL there
+ * and sorts first ascending (mssql orders NULLs first ASC, last DESC). `status` is
+ * `resolved_at`, NULL while open — so ascending reads as "open first".
+ */
+export const REPORT_SORT_COLUMNS = {
+  reaction: reports.reaction,
+  kind: reports.kind,
+  code: codes.note,
+  student: users.displayName,
+  created: reports.createdAt,
+  status: reports.resolvedAt,
+} satisfies SortColumns;
+
 export async function listReports(opts: {
   status: ReportStatusFilter;
   reaction?: ReportReaction;
   search?: string;
   codeCreatedBy?: string;
   paging?: Paging;
+  sort?: Sort;
 }): Promise<PagedResult<ReportListRow> | undefined> {
   const conditions = listConditions(opts);
   try {
@@ -303,13 +329,13 @@ export async function listReports(opts: {
           .leftJoin(users, JOIN_REPORTER)
           .leftJoin(codes, JOIN_CODE)
           .where(and(...conditions))
-          // Open `holysh` reports first (the urgent working set), then newest
-          // first, then `id` — the leading CASE is far from unique, and
-          // OFFSET/FETCH over a non-unique sort could repeat or skip a row.
           .orderBy(
-            sql`CASE WHEN ${reports.reaction} = 'holysh' AND ${reports.resolvedAt} IS NULL THEN 0 ELSE 1 END`,
-            desc(reports.createdAt),
-            asc(reports.id),
+            ...sortOrder(
+              opts.sort,
+              REPORT_SORT_COLUMNS,
+              [URGENT_FIRST, desc(reports.createdAt)],
+              asc(reports.id),
+            ),
           );
         const rows = await (window ? query.offset(window.offset).fetch(window.limit) : query);
         return rows.map(toListRow);

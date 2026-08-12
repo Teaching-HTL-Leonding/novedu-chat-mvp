@@ -16,7 +16,12 @@ const listReports = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/student-mode", () => ({ isEffectiveTeacher }));
 vi.mock("@/auth", () => ({ auth }));
-vi.mock("@/lib/report-store", () => ({ listReports }));
+// The page also imports the store's sort-key allow-list (the ONE declaration of
+// which columns `/reports` can sort by) and hands it to `parseSort`.
+vi.mock("@/lib/report-store", () => ({
+  listReports,
+  REPORT_SORT_COLUMNS: { created: {}, code: {} },
+}));
 // The server bulk actions pull heavy server-only transitive imports; the page only
 // forwards them as props, so a stub keeps the test hermetic.
 vi.mock("@/lib/report-actions", () => ({
@@ -143,6 +148,16 @@ describe("teacher", () => {
     expect(listReports).toHaveBeenCalledWith(
       expect.objectContaining({ paging: { page: 3, pageSize: 100 } }),
     );
+  });
+
+  it("passes a valid ?sort= down to the store and ignores an unknown key", async () => {
+    await renderPage({ sort: "-created" });
+    expect(listReports).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: { key: "created", dir: "desc" } }),
+    );
+
+    await renderPage({ sort: "bogus" });
+    expect(listReports).toHaveBeenLastCalledWith(expect.objectContaining({ sort: undefined }));
   });
 
   it("shows the unavailable notice when the store errors", async () => {

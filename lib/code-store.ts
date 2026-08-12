@@ -5,6 +5,8 @@ import { getDb } from "@/lib/db";
 import { countRows } from "@/lib/db/count";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
 import { codes } from "@/lib/db/schema";
+import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
+import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
 import { type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
 
@@ -392,9 +394,23 @@ function listConditions(opts?: {
 }
 
 /**
+ * The `/codes` list's sortable columns (ORDER BY map + `parseSort` allow-list).
+ * `module` sorts by the STORED value (coding, quiz, tutor, writing alphabetically),
+ * not by the badge label the row renders. The list's "Interactions" column is
+ * deliberately absent: it is a separate aggregate over the Mastra-owned tables (a
+ * different pool), so it cannot be an ORDER BY term of this query.
+ */
+export const CODE_SORT_COLUMNS = {
+  module: codes.module,
+  note: codes.note,
+  from: codes.validFrom,
+  until: codes.validUntil,
+} satisfies SortColumns;
+
+/**
  * Codes for the "Codes" page — ALL teachers' codes (a teacher may see/manage
- * every code; finer-grained RBAC is planned), newest first, including
- * not-yet-started and expired ones. Filtering happens IN THE DATABASE (see
+ * every code; finer-grained RBAC is planned), newest first unless a `sort` says
+ * otherwise, including not-yet-started and expired ones. Filtering happens IN THE DATABASE (see
  * `docs/filtered-lists.md`), never in memory: an optional `search` term is a
  * case-insensitive contains-match over note/code, `createdBy` narrows to one
  * teacher's codes (the "Only my codes" toggle), and `module` narrows to one
@@ -402,14 +418,16 @@ function listConditions(opts?: {
  * the page notes.
  *
  * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
- * with a COUNT for the total); omitting it returns every match, which is what the
- * bearer API route wants.
+ * with a COUNT for the total), and `sort` the ORDER BY — so a sort spans the whole
+ * filtered set, not one page. Omitting both returns every match in the default
+ * order, which is what the bearer API route wants.
  */
 export async function listCodes(opts?: {
   search?: string;
   createdBy?: string;
   module?: CodeModule;
   paging?: Paging;
+  sort?: Sort;
 }): Promise<PagedResult<CodeEntry> | undefined> {
   const conditions = listConditions(opts);
   try {
@@ -423,9 +441,9 @@ export async function listCodes(opts?: {
           .select()
           .from(codes)
           .where(and(...conditions))
-          // `code` breaks ties: OFFSET/FETCH over a non-unique sort could
-          // otherwise repeat or skip a row between pages.
-          .orderBy(desc(codes.createdAt), asc(codes.code));
+          .orderBy(
+            ...sortOrder(opts?.sort, CODE_SORT_COLUMNS, [desc(codes.createdAt)], asc(codes.code)),
+          );
         const rows = await (window ? query.offset(window.offset).fetch(window.limit) : query);
         // Unreachable now that the module check is a WHERE condition (a dropped
         // row would make a page short and disagree with the COUNT) — kept so a

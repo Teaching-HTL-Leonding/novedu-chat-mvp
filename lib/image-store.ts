@@ -4,6 +4,8 @@ import { type DbExecutor, getDb } from "@/lib/db";
 import { countRows } from "@/lib/db/count";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
 import { images } from "@/lib/db/schema";
+import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
+import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
 import { validateFileName } from "@/lib/file-name";
 import { deleteBlob } from "@/lib/image-blob";
@@ -77,21 +79,33 @@ function listConditions(opts?: { search?: string; createdBy?: string }): SQL[] {
   return conditions;
 }
 
+/** The `/images` list's sortable columns (ORDER BY map + `parseSort` allow-list). */
+export const IMAGE_SORT_COLUMNS = {
+  name: images.name,
+  mime: images.mimeType,
+  size: images.byteSize,
+  credit: images.credit,
+  updated: images.validFrom,
+} satisfies SortColumns;
+
 /**
- * The active (non-deleted) images for the "Images" list, newest first. Filtering
+ * The active (non-deleted) images for the "Images" list, newest first unless a
+ * `sort` says otherwise. Filtering
  * happens IN THE DATABASE (see `docs/filtered-lists.md`), never in memory: an
  * optional `search` term is a case-insensitive contains-match over the name, and
  * `createdBy` narrows to one writer's images (the "Only my images" toggle).
  * `undefined` on a database error, which the page notes.
  *
  * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
- * with a COUNT for the total); omitting it returns every match, which is what the
- * bearer API route wants.
+ * with a COUNT for the total), and `sort` the ORDER BY — so a sort spans the whole
+ * filtered set, not one page. Omitting both returns every match in the default
+ * order, which is what the bearer API route wants.
  */
 export async function listImages(opts?: {
   search?: string;
   createdBy?: string;
   paging?: Paging;
+  sort?: Sort;
 }): Promise<PagedResult<ImageListEntry> | undefined> {
   const conditions = listConditions(opts);
   try {
@@ -114,9 +128,9 @@ export async function listImages(opts?: {
           })
           .from(images)
           .where(and(...conditions))
-          // `id` breaks ties: OFFSET/FETCH over a non-unique sort could otherwise
-          // repeat or skip a row between pages.
-          .orderBy(desc(images.validFrom), asc(images.id));
+          .orderBy(
+            ...sortOrder(opts?.sort, IMAGE_SORT_COLUMNS, [desc(images.validFrom)], asc(images.id)),
+          );
         return window ? query.offset(window.offset).fetch(window.limit) : query;
       },
     });

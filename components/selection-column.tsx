@@ -9,10 +9,12 @@ import { RowSelectCheckbox, SelectAllControls } from "@/components/list-selectio
 // delete action expects — a file name, a tutor code), which must match the
 // `allIds` given to <SelectionProvider>; `rowLabel` only sharpens the checkbox's
 // accessible name.
+// `ListColumn<T, never>` — never a sortable column, and `never` is assignable to
+// whatever sort-key union the page pins its `columns` array to.
 export function selectionColumn<T>(
   getRowKey: (row: T) => string,
   rowLabel?: (row: T) => string,
-): ListColumn<T> {
+): ListColumn<T, never> {
   return {
     header: <SelectAllControls />,
     headerClassName: "w-[1%]",
