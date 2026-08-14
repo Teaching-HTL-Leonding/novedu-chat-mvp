@@ -200,6 +200,7 @@ export default async function FilesPage({
     <Main>
       <SelectionProvider allIds={rows.map((row) => row.name)}>
         <DataList
+          wide
           rows={rows}
           getRowKey={(row) => row.id}
           columns={columns}

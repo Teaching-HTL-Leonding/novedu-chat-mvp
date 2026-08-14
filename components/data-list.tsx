@@ -121,6 +121,11 @@ export interface DataListProps<T, K extends string = string> extends Partial<Lis
    * is currently sorted, so `undefined` means "sortable, none active".
    */
   sorting?: Sort;
+  /**
+   * Render in the wide, table-sized page column (`PageBody`'s `wide`) — what the
+   * four full list pages do. Off for embedded/bounded lists.
+   */
+  wide?: boolean;
 }
 
 // A sortable header is a plain <Link> — sorting works without JS, same as the pager.
@@ -204,7 +209,12 @@ export function ListTable<T, K extends string = string>({
   return (
     // The white card holding every table: rounded so the row accent stripes clip
     // with it; the last row drops its hairline so it doesn't double the card edge.
-    <div className="overflow-hidden rounded-xl border border-foreground/10 bg-card shadow-xs [&_tbody_tr:last-child>td]:border-b-0">
+    // The card is also the horizontal SCROLLER — a scroll container clips exactly
+    // like `overflow-hidden`, but a table wider than its column stays reachable
+    // instead of being cut off; the scrollbar renders on the card's bottom edge
+    // only when it overflows. This is the universal fallback for every table,
+    // embedded ones included, at any window size.
+    <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-card shadow-xs [&_tbody_tr:last-child>td]:border-b-0">
       <table className={TABLE_CLASSES}>
         <thead>
           <tr>
@@ -289,7 +299,9 @@ function Pager({
   return (
     <nav
       aria-label="Pagination"
-      className="flex flex-wrap items-center justify-between gap-3 text-sm"
+      // `w-0 min-w-full`: excluded from the wide column's intrinsic width (see
+      // the warning in DataList) — only the table sizes that column.
+      className="flex w-0 min-w-full flex-wrap items-center justify-between gap-3 text-sm"
     >
       <p className="text-foreground/70">
         Showing {from}–{to} of {total}
@@ -329,23 +341,31 @@ export function DataList<T, K extends string = string>({
   noMatchState,
   pagination,
   sorting,
+  wide,
 }: DataListProps<T, K>) {
   // The one place the URL half is assembled: both the pager and the sortable
   // headers need it, and neither can render without it.
   const url: ListUrl | undefined =
     pathname !== undefined && params !== undefined ? { pathname, params } : undefined;
 
+  // ONLY the table may size the wide column. Every other child carries
+  // `w-0 min-w-full` — zero intrinsic contribution to the `fit-content` column,
+  // then the column's resolved width to lay out and wrap in. Applied
+  // unconditionally (a no-op in the default `w-full` column).
+  // WARNING: a child added here WITHOUT these classes silently inflates the page
+  // width of every wide list — a long hint or a wide filter bar would then decide
+  // the layout instead of the table.
   return (
-    <PageBody>
-      {hint ? <p className="text-foreground/70 text-sm">{hint}</p> : null}
+    <PageBody wide={wide}>
+      {hint ? <p className="w-0 min-w-full text-foreground/70 text-sm">{hint}</p> : null}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex w-0 min-w-full flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">{actions}</div>
         {filterBar}
       </div>
 
       {rows.length === 0 ? (
-        <p>{isFiltered ? noMatchState : emptyState}</p>
+        <p className="w-0 min-w-full">{isFiltered ? noMatchState : emptyState}</p>
       ) : (
         <ListTable
           rows={rows}

@@ -31,12 +31,28 @@ export const PAGE_CANVAS = "mx-[calc((100%-100vw)/2)] -my-3 min-h-0 flex-1 bg-sl
 // editors' `fill` chain) start viewport-high and grow with their content.
 // `className` is a cn-merged delta on the inner column (e.g. a page that
 // manages its own vertical gaps).
-export function PageBody({ className, children, ...props }: ComponentProps<"div">) {
+//
+// `wide` is for the list pages (`docs/filtered-lists.md`): the column is
+// `fit-content` — sized by its widest intrinsic child, which is the table,
+// because `DataList` excludes every other child from intrinsic sizing —
+// floored at 1280px (identical to the default `max-w-7xl`, so the toolbar keeps
+// its accustomed room) and capped at 1760px (wider degrades rows into sparse
+// ribbons). Both bounds are additionally capped by the viewport via
+// `min(100%, …)`, below which the table's own card scrolls horizontally.
+export function PageBody({
+  className,
+  children,
+  wide,
+  ...props
+}: ComponentProps<"div"> & {
+  wide?: boolean;
+}) {
   return (
     <div className={cn(PAGE_CANVAS, "page-scroll overflow-y-auto")} {...props}>
       <div
         className={cn(
-          "mx-auto flex min-h-full w-full max-w-7xl flex-col gap-4 px-5 pt-4 pb-6",
+          "mx-auto flex min-h-full flex-col gap-4 px-5 pt-4 pb-6",
+          wide ? "w-fit min-w-[min(100%,80rem)] max-w-[min(100%,110rem)]" : "w-full max-w-7xl",
           className,
         )}
       >

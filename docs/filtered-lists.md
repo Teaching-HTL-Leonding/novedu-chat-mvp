@@ -28,6 +28,37 @@ a pure server concern later.
 | `ListFilterBar` | `components/list-filter-bar.tsx` (**client**) | the only interactive bit: controls + **Apply** → push a new query string; exports `OwnerFilter` (the owner dropdown) and `FilterCheckbox` (the `/reports` "Only my codes" toggle) |
 | ui primitives | `components/ui/` (`Button`/`buttonVariants`, `Input`, `Badge`, `IconButton`) | the "New …" action, the search input, kind/status chips, row action buttons |
 
+### Page width: the table decides, within a clamp
+
+The four full list pages (`/codes`, `/files`, `/images`, `/reports`) pass `wide` to
+`DataList`, which forwards it to `PageBody`. The wide column is `fit-content`
+**clamped to 1280–1760px and additionally capped by the viewport**
+(`w-fit min-w-[min(100%,80rem)] max-w-[min(100%,110rem)]`): the 1280px floor is
+identical to the default `max-w-7xl`, so a small table and its toolbar look
+exactly as before; between the bounds the column fits the table with no stretched
+columns and no dead space; the 1760px cap keeps ultrawide monitors scannable
+(uncapped, rows degrade into sparse ribbons with the actions a screen away from
+the row's identifying text). The column width therefore follows the content — a
+long note, a page change or a filter can shift the centered layout horizontally;
+the floor absorbs most of it, and per-column caps like `/codes`' `max-w-96` note
+are what keep one row from driving the whole page to the cap.
+
+**Only the table may size that column.** Every other child `DataList` renders
+(the hint, the toolbar row, the empty/no-match paragraph, the pager) carries
+`w-0 min-w-full` — zero intrinsic width contribution, then the column's resolved
+width to wrap in. A new child added there without those classes silently inflates
+the page width of every list.
+
+**Any table's card scrolls horizontally on overflow** (`overflow-x-auto` on the
+`ListTable` card). That is the universal fallback and applies to every render,
+embedded tables included: below ~1300px — down to phone widths, where the column
+equals the viewport — the table scrolls inside its card instead of being clipped,
+so every action button stays reachable. Embedded and bounded lists (the writing
+module's savers list, the per-code conversation stats, the usage dashboard) do
+**not** get `wide`; they keep the default `max-w-7xl` column and rely on the card
+scroll alone. `tests/component/list-overflow.browser.test.tsx` is the guard for
+both the scroll fallback and the three clamp regimes.
+
 ### Store: dynamic query, the Drizzle way
 
 Build an `SQL[]` of optional conditions and apply them with `.where(and(...conditions))`
