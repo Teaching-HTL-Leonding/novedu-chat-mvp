@@ -211,6 +211,7 @@ export default async function ReportsPage({
     <Main>
       <SelectionProvider allIds={rows.map((row) => row.id)}>
         <DataList
+          wide
           rows={rows}
           getRowKey={(row) => row.id}
           columns={columns}

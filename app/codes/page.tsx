@@ -290,6 +290,7 @@ export default async function CodesPage({
     <Main>
       <SelectionProvider allIds={rows.map((row) => row.code)}>
         <DataList
+          wide
           rows={rows}
           getRowKey={(row) => row.code}
           columns={columns}

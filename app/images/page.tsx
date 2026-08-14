@@ -179,6 +179,7 @@ export default async function ImagesPage({
     <Main>
       <SelectionProvider allIds={rows.map((row) => row.name)}>
         <DataList
+          wide
           rows={rows}
           getRowKey={(row) => row.id}
           columns={columns}
