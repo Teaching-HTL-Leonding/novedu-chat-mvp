@@ -22,7 +22,13 @@
 // exercised — and `options.evalFailures` makes the first N requests answer 504 so
 // the CLI's retry path is exercised offline.
 //
-// `/api/eval/judge` (the feedback judge) follows the same convention one level up:
+// `/api/eval/respond` (the TUTOR eval kind's generator) follows the same convention:
+// the generated turn is the `[respond:<text>]` marker's payload when the LAST student
+// message carries one (so a test decides exactly what the judge then sees — including a
+// planted `[judge:<criterion>]` marker), otherwise a canned echo. `options.respondFailures`
+// makes the first N requests answer 504, exercising the retry path offline.
+//
+// `/api/eval/judge` (the judge, shared by both eval kinds) follows the same convention one level up:
 // it answers an EMPTY `issues` list unless the request's `subject` carries
 // `[judge:<criterion>]` markers — one issue per marker. (The judge's DEGRADE breaker
 // is unit-tested in `cli/src/eval-run.unit.test.ts`; exercising it against the built
@@ -54,9 +60,10 @@ const CLI_PACKAGE_VERSION = JSON.parse(
  *
  * `options.codes` seeds the fake `/api/codes` store (the array is used as-is, so
  * a caller can inspect what a run minted). `options.evalFailures` makes the first
- * N `/api/eval/grade` requests answer 504 (retry testing); every graded request is
- * appended to the returned `evalRequests` array; every judged `/api/eval/judge`
- * request is appended to `judgeRequests`. `options.cliVersion` overrides the
+ * N `/api/eval/grade` requests answer 504 and `options.respondFailures` does the same
+ * for `/api/eval/respond` (retry testing); every graded request is appended to the
+ * returned `evalRequests` array, every generated one to `respondRequests`, and every
+ * judged `/api/eval/judge` request to `judgeRequests`. `options.cliVersion` overrides the
  * `cliVersion` `/api/version` reports (default: the real `cli/package.json` one), so
  * `eval`'s mismatch warning can be exercised.
  *
@@ -65,8 +72,8 @@ const CLI_PACKAGE_VERSION = JSON.parse(
  * separate declaration file to drift.
  *
  * @param {number} [port]
- * @param {{ codes?: Array<Record<string, unknown>>, evalFailures?: number, cliVersion?: string }} [options]
- * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>>, evalRequests: Array<Record<string, unknown>>, judgeRequests: Array<Record<string, unknown>> }>}
+ * @param {{ codes?: Array<Record<string, unknown>>, evalFailures?: number, respondFailures?: number, cliVersion?: string }} [options]
+ * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>>, evalRequests: Array<Record<string, unknown>>, respondRequests: Array<Record<string, unknown>>, judgeRequests: Array<Record<string, unknown>> }>}
  */
 export function startFixturesServer(port = 0, options = {}) {
   const codes = options.codes ?? [];
@@ -74,8 +81,11 @@ export function startFixturesServer(port = 0, options = {}) {
   /** @type {Array<Record<string, unknown>>} */
   const evalRequests = [];
   /** @type {Array<Record<string, unknown>>} */
+  const respondRequests = [];
+  /** @type {Array<Record<string, unknown>>} */
   const judgeRequests = [];
   const evalState = { remainingFailures: options.evalFailures ?? 0 };
+  const respondState = { remainingFailures: options.respondFailures ?? 0 };
   const reportedCliVersion = options.cliVersion ?? CLI_PACKAGE_VERSION;
 
   const server = http.createServer(async (req, res) => {
@@ -102,6 +112,10 @@ export function startFixturesServer(port = 0, options = {}) {
       }
       if (url.pathname === "/api/eval/grade") {
         await handleEvalGrade(req, res, evalState, evalRequests);
+        return;
+      }
+      if (url.pathname === "/api/eval/respond") {
+        await handleEvalRespond(req, res, respondState, respondRequests);
         return;
       }
       if (url.pathname === "/api/eval/judge") {
@@ -135,6 +149,7 @@ export function startFixturesServer(port = 0, options = {}) {
         baseUrl: `http://127.0.0.1:${actualPort}`,
         codes,
         evalRequests,
+        respondRequests,
         judgeRequests,
       });
     });
@@ -268,6 +283,62 @@ async function handleEvalGrade(req, res, state, requests) {
     output: 40 + String(body.answer).length,
   };
   sendJson(res, 200, { result, feedback: `fixtures grader says ${result}`, usage });
+}
+
+/**
+ * The fake `POST /api/eval/respond` (app/api/eval/respond/route.ts): bearer required,
+ * POST only, the same required fields — then a DETERMINISTIC generated turn. The LAST
+ * message decides: a `[respond:<text>]` marker makes `<text>` the answer (so a fixture
+ * can plant a `[judge:<criterion>]` marker INSIDE the generated response and prove it
+ * reaches the judge's subject), otherwise a canned echo. The first `respondFailures`
+ * requests answer 504 instead, exercising the CLI's retry path.
+ */
+async function handleEvalRespond(req, res, state, requests) {
+  if (!/^Bearer .+/.test(req.headers.authorization ?? "")) {
+    sendJson(res, 401, { message: "Unauthorized" });
+    return;
+  }
+  if (req.method !== "POST") {
+    sendJson(res, 405, { message: "Method not allowed" });
+    return;
+  }
+  const body = await readJsonBody(req);
+  if (body === undefined) {
+    sendJson(res, 400, { message: "The request body must be JSON." });
+    return;
+  }
+  if (
+    !body?.llm?.model ||
+    !body?.system ||
+    !Array.isArray(body?.messages) ||
+    !body.messages.length
+  ) {
+    sendJson(res, 400, { message: "llm.model, system and messages are required." });
+    return;
+  }
+  if (!Array.isArray(body?.tools)) {
+    sendJson(res, 400, { message: "tools must be a list." });
+    return;
+  }
+
+  if (state.remainingFailures > 0) {
+    state.remainingFailures -= 1;
+    sendJson(res, 504, { message: "Gateway timeout" });
+    return;
+  }
+
+  requests.push(body);
+  const last = String(body.messages.at(-1)?.text ?? "");
+  // Greedy up to the FINAL bracket, so a marker payload may itself contain brackets
+  // (e.g. a nested `[judge:…]` marker).
+  const marker = /\[respond:([\s\S]*)\]/.exec(last);
+  const text = marker ? marker[1] : `fixtures tutor replies to: ${last}`;
+  const usage = {
+    input: 800 + String(body.system).length,
+    cachedInput: 64,
+    output: 30 + text.length,
+  };
+  sendJson(res, 200, { text, usage });
 }
 
 /**

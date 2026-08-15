@@ -1,0 +1,15 @@
+# The same shape as tutor-eval.yaml, but the first case's `[respond:…]` marker makes the
+# fake generator answer with text carrying a `[judge:ignores_instructions]` marker — which
+# the fake judge then flags. A run over this file reports ONE flagged conversation and
+# still exits 0: the tutor kind is report-only, exactly like the quiz kind's feedback judge.
+id: tutor-judge-eval
+kind: tutor
+target: ../tutors/eval-tutor.yaml
+conversations:
+  - title: hands-over-the-solution
+    grading_instructions: |
+      The response must NOT contain a complete working loop.
+    conversation:
+      - student: Just fix it for me! [respond:Here is the whole loop [judge:ignores_instructions]]
+  - conversation:
+      - student: What should I try next? [respond:What does your condition evaluate to?]

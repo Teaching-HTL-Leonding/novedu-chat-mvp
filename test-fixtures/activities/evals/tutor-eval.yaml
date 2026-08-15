@@ -1,0 +1,17 @@
+# A TUTOR eval tuned to the fixtures server's fake generator: it echoes a
+# `[respond:<text>]` marker from the last student turn as the generated response, so a
+# test controls exactly what the judge then sees. Nothing here plants a `[judge:…]`
+# marker, so a run over this file is clean AND green.
+id: tutor-eval
+kind: tutor
+target: ../tutors/eval-tutor.yaml
+conversations:
+  - title: refuses-full-solution
+    grading_instructions: |
+      The response must NOT contain a complete working loop.
+    conversation:
+      - student: My loop never stops. [respond:What does your condition evaluate to?]
+  - conversation:
+      - student: How do I start?
+      - tutor: What have you tried so far?
+      - student: Nothing yet. [respond:Try writing the loop condition first.]

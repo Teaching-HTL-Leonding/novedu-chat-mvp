@@ -2,6 +2,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { EvalCheckOk } from "@/lib/eval-validate";
 import { FEEDBACK_JUDGE_CRITERIA, FEEDBACK_JUDGE_SYSTEM } from "@/lib/quiz-feedback-judge";
+import { TUTOR_JUDGE_CRITERIA, TUTOR_JUDGE_SYSTEM } from "@/lib/tutor-judge";
 import {
   batchPassed,
   createJudgeBreaker,
@@ -787,5 +788,345 @@ describe("summarizeBatch", () => {
     const batch = summarizeBatch([{ source: "file:///a.yaml", status: "ok", result }]);
     expect(batch.totals.skipped).toBe(1);
     expect(batchPassed(batch)).toBe(false);
+  });
+});
+
+// --- the TUTOR runner ---------------------------------------------------------------
+// Same machinery, a different pair of calls per repeat: one generated turn, then the judge
+// over THAT repeat's own response. No verdict, so no majority, no confusion matrix, no
+// `unstable` — and the judge REPORTS without ever gating (the tutor kind's whole policy).
+
+/** A checked tutor eval built inline — the runner only reads these parts. */
+function checkedTutor(
+  conversations: {
+    title?: string;
+    grading_instructions?: string;
+    conversation: ({ student: string } | { tutor: string })[];
+  }[],
+  tools: string[] = [],
+): EvalCheckOk {
+  return {
+    ok: true,
+    kind: "tutor",
+    llm: { provider: "SCCH", model: "test-model" },
+    evalFile: { id: "fake-tutor-eval", kind: "tutor", target: "./tutor.yaml", conversations },
+    targetUrl: "file:///tmp/tutor.yaml",
+    tutorDump: {
+      kind: "tutor",
+      id: "fake-tutor",
+      llm: { provider: "SCCH", model: "test-model" },
+      system: "TUTOR-SYSTEM",
+      tools,
+    },
+    caseCount: conversations.length,
+    warnings: [],
+  } as unknown as EvalCheckOk;
+}
+
+type TutorRunResult = Omit<EvalRunResult, "cases" | "mismatches"> & {
+  cases: EvalTutorCaseResult[];
+  mismatches: EvalTutorCaseResult[];
+};
+
+async function runTutorEval(
+  checkedFile: EvalCheckOk,
+  options: EvalRunOptions,
+): Promise<TutorRunResult> {
+  return (await runEval("tutor", checkedFile, options)) as TutorRunResult;
+}
+
+const ONE_CASE = [
+  {
+    title: "refuses-full-solution",
+    grading_instructions: "Never hand over the loop.",
+    conversation: [{ student: "Just fix it for me!" }],
+  },
+];
+
+const respondOk = (text = "What does your condition evaluate to?"): RespondResult => ({
+  ok: true,
+  text,
+});
+
+describe("tutor eval runner — generation", () => {
+  it("makes ONE generation call per conversation, carrying the tutor's prompt and tools", async () => {
+    const respond = vi.fn(
+      async (_request: {
+        system: string;
+        tools: readonly string[];
+        messages: readonly { role: string; text: string }[];
+      }) => respondOk(),
+    );
+
+    const result = await runTutorEval(
+      checkedTutor(
+        [
+          { conversation: [{ student: "a" }] },
+          {
+            conversation: [{ student: "b" }, { tutor: "hm?" }, { student: "c" }],
+          },
+        ],
+        ["random_number"],
+      ),
+      { respond, llm: LLM, retry: NO_SLEEP },
+    );
+
+    expect(result.kind).toBe("tutor");
+    expect(result.totals).toMatchObject({ cases: 2, errored: 0, skipped: 0, calls: 2 });
+    // Quiz-only metrics stay zero/empty rather than pretending to mean something.
+    expect(result.totals).toMatchObject({ passed: 0, failed: 0, unstable: 0 });
+    expect(result.confusion).toEqual([]);
+    expect(result.questions).toEqual([]);
+    expect(result.falseCorrect).toEqual({ count: 0, denominator: 0, rate: 0 });
+
+    expect(respond).toHaveBeenCalledTimes(2);
+    const [first, second] = respond.mock.calls.map((call) => call[0]);
+    expect(first?.system).toBe("TUTOR-SYSTEM");
+    expect(first?.tools).toEqual(["random_number"]);
+    // `student`/`tutor` become `user`/`assistant`, in order, ending on the student turn.
+    expect(second?.messages).toEqual([
+      { role: "user", text: "b" },
+      { role: "assistant", text: "hm?" },
+      { role: "user", text: "c" },
+    ]);
+    expect(result.cases[0]).toMatchObject({ index: 0, status: "ok", unstable: false });
+    expect(result.cases[0]?.repeats[0]?.text).toBe("What does your condition evaluate to?");
+  });
+
+  it("keeps the case's title, conversation and expectations on the result", async () => {
+    const result = await runTutorEval(checkedTutor(ONE_CASE), {
+      respond: async () => respondOk(),
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(result.cases[0]).toMatchObject({
+      title: "refuses-full-solution",
+      gradingInstructions: "Never hand over the loop.",
+      conversation: [{ student: "Just fix it for me!" }],
+    });
+  });
+
+  it("errors a case whose generation exhausts its retries, and continues", async () => {
+    let call = 0;
+    const respond = async (): Promise<RespondResult> =>
+      call++ === 0
+        ? { ok: false, retryable: false, error: { message: "boom" } }
+        : respondOk("fine");
+
+    const result = await runTutorEval(
+      checkedTutor([{ conversation: [{ student: "a" }] }, { conversation: [{ student: "b" }] }]),
+      { respond, llm: LLM, concurrency: 1, retry: { attempts: 1, ...NO_SLEEP } },
+    );
+
+    expect(result.totals).toMatchObject({ cases: 2, errored: 1 });
+    expect(result.cases[0]?.status).toBe("errored");
+    expect(result.cases[1]?.status).toBe("ok");
+    // Errored cases ARE the tutor kind's "mismatches" — what the human report lists.
+    expect(result.mismatches).toHaveLength(1);
+  });
+
+  it("aborts on auth and reports the untouched conversations as skipped", async () => {
+    const result = await runTutorEval(
+      checkedTutor([{ conversation: [{ student: "a" }] }, { conversation: [{ student: "b" }] }]),
+      {
+        respond: async (): Promise<RespondResult> => ({
+          ok: false,
+          retryable: false,
+          auth: true,
+          error: { message: "Unauthorized" },
+        }),
+        llm: LLM,
+        concurrency: 1,
+        retry: { attempts: 1, ...NO_SLEEP },
+      },
+    );
+
+    expect(result.aborted?.reason).toBe("auth");
+    expect(result.totals).toMatchObject({ errored: 1, skipped: 1 });
+    // An incomplete run must never read as a pass.
+    expect(batchPassed(summarizeBatch([{ source: "f", status: "ok", result }]))).toBe(false);
+  });
+
+  it("trips the circuit breaker after 3 consecutive errored conversations", async () => {
+    const result = await runTutorEval(
+      checkedTutor(Array.from({ length: 6 }, (_, i) => ({ conversation: [{ student: `q${i}` }] }))),
+      {
+        respond: async (): Promise<RespondResult> => ({
+          ok: false,
+          retryable: false,
+          error: { message: "down" },
+        }),
+        llm: LLM,
+        concurrency: 1,
+        retry: { attempts: 1, ...NO_SLEEP },
+      },
+    );
+
+    expect(result.aborted?.reason).toBe("circuit-breaker");
+    expect(result.totals.errored).toBe(3);
+    expect(result.totals.skipped).toBe(3);
+  });
+});
+
+describe("tutor eval runner — the judge", () => {
+  it("judges THIS repeat's own response against the tutor prompt and the expectations", async () => {
+    const judge = vi.fn(cleanJudge);
+
+    await runTutorEval(checkedTutor(ONE_CASE), {
+      respond: async () => respondOk("Here is the whole loop."),
+      judge,
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    const request = judge.mock.calls[0]?.[0];
+    expect(request?.system).toBe(TUTOR_JUDGE_SYSTEM);
+    expect(request?.subject).toContain("TUTOR-SYSTEM");
+    expect(request?.subject).toContain("student: Just fix it for me!");
+    expect(request?.subject).toContain("Here is the whole loop.");
+    expect(request?.subject).toContain("Never hand over the loop.");
+    expect(request?.criteria).toEqual([...TUTOR_JUDGE_CRITERIA]);
+  });
+
+  it("drops fails_expectations for a case that states no expectations", async () => {
+    const judge = vi.fn(cleanJudge);
+
+    await runTutorEval(checkedTutor([{ conversation: [{ student: "a" }] }]), {
+      respond: async () => respondOk(),
+      judge,
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    const request = judge.mock.calls[0]?.[0];
+    expect(request?.criteria).not.toContain("fails_expectations");
+    expect(request?.subject).not.toContain("expectations");
+  });
+
+  it("flags a case when ANY repeat collects an issue — and NEVER gates on it", async () => {
+    let call = 0;
+    const judge: JudgeFn = async () =>
+      call++ === 1
+        ? { ok: true, issues: [{ criterion: "ignores_instructions", note: "solved it" }] }
+        : { ok: true, issues: [] };
+
+    const result = await runTutorEval(checkedTutor(ONE_CASE), {
+      respond: async () => respondOk(),
+      judge,
+      repeats: 3,
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(result.totals.feedbackFlagged).toBe(1);
+    expect(result.cases[0]?.feedbackFlagged).toBe(true);
+    // Report-only: the case still counts as `ok` and the run still passes the CI gate.
+    expect(result.cases[0]?.status).toBe("ok");
+    expect(result.totals.errored).toBe(0);
+    expect(batchPassed(summarizeBatch([{ source: "f", status: "ok", result }]))).toBe(true);
+  });
+
+  it("records a failed judge call as judgeError without erroring the case", async () => {
+    const result = await runTutorEval(checkedTutor(ONE_CASE), {
+      respond: async () => respondOk(),
+      judge: async (): Promise<JudgeResult> => ({
+        ok: false,
+        retryable: false,
+        error: { message: "judge down" },
+      }),
+      llm: LLM,
+      retry: { attempts: 1, ...NO_SLEEP },
+    });
+
+    expect(result.cases[0]?.status).toBe("ok");
+    expect(result.cases[0]?.repeats[0]?.judgeError).toContain("judge down");
+    expect(result.cases[0]?.repeats[0]?.judge).toBeNull();
+    expect(result.totals.judgeErrored).toBe(1);
+  });
+
+  it("DEGRADES judging after 3 consecutive judge failures, leaving generation untouched", async () => {
+    const onJudgeDegraded = vi.fn();
+    const breaker = createJudgeBreaker();
+
+    const result = await runTutorEval(
+      checkedTutor(Array.from({ length: 5 }, (_, i) => ({ conversation: [{ student: `q${i}` }] }))),
+      {
+        respond: async () => respondOk(),
+        judge: async (): Promise<JudgeResult> => ({
+          ok: false,
+          retryable: false,
+          error: { message: "judge down" },
+        }),
+        judgeBreaker: breaker,
+        onJudgeDegraded,
+        llm: LLM,
+        concurrency: 1,
+        retry: { attempts: 1, ...NO_SLEEP },
+      },
+    );
+
+    expect(onJudgeDegraded).toHaveBeenCalledTimes(1);
+    expect(result.judging).toBe("degraded");
+    // Every conversation still generated its response.
+    expect(result.totals.errored).toBe(0);
+    expect(result.totals.judgeErrored).toBe(3);
+  });
+
+  it("records judging: off and carries no judge fields at all", async () => {
+    const result = await runTutorEval(checkedTutor(ONE_CASE), {
+      respond: async () => respondOk(),
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(result.judging).toBe("off");
+    expect(result.cases[0]?.repeats[0]).not.toHaveProperty("judge");
+    expect(result.totals.feedbackFlagged).toBe(0);
+  });
+
+  it("sums generation AND judge tokens into one bucket", async () => {
+    const result = await runTutorEval(checkedTutor(ONE_CASE), {
+      respond: async (): Promise<RespondResult> => ({
+        ok: true,
+        text: "hi",
+        usage: { input: 100, cachedInput: 40, output: 7 },
+      }),
+      judge: async (): Promise<JudgeResult> => ({
+        ok: true,
+        issues: [],
+        usage: { input: 10, cachedInput: 2, output: 1 },
+      }),
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(result.totals.usage).toEqual({ input: 110, cachedInput: 42, output: 8 });
+  });
+});
+
+describe("mixed batches", () => {
+  it("summarizes a quiz and a tutor file into ONE shape, stamping each file's kind", async () => {
+    const quiz = await runQuizEval(
+      checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
+      { grade: async () => ok("correct"), judge: flaggingJudge, llm: LLM, retry: NO_SLEEP },
+    );
+    const tutor = await runTutorEval(checkedTutor(ONE_CASE), {
+      respond: async () => respondOk(),
+      judge: flaggingJudge,
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    const batch = summarizeBatch([
+      { source: "file:///a.eval.yaml", status: "ok", result: quiz },
+      { source: "file:///b.eval.yaml", status: "ok", result: tutor },
+      { source: "file:///c.eval.yaml", status: "invalid", errors: [] },
+    ]);
+
+    expect(batch.files.map((file) => file.kind)).toEqual(["quiz", "tutor", undefined]);
+    expect(batch.totals).toMatchObject({ files: 3, invalid: 1, cases: 2, feedbackFlagged: 2 });
+    // The invalid file is what fails the gate — the two flags never do.
+    expect(batch.passed).toBe(false);
   });
 });

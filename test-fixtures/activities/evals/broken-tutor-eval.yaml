@@ -1,0 +1,9 @@
+# Deliberately unusable: the conversation ends on a `tutor:` turn, so there is no student
+# message for the model under test to answer. Used for the invalid-file paths.
+id: broken-tutor-eval
+kind: tutor
+target: ../tutors/eval-tutor.yaml
+conversations:
+  - conversation:
+      - student: My loop never stops.
+      - tutor: What does your condition evaluate to?

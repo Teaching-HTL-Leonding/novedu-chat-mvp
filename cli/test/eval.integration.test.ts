@@ -21,12 +21,19 @@ const mismatchEval = join(evalsDir, "mismatch-eval.yaml");
 const brokenEval = join(evalsDir, "broken-eval.yaml");
 /** Every verdict matches; one answer plants a `[judge:…]` marker the fake judge flags. */
 const judgeEval = join(evalsDir, "judge-eval.yaml");
+/** A TUTOR eval: the fake generator echoes each case's `[respond:…]` payload. */
+const tutorEval = join(evalsDir, "tutor-eval.yaml");
+/** The same, with one generated response carrying a `[judge:…]` marker. */
+const tutorJudgeEval = join(evalsDir, "tutor-judge-eval.yaml");
+/** A tutor eval whose conversation ends on a `tutor:` turn — schema-invalid. */
+const brokenTutorEval = join(evalsDir, "broken-tutor-eval.yaml");
 
 let fixtures:
   | {
       server: Server;
       baseUrl: string;
       evalRequests: Array<Record<string, unknown>>;
+      respondRequests: Array<Record<string, unknown>>;
       judgeRequests: Array<Record<string, unknown>>;
     }
   | undefined;
@@ -306,6 +313,133 @@ describe("novedu-cli validate --kind eval", () => {
 
   it("exits 1 on a broken eval", async () => {
     const { code, stdout } = await runCli(["validate", brokenEval, "--kind", "eval"]);
+
+    expect(code).toBe(1);
+    expect(stdout).toContain("Invalid eval");
+  });
+});
+
+describe("novedu-cli eval — the tutor kind", () => {
+  it("generates and judges every conversation, exiting 0", async () => {
+    const { code, stdout, stderr } = await runCli(["eval", tutorEval, "--server", baseUrl()]);
+
+    expect(code).toBe(0);
+    expect(stderr).toContain("2 conversation(s) × 1 repeat(s) = 2 generation + 2 judge call(s)");
+    expect(stdout).toContain("Eval passed");
+    expect(stdout).toContain("ok: 2");
+
+    // The server really saw the app's assembled tutor prompt and the wire-shaped turns.
+    const seen = fixtures?.respondRequests.at(-1) as
+      | { system?: string; tools?: string[]; messages?: { role: string; text: string }[] }
+      | undefined;
+    expect(seen?.system).toContain("NEVER-SOLVE-MARKER");
+    expect(seen?.tools).toEqual([]);
+    expect(seen?.messages?.at(-1)?.role).toBe("user");
+    // …and the judge received that same prompt plus the GENERATED response.
+    const judged = fixtures?.judgeRequests.at(-1) as
+      | { system?: string; subject?: string; criteria?: string[] }
+      | undefined;
+    expect(judged?.system).toContain("You are auditing ONE response an AI TUTOR gave");
+    expect(judged?.subject).toContain("NEVER-SOLVE-MARKER");
+    expect(judged?.subject).toContain("Try writing the loop condition first.");
+    // The second case states no expectations, so that criterion is not even offered.
+    expect(judged?.criteria).not.toContain("fails_expectations");
+  });
+
+  it("reports a flagged response in the JSON and the Markdown, still exiting 0", async () => {
+    const report = join(dir, "tutor-report.md");
+
+    const { code, stdout } = await runCli([
+      "eval",
+      tutorJudgeEval,
+      "--json",
+      "--report",
+      report,
+      "--server",
+      baseUrl(),
+    ]);
+
+    const payload = JSON.parse(stdout);
+    const result = payload.files[0].result;
+    expect(payload.files[0].kind).toBe("tutor");
+    expect(result.judging).toBe("on");
+    expect(result.totals.feedbackFlagged).toBe(1);
+    expect(result.cases[0].repeats[0].judge.issues[0].criterion).toBe("ignores_instructions");
+    expect(result.cases[0].repeats[0].text).toContain("Here is the whole loop");
+    // REPORT-ONLY: the exit code reflects run health only.
+    expect(payload.passed).toBe(true);
+    expect(code).toBe(0);
+
+    const md = readFileSync(report, "utf8");
+    expect(md).toContain("# Eval report — ✅ passed");
+    expect(md).toContain("### Flagged responses");
+    expect(md).toContain("#### #1 hands-over-the-solution");
+    expect(md).toContain("**Expectations for this case**");
+    expect(md).toContain("**Generated response — repeat #1**");
+    expect(md).toContain("- `ignores_instructions` — fixtures judge flagged");
+  });
+
+  it("retries a 504 from the respond endpoint and still finishes green", async () => {
+    const retryTutor = await startFixturesServer(0, { respondFailures: 2 });
+    try {
+      const { code, stdout } = await runCli([
+        "eval",
+        tutorEval,
+        "--concurrency",
+        "1",
+        "--server",
+        retryTutor.baseUrl,
+      ]);
+
+      expect(code).toBe(0);
+      expect(stdout).toContain("ok: 2");
+    } finally {
+      await new Promise<void>((resolve) => retryTutor.server.close(() => resolve()));
+    }
+  }, 60_000);
+
+  it("reports a conversation that does not end with a student turn as unusable", async () => {
+    const { code, stdout, stderr } = await runCli(["eval", brokenTutorEval, "--server", baseUrl()]);
+
+    expect(code).toBe(1);
+    expect(stdout).toBe("");
+    const payload = JSON.parse(stderr);
+    expect(payload.errors[0].code).toBe("EVAL_SCHEMA");
+    expect(payload.errors[0].message).toContain("must end with a `student` turn");
+  });
+
+  it("runs a MIXED quiz + tutor batch, one scope line per kind", async () => {
+    const { code, stdout, stderr } = await runCli([
+      "eval",
+      okEval,
+      tutorEval,
+      "--json",
+      "--server",
+      baseUrl(),
+    ]);
+
+    expect(code).toBe(0);
+    expect(stderr).toContain("2 case(s) × 1 repeat(s) = 2 grading + 2 judge call(s)");
+    expect(stderr).toContain("2 conversation(s) × 1 repeat(s) = 2 generation + 2 judge call(s)");
+    const payload = JSON.parse(stdout);
+    expect(payload.files.map((file: { kind?: string }) => file.kind)).toEqual(["quiz", "tutor"]);
+    expect(payload.totals).toMatchObject({ files: 2, cases: 4, invalid: 0 });
+    expect(payload.passed).toBe(true);
+  });
+});
+
+describe("novedu-cli validate --kind eval — the tutor kind", () => {
+  it("validates a tutor eval offline, strict-checking the tutor it targets", async () => {
+    const { code, stdout } = await runCli(["validate", tutorEval, "--kind", "eval"]);
+
+    expect(code).toBe(0);
+    expect(stdout).toContain("Valid eval");
+    expect(stdout).toContain("kind: tutor");
+    expect(stdout).toContain("conversations: 2");
+  });
+
+  it("exits 1 on a broken tutor eval", async () => {
+    const { code, stdout } = await runCli(["validate", brokenTutorEval, "--kind", "eval"]);
 
     expect(code).toBe(1);
     expect(stdout).toContain("Invalid eval");

@@ -401,3 +401,202 @@ describe("renderEvalMarkdownReport — tokens", () => {
     expect(md).toContain("| —");
   });
 });
+
+// --- the TUTOR kind ------------------------------------------------------------------
+// A tutor file has no verdicts, so the verdict columns render as em dashes and the
+// report's deliverable is the "Flagged responses" section: the scripted conversation, the
+// teacher's expectations, and each flagged repeat's GENERATED text with the judge's items.
+
+function tutorCase(
+  overrides: Partial<EvalTutorCaseResult> & Pick<EvalTutorCaseResult, "index">,
+): EvalTutorCaseResult {
+  return {
+    conversation: [{ student: "My loop never stops." }],
+    status: "ok",
+    unstable: false,
+    feedbackFlagged: false,
+    repeats: [{ repeatIndex: 0, text: "What does your condition evaluate to?", judge: null }],
+    ...overrides,
+  } as EvalTutorCaseResult;
+}
+
+function tutorRunResult(cases: EvalTutorCaseResult[]): EvalRunResult {
+  return {
+    id: "loops-tutor-eval",
+    kind: "tutor",
+    target: "file:///loops-tutor.yaml",
+    llm: { provider: "SCCH", model: "gemma-4" },
+    judging: "on",
+    totals: {
+      cases: cases.length,
+      passed: 0,
+      failed: 0,
+      errored: cases.filter((c) => c.status === "errored").length,
+      skipped: cases.filter((c) => c.status === "skipped").length,
+      unstable: 0,
+      feedbackFlagged: cases.filter((c) => c.feedbackFlagged).length,
+      judgeErrored: 0,
+      repeats: 1,
+      calls: cases.length,
+      usage: { input: 900, cachedInput: 64, output: 120 },
+    },
+    mismatches: cases.filter((c) => c.status === "errored"),
+    cases,
+    questions: [],
+    confusion: [],
+    falseCorrect: { count: 0, denominator: 0, rate: 0 },
+  } as EvalRunResult;
+}
+
+describe("renderEvalMarkdownReport — the tutor kind", () => {
+  it("renders em dashes in the verdict columns and a count in Flagged", () => {
+    const flagged = tutorCase({
+      index: 0,
+      title: "refuses-full-solution",
+      feedbackFlagged: true,
+      repeats: [
+        {
+          repeatIndex: 0,
+          text: "Here is the whole loop.",
+          judge: { issues: [{ criterion: "ignores_instructions", note: "wrote the solution" }] },
+        },
+      ],
+    });
+    const md = render([
+      {
+        source: "file:///a/loops.eval.yaml",
+        status: "ok",
+        result: tutorRunResult([flagged, tutorCase({ index: 1 })]),
+      },
+    ]);
+
+    expect(md).toContain(
+      "| ✅ loops.eval.yaml | `loops-tutor-eval` | 2 | — | — | 0 | 0 | — | 1 | — |",
+    );
+    // A flagged conversation never fails the run.
+    expect(md).toContain("# Eval report — ✅ passed");
+  });
+
+  it("gives every flagged conversation a full section and leaves clean ones out", () => {
+    const md = render([
+      {
+        source: "file:///a/loops.eval.yaml",
+        status: "ok",
+        result: tutorRunResult([
+          tutorCase({
+            index: 0,
+            title: "refuses-full-solution",
+            gradingInstructions: "The response must NOT contain a complete working loop.",
+            feedbackFlagged: true,
+            conversation: [
+              { student: "My loop never stops." },
+              { tutor: "What does your condition evaluate to?" },
+              { student: "No idea. Just fix it for me!" },
+            ],
+            repeats: [
+              {
+                repeatIndex: 0,
+                text: "while (true) { i++; }",
+                judge: {
+                  issues: [{ criterion: "ignores_instructions", note: "handed over the loop" }],
+                },
+              },
+            ],
+          }),
+          tutorCase({ index: 1, title: "stays-clean" }),
+        ]),
+      },
+    ]);
+
+    expect(md).toContain("### Flagged responses");
+    expect(md).toContain("#### #1 refuses-full-solution");
+    expect(md).toContain("**Conversation**");
+    expect(md).toContain("> My loop never stops.");
+    expect(md).toContain("> No idea. Just fix it for me!");
+    expect(md).toContain("**Expectations for this case**");
+    expect(md).toContain("> The response must NOT contain a complete working loop.");
+    // The generated response, verbatim.
+    expect(md).toContain("**Generated response — repeat #1**");
+    expect(md).toContain("> while (true) { i++; }");
+    expect(md).toContain("- `ignores_instructions` — handed over the loop");
+    // The clean case contributes nothing.
+    expect(md).not.toContain("stays-clean");
+  });
+
+  it("labels a title-less case by index plus its first student line", () => {
+    const md = render([
+      {
+        source: "file:///a/loops.eval.yaml",
+        status: "ok",
+        result: tutorRunResult([
+          tutorCase({
+            index: 2,
+            feedbackFlagged: true,
+            conversation: [{ student: "Erkläre mir Schleifen auf Deutsch." }],
+            repeats: [
+              {
+                repeatIndex: 0,
+                text: "Loops repeat things.",
+                judge: { issues: [{ criterion: "ignores_instructions", note: "wrong language" }] },
+              },
+            ],
+          }),
+        ]),
+      },
+    ]);
+
+    expect(md).toContain("#### #3 — Erkläre mir Schleifen auf Deutsch.");
+  });
+
+  it("gives an errored conversation its own section with the conversation and the error", () => {
+    const md = render([
+      {
+        source: "file:///a/loops.eval.yaml",
+        status: "ok",
+        result: tutorRunResult([
+          tutorCase({
+            index: 0,
+            title: "server-was-down",
+            status: "errored",
+            repeats: [{ repeatIndex: 0, error: { message: "Gateway timeout" }, judge: null }],
+          }),
+        ]),
+      },
+    ]);
+
+    expect(md).toContain("### #1 server-was-down — error");
+    expect(md).toContain("> My loop never stops.");
+    expect(md).toContain("**Error**");
+    expect(md).toContain("> Gateway timeout");
+    // An errored conversation DOES fail the run.
+    expect(md).toContain("# Eval report — ❌ failed");
+  });
+
+  it("counts skipped conversations in the tutor's own unit", () => {
+    const result = tutorRunResult([
+      tutorCase({ index: 0, status: "skipped", repeats: [] }),
+      tutorCase({ index: 1, status: "skipped", repeats: [] }),
+    ]);
+    result.aborted = { reason: "auth", message: "Authentication failed." };
+
+    const md = render([{ source: "file:///a/loops.eval.yaml", status: "ok", result }]);
+
+    expect(md).toContain("**2 conversation(s) were never attempted**");
+  });
+
+  it("keeps quiz and tutor rows side by side in a mixed batch", () => {
+    const md = render([
+      { source: "file:///a/quiz.eval.yaml", status: "ok", result: runResult() },
+      {
+        source: "file:///a/loops.eval.yaml",
+        status: "ok",
+        result: tutorRunResult([tutorCase({ index: 0 })]),
+      },
+    ]);
+
+    expect(md).toContain("| ✅ quiz.eval.yaml | `demo-eval` | 1 | 1 | 0 | 0 | 0 | 0 | — | 0/0 |");
+    // The tutor file's one case produced no judgment, so Flagged is "not checked" too.
+    expect(md).toContain("| ✅ loops.eval.yaml | `loops-tutor-eval` | 1 | — | — | 0 | 0 | — | — |");
+    expect(md).toContain("**TOTAL**");
+  });
+});

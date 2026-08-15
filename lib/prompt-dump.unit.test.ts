@@ -24,6 +24,7 @@ const PURE_MODULES = [
   "lib/quiz-discussion-prompt.ts",
   "lib/quiz-verdict-schema.ts",
   "lib/quiz-feedback-judge.ts",
+  "lib/tutor-judge.ts",
   "lib/quiz-resolve.ts",
   "lib/writing-resolve.ts",
   "lib/coding-resolve.ts",
@@ -37,10 +38,16 @@ const PURE_MODULES = [
  * The roots of the transitive closure walk below. Everything but the dump seam itself is
  * a SEPARATE entry point into the CLI-bundled graph — reached from `cli/src/**` rather
  * than from the dump — so walking only the dump would leave it, and everything it adds,
- * unguarded: `lib/eval-validate.ts` CALLS the dump seam, and `lib/quiz-feedback-judge.ts`
- * is pulled in directly by the eval runner.
+ * unguarded: `lib/eval-validate.ts` CALLS the dump seam, and the two judge modules
+ * (`lib/quiz-feedback-judge.ts`, `lib/tutor-judge.ts`) are pulled in directly by the
+ * eval runner.
  */
-const CLOSURE_ROOTS = ["lib/prompt-dump.ts", "lib/eval-validate.ts", "lib/quiz-feedback-judge.ts"];
+const CLOSURE_ROOTS = [
+  "lib/prompt-dump.ts",
+  "lib/eval-validate.ts",
+  "lib/quiz-feedback-judge.ts",
+  "lib/tutor-judge.ts",
+];
 
 describe("prompt-dump purity invariant", () => {
   it.each(PURE_MODULES)("%s imports nothing from app/ or the DB", (relPath) => {
