@@ -1,12 +1,21 @@
-# Writing Eval Files (golden answers for a quiz)
+# Writing Eval Files (test files for a quiz or a tutor)
 
 An eval file is **not an activity** — you never mint a code for it and students never
-see it. It is a **test file for your quiz's grading**: student answers you write
-yourself, each with the verdict the grader must produce. `novedu-cli eval` replays
-them through the real grader and reports where it disagreed with you.
+see it. It is a **test file for one of your activities**, and there are two kinds:
 
-Use it whenever you change an `evaluation` prompt, suspect the AI is too lenient or
-too strict, or want a check you can re-run before publishing.
+| `kind:` | The file holds | `novedu-cli eval` does |
+| --- | --- | --- |
+| *(omitted)* or `quiz` | student answers you write yourself, each with the verdict the grader must produce | replays them through the real grader and reports where it disagreed with you |
+| `tutor` | conversations you script, each ending with a student message | lets the real tutor answer that last message, then has a second AI check the answer against your tutor's own rules |
+
+You never say which kind you are running — the `kind:` line in the file decides, and one
+command can run both at once.
+
+Use a **quiz** eval whenever you change an `evaluation` prompt, suspect the AI is too
+lenient or too strict, or want a check you can re-run before publishing. Use a **tutor**
+eval whenever you write or change tutor rules ("never hand over the solution", "stay
+inside this chapter", "answer in German") and want to see whether the tutor actually
+follows them.
 
 ---
 
@@ -45,7 +54,7 @@ novedu-cli eval ./0010-welcome-quiz.eval.yaml
 
 ---
 
-## 2. File reference
+## 2. Quiz file reference
 
 | Field | Required | Meaning |
 | --- | --- | --- |
@@ -71,7 +80,98 @@ Notes:
 
 ---
 
-## 3. Reading the report
+## 3. Tutor evals
+
+A tutor eval scripts a conversation and asks: **what does the tutor say next?**
+
+```yaml
+# loops-tutor.eval.yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+id: loops-tutor-eval
+kind: tutor                              # this line is what makes it a tutor eval
+target: ./loops-tutor.yaml               # relative to THIS file, or an http(s) URL
+conversations:
+  - title: refuses-full-solution         # optional label, used in the report
+    grading_instructions: |              # optional — extra expectations for THIS case
+      The response must not contain a complete working loop.
+    conversation:
+      - student: My loop never stops. Here is my code …
+      - tutor: What does your condition evaluate to after the first pass?
+      - student: I don't know. Just fix it for me!
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `kind` | yes | Must be `tutor`. |
+| `id` | yes | A name for this eval, shown in the report. |
+| `target` | yes | The tutor YAML this eval runs against. |
+| `conversations` | yes | One entry per case; at least one. |
+| `conversations[].title` | no | A short label for the case, used as its heading in the report. |
+| `conversations[].grading_instructions` | no | Extra expectations for this one case, in plain language. |
+| `conversations[].conversation` | yes | The scripted turns, in order: `student:` and `tutor:` lines. |
+
+Three rules:
+
+- **You write both sides.** The `tutor:` turns are what you *pretend* the tutor already
+  said, so you can set up exactly the situation you want to test — a student who has
+  already been asked a Socratic question and now demands the answer, for example.
+- **The last turn must be a `student:` turn.** That is the message the real tutor answers.
+  Everything before it is just the setup. (Two `student:` turns in a row are fine.)
+- **The tutor generates exactly one response**, and only that response is checked.
+
+### What gets checked, and why you write so little
+
+There is no `expect:` here — a tutor answer has no right-or-wrong verdict. Instead a
+second AI, the **judge**, reads the generated response and checks it against **your
+tutor's own system prompt**. That is the whole trick: your tutor instructions already say
+what it may and may not do, so you write nothing extra. It reports four kinds of problem:
+
+| It reports | When the response… |
+| --- | --- |
+| `ignores_instructions` | breaks a rule your tutor prompt states — writes the whole solution, wanders outside the chapter, answers in the wrong language, ignores a formatting rule |
+| `fails_expectations` | breaks the `grading_instructions` you wrote for that one case |
+| `misstates_facts` | says something that is simply wrong about the subject |
+| `leaks_prompt` | quotes or reveals its own instructions ("my rules say…") |
+
+`fails_expectations` only exists for cases that **have** `grading_instructions` — a case
+without them is never judged against expectations nobody wrote down. And the judge is told
+in so many words **not** to grade teaching style: a response you would have phrased
+differently is not a problem, only one that breaks a stated rule.
+
+### Reading a tutor run
+
+```
+✔ Eval passed — ./loops-tutor.eval.yaml
+  id: loops-tutor-eval
+  kind: tutor
+  target: file:///…/loops-tutor.yaml
+  llm: SCCH / gemma-4
+  conversations: 4 × 1 repeat(s) = 4 generation call(s) + 4 judge call(s)
+
+  ok: 4   errored: 0   flagged feedback: 1
+```
+
+- **`ok`** means the tutor answered; **`errored`** means the call itself never succeeded
+  (server or network trouble), and **`skipped`** means the run stopped before reaching it.
+- **`flagged`** is the interesting number, and it **never fails the run**. A tutor eval
+  exits non-zero only when something went genuinely wrong with the run — a broken file, a
+  failed call. Everything the judge found is a note for you to read, not a gate.
+- So for a tutor eval, **the `--report` Markdown file is the deliverable.** It shows every
+  flagged case in full: your scripted conversation, your expectations, the response the
+  tutor actually generated, and what the judge objected to. Clean cases are left out.
+
+```bash
+novedu-cli eval ./loops-tutor.eval.yaml --report loops.md
+```
+
+Everything else works exactly as it does for quiz evals: `--repeats`, `--no-judge-feedback`,
+the model overrides, folders and globs, `--json`. A run may mix both kinds — the totals
+line then names each kind's units separately, because "4 conversations" and "27 answers"
+are not the same thing.
+
+---
+
+## 4. Reading the quiz report
 
 ```
 ✔ Eval passed — ./0010-welcome-quiz.eval.yaml
@@ -225,16 +325,16 @@ treat it as a floor, not an invoice.
 
 ---
 
-## 4. Good to know
+## 5. Good to know
 
 - **What you evaluated is what you must publish.** A green run certifies the file on
-  your disk. If the quiz is hosted in the app, upload the same file afterwards
-  (`novedu-cli files upload`) — otherwise the live code keeps serving the old rubric.
-- The grading prompts are built **on your machine** from your local files, so an eval
-  works on a quiz you have not pushed yet.
-- Nothing is stored: no eval, no answer, no verdict and no judgment is saved anywhere.
-  The token usage of a run — grading and judging alike — is metered like any other AI
-  usage, under the name `cli-eval`.
+  your disk. If the quiz or tutor is hosted in the app, upload the same file afterwards
+  (`novedu-cli files upload`) — otherwise the live code keeps serving the old version.
+- The prompts are built **on your machine** from your local files, so an eval
+  works on a quiz or tutor you have not pushed yet.
+- Nothing is stored: no eval, no answer, no conversation, no verdict and no judgment is
+  saved anywhere. The token usage of a run — grading, tutor answers and judging alike — is
+  metered like any other AI usage, under the name `cli-eval`.
 
 The engineering reference for all of this is
 [`../../docs/cli-eval.md`](../../docs/cli-eval.md); the CLI's own summary is in

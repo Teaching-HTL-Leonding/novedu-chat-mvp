@@ -19,7 +19,7 @@ The highest-cost rules to break. They always apply, regardless of subsystem; the
 - The session user id is the Entra **`oid`**, not `sub`.
 - Student access to any activity = **`checkCode()`** on the stored `novedu_codes` row + the **stateless-HMAC `x-thread-token`** over `(code, userId, threadId)`, both re-verified on **every** server touch. No signed links (`docs/codes.md`).
 - The activity YAML's `anonymous` default is module-specific: tutor/quiz `true`, **writing `false`**, coding always anonymous (`docs/writing.md`).
-- The quiz grader **`quizEvaluator`** and the eval feedback judge **`evalJudge`** are **never web-reachable by students** (the runtime route 404s every agent id but the code module's own). Besides `submitAnswer`, their only callers are the teacher-only `POST /api/eval/grade` / `POST /api/eval/judge`, which supply their system prompts client-side — the server-only quiz `evaluation` prompts never leave the server (`docs/codes.md`, `docs/cli-eval.md`).
+- The quiz grader **`quizEvaluator`**, the eval judge **`evalJudge`** and the eval tutor **`evalTutor`** are **never web-reachable by students** (the runtime route 404s every agent id but the code module's own). Besides `submitAnswer`, their only callers are the teacher-only `POST /api/eval/grade` / `POST /api/eval/judge` / `POST /api/eval/respond`, which supply their system prompts client-side — the server-only quiz `evaluation` prompts never leave the server (`docs/codes.md`, `docs/cli-eval.md`).
 - Exactly **two public, non-Entra API routes**: `GET /api/files/<name>` (raw YAML) and the coding `POST /api/coding/v1/chat/completions` (the code IS the bearer key — `docs/files.md`, `docs/coding.md`). The only other public surface is the static teacher guide under `/docs`, public by intent (`docs/teacher-docs.md`).
 - All other CLI/API routes are **Entra-bearer**: proxy-excluded per-path and gated **only** by `requireBearerUser`/`requireBearerTeacher` (`lib/api-auth.ts`) — token validated on every request, groups overage fails closed, **no student mode on this channel**; auth never enters the `lib/*-service.ts` pipelines. `docs/api.md` lists every route.
 - **LLM connectivity is server-only** behind `lib/llm/` — the provider branch exists ONLY in `resolveLanguageModel`, `resolveChatEndpoint`, and `providerUnavailableReason`; endpoints, keys, and Entra tokens never reach the browser. Foundry auth is passwordless Entra — never `DefaultAzureCredential`, never an API key. A code's **LLM override pair** is both-or-nothing via `effectiveLlm`, availability-gated on the effective provider (`docs/ai-models.md`).
@@ -185,12 +185,14 @@ Read before touching: `lib/prompt-dump.ts`, `lib/{quiz,writing,coding}-resolve.t
 - CLI-bundled `lib/**` must import **nothing** from `app/**`, the DB, or `lib/llm/model.ts`, and carry no `"use server"` — the grep-guard walks the whole transitive closure.
 - Changing anything in that bundled closure warrants a CLI release (`docs/cli-publish.md`) — published CLIs carry a frozen copy.
 
-### CLI grader evals → `docs/cli-eval.md`
+### CLI evals (quiz + tutor) → `docs/cli-eval.md`
 
-Read before touching: `lib/eval-schema.ts`, `lib/eval-validate.ts`, `lib/quiz-feedback-judge.ts`, `cli/src/eval-run.ts`, `cli/src/report-md.ts`, `cli/src/retry.ts`, `cli/src/commands/eval.ts`, `app/api/eval/**`, or the fake grader/judge in `test-fixtures/serve.mjs`.
+Read before touching: `lib/eval-schema.ts`, `lib/eval-validate.ts`, `lib/quiz-feedback-judge.ts`, `lib/tutor-judge.ts`, `cli/src/eval-run.ts`, `cli/src/report-md.ts`, `cli/src/retry.ts`, `cli/src/commands/eval.ts`, `app/api/eval/**`, `app/mastra/eval-agents.ts`, or the fake grader/judge/tutor in `test-fixtures/serve.mjs`.
 
-- The CLI assembles every grading prompt OFFLINE (via `dumpPrompts`) and fans out; the teacher-only `POST /api/eval/grade` grades exactly ONE answer per request — stateless, nothing persisted. Access model: see the security block.
-- The **feedback judge** REPORTS and never gates (flagged feedback changes no exit code), and DEGRADES rather than aborting when the judge model fails. `POST /api/eval/judge` is kind-agnostic — both prompts and the criteria arrive in the body — so another eval kind can reuse it with no server change.
+- The eval file is a discriminated union on `kind`: omitted / `quiz` = golden answers, `tutor` = scripted conversations. The kind is INFERRED from each file — no flag — and a batch may mix them.
+- The CLI assembles every prompt OFFLINE (via `dumpPrompts`) and fans out; the teacher-only `POST /api/eval/grade` grades exactly ONE answer and `POST /api/eval/respond` generates exactly ONE tutor turn per request — stateless, nothing persisted. Access model: see the security block.
+- The **judge** REPORTS and never gates for BOTH kinds (a flag changes no exit code), and DEGRADES rather than aborting when the judge model fails. `POST /api/eval/judge` is kind-agnostic — both prompts and the criteria arrive in the body — so a further eval kind reuses it with no server change.
+- The tutor kind's exit code reflects **run health only** (invalid files, `errored`, `skipped`); the Markdown report is the deliverable.
 
 ### CLI publishing → `docs/cli-publish.md`
 

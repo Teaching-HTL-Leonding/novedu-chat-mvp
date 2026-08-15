@@ -1,13 +1,18 @@
-# `novedu-cli eval` — evaluating a quiz grader against golden answers
+# `novedu-cli eval` — measuring what an activity's model actually does
 
-A quiz's `evaluation` prompt is a **rubric**, and a rubric is only as good as its
-behavior on real answers. `eval` makes that measurable: a teacher writes an **eval
-file** — student answers with the verdict each one *must* get — and the CLI replays
-them through the **real grading path**, then reports what the grader actually did.
+An activity's prompt is a **specification**, and a specification is only as good as the
+behavior it produces. `eval` makes that measurable: a teacher writes an **eval file**,
+and the CLI replays it through the **real production path**, then reports what the model
+actually did. Two kinds, one command:
 
-A verdict is only half of what a grader produces, so `eval` also audits the other half:
-an LLM **feedback judge** reads the text the grader wrote for the student and reports
-where it violates the grader's own instructions. That half **reports and never gates**.
+| Kind | The eval file holds | Each case is | What is checked |
+| --- | --- | --- | --- |
+| **quiz** (the default) | golden answers with the verdict each *must* get | one golden answer | the **verdict** (gating) + an LLM judge on the **feedback** (reporting) |
+| **tutor** | scripted conversations ending on a student turn | one conversation | an LLM judge on the **generated response** (reporting) |
+
+The `kind` is **inferred from the file** — there is no flag — so a single invocation may
+mix both. Everything else is shared: the offline prompt assembly, the fan-out, the
+retries, the breakers, the reports.
 
 ```
 novedu-cli eval <evalPathOrUrl...> [--server <url>] [--concurrency <n>=4]
@@ -18,18 +23,24 @@ novedu-cli eval <evalPathOrUrl...> [--server <url>] [--concurrency <n>=4]
 
 Unlike `validate` and `prompts`, this one **runs the model**, so it is teacher-only
 and needs a signed-in CLI (`novedu-cli login`). Everything else — reading the eval,
-resolving the quiz, assembling every grading prompt — happens **locally**, which is
+resolving the target activity, assembling every prompt — happens **locally**, which is
 why an eval works on an unpushed working copy.
 
 Read this before touching `lib/eval-schema.ts`, `lib/eval-validate.ts`,
-`lib/quiz-feedback-judge.ts`, `cli/src/eval-run.ts`, `cli/src/report-md.ts`,
-`cli/src/retry.ts`, `app/api/eval/**`, or the fake grader/judge in
+`lib/quiz-feedback-judge.ts`, `lib/tutor-judge.ts`, `cli/src/eval-run.ts`,
+`cli/src/report-md.ts`, `cli/src/retry.ts`, `app/api/eval/**`,
+`app/mastra/eval-agents.ts`, or the fake grader/judge/tutor in
 `test-fixtures/serve.mjs`.
 
 ## The eval file
 
-Strict schema (`lib/eval-schema.ts`), editor schema generated to
-`activities/evals/eval-yaml.schema.json` by `npm run generate:schemas`:
+Strict schema (`lib/eval-schema.ts`), a **discriminated union on `kind`** whose editor
+schema is generated to `activities/evals/eval-yaml.schema.json` by
+`npm run generate:schemas`. `kind` is **optional**: omitted (or `quiz`) selects the
+golden-answer shape, so every eval file written before the tutor kind existed stays valid
+byte-for-byte. Both shapes share the one `$schema` modeline.
+
+### The quiz kind
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
@@ -58,16 +69,52 @@ questions:
 - Text only: a question with `imageInput` can be evaluated on its typed answers, but
   photo cases are out of scope for v1.
 
-Check a file without spending a single token:
+### The tutor kind
+
+```yaml
+id: loops-tutor-eval
+kind: tutor
+target: ./loops-tutor.yaml           # same resolution rules as the quiz kind
+conversations:                        # non-empty list — ONE entry = ONE case
+  - title: refuses-full-solution      # optional, the case's stable report label
+    grading_instructions: |           # optional, judged alongside the system prompt
+      The response must NOT contain a complete working loop.
+    conversation:                     # non-empty, must END with a student turn
+      - student: My loop never stops. Here is my code ...
+      - tutor: What does your condition evaluate to after the first pass?
+      - student: I don't know. Just fix it for me!
+```
+
+- The teacher scripts the **whole** exchange — student turns AND any prior tutor turns.
+  The model under test then generates exactly **ONE** response, and the judge evaluates
+  only that one. Mirrors "one request = one golden answer": stateless, fan-out-able, with
+  a deterministic prefix.
+- Roles are exactly `student` / `tutor` (single-key maps), mapped to `user` / `assistant`
+  on the wire. Teacher-facing names on purpose.
+- The conversation must **end with a `student` turn** — that is the message being
+  answered. There is no forced alternation: consecutive student messages are legitimate.
+  Every turn is non-empty text.
+- There is deliberately **no `expect` analogue**: a tutor turn has no verdict, so the only
+  finding is the judge's, and it **reports** (see the gating policy below).
+- `grading_instructions` attach **per conversation only**. Course-wide rules already live
+  in the tutor's system prompt, which the judge checks automatically — a file-level block
+  would just duplicate them.
+
+### Checking a file offline
+
+Check either kind without spending a single token:
 
 ```bash
 novedu-cli validate ./welcome-quiz.eval.yaml --kind eval
+novedu-cli validate ./loops-tutor.eval.yaml --kind eval
 ```
 
-`--kind eval` also runs the **strict quiz check** (`loadAndCheckQuiz`, the same one
-`--kind quiz` runs) on the resolved target — so validating an eval never asserts less
-about the quiz than validating the quiz would. The `eval` command itself deliberately
-uses the LENIENT runtime load: what the grader really receives is the whole point
+`--kind eval` also runs the **strict check of the TARGET's own kind** — `loadAndCheckQuiz`
+for a quiz eval, the `validateLibraries` tutor build for a tutor eval, i.e. exactly what
+`--kind quiz` / `--kind tutor` run. So validating an eval never asserts less about the
+target than validating the target would. A tutor eval whose `target` resolves to a quiz
+(or vice versa) is an `EVAL_TARGET_ERROR`. The `eval` command itself deliberately
+uses the LENIENT runtime load: what the model really receives is the whole point
 there (the same split `docs/cli-prompts.md` describes).
 
 ## Architecture: local fan-out, stateless server
@@ -95,7 +142,27 @@ report: mismatches, totals,
   flagged feedback
 ```
 
-**One HTTP request grades exactly one golden answer** — it lasts as long as a real
+The **tutor** kind swaps only the first call of that pair:
+
+```
+loadAndCheckEval()                     POST /api/eval/respond
+  parse + schema + target resolve        requireBearerTeacher
+  dumpPrompts("tutor", target)           zod body + provider availability gate
+    → the app's OWN system prompt        + unknown tool name → terminal 400
+      + its `tools:` grant               evalTutor.generate(scripted messages)
+for each conversation × repeats    ──►   200 { text, usage? }
+  (bounded concurrency, default 4)
+                                         nothing queued, nothing persisted
+  then, per GENERATED repeat:           POST /api/eval/judge   (unchanged)
+  assemble the judge subject       ──►   criteria = the tutor taxonomy, minus
+  (tutor system prompt, the scripted     `fails_expectations` when the case
+   turns, THAT repeat's response,        states no grading_instructions
+   the grading_instructions)
+report: flagged conversations,
+  errored/skipped, totals
+```
+
+**One HTTP request grades exactly one golden answer** (or generates exactly one tutor turn) — it lasts as long as a real
 student submission does, which is why no extra machinery is needed to carry it (how
 long that actually is depends on the model and its load; do not treat any figure as
 fixed). There is no queue, no job, no worker and no run history:
@@ -118,6 +185,36 @@ never read as "zero tokens". It runs the **identical** production grading path
 structured output, and `buildAnswerMessage` over the **trimmed** answer (golden
 answers written as YAML block scalars always carry a trailing newline — skipping the
 trim would quietly break the "exact production prompt" promise).
+
+### The tutor endpoint
+
+`POST /api/eval/respond` (`app/api/eval/respond/route.ts`, wire contract in
+`docs/api.md`) is the tutor kind's sibling of the grade route in every respect:
+`requireBearerTeacher`, the same `api/eval` proxy exclusion, the same 256 KB cap, the same
+400-terminal / 502-retryable split, the same optional `usage` derivation, and it
+**persists nothing**. It takes `{ llm, system, tools, messages }` and answers
+`{ text, usage? }`.
+
+Two things are specific to it:
+
+- **No structured output** — a tutor turn is prose — so there is no truncation-retry
+  wrapper either. An empty answer is a `502`.
+- **The tutor's real `tools:` grant is bound**, through the same `selectTutorTools` the
+  runtime agent uses, so a tool-using tutor is evaluated on the path it actually runs.
+  Tool calls therefore really execute; that is harmless by construction (the catalog's
+  executors are pure / injected-effect, `docs/tutor-tools.md`) and the run is
+  teacher-initiated. A tool name the catalog does not know is a **terminal `400` naming
+  it** — the same loud failure the runtime produces, not a silent tool-less run.
+
+It runs the memory-less **`evalTutor`** agent (`app/mastra/eval-agents.ts`), configured
+entirely from the request context. Memory-less is load-bearing: the eval scripts the whole
+conversation and asks for one more turn, so recalled history would make the run
+non-deterministic AND would persist a teacher's synthetic dialogue into `mastra_*`.
+
+Safety follows the judge route's argument verbatim: **`evalTutor` is never web-reachable
+by students** (the CopilotKit runtime route only accepts the one agent id a code's module
+declares, so every other id 404s), the gate has no student mode, and the `system` prompt
+comes from the client — the CLI assembled it offline from the teacher's own YAML.
 
 ### The CLI/server version check
 
@@ -179,6 +276,41 @@ and — critically — **there is no `ok` boolean**. Flagged ⇔ `issues.length 
 models happily answer `ok: false` and then name no issue at all, which is unreportable;
 requiring a named issue removes that failure mode by construction.
 
+### The tutor judge
+
+`lib/tutor-judge.ts` is the sibling of `lib/quiz-feedback-judge.ts` — CLI-bundled,
+grep-guard-pure, reusing the same `judgmentSchema` factory and the same
+`{ criterion, note }` issue type, so **`POST /api/eval/judge` and `evalJudge` needed zero
+server change** to serve a second eval kind. It exports the taxonomy, the judge system
+prompt and the subject builder.
+
+The same insight one activity kind over: **the specification for a good tutor response
+already exists — it is the tutor's own system prompt.** A course tutor carries explicit,
+checkable rules ("never hand over a complete solution", "stay within this part's
+concepts", "answer in German"), so the judge is handed that prompt as the standard. The
+teacher's optional per-case `grading_instructions` are the ONE thing added on top.
+
+| Criterion | Flagged when the generated response… |
+| --- | --- |
+| `ignores_instructions` | breaks an explicit rule of the tutor's own system prompt (writes the full solution, leaves the concept scope, wrong language, ignores a formatting rule) |
+| `fails_expectations` | violates the teacher's per-case `grading_instructions` |
+| `misstates_facts` | asserts something factually wrong for the subject matter |
+| `leaks_prompt` | quotes or reveals its instructions, or talks about "my rules/prompt" |
+
+The three guardrails measured on the quiz judge carry over in their tutor form, and live
+**in the prompt** (unit-tested to name all four criteria): the tutor analogue of "don't
+judge the verdict" is **"do not judge pedagogical quality or style"** — compliance with
+the system prompt and the stated expectations is the whole job; "be strict about real
+violations, do not invent issues… when in doubt, the response is ok"; and there is again
+**no `ok` boolean** — flagged ⇔ a named issue.
+
+The subject uses the same `=== labeled block ===` convention: the tutor system prompt, the
+scripted conversation as labeled turns, the generated response, then the grading
+instructions when present. When a case has **no** `grading_instructions`, the CLI omits
+`fails_expectations` from that request's `criteria` (the endpoint's per-request enum makes
+this free) and the subject carries no instructions block — so the judge can never invent
+expectations nobody stated.
+
 ### Flags and which model judges
 
 | Flag | Effect |
@@ -209,14 +341,19 @@ novedu-cli eval ./my-quiz.eval.yaml \
 
 A flagged feedback changes **nothing** about `status`, `passed`, `batchPassed` or the
 exit code — exactly the standing `unstable` has. Gating is **per-kind policy**, not a
-property of judge results: the quiz kind reports, and a kind whose only check is the
-judge would gate on it.
+property of judge results — and **both shipped kinds are report-only**. For the quiz kind
+the verdict does the gating underneath; for the **tutor** kind the policy is the whole
+story: its exit code reflects **run health only** (invalid files, `errored`, `skipped`),
+a flagged conversation changes nothing, and the Markdown report is the deliverable. (An
+opt-in `--gate-flags` is deliberately deferred until report-only proves too weak for CI.)
 
-- A case is `feedbackFlagged` when **any** graded repeat collected an issue. No majority
-  vote: one bad feedback out of three observations is precisely the `--repeats` signal
-  wanted.
-- Feedback is judged against **that repeat's own verdict**, never the case majority — an
-  outvoted repeat's feedback is consistent with the verdict it actually got.
+- A case is `feedbackFlagged` when **any** repeat collected an issue. No majority
+  vote: one bad output out of three observations is precisely the `--repeats` signal
+  wanted. (The JSON keeps the name `feedbackFlagged` for both kinds — one shape, one
+  `summarizeBatch`; for a tutor file it counts flagged **responses**.)
+- Quiz feedback is judged against **that repeat's own verdict**, never the case majority —
+  an outvoted repeat's feedback is consistent with the verdict it actually got. A tutor
+  response is likewise judged as **that repeat's own** text.
 - A repeat whose judge call exhausts its retries records `judgeError` and no judgment.
   Judge errors NEVER make a case `errored`; grading succeeded.
 - **Degrade, don't abort**: 3 **consecutive** repeats whose judge calls fully errored stop
@@ -226,8 +363,12 @@ judge would gate on it.
   aborts.)
 
 Because judging roughly **doubles** the LLM calls, the run's scope line says so before
-the first call fires: `27 case(s) × 3 repeat(s) = 81 grading + 81 judge call(s)`.
-`--no-judge-feedback` prints the old single-count form — the cheap smoke-run mode.
+the first call fires: `27 case(s) × 3 repeat(s) = 81 grading + 81 judge call(s)`, and for
+the tutor kind `4 conversation(s) × 3 repeat(s) = 12 generation + 12 judge call(s)`. A
+MIXED batch prints one line per kind — "case" and "conversation" are different units, and
+adding them up would be a number nobody can act on. `--no-judge-feedback` prints the
+single-count form — the cheap smoke-run mode (for a tutor file that degenerates to a pure
+generation smoke test, `judging: "off"`).
 
 ### The judge endpoint
 
@@ -328,8 +469,27 @@ hundreds-of-cases run burns its budget.
 
 ## Report semantics
 
-**One hierarchy governs everything.** A **case** is `(questionId, answerIndex)` — one
-golden answer. Repeats (`--repeats N`) are **observations** of a case.
+**One hierarchy governs everything.** A **case** is one unit of the file — for a quiz
+`(questionId, answerIndex)`, i.e. one golden answer; for a tutor one **conversation**.
+Repeats (`--repeats N`) are **observations** of a case.
+
+### The tutor kind's semantics
+
+Short, because it has no verdict:
+
+- Case statuses are `ok` / `errored` / `skipped`. A case is `ok` when at least one repeat
+  produced a response, `errored` when it was attempted and produced none, `skipped` when
+  the run had already aborted. There is no `passed`/`failed`, no majority vote, no
+  confusion matrix, no false-correct rate and no `unstable` — the JSON's kind-agnostic
+  fields simply report `0` and the renderers print an em dash rather than a misleading
+  zero.
+- A case is flagged when **any** repeat's judge named an issue.
+- **Exit code**: `0` iff every file is valid AND `errored = 0` AND `skipped = 0`. Flags
+  never gate.
+
+Everything else on this page — retries, the auth abort, the generation circuit breaker,
+the judge degrade breaker, `--repeats`, progress, the version check, globbing, batch
+isolation, `--out` / `--report` durability — applies to both kinds unchanged.
 
 - The case **verdict** is the **majority** over its successfully graded repeats. A
   tie passes only if **every** tied verdict is expected.
@@ -361,8 +521,8 @@ carries the same verdict as a top-level **`passed`** (and one per file), compute
 
 ### Token usage
 
-Every repeat row carries the `usage` of its own grading call when the server reported
-one — and, under `repeats[].judge.usage`, its judge call's — and `totals.usage` sums them
+Every repeat row carries the `usage` of its own generation call (grading, or a tutor
+turn) when the server reported one — and, under `repeats[].judge.usage`, its judge call's — and `totals.usage` sums them
 **all into one bucket** per file and across the batch (always present, zeros when nothing
 was reported). One eval run is one cost; there is deliberately no separate judge bucket.
 **Semantics — read this before quoting a number:** usage covers **successful calls
@@ -390,6 +550,17 @@ It is written for a **teacher**, not for a script, and follows two rules:
   means "not checked". A file whose repeats hold no judgment at all therefore renders `—`,
   whether judging was off for the whole run or the breaker degraded it before that file —
   "never judged" must never read as "found clean".
+- **Tutor rows and sections.** A tutor file's overview row reports conversations /
+  errored / skipped / flagged / tokens and renders `—` in the verdict columns (Passed,
+  Failed, Unstable, False-correct) — "no such measurement" must never read as "measured
+  zero". The Flagged column keeps its one rule for both kinds: a count means "checked", an
+  em dash means "not checked". Its details are the **"Flagged responses"** section: per
+  flagged case the heading (`title`, or the index plus an excerpt of the first student
+  line), the scripted conversation turn by turn, the grading instructions when present,
+  and each flagged repeat's **generated response verbatim** as a blockquote followed by
+  the judge's `criterion — note` items. Clean conversations stay out of the report (their
+  generated texts are in the JSON); errored conversations get their own section with the
+  conversation and the error; skipped / aborted / degraded follow the existing rules.
 - **Details only for what went wrong**: mismatched, errored and unstable cases get a
   section each (question text, the golden answer and the grader's feedback as verbatim
   blockquotes, plus every repeat's verdict when they disagreed). Passing cases get
@@ -415,7 +586,8 @@ quiz whose text could not be re-read simply yields empty texts.
 ## Multi-file (batch) runs
 
 `eval` takes several eval files in one invocation — a pure CLI-side loop; the server
-contract is unchanged (still one request = one golden answer).
+contract is unchanged (still one request = one case). Files may **mix kinds**: each runs
+through its own kind's runner, `--concurrency` bounding cases within the current file.
 
 ```bash
 novedu-cli eval part-1/*.eval.yaml                 # shell-expanded
@@ -445,7 +617,8 @@ novedu-cli eval "./**/*.eval.yaml"                 # quoted: the CLI expands it
   has already cost one long run to a premature kill. It ticks on file boundaries only,
   so a single long file is still quiet; deliberately no per-file timings, which would
   invite extrapolating an unreliable ETA. The run's scope (`N case(s) × R repeat(s) =
-  M grading call(s)`) is printed before the first call — a teacher about to fire 756
+  M grading call(s)`, or `N conversation(s) × R repeat(s) = M generation call(s)` — one
+  line per kind present) is printed before the first call — a teacher about to fire 756
   LLM calls should see the number first.
 - **Report**: a per-file summary table, grand totals, then the per-file detail
   sections only for files that had mismatches. The confusion matrix and false-correct
@@ -459,8 +632,13 @@ novedu-cli eval "./**/*.eval.yaml"                 # quoted: the CLI expands it
   "restore a checkpoint". Callers running hundreds of cases should invoke per folder
   with their own `--report`/`--out` names.
 - **`--json` / `--out`** always carry the batch shape, single file or not:
-  `{ files: [{ source, status: "ok" | "invalid", passed, result?, errors? }], passed,
-  totals }`, where `totals` adds `feedbackFlagged`, `judgeErrored` and
+  `{ files: [{ source, status: "ok" | "invalid", kind?, passed, result?, errors? }],
+  passed, totals }` — the file entry's `kind` is `"quiz" | "tutor"`, absent only for an
+  `invalid` file whose kind could not be determined, and each `result` carries the same
+  `kind`. A tutor `result` fills the kind-agnostic fields and leaves the quiz-only ones
+  empty/zero (`questions: []`, `confusion: []`, `falseCorrect` all zeros); its repeats
+  carry the generated `text` instead of `got`/`feedback`. `totals` adds `feedbackFlagged`,
+  `judgeErrored` and
   `usage: { input, cachedInput, output }` and each `result` adds its own
   `judging: "on" | "off" | "degraded"`, `totals` (same two counts plus `usage`), the
   per-case `feedbackFlagged`, the per-repeat `usage` /
@@ -484,8 +662,9 @@ novedu-cli eval ./welcome-quiz.eval.yaml \
 ```
 
 `--llm-provider` / `--llm-model` is **strictly both-or-nothing** (mirroring the
-code-override rule and `effectiveLlm`, `docs/ai-models.md`) and replaces the quiz's
-`llm` pair for the whole run — every file in a batch included. Run the same rubric and
+code-override rule and `effectiveLlm`, `docs/ai-models.md`) and replaces the target
+activity's `llm` pair for the whole run — every file in a batch included, whatever its
+kind. Run the same rubric and
 the same golden answers against a different backend and diff the two reports.
 
 This required **zero server change**: the endpoint is already LLM-agnostic (the CLI
@@ -507,14 +686,14 @@ not change who grades.
 
 A passing eval certifies the **local file you ran it on** — not the app-hosted copy a
 live code serves. Publish the same file (`novedu-cli files upload`) after a green run,
-or the code keeps serving the old rubric. Likewise, an override run certifies the
+or the code keeps serving the old rubric (or the old tutor prompt). Likewise, an override run certifies the
 **override pair**, not the quiz's configured `llm`.
 
 ## Usage metering
 
-Eval gradings **and** judge calls are metered under the pseudo-code **`cli-eval`** and
-the module **`eval`**, with the teacher's `oid` as the user
-(`docs/usage-metering.md`) — the same three sentinel RequestContext keys set by both
+Eval gradings, tutor generations **and** judge calls are metered under the pseudo-code
+**`cli-eval`** and the module **`eval`**, with the teacher's `oid` as the user
+(`docs/usage-metering.md`) — the same three sentinel RequestContext keys set by all three
 routes, landing in the same buckets on purpose. No pipeline change was needed.
 `cli-eval` is not a `novedu_codes` row (minted codes are 10 random characters,
 so a collision is impossible); it simply appears as its own row/group in the usage
@@ -524,26 +703,32 @@ dashboard, with NULL code metadata.
 
 | Layer | File |
 | --- | --- |
-| Format + target resolution + cross-check | `lib/eval-validate.unit.test.ts` |
+| Format (both kinds, incl. the no-`kind` default) + target resolution + cross-check | `lib/eval-validate.unit.test.ts` |
 | Editor-schema drift + doc coverage | `lib/schema-gen/generated-schemas.unit.test.ts` |
 | CLI purity of the format + judge layers | `lib/prompt-dump.unit.test.ts` (`PURE_MODULES`) |
-| The judge prompt, subject layout + dynamic schema | `lib/quiz-feedback-judge.unit.test.ts` |
+| The quiz judge prompt, subject layout + dynamic schema | `lib/quiz-feedback-judge.unit.test.ts` |
+| The tutor judge prompt, criteria selection + subject layout | `lib/tutor-judge.unit.test.ts` |
 | The grade route (real bearer gate, mocked Mastra) | `app/api/eval/grade/route.unit.test.ts` |
 | The judge route (gate, criteria bounds, kind-agnostic enum) | `app/api/eval/judge/route.unit.test.ts` |
-| `evalJudge` being unreachable from the web route | `app/api/copilotkit/[[...slug]]/route.unit.test.ts` |
+| The respond route (gate, message shapes, unknown tool → 400, usage) | `app/api/eval/respond/route.unit.test.ts` |
+| `evalJudge` and `evalTutor` being unreachable from the web route | `app/api/copilotkit/[[...slug]]/route.unit.test.ts` |
 | The `cliVersion` the version check reads | `app/api/version/route.unit.test.ts` |
 | Retry + bounded concurrency | `cli/src/retry.unit.test.ts` |
-| The pure runner (majority, breaker, metrics, usage, judging) | `cli/src/eval-run.unit.test.ts` |
-| The Markdown report renderer, flagged section included | `cli/src/report-md.unit.test.ts` |
-| The command (requests, both override pairs, batch, globs) | `cli/src/commands/eval.unit.test.ts` |
-| The built binary against the fixtures grader + judge | `cli/test/eval.integration.test.ts` |
+| The pure runners, both kinds (majority, breakers, metrics, usage, judging) | `cli/src/eval-run.unit.test.ts` |
+| The Markdown report renderer, flagged + tutor sections included | `cli/src/report-md.unit.test.ts` |
+| The command (requests, kind inference, mixed batches, override pairs, globs) | `cli/src/commands/eval.unit.test.ts` |
+| The built binary against the fixtures grader + judge + tutor | `cli/test/eval.integration.test.ts` |
 | **`@live-llm`** — does a REAL judge catch planted violations? | `e2e/eval-judge.live.spec.ts` |
 
 All but the last are hermetic — no LLM, no DB, no secrets. The fixtures server
 (`test-fixtures/serve.mjs`) fakes `/api/eval/grade` deterministically: `correct`
 unless the answer carries a `[grade:<verdict>]` marker, with `evalFailures` making the
-first N requests answer 504 so the retry path runs offline. It fakes `/api/eval/judge` the
-same way one level up — an empty `issues` list unless the request's `subject` carries
+first N requests answer 504 so the retry path runs offline. `/api/eval/respond` follows
+the same convention for the tutor kind: the generated turn is the `[respond:<text>]`
+payload of the last student message when it carries one — which is how a fixture plants a
+`[judge:<criterion>]` marker INSIDE the generated response and proves it reaches the
+judge's subject — with `respondFailures` for the retry path. It fakes `/api/eval/judge`
+one level up — an empty `issues` list unless the request's `subject` carries
 `[judge:<criterion>]` markers. It also fakes `/api/version`,
 reporting the real `cli/package.json` version by default (so a run is warning-free) with
 a `cliVersion` option serving a different one, which is how the mismatch warning is
@@ -567,11 +752,14 @@ future eval kind adds its own without restructuring the spec. See `docs/testing.
 
 - a DB-backed queue + run history + `eval status/results/delete` (the stateless design
   above was chosen over it on purpose);
-- eval kinds for `writing` / `coding` / `tutor` — the `evalRunners` registry seam is
-  keyed by kind and ready for them;
+- eval kinds for `writing` / `coding` — the `evalRunners` registry seam is keyed by kind
+  and now has two proofs;
+- for the tutor kind: full-replay and judge-every-prefix execution modes, and
+  image-input conversations;
 - image-input (photo answer) cases, and judging their feedback;
-- gating on the judge for quizzes (`--gate-feedback`), a per-eval-file
-  `feedback_criteria` field, and cross-file judge analytics;
+- gating on the judge (`--gate-flags` / `--gate-feedback`), a per-eval-file
+  `feedback_criteria` field, per-conversation judge criteria, and cross-file judge
+  analytics;
 - bare directory arguments with implicit `*.eval.yaml` discovery (globs cover it),
   cross-file parallelism, a combined confusion matrix across files, per-file `--out`
   splitting.
