@@ -756,6 +756,12 @@ future eval kind adds its own without restructuring the spec. See `docs/testing.
   and now has two proofs;
 - for the tutor kind: full-replay and judge-every-prefix execution modes, and
   image-input conversations;
+- surfacing TOOL CALLS in the tutor kind's repeat rows and judge subject. Today
+  `/api/eval/respond` returns only the final text, so neither the JSON nor the judge can
+  see whether a tool-granted tutor actually called its tool — a `grading_instructions`
+  like "the number must come from `random_number`" is therefore unverifiable and
+  guarantees judge noise (measured on the first live run). Write expectations about the
+  visible TEXT until this lands;
 - image-input (photo answer) cases, and judging their feedback;
 - gating on the judge (`--gate-flags` / `--gate-feedback`), a per-eval-file
   `feedback_criteria` field, per-conversation judge criteria, and cross-file judge

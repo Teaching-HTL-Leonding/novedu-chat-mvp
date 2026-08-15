@@ -22,6 +22,14 @@ import {
 // No validation logic lives here — it only renders the structured errors/warnings
 // the core already produced.
 
+// What the judge audited, in the reader's words: a quiz judge reads the grader's
+// FEEDBACK, a tutor judge reads the generated RESPONSE. The JSON field stays
+// `feedbackFlagged` for both (one batch shape); only the human label branches —
+// the same wording the Markdown report uses.
+function flaggedLabel(kind: EvalRunResult["kind"]): string {
+  return kind === "tutor" ? "flagged responses" : "flagged feedback";
+}
+
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
 const paint = (code: string, s: string) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : s);
 const green = (s: string) => paint("32", s);
@@ -349,8 +357,8 @@ export function formatEvalReport(result: EvalRunResult, source: string): string 
       (!anyJudged(result)
         ? ""
         : totals.feedbackFlagged
-          ? yellow(`   flagged feedback: ${totals.feedbackFlagged}`)
-          : dim("   flagged feedback: 0")) +
+          ? yellow(`   ${flaggedLabel(result.kind)}: ${totals.feedbackFlagged}`)
+          : dim(`   ${flaggedLabel(result.kind)}: 0`)) +
       (totals.judgeErrored ? dim(`   judge errors: ${totals.judgeErrored}`) : ""),
   );
 

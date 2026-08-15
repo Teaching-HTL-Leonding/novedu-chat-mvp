@@ -288,6 +288,31 @@ describe("formatEvalReport — the feedback judge", () => {
     expect(out).toContain("flagged feedback: 0");
   });
 
+  it("labels a tutor run's count 'flagged responses' — the judge read responses, not feedback", () => {
+    const out = formatEvalReport(
+      judged(
+        {
+          kind: "tutor",
+          cases: [
+            {
+              index: 0,
+              conversation: [{ student: "hi" }],
+              status: "ok",
+              unstable: false,
+              feedbackFlagged: true,
+              repeats: [{ repeatIndex: 0, text: "hello", judge: { issues: [] } }],
+            },
+          ],
+        },
+        { feedbackFlagged: 1 },
+      ),
+      "demo.eval.yaml",
+    );
+
+    expect(out).toContain("flagged responses: 1");
+    expect(out).not.toContain("flagged feedback");
+  });
+
   it("prints the judge pair only when it differs from the grading pair", () => {
     const same = formatEvalReport(
       judged({
