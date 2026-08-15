@@ -5,18 +5,24 @@ import { type EvalCheckOk, loadAndCheckEval } from "@/lib/eval-validate";
 import { LLM_PROVIDERS } from "@/lib/llm/provider";
 import { failJson, performApiRequest } from "../api";
 import {
+  anyJudged,
   batchPassed,
+  createJudgeBreaker,
   type EvalBatchFileInput,
   type EvalBatchIssue,
+  type EvalJudgeIssue,
   type EvalRunLlm,
+  type EvalRunResult,
   type EvalUsage,
   type GradeFn,
+  type JudgeFn,
   runEval,
   summarizeBatch,
 } from "../eval-run";
 import { cliFetcher } from "../file-fetcher";
 import { formatEvalBatchReport, formatEvalReport } from "../format";
 import { renderEvalMarkdownReport } from "../report-md";
+import { resolveServerUrl } from "../server-url";
 import { cliVersion } from "../version";
 import { toUrl } from "./validate";
 
@@ -27,6 +33,11 @@ import { toUrl } from "./validate";
 // app's own `dumpPrompts` seam, so unpushed local YAML works), and the server grades
 // ONE answer per request on the exact production path. The fan-out, the retries, the
 // majority vote and the whole report live here; the endpoint stays stateless.
+//
+// The FEEDBACK JUDGE (on by default, `--no-judge-feedback` to skip) rides the same shape:
+// one `POST /api/eval/judge` per successfully graded repeat, auditing the grader's
+// feedback text for compliance with the very system prompt it graded under. It REPORTS
+// and never gates — a flagged feedback changes no exit code.
 //
 // `eval` is a strict-mode reserved identifier, so every binding here is named
 // `registerEval` / `runEvalCommand` / `evalFile` — never `eval`.
@@ -39,6 +50,10 @@ interface EvalOptions {
   repeats?: string;
   llmProvider?: string;
   llmModel?: string;
+  /** Commander's `--no-judge-feedback`: `false` when passed, `true` (the default) otherwise. */
+  judgeFeedback?: boolean;
+  judgeLlmProvider?: string;
+  judgeLlmModel?: string;
   json?: boolean;
   out?: string;
   report?: string;
@@ -95,25 +110,31 @@ export function expandSources(
   return { ok: true, sources, duplicates };
 }
 
-/** The `--llm-provider`/`--llm-model` pair: strictly both-or-nothing, provider checked. */
-function parseOverride(
-  options: EvalOptions,
+/**
+ * One provider/model pair from the flags: strictly BOTH-OR-NOTHING (the `effectiveLlm`
+ * rule, docs/ai-models.md) with the provider checked against the known list. Shared by
+ * `--llm-*` (the grading override) and `--judge-llm-*` (the judge's own pair), so the two
+ * can never drift in wording or in strictness.
+ */
+function parsePair(
+  flag: string,
+  provider: string | undefined,
+  model: string | undefined,
 ): { ok: true; llm?: { provider: string; model: string } } | { ok: false; message: string } {
-  const { llmProvider, llmModel } = options;
-  if (llmProvider === undefined && llmModel === undefined) return { ok: true };
-  if (llmProvider === undefined || llmModel === undefined) {
+  if (provider === undefined && model === undefined) return { ok: true };
+  if (provider === undefined || model === undefined) {
     return {
       ok: false,
-      message: "Pass --llm-provider and --llm-model together, or neither.",
+      message: `Pass --${flag}-provider and --${flag}-model together, or neither.`,
     };
   }
-  if (!(LLM_PROVIDERS as readonly string[]).includes(llmProvider)) {
+  if (!(LLM_PROVIDERS as readonly string[]).includes(provider)) {
     return {
       ok: false,
-      message: `Unknown --llm-provider "${llmProvider}": expected ${LLM_PROVIDERS.map((p) => `"${p}"`).join(" or ")}.`,
+      message: `Unknown --${flag}-provider "${provider}": expected ${LLM_PROVIDERS.map((p) => `"${p}"`).join(" or ")}.`,
     };
   }
-  return { ok: true, llm: { provider: llmProvider, model: llmModel } };
+  return { ok: true, llm: { provider, model } };
 }
 
 /**
@@ -193,6 +214,116 @@ function makeGradeFn(
   };
 }
 
+/**
+ * The HTTP seam for ONE judge call, with the run's judge llm closed in. Mirrors
+ * {@link makeGradeFn}'s failure classification, minus the auth branch: a judge failure
+ * NEVER aborts the run — it degrades judging (see the runner's breaker) while the grading
+ * half finishes untouched.
+ */
+function makeJudgeFn(
+  server: string | undefined,
+  llm: { provider: string; model: string },
+): JudgeFn {
+  return async ({ system, subject, criteria }) => {
+    const response = await performApiRequest({
+      server,
+      path: "/api/eval/judge",
+      method: "POST",
+      body: { llm, system, subject, criteria: [...criteria] },
+      quiet: true,
+    });
+    if (response.ok) {
+      const payload = response.payload as { issues?: unknown; usage?: unknown } | null;
+      if (Array.isArray(payload?.issues)) {
+        const issues = payload.issues.flatMap((entry): EvalJudgeIssue[] => {
+          const { criterion, note } = (entry ?? {}) as Record<string, unknown>;
+          return typeof criterion === "string"
+            ? [{ criterion, note: typeof note === "string" ? note : "" }]
+            : [];
+        });
+        const usage = parseUsage(payload?.usage);
+        return { ok: true, issues, ...(usage ? { usage } : {}) };
+      }
+      // Same reasoning as the grade seam: a 2xx that is not a judgment almost always
+      // means the server does not OFFER the endpoint, not that judging went wrong.
+      return {
+        ok: false,
+        retryable: false,
+        error: {
+          message:
+            "The server's response is not a feedback judgment — it may not offer " +
+            "/api/eval/judge at all (does it run a Novedu version with the feedback " +
+            "judge?). Re-run with --no-judge-feedback to grade without judging.",
+        },
+      };
+    }
+    return {
+      ok: false,
+      // No status ⇒ the request never reached the server (network) ⇒ worth retrying.
+      // An auth failure is NOT special-cased here: the grading calls hit the same wall
+      // and own the run-wide abort.
+      retryable: response.status === undefined || response.status >= 500,
+      error: response.error,
+    };
+  };
+}
+
+/** Budget for the one version probe — a hung check must never hold up a run. */
+const VERSION_CHECK_TIMEOUT_MS = 5_000;
+
+/**
+ * Warn when this CLI was not built from the same commit as the server it is about to
+ * grade against. `eval` assembles every grading system prompt LOCALLY, from the `lib/**`
+ * prompt builders frozen into this published CLI — so a stale binary can certify prompts
+ * the server's activities no longer send. CLI and server live in one repo, which makes
+ * the server's `cliVersion` (from `GET /api/version`, public and unauthenticated) exactly
+ * the CLI release matching its bundled code.
+ *
+ * Deliberately EVAL-ONLY (prompt drift corrupts nothing else) and strictly advisory: one
+ * fetch, no retry, never an abort, never an exit code, and never a byte on stdout — the
+ * JSON output contract owns that stream. Unlike progress it prints off a TTY too: a CI
+ * log is precisely where this warning has to survive. Absence is NOT silently forgiven —
+ * an unreachable, non-JSON, non-2xx or `cliVersion`-less answer says so, because "could
+ * not check" and "checked, fine" must not look the same.
+ */
+async function warnOnVersionMismatch(server: string | undefined): Promise<void> {
+  const local = cliVersion();
+  const unverifiable = (reason: string): void => {
+    process.stderr.write(
+      `Warning: could not verify that this CLI (${local}) matches the server's — ${reason}. ` +
+        "Locally assembled grading prompts may differ from what that server's activities run.\n",
+    );
+  };
+
+  const base = resolveServerUrl(server);
+  let payload: unknown;
+  try {
+    const response = await fetch(new URL("/api/version", base), {
+      signal: AbortSignal.timeout(VERSION_CHECK_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      unverifiable(`${base} answered HTTP ${response.status}`);
+      return;
+    }
+    payload = await response.json();
+  } catch (error) {
+    unverifiable(`${base} did not answer (${error instanceof Error ? error.message : error})`);
+    return;
+  }
+
+  const remote = (payload as { cliVersion?: unknown } | null)?.cliVersion;
+  if (typeof remote !== "string" || remote === "") {
+    unverifiable(`${base} reports no CLI version (does it run a Novedu version that has one?)`);
+    return;
+  }
+  if (remote === local) return;
+  process.stderr.write(
+    `Warning: this CLI is ${local} but the server was built with CLI ${remote} — locally ` +
+      "assembled grading prompts may differ from what that server's activities run. " +
+      "Update: npm i -g @novedu/cli\n",
+  );
+}
+
 /** stderr progress, suppressed off a TTY so CI logs stay readable. */
 function progressWriter(
   prefix: string,
@@ -201,6 +332,29 @@ function progressWriter(
   return ({ done, total }) => {
     process.stderr.write(`\r${prefix}${done}/${total}   `);
   };
+}
+
+/**
+ * The off-a-TTY replacement for the spinner: ONE newline-terminated line per finished
+ * file. The `\r` counter above is suppressed when stderr is redirected (it would fill a
+ * log with carriage-return noise), which otherwise left a long batch printing nothing at
+ * all between the scope banner and the final report — indistinguishable from a hang, and
+ * an easy way to talk yourself into killing a healthy run. Coarse and greppable is
+ * enough: it proves liveness and says which file the run reached.
+ *
+ * Deliberately no timings — a per-file duration invites extrapolating an ETA that the
+ * model, the provider's load and `--concurrency` make unreliable.
+ */
+function writeFileDone(label: string, result: EvalRunResult): void {
+  const totals = result.totals;
+  process.stderr.write(
+    `${label}: ${totals.cases} case(s), ${totals.passed} passed, ${totals.failed} failed, ` +
+      `${totals.errored} errored` +
+      (totals.skipped ? `, ${totals.skipped} skipped` : "") +
+      // The renderers' shared rule: a count only means something once a judgment exists.
+      (anyJudged(result) ? `, ${totals.feedbackFlagged} flagged` : "") +
+      "\n",
+  );
 }
 
 /**
@@ -213,9 +367,28 @@ export async function runEvalCommand(
   options: EvalOptions,
   seams: { retry?: { attempts?: number; baseDelayMs?: number } } = {},
 ): Promise<void> {
-  const override = parseOverride(options);
+  const override = parsePair("llm", options.llmProvider, options.llmModel);
   if (!override.ok) {
     failJson({ message: override.message });
+    return;
+  }
+
+  const judgeOverride = parsePair("judge-llm", options.judgeLlmProvider, options.judgeLlmModel);
+  if (!judgeOverride.ok) {
+    failJson({ message: judgeOverride.message });
+    return;
+  }
+
+  // Feedback judging is ON by default; `--no-judge-feedback` turns it off. Asking for
+  // BOTH is contradictory — name the contradiction rather than silently honoring one.
+  const judging = options.judgeFeedback !== false;
+  if (!judging && judgeOverride.llm) {
+    failJson({
+      message:
+        "--judge-llm-provider/--judge-llm-model cannot be combined with " +
+        "--no-judge-feedback: the first configures the feedback judge, the second " +
+        "switches it off.",
+    });
     return;
   }
 
@@ -265,15 +438,34 @@ export async function runEvalCommand(
 
   {
     const totalCases = [...checked.values()].reduce((sum, file) => sum + file.caseCount, 0);
+    const calls = totalCases * repeats;
     // A teacher about to fire hundreds of LLM calls should see the number FIRST — and
-    // it anchors the progress counter that follows.
+    // it anchors the progress counter that follows. Judging roughly DOUBLES the calls, so
+    // the scope line names both halves whenever it is on.
     process.stderr.write(
-      `${totalCases} case(s) × ${repeats} repeat(s) = ${totalCases * repeats} grading call(s)\n`,
+      `${totalCases} case(s) × ${repeats} repeat(s) = ${calls} grading` +
+        (judging ? ` + ${calls} judge call(s)\n` : " call(s)\n"),
     );
   }
 
+  // One advisory probe before the first grading call: is this CLI's frozen copy of the
+  // prompt builders the one that server ships? Warn-only — see warnOnVersionMismatch.
+  await warnOnVersionMismatch(options.server);
+
   // PHASE 2 — files sequentially, cases concurrent WITHIN a file: the server sees
   // exactly the load of N separate invocations.
+  //
+  // The judge's circuit breaker is shared across the WHOLE batch (unlike the grading one,
+  // which is per file): a judge model that is down must stop costing calls for the rest of
+  // the run, and it degrades rather than aborting — the grading half always finishes.
+  const judgeBreaker = createJudgeBreaker();
+  const onJudgeDegraded = () => {
+    process.stderr.write(
+      "Warning: feedback judging was stopped after 3 judge calls failed in a row — the " +
+        "rest of this run is graded but NOT judged. Grading is unaffected.\n",
+    );
+  };
+
   let fileIndex = 0;
   for (const file of files) {
     fileIndex += 1;
@@ -281,20 +473,32 @@ export async function runEvalCommand(
     if (!check) continue;
     const quizLlm = { provider: check.quizDump.llm.provider, model: check.quizDump.llm.model };
     const effective = override.llm ?? quizLlm;
+    // The judge falls back to the EFFECTIVE grading pair — a strong judge over a small
+    // grader is the realistic production pairing, but "same model as the grader" is the
+    // honest default when nobody said otherwise.
+    const judgeLlm = judgeOverride.llm ?? effective;
     const llm: EvalRunLlm = {
       ...effective,
       ...(override.llm ? { overrides: quizLlm } : {}),
+      ...(judging ? { judge: { ...judgeLlm, overridden: judgeOverride.llm !== undefined } } : {}),
     };
-    const prefix = files.length > 1 ? `(${fileIndex}/${files.length}) ${check.evalFile.id}: ` : "";
-    file.result = await runEval("quiz", check, {
+    const label =
+      files.length > 1 ? `(${fileIndex}/${files.length}) ${check.evalFile.id}` : check.evalFile.id;
+    const prefix = files.length > 1 ? `${label}: ` : "";
+    const result = await runEval("quiz", check, {
       grade: makeGradeFn(options.server, effective),
+      ...(judging ? { judge: makeJudgeFn(options.server, judgeLlm) } : {}),
+      judgeBreaker,
+      onJudgeDegraded,
       concurrency,
       repeats,
       llm,
       onProgress: progressWriter(prefix),
       ...(seams.retry ? { retry: seams.retry } : {}),
     });
+    file.result = result;
     if (process.stderr.isTTY) process.stderr.write("\n");
+    else writeFileDone(label, result);
   }
 
   const batch = summarizeBatch(files);
@@ -371,6 +575,18 @@ export function registerEval(program: Command): void {
       "--llm-model <model>",
       "grade with this model instead of the quiz's (needs --llm-provider)",
     )
+    .option(
+      "--no-judge-feedback",
+      "skip the LLM audit of the grader's feedback (halves the LLM calls)",
+    )
+    .option(
+      "--judge-llm-provider <provider>",
+      'judge the feedback with this provider ("SCCH" or "Azure Foundry"; needs --judge-llm-model)',
+    )
+    .option(
+      "--judge-llm-model <model>",
+      "judge the feedback with this model instead of the grading one (needs --judge-llm-provider)",
+    )
     .option("--json", "print the machine-readable batch report on stdout")
     .option("--out <file>", "additionally write the machine-readable batch report to a file")
     .option("--report <file>", "additionally write a readable Markdown report to a file")
@@ -389,6 +605,12 @@ Examples:
 
   # How would this rubric perform on another model? (both flags, always together)
   $ novedu-cli eval ./my-quiz.eval.yaml --llm-provider "Azure Foundry" --llm-model gpt-5-mini
+
+  # A strong judge over the quiz's own grader — the recommended pairing
+  $ novedu-cli eval ./my-quiz.eval.yaml --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra
+
+  # Half the LLM calls: check the verdicts only, skip the feedback audit
+  $ novedu-cli eval ./my-quiz.eval.yaml --no-judge-feedback
 
   # Machine-readable, for CI
   $ novedu-cli eval ./my-quiz.eval.yaml --json --out eval-report.json

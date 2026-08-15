@@ -1,6 +1,12 @@
 import { EVAL_VERDICTS, type EvalVerdict, expectedKey, normalizeExpect } from "@/lib/eval-schema";
 import type { EvalCheckOk } from "@/lib/eval-validate";
 import type { PromptKind } from "@/lib/prompt-dump";
+import {
+  buildFeedbackJudgeSubject,
+  FEEDBACK_JUDGE_CRITERIA,
+  FEEDBACK_JUDGE_SYSTEM,
+  type FeedbackJudgeIssue,
+} from "@/lib/quiz-feedback-judge";
 import { mapWithConcurrency, withRetry } from "./retry";
 
 // The PURE core of `novedu-cli eval`: turn a checked eval file into a finished run
@@ -22,6 +28,16 @@ import { mapWithConcurrency, withRetry } from "./retry";
 // stay in the JSON as detail, plus an `unstable` count (cases whose repeats disagreed)
 // that is REPORTED but never gates: grader nondeterminism is the actually interesting
 // `--repeats` signal.
+//
+// THE FEEDBACK JUDGE is layered on top of that hierarchy without disturbing it: every
+// SUCCESSFULLY GRADED repeat gets one judge call, as a dependent step of that repeat (no
+// barrier over the file), judged against THAT repeat's own verdict — an outvoted repeat's
+// feedback is consistent with the verdict it actually got, not with the case majority.
+// A case is `feedbackFlagged` when ANY of its repeats collected an issue: one bad
+// feedback out of three observations is exactly the signal `--repeats` is there to find,
+// so there is deliberately no majority vote over judgments. NOTHING the judge reports
+// touches `status`, `passed`, `batchPassed` or the exit code — it is report-only, the
+// same philosophy as `unstable` (docs/cli-eval.md).
 
 /** The eval kinds — quiz only for v1; the seam is ready for the others. */
 export type EvalKind = Extract<PromptKind, "quiz">;
@@ -70,8 +86,71 @@ export type GradeResult =
 /** The injected HTTP seam: grade one answer with one grading prompt. */
 export type GradeFn = (request: { system: string; answer: string }) => Promise<GradeResult>;
 
+/** One thing the judge found wrong with a feedback text — the `lib` wire type, re-exported. */
+export type EvalJudgeIssue = FeedbackJudgeIssue;
+
+/** One judge call's outcome, in the shape `POST /api/eval/judge` reports it. */
+export type JudgeResult =
+  | { ok: true; issues: EvalJudgeIssue[]; usage?: EvalUsage }
+  | {
+      ok: false;
+      /** Worth another attempt: a 5xx or a true network failure. Any 4xx is terminal. */
+      retryable: boolean;
+      /** The failure payload, verbatim — recorded as `judgeError`, never as a case error. */
+      error: unknown;
+    };
+
+/**
+ * The injected HTTP seam for ONE judge call. Deliberately takes the ASSEMBLED prompt,
+ * subject and taxonomy rather than an eval-kind's raw pieces: the endpoint is
+ * kind-agnostic, and each kind's runner assembles its own subject (this one via
+ * `lib/quiz-feedback-judge.ts`), so a future eval kind reuses both seam and endpoint
+ * unchanged.
+ */
+export type JudgeFn = (request: {
+  system: string;
+  subject: string;
+  criteria: readonly string[];
+}) => Promise<JudgeResult>;
+
+/**
+ * Whether the run judged feedback at all: `"off"` when judging was not requested
+ * (`--no-judge-feedback`), `"degraded"` when the breaker stopped it mid-run, `"on"`
+ * otherwise. Carried per file so a report never has to guess why judgments are missing.
+ */
+export type EvalJudging = "on" | "off" | "degraded";
+
+/**
+ * The judge's run-wide circuit breaker, shared across EVERY file of a batch (unlike the
+ * grading breaker, which is per file) — a judge model that is down must stop costing
+ * calls for the rest of the run, not once per file.
+ *
+ * It DEGRADES rather than aborts: the grading half of a 252-case run must never be lost
+ * to a broken judge, so judging simply stops and the run finishes.
+ */
+export interface JudgeBreaker {
+  consecutiveErrors: number;
+  stopped: boolean;
+}
+
+export function createJudgeBreaker(): JudgeBreaker {
+  return { consecutiveErrors: 0, stopped: false };
+}
+
+/** Consecutive fully-errored judge calls that mean "stop judging for the rest of the run". */
+const JUDGE_BREAKER_LIMIT = 3;
+
 export interface EvalRunOptions {
   grade: GradeFn;
+  /**
+   * The judge seam. ABSENT means judging is off for this run (`--no-judge-feedback`) —
+   * no judge fields appear anywhere in the result.
+   */
+  judge?: JudgeFn;
+  /** Shared across the batch's files, so degradation is run-wide (see {@link JudgeBreaker}). */
+  judgeBreaker?: JudgeBreaker;
+  /** Called ONCE, the moment judging degrades, so the command can warn on stderr. */
+  onJudgeDegraded?: () => void;
   /** Cases in flight at once (repeats of a case run sequentially within it). */
   concurrency?: number;
   repeats?: number;
@@ -89,6 +168,13 @@ export interface EvalRunLlm {
   model: string;
   /** The quiz's own pair, kept alongside the effective one when overridden. */
   overrides?: { provider: string; model: string };
+  /**
+   * The pair the FEEDBACK JUDGE ran on, and whether it came from `--judge-llm-*` rather
+   * than defaulting to the effective grading pair. Absent when judging was off — a run
+   * that made no judge call must not advertise a judge model. Judge strictness varies by
+   * model, so two reports are only comparable when this matches.
+   */
+  judge?: { provider: string; model: string; overridden: boolean };
 }
 
 export interface EvalRepeatRow {
@@ -99,6 +185,16 @@ export interface EvalRepeatRow {
   usage?: EvalUsage;
   /** Present when this observation never produced a verdict. */
   error?: unknown;
+  /**
+   * The judge's verdict on THIS repeat's feedback: an empty `issues` array means the
+   * feedback is acceptable, and `null` means this repeat produced no judgment (its
+   * grading errored, its judge call failed, or the breaker had already degraded the run).
+   * Present on EVERY repeat of a judged run; absent from the JSON only when judging was
+   * off for the whole run, which `EvalRunResult.judging` already says.
+   */
+  judge?: { issues: EvalJudgeIssue[]; usage?: EvalUsage } | null;
+  /** This repeat's judge call exhausted its retries. NEVER makes the case `errored`. */
+  judgeError?: string;
 }
 
 export interface EvalCaseResult {
@@ -118,6 +214,12 @@ export interface EvalCaseResult {
   verdict?: EvalVerdict;
   /** The repeats disagreed — reported, never gating. */
   unstable: boolean;
+  /**
+   * ANY graded repeat's feedback collected a judge issue. Reported, never gating — the
+   * same standing as `unstable`. No majority vote: one bad feedback out of three
+   * observations is precisely the signal `--repeats` exists to surface.
+   */
+  feedbackFlagged: boolean;
   repeats: EvalRepeatRow[];
 }
 
@@ -132,6 +234,8 @@ export interface EvalRunResult {
   id: string;
   target: string;
   llm: EvalRunLlm;
+  /** Whether this file's feedback was judged at all ({@link EvalJudging}). */
+  judging: EvalJudging;
   totals: {
     cases: number;
     passed: number;
@@ -140,10 +244,17 @@ export interface EvalRunResult {
     /** Cases never attempted because the run aborted first. */
     skipped: number;
     unstable: number;
+    /** CASES whose feedback the judge flagged — reported, never gating. */
+    feedbackFlagged: number;
+    /** REPEATS whose judge call exhausted its retries (the grading still counted). */
+    judgeErrored: number;
     repeats: number;
     /** Grading calls this run intended to make (cases × repeats). */
     calls: number;
-    /** Summed over every repeat row that reported usage — a LOWER bound ({@link EvalUsage}). */
+    /**
+     * Summed over every repeat row that reported usage — GRADING **and** judge calls, in
+     * one bucket on purpose (one eval run is one cost). A LOWER bound ({@link EvalUsage}).
+     */
     usage: EvalUsage;
   };
   /** Every case that did not pass, in file order — what the human report lists. */
@@ -224,6 +335,15 @@ function majority(
   };
 }
 
+/** The one-line message a failed judge call leaves on its repeat row. */
+function judgeErrorMessage(error: unknown): string {
+  if (typeof error === "string") return error;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return JSON.stringify(error ?? null);
+}
+
 const quizEvalRunner: EvalRunner = {
   async run(checked, options) {
     const repeats = Math.max(1, Math.floor(options.repeats ?? 1));
@@ -231,10 +351,72 @@ const quizEvalRunner: EvalRunner = {
     const planned = planCases(checked);
     const total = planned.length * repeats;
     const questionTexts = new Map(checked.quizQuestions.map((q) => [q.id, q.text]));
+    // Absent breaker ⇒ this file owns one; the command passes a shared instance so
+    // degradation carries across a batch.
+    const breaker = options.judgeBreaker ?? createJudgeBreaker();
 
     let done = 0;
     let consecutiveErrored = 0;
     let aborted: EvalRunResult["aborted"];
+
+    /**
+     * The `judge` field of a repeat that produced NO judgment — spread onto every row
+     * that is not a successful grading. Judging on ⇒ an explicit `null` (so a script
+     * reading `judge === null` catches every unjudged repeat, not only the degraded
+     * ones); judging off ⇒ nothing at all, since the whole run carries no judge fields.
+     */
+    const unjudged: Pick<EvalRepeatRow, "judge"> | Record<string, never> = options.judge
+      ? { judge: null }
+      : {};
+
+    /**
+     * Judge ONE graded repeat's feedback, as a dependent step of that repeat. Judged
+     * against the repeat's OWN verdict, never the case majority. Returns the fields to
+     * merge onto the row: a judgment, or `judge: null` plus a `judgeError` when the call
+     * failed, or a bare `judge: null` when the breaker had already degraded the run.
+     */
+    const judgeRepeat = async (
+      system: string,
+      answer: string,
+      verdict: EvalVerdict,
+      feedback: string,
+    ): Promise<Pick<EvalRepeatRow, "judge" | "judgeError">> => {
+      const judge = options.judge;
+      if (!judge || breaker.stopped) return { judge: null };
+      const outcome = await withRetry(
+        () =>
+          judge({
+            system: FEEDBACK_JUDGE_SYSTEM,
+            subject: buildFeedbackJudgeSubject(system, answer, verdict, feedback),
+            criteria: FEEDBACK_JUDGE_CRITERIA,
+          }),
+        {
+          attempts: options.retry?.attempts,
+          baseDelayMs: options.retry?.baseDelayMs,
+          sleep: options.retry?.sleep,
+          // `!breaker.stopped` re-reads the SHARED breaker between attempts: judge calls
+          // already in flight when a concurrent one trips it would otherwise keep burning
+          // their full budget against a judge the run has already given up on.
+          shouldRetry: (value) => !value.ok && value.retryable && !breaker.stopped,
+        },
+      );
+      if (outcome.ok) {
+        breaker.consecutiveErrors = 0;
+        return {
+          judge: {
+            issues: outcome.issues,
+            ...(outcome.usage ? { usage: outcome.usage } : {}),
+          },
+        };
+      }
+      // DEGRADE, never abort: the grading half of the run must survive a down judge.
+      breaker.consecutiveErrors += 1;
+      if (!breaker.stopped && breaker.consecutiveErrors >= JUDGE_BREAKER_LIMIT) {
+        breaker.stopped = true;
+        options.onJudgeDegraded?.();
+      }
+      return { judge: null, judgeError: judgeErrorMessage(outcome.error) };
+    };
 
     const progress = () => {
       done += 1;
@@ -256,6 +438,7 @@ const quizEvalRunner: EvalRunner = {
             rows.push({
               repeatIndex,
               error: { message: `The quiz has no question "${plan.questionId}".` },
+              ...unjudged,
             });
             progress();
             continue;
@@ -271,8 +454,15 @@ const quizEvalRunner: EvalRunner = {
               shouldRetry: (value) => !value.ok && value.retryable && value.auth !== true,
             },
           );
-          progress();
           if (outcome.ok) {
+            // The judge call is a DEPENDENT step of this repeat, not a barrier over the
+            // file: only a successfully graded repeat has feedback worth auditing. The
+            // progress tick happens AFTER it, so the counter never reads "done" while
+            // minutes of judging (or judge retries) are still to come.
+            const judged = options.judge
+              ? await judgeRepeat(plan.system, plan.answer, outcome.verdict, outcome.feedback)
+              : {};
+            progress();
             rows.push({
               repeatIndex,
               got: outcome.verdict,
@@ -280,10 +470,12 @@ const quizEvalRunner: EvalRunner = {
               // Absent on a server that reports no usage — tolerated everywhere, never
               // faked as zeros (see EvalUsage).
               ...(outcome.usage ? { usage: outcome.usage } : {}),
+              ...judged,
             });
             continue;
           }
-          rows.push({ repeatIndex, error: outcome.error });
+          progress();
+          rows.push({ repeatIndex, error: outcome.error, ...unjudged });
           if (outcome.auth) {
             // Token expiry mid-run is a real risk on a 252 × 3 run; abort with ONE
             // clear message instead of hundreds of per-case auth errors.
@@ -323,16 +515,24 @@ const quizEvalRunner: EvalRunner = {
           status,
           ...(winner ? { verdict: winner.verdict } : {}),
           unstable: new Set(graded).size > 1,
+          // ANY repeat, never a majority — see the header.
+          feedbackFlagged: rows.some((row) => (row.judge?.issues.length ?? 0) > 0),
           repeats: rows,
         };
       },
     );
 
-    // Tokens over every SUCCESSFUL grading call of the run (failed/retried attempts
-    // report nothing, so this is honestly a lower bound). Always present — zeros mean
-    // "nothing was reported", which the renderers read as "print no tokens line".
+    // Tokens over every SUCCESSFUL call of the run — grading AND judging, one bucket by
+    // design (failed/retried attempts report nothing, so this is honestly a lower bound).
+    // Always present — zeros mean "nothing was reported", which the renderers read as
+    // "print no tokens line".
     const usage: EvalUsage = { ...ZERO_USAGE };
-    for (const result of results) for (const row of result.repeats) addUsage(usage, row.usage);
+    for (const result of results) {
+      for (const row of result.repeats) {
+        addUsage(usage, row.usage);
+        addUsage(usage, row.judge?.usage);
+      }
+    }
 
     const totals = {
       cases: results.length,
@@ -341,6 +541,11 @@ const quizEvalRunner: EvalRunner = {
       errored: results.filter((c) => c.status === "errored").length,
       skipped: results.filter((c) => c.status === "skipped").length,
       unstable: results.filter((c) => c.unstable).length,
+      feedbackFlagged: results.filter((c) => c.feedbackFlagged).length,
+      judgeErrored: results.reduce(
+        (sum, c) => sum + c.repeats.filter((row) => row.judgeError !== undefined).length,
+        0,
+      ),
       repeats,
       calls: total,
       usage,
@@ -373,6 +578,9 @@ const quizEvalRunner: EvalRunner = {
       id: checked.evalFile.id,
       target: checked.targetUrl,
       llm: options.llm,
+      // `degraded` covers the rest of the batch too: once the breaker trips, every later
+      // file judged nothing, and saying "on" there would misread as "nothing was flagged".
+      judging: !options.judge ? "off" : breaker.stopped ? "degraded" : "on",
       totals,
       // The evaluated questions' text, deduped in eval-file order. Carried in the JSON
       // (and used by the Markdown report) so a reader never has to open the quiz to
@@ -461,7 +669,11 @@ export interface EvalBatchResult {
     errored: number;
     skipped: number;
     unstable: number;
-    /** Every file's usage added up — a LOWER bound ({@link EvalUsage}). */
+    /** CASES whose feedback the judge flagged, across the batch — reported, never gating. */
+    feedbackFlagged: number;
+    /** REPEATS whose judge call exhausted its retries, across the batch. */
+    judgeErrored: number;
+    /** Every file's usage added up, grading + judge — a LOWER bound ({@link EvalUsage}). */
     usage: EvalUsage;
   };
 }
@@ -487,6 +699,8 @@ export function summarizeBatch(files: EvalBatchFileInput[]): EvalBatchResult {
     errored: 0,
     skipped: 0,
     unstable: 0,
+    feedbackFlagged: 0,
+    judgeErrored: 0,
     usage: { ...ZERO_USAGE },
   };
   for (const file of files) {
@@ -497,6 +711,8 @@ export function summarizeBatch(files: EvalBatchFileInput[]): EvalBatchResult {
     totals.errored += file.result.totals.errored;
     totals.skipped += file.result.totals.skipped;
     totals.unstable += file.result.totals.unstable;
+    totals.feedbackFlagged += file.result.totals.feedbackFlagged;
+    totals.judgeErrored += file.result.totals.judgeErrored;
     addUsage(totals.usage, file.result.totals.usage);
   }
   // `passed` is DERIVED from `batchPassed`, never a second implementation of the rule.
@@ -508,9 +724,25 @@ export function summarizeBatch(files: EvalBatchFileInput[]): EvalBatchResult {
 }
 
 /**
+ * Did this file's run produce ANY judgment? The ONE rule every renderer derives its
+ * flagged count's visibility from: a file that judged nothing — judging off, or every
+ * case run after the breaker degraded the run — has NOT been found clean, so its flagged
+ * count renders as "not checked" (an em dash, an omitted segment), never as a `0`.
+ */
+export function anyJudged(result: EvalRunResult): boolean {
+  return result.cases.some((evalCase) =>
+    evalCase.repeats.some((repeat) => repeat.judge !== undefined && repeat.judge !== null),
+  );
+}
+
+/**
  * The CI gate: every file valid, and not a single failed, errored, or skipped CASE —
  * an aborted (and therefore incomplete) run must never read as a pass. The single
  * source of truth for the exit code AND for `EvalBatchResult.passed`.
+ *
+ * `unstable`, `feedbackFlagged` and `judgeErrored` deliberately do NOT appear here: all
+ * three are reported, none gates. (Gating is per-KIND policy, not a property of judge
+ * results — the quiz kind reports; a kind whose only check is the judge would gate on it.)
  */
 export function batchPassed(batch: { totals: EvalBatchResult["totals"] }): boolean {
   return (

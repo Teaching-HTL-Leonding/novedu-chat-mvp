@@ -23,15 +23,19 @@ Four kinds of e2e, by the external infra they need:
   and locally against real Azure SQL.
 - **`@live-llm` e2e** — also need a real LLM endpoint (chat round-trips, vision,
   the health probe, the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`,
-  and the **coding-agent** round-trip in `e2e/coding-agent.spec.ts`, which drives
-  the real `pi` coding agent through the public coding endpoint).
+  the **coding-agent** round-trip in `e2e/coding-agent.spec.ts`, which drives
+  the real `pi` coding agent through the public coding endpoint, and the **eval
+  feedback judge** probes in `e2e/eval-judge.live.spec.ts` — the one assertion of that
+  feature that cannot be faked is whether a real judge flags planted violations and
+  leaves compliant feedback alone, and `evalJudge` has no other real-backend coverage
+  in the repo, unlike the grader which `e2e/quiz.spec.ts` smokes indirectly).
   Neither provider is reachable from CI: the SCCH endpoint is **geo-blocked to
   Austria** and cannot be containerized, and Azure Foundry needs a **Managed
   Identity / `az login`** with the `Cognitive Services OpenAI User` role
   (docs/ai-models.md) — so these are **excluded from CI** and run locally only.
   The Foundry legs (the second `tutor-chat-reply` case, the `health-foundry`
-  assertions, the `coding-agent` override case) additionally self-skip when
-  `AZURE_FOUNDRY_ENDPOINT` is not set.
+  assertions, the `coding-agent` override case, the `eval-judge` provider-agnosticism
+  case) additionally self-skip when `AZURE_FOUNDRY_ENDPOINT` is not set.
   (Such a test is tagged `@live-llm` ONLY — the DB it also uses is implied — so a
   `--grep @live-db` run never selects it.)
 - **`@live-storage` e2e** — need real **Azure Blob Storage** (the image subsystem
@@ -122,8 +126,8 @@ Selected" over several files) (`e2e/file-and-tutor-code-crud.spec.ts`, which wri
 the real `novedu_files` table), and the **database auth-matrix**
 (`e2e/db-auth.live.spec.ts`, below) — also run **in CI** against a container (next
 section). The **`@live-llm`** ones — the text round-trip, the vision round-trip,
-the health probe, the coding-agent round-trip — stay **local** (the SCCH endpoint
-is geo-blocked to Austria).
+the health probe, the coding-agent round-trip, the eval feedback-judge probes — stay
+**local** (the SCCH endpoint is geo-blocked to Austria).
 
 The shared list **multi-delete** layer's pure interaction (checkboxes, select-all,
 the confirm/spinner/clear flow over a mocked action) is a fast **component** test —

@@ -6,12 +6,14 @@ import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAccessToken } from "../auth";
+import { cliVersion } from "../version";
 import { expandSources, registerEval, runEvalCommand } from "./eval";
 
 // The eval command end to end in-process: the eval files and the quiz they target are
 // REAL fixtures (so the grading prompts are the app's own), auth and fetch are mocked
 // like in the reports/codes command tests. Covers the request body, the retry path,
-// --json/--out, the exit codes, the LLM override rule, and batch mode incl. globbing.
+// --json/--out, the exit codes, the LLM override rule, the FEEDBACK JUDGE's flags and
+// request shape, batch mode incl. globbing, and the advisory CLI/server version check.
 
 vi.mock("../auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../auth")>();
@@ -24,6 +26,8 @@ const evalsDir = fileURLToPath(
 const okEval = join(evalsDir, "test-eval.yaml");
 const mismatchEval = join(evalsDir, "mismatch-eval.yaml");
 const brokenEval = join(evalsDir, "broken-eval.yaml");
+/** Verdicts all match; one answer plants a `[judge:…]` marker the fake judge flags. */
+const judgeEval = join(evalsDir, "judge-eval.yaml");
 
 const fetchMock = vi.fn();
 
@@ -40,11 +44,58 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/** The last request's parsed JSON body. */
+function lastBody(): Record<string, unknown> {
+  return JSON.parse((fetchMock.mock.calls.at(-1) as [URL, RequestInit])[1].body as string);
+}
+
 /** The fake grader: `correct` unless the answer carries a `[grade:…]` marker. */
 function grader(): Response {
-  const body = JSON.parse((fetchMock.mock.calls.at(-1) as [URL, RequestInit])[1].body as string);
-  const marker = /\[grade:(correct|partial|incorrect)\]/.exec(String(body.answer));
+  const marker = /\[grade:(correct|partial|incorrect)\]/.exec(String(lastBody().answer));
   return jsonResponse({ result: marker?.[1] ?? "correct", feedback: "ok" });
+}
+
+/** The fake judge: clean unless the subject carries `[judge:<criterion>]` markers. */
+function judge(): Response {
+  const issues = [...String(lastBody().subject).matchAll(/\[judge:([a-z_]+)\]/g)].map((match) => ({
+    criterion: match[1],
+    note: `flagged ${match[1]}`,
+  }));
+  return jsonResponse({ issues });
+}
+
+/** The run also probes GET /api/version once — never a grading or judge call. */
+function isVersionProbe(input: unknown): boolean {
+  return String(input).endsWith("/api/version");
+}
+
+function isJudgeCall(input: unknown): boolean {
+  return String(input).endsWith("/api/eval/judge");
+}
+
+/** Routes one request to the right fake, so a test never has to branch by hand. */
+function serve(input: unknown, versionAnswer = jsonResponse({ cliVersion: cliVersion() })) {
+  if (isVersionProbe(input)) return versionAnswer;
+  return isJudgeCall(input) ? judge() : grader();
+}
+
+/** Only the GRADING requests, so counts stay about grading and not about probes/judging. */
+function gradeCalls(): Array<[URL, RequestInit]> {
+  return fetchMock.mock.calls.filter(
+    (call) => !isVersionProbe((call as unknown[])[0]) && !isJudgeCall((call as unknown[])[0]),
+  ) as Array<[URL, RequestInit]>;
+}
+
+/** Only the JUDGE requests. */
+function judgeCalls(): Array<[URL, RequestInit]> {
+  return fetchMock.mock.calls.filter((call) => isJudgeCall((call as unknown[])[0])) as Array<
+    [URL, RequestInit]
+  >;
+}
+
+/** Everything the run wrote to stderr (warnings + progress), joined. */
+function stderrText(): string {
+  return stderr.mock.calls.map((call: unknown[]) => String(call[0])).join("");
 }
 
 let log: ReturnType<typeof vi.spyOn>;
@@ -59,7 +110,8 @@ beforeEach(() => {
   error = vi.spyOn(console, "error").mockImplementation(() => {});
   stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
   vi.mocked(getAccessToken).mockResolvedValue("token-123");
-  fetchMock.mockImplementation(async () => grader());
+  // The default server is in sync with this CLI, so the version check stays silent.
+  fetchMock.mockImplementation(async (input: unknown) => serve(input));
   dir = mkdtempSync(join(tmpdir(), "novedu-eval-unit-"));
 });
 
@@ -76,8 +128,8 @@ describe("eval — the request", () => {
   it("POSTs one grading call per golden answer with the quiz's llm and the real prompt", async () => {
     await run(okEval, "--server", "http://localhost:1234");
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(gradeCalls()).toHaveLength(2);
+    const [url, init] = gradeCalls()[0] as [URL, RequestInit];
     expect(url.href).toBe("http://localhost:1234/api/eval/grade");
     expect(init.method).toBe("POST");
     expect((init.headers as Record<string, string>).authorization).toBe("Bearer token-123");
@@ -90,17 +142,24 @@ describe("eval — the request", () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it("announces the run's scope on stderr before the first call", async () => {
+  it("announces the run's scope — both halves — on stderr before the first call", async () => {
     await run(okEval, "--server", "http://x");
 
-    const scope = stderr.mock.calls.map((call: unknown[]) => String(call[0])).join("");
-    expect(scope).toContain("2 case(s) × 1 repeat(s) = 2 grading call(s)");
+    // Judging roughly doubles the LLM calls, so the cost is visible before the run fires.
+    expect(stderrText()).toContain("2 case(s) × 1 repeat(s) = 2 grading + 2 judge call(s)");
+  });
+
+  it("prints the single-count scope line when judging is off", async () => {
+    await run(okEval, "--no-judge-feedback", "--server", "http://x");
+
+    expect(stderrText()).toContain("2 case(s) × 1 repeat(s) = 2 grading call(s)");
+    expect(stderrText()).not.toContain("judge call(s)");
   });
 
   it("expands --repeats into observations of the same case", async () => {
     await run(okEval, "--repeats", "3", "--server", "http://x");
 
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(gradeCalls()).toHaveLength(6);
     expect(process.exitCode).toBe(0);
   });
 });
@@ -108,7 +167,8 @@ describe("eval — the request", () => {
 describe("eval — failures and retries", () => {
   it("retries a 504 and succeeds on the next attempt", async () => {
     let calls = 0;
-    fetchMock.mockImplementation(async () => {
+    fetchMock.mockImplementation(async (input: unknown) => {
+      if (isVersionProbe(input) || isJudgeCall(input)) return serve(input);
       calls += 1;
       return calls === 1 ? jsonResponse({ message: "Gateway timeout" }, 504) : grader();
     });
@@ -116,7 +176,7 @@ describe("eval — failures and retries", () => {
     // Called through the core so the 5 s production backoff can be shrunk.
     await runEvalCommand([okEval], { server: "http://x" }, { retry: { baseDelayMs: 0 } });
 
-    expect(fetchMock).toHaveBeenCalledTimes(3); // 1 failed + 1 retry + 1
+    expect(gradeCalls()).toHaveLength(3); // 1 failed + 1 retry + 1
     expect(process.exitCode).toBe(0);
   });
 
@@ -217,12 +277,12 @@ describe("eval — the LLM override", () => {
       "http://x",
     );
 
-    for (const call of fetchMock.mock.calls) {
-      const body = JSON.parse((call as [URL, RequestInit])[1].body as string);
+    for (const call of gradeCalls()) {
+      const body = JSON.parse(call[1].body as string);
       expect(body.llm).toEqual({ provider: "Azure Foundry", model: "gpt-5-mini" });
     }
     const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
-    expect(payload.files[0].result.llm).toEqual({
+    expect(payload.files[0].result.llm).toMatchObject({
       provider: "Azure Foundry",
       model: "gpt-5-mini",
       overrides: { provider: "SCCH", model: "test-model" },
@@ -230,11 +290,186 @@ describe("eval — the LLM override", () => {
   });
 });
 
+describe("eval — the feedback judge", () => {
+  it("judges every graded answer by default, on the grading pair, with the platform prompt", async () => {
+    await run(okEval, "--server", "http://localhost:1234");
+
+    expect(judgeCalls()).toHaveLength(2);
+    const [url, init] = judgeCalls()[0] as [URL, RequestInit];
+    expect(url.href).toBe("http://localhost:1234/api/eval/judge");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer token-123");
+
+    const body = JSON.parse(init.body as string);
+    // No judge pair given ⇒ the effective GRADING pair, not a hardcoded model.
+    expect(body.llm).toEqual({ provider: "SCCH", model: "test-model" });
+    expect(body.system).toContain("You are auditing the FEEDBACK");
+    expect(body.criteria).toEqual([
+      "contradicts_verdict",
+      "misstates_facts",
+      "ignores_instructions",
+      "leaks_rubric",
+    ]);
+    // The subject carries the grading prompt, the golden answer, the verdict and the
+    // feedback — everything the judge needs to measure the text against its own standard.
+    expect(body.subject).toContain("The answer is 4.");
+    expect(body.subject).toContain("two plus two");
+    expect(body.subject).toContain("=== The grader's verdict ===\ncorrect");
+    expect(body.subject).toContain("=== The grader's feedback (JUDGE THIS) ===\nok");
+  });
+
+  it("sends NO judge request at all with --no-judge-feedback", async () => {
+    await run(okEval, "--no-judge-feedback", "--json", "--server", "http://x");
+
+    expect(gradeCalls()).toHaveLength(2);
+    expect(judgeCalls()).toHaveLength(0);
+    const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(payload.files[0].result.judging).toBe("off");
+    // A run that judged nothing must not advertise a judge model.
+    expect(payload.files[0].result.llm.judge).toBeUndefined();
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("uses the --judge-llm-* pair when given and records it as an override", async () => {
+    await run(
+      okEval,
+      "--judge-llm-provider",
+      "Azure Foundry",
+      "--judge-llm-model",
+      "gpt-5.6-terra",
+      "--json",
+      "--server",
+      "http://x",
+    );
+
+    for (const call of judgeCalls()) {
+      const body = JSON.parse(call[1].body as string);
+      expect(body.llm).toEqual({ provider: "Azure Foundry", model: "gpt-5.6-terra" });
+    }
+    // The grading half is untouched by the judge pair.
+    for (const call of gradeCalls()) {
+      expect(JSON.parse(call[1].body as string).llm).toEqual({
+        provider: "SCCH",
+        model: "test-model",
+      });
+    }
+    const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(payload.files[0].result.llm.judge).toEqual({
+      provider: "Azure Foundry",
+      model: "gpt-5.6-terra",
+      overridden: true,
+    });
+  });
+
+  it("falls back to the --llm-* override, not the quiz's pair, when only grading is overridden", async () => {
+    await run(
+      okEval,
+      "--llm-provider",
+      "Azure Foundry",
+      "--llm-model",
+      "gpt-5-mini",
+      "--json",
+      "--server",
+      "http://x",
+    );
+
+    const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(payload.files[0].result.llm.judge).toEqual({
+      provider: "Azure Foundry",
+      model: "gpt-5-mini",
+      overridden: false,
+    });
+  });
+
+  it("rejects half a judge pair before any request", async () => {
+    await run(okEval, "--judge-llm-model", "gpt-5.6-terra", "--server", "http://x");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(String(error.mock.calls[0]?.[0])).toContain(
+      "--judge-llm-provider and --judge-llm-model together",
+    );
+  });
+
+  it("rejects an unknown judge provider", async () => {
+    await run(
+      okEval,
+      "--judge-llm-provider",
+      "OpenAI",
+      "--judge-llm-model",
+      "gpt",
+      "--server",
+      "http://x",
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(String(error.mock.calls[0]?.[0])).message).toContain(
+      'Unknown --judge-llm-provider "OpenAI"',
+    );
+  });
+
+  it("rejects a judge pair combined with --no-judge-feedback as contradictory", async () => {
+    await run(
+      okEval,
+      "--no-judge-feedback",
+      "--judge-llm-provider",
+      "SCCH",
+      "--judge-llm-model",
+      "m",
+      "--server",
+      "http://x",
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(String(error.mock.calls[0]?.[0])).toContain(
+      "cannot be combined with --no-judge-feedback",
+    );
+  });
+
+  it("reports a flagged feedback without failing the run", async () => {
+    await run(judgeEval, "--json", "--server", "http://x");
+
+    const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
+    const result = payload.files[0].result;
+    expect(result.judging).toBe("on");
+    expect(result.totals.feedbackFlagged).toBe(1);
+    expect(result.cases[0].repeats[0].judge.issues[0].criterion).toBe("ignores_instructions");
+    // REPORT-ONLY: every verdict matched, so the run is green all the way to exit 0.
+    expect(payload.passed).toBe(true);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("degrades instead of aborting when the judge keeps failing", async () => {
+    fetchMock.mockImplementation(async (input: unknown) =>
+      isJudgeCall(input) ? jsonResponse({ message: "Gateway timeout" }, 504) : serve(input),
+    );
+
+    // 2 cases × 2 repeats = 4 judge calls, run serially so the 3-in-a-row breaker
+    // trips deterministically on the third.
+    await runEvalCommand(
+      [okEval],
+      { server: "http://x", json: true, repeats: "2", concurrency: "1" },
+      { retry: { attempts: 1, baseDelayMs: 0 } },
+    );
+
+    const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
+    // Every answer was still GRADED — a down judge must not cost a rubric run.
+    expect(gradeCalls()).toHaveLength(4);
+    expect(judgeCalls()).toHaveLength(3); // the 4th was skipped, not attempted
+    expect(payload.files[0].result.judging).toBe("degraded");
+    expect(payload.passed).toBe(true);
+    expect(process.exitCode).toBe(0);
+    expect(stderrText()).toContain("feedback judging was stopped");
+  });
+});
+
 describe("eval — batch mode", () => {
   it("evaluates several files, reporting per file plus grand totals", async () => {
     await run(okEval, mismatchEval, "--server", "http://x");
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(gradeCalls()).toHaveLength(4);
     expect(process.exitCode).toBe(1);
     const report = log.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
     expect(report).toContain("Evaluated 2 file(s)");
@@ -245,7 +480,7 @@ describe("eval — batch mode", () => {
   it("keeps going when ONE file among several is invalid, and still exits 1", async () => {
     await run(okEval, brokenEval, "--json", "--server", "http://x");
 
-    expect(fetchMock).toHaveBeenCalledTimes(2); // only the valid file was graded
+    expect(gradeCalls()).toHaveLength(2); // only the valid file was graded
     expect(process.exitCode).toBe(1);
     const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
     expect(payload.files.map((f: { status: string }) => f.status)).toEqual(["ok", "invalid"]);
@@ -255,9 +490,112 @@ describe("eval — batch mode", () => {
   it("dedupes a repeated source with a warning", async () => {
     await run(okEval, okEval, "--server", "http://x");
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const warnings = stderr.mock.calls.map((call: unknown[]) => String(call[0])).join("");
-    expect(warnings).toContain("was given more than once");
+    expect(gradeCalls()).toHaveLength(2);
+    expect(stderrText()).toContain("was given more than once");
+  });
+});
+
+describe("eval — the CLI/server version check", () => {
+  /** Answer the probe with `body`, or fail the fetch when `body` is an Error. */
+  function probeAnswers(body: unknown, status = 200): void {
+    fetchMock.mockImplementation(async (input: unknown) => {
+      if (!isVersionProbe(input)) return serve(input);
+      if (body instanceof Error) throw body;
+      return jsonResponse(body, status);
+    });
+  }
+
+  it("probes GET /api/version once, unauthenticated, before the first grading call", async () => {
+    await run(okEval, "--server", "http://localhost:1234");
+
+    const probes = fetchMock.mock.calls.filter((call) => isVersionProbe((call as unknown[])[0]));
+    expect(probes).toHaveLength(1);
+    const [url, init] = probes[0] as [URL, RequestInit | undefined];
+    expect(url.href).toBe("http://localhost:1234/api/version");
+    expect(init?.method ?? "GET").toBe("GET");
+    expect(init?.headers).toBeUndefined(); // no bearer token on a public probe
+    // …and it really came first: no grading call was made before it.
+    expect(isVersionProbe((fetchMock.mock.calls[0] as unknown[])[0])).toBe(true);
+  });
+
+  it("stays silent when the server was built with this CLI", async () => {
+    await run(okEval, "--server", "http://x");
+
+    expect(stderrText()).not.toContain("Warning:");
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("warns on stderr naming both versions when they differ, without changing the run", async () => {
+    probeAnswers({ cliVersion: "9.9.9" });
+
+    await run(okEval, "--json", "--server", "http://x");
+
+    const warning = stderrText();
+    expect(warning).toContain(`this CLI is ${cliVersion()}`);
+    expect(warning).toContain("the server was built with CLI 9.9.9");
+    expect(warning).toContain("npm i -g @novedu/cli");
+    // Advisory only: every case still graded, JSON intact, exit code untouched.
+    expect(gradeCalls()).toHaveLength(2);
+    expect(JSON.parse(String(log.mock.calls[0]?.[0])).passed).toBe(true);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("warns that it could not verify when the server reports no cliVersion", async () => {
+    probeAnswers({ version: "0.1.0.7", gitSha: "abc", builtAt: "unknown" });
+
+    await run(okEval, "--server", "http://x");
+
+    expect(stderrText()).toContain("could not verify");
+    expect(gradeCalls()).toHaveLength(2);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("warns that it could not verify on a non-2xx answer", async () => {
+    probeAnswers({ message: "Not found" }, 404);
+
+    await run(okEval, "--server", "http://x");
+
+    expect(stderrText()).toContain("answered HTTP 404");
+    expect(gradeCalls()).toHaveLength(2);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("warns that it could not verify when the answer is not JSON (a sign-in page)", async () => {
+    fetchMock.mockImplementation(async (input: unknown) =>
+      serve(
+        input,
+        new Response("<html>Sign in</html>", { headers: { "content-type": "text/html" } }),
+      ),
+    );
+
+    await run(okEval, "--server", "http://x");
+
+    expect(stderrText()).toContain("could not verify");
+    expect(gradeCalls()).toHaveLength(2);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("warns that it could not verify when the probe fails outright", async () => {
+    probeAnswers(new Error("ECONNREFUSED"));
+
+    await run(okEval, "--server", "http://x");
+
+    const warning = stderrText();
+    expect(warning).toContain("could not verify");
+    expect(warning).toContain("ECONNREFUSED");
+    expect(gradeCalls()).toHaveLength(2);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("never writes the warning to stdout", async () => {
+    probeAnswers({ cliVersion: "9.9.9" });
+
+    await run(okEval, "--json", "--server", "http://x");
+
+    expect(() => JSON.parse(String(log.mock.calls[0]?.[0]))).not.toThrow();
+    expect(log.mock.calls.map((call: unknown[]) => String(call[0])).join("")).not.toContain(
+      "Warning:",
+    );
   });
 });
 
@@ -276,9 +614,10 @@ describe("expandSources", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.sources).toHaveLength(3);
+    expect(result.sources).toHaveLength(4);
     expect(result.sources.map((s) => s.split("/").pop())).toEqual([
       "broken-eval.yaml",
+      "judge-eval.yaml",
       "mismatch-eval.yaml",
       "test-eval.yaml",
     ]);

@@ -19,7 +19,8 @@ export const config = {
   // future, unrelated `/api/coding-*` route.
   // The /api/me identity probe, the /api/codes list/create endpoints, the
   // /api/reports list/detail/resolve endpoints, the /api/eval grader-eval
-  // endpoint (teacher-only; docs/cli-eval.md), and the /api/images
+  // endpoints — grade and judge, both bounded by the one `api/eval(?:/|$)` entry
+  // (teacher-only; docs/cli-eval.md) — and the /api/images
   // list/upload/confirm endpoints (all teacher-only; unlike /api/files there
   // is NO public GET under that prefix) are
   // CLI/API bearer-token routes: they self-gate via requireBearerUser /

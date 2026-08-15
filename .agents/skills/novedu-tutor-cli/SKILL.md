@@ -37,6 +37,12 @@ like a newer flag or command might already cover it.
   `npm run cli -- <command…>` — nothing to install, works offline in the repo.
   Add `--silent` (`npm run cli --silent -- …`) whenever you pipe stdout: npm's
   own banner otherwise corrupts the JSON going into `jq`.
+  **Pass file arguments as ABSOLUTE paths.** npm runs the script with the app
+  repo as cwd, so a `./my-quiz.eval.yaml` copied from the examples resolves
+  against `chat-prototype`, not your shell's directory — and the error names a
+  path you never typed (`Failed to fetch file:///…/chat-prototype/my-quiz.eval.yaml`).
+  This bites whenever the activity files live in their own repo, which is the
+  normal case.
 - **Anywhere else**: `npx @novedu/cli <command…>` — npm fetches it on demand.
   Add `@latest` if a stale cached version misbehaves; if `npx` can't reach the
   package that's a network/registry problem, not a missing publish.

@@ -73,7 +73,7 @@ value — negligible for a cost aggregate).
 |---|---|---|
 | tokens + tool calls — tutor, quiz discussion, writing, quiz grader | Mastra observability exporter | `MODEL_GENERATION` + tool-call spans, attributed via `requestContext` |
 | tokens — coding proxy | the coding route | taps the passthrough response for the `usage` chunk; per-code only |
-| tokens — CLI grader evals | `POST /api/eval/grade` | the same exporter path (it runs `quizEvaluator`), tagged with the `cli-eval` sentinel keys below |
+| tokens — CLI grader evals | `POST /api/eval/grade` and `POST /api/eval/judge` | the same exporter path (they run `quizEvaluator` / `evalJudge`), both tagged with the `cli-eval` sentinel keys below — grading and feedback-judging tokens land in the SAME buckets on purpose (`docs/cli-eval.md`) |
 | user messages | CopilotKit route (`run`) | `after()` → `recordUserMessage` |
 | quiz answers | `submitAnswer` (`lib/quiz-actions.ts`) | `after()` → `recordQuizAnswer` on a successful grade |
 | writing saves | `saveWriting` (`lib/writing-actions.ts`) | `after()` → `recordWritingSave` after a successful save |

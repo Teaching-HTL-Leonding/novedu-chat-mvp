@@ -1,10 +1,11 @@
-import type {
-  EvalBatchFile,
-  EvalBatchResult,
-  EvalCaseResult,
-  EvalRunLlm,
-  EvalRunResult,
-  EvalUsage,
+import {
+  anyJudged,
+  type EvalBatchFile,
+  type EvalBatchResult,
+  type EvalCaseResult,
+  type EvalRunLlm,
+  type EvalRunResult,
+  type EvalUsage,
 } from "./eval-run";
 
 // The Markdown report of an eval run (`novedu-cli eval --report <file.md>`): a PURE
@@ -17,8 +18,10 @@ import type {
 //
 // Two deliberate rules:
 //   * DETAILS ONLY FOR WHAT WENT WRONG — mismatched, errored and unstable cases,
-//     skipped counts and invalid files. A clean pass has no per-case section; the JSON
-//     carries every case for anyone who wants them.
+//     skipped counts, invalid files, and the feedback an LLM judge flagged. A clean pass
+//     has no per-case section; the JSON carries every case for anyone who wants them.
+//     "Flagged feedback" is the one section whose cases usually PASSED — it reports on the
+//     grader's WORDING, never on its verdict, and gates nothing.
 //   * TEACHER-AUTHORED TEXT IS DATA — question texts, golden answers and grader
 //     feedback are neutralized where Markdown structure would break (pipes and newlines
 //     in table cells, list items), and otherwise quoted verbatim line by line so an
@@ -77,6 +80,18 @@ function llmText(llm: EvalRunLlm): string {
     : effective;
 }
 
+/**
+ * The judge's pair, but ONLY when it differs from the grading pair — a judge line that
+ * merely repeats the grader would be noise, while a differing one is essential: judge
+ * strictness varies by model, so two reports are comparable only when it matches.
+ */
+function judgeLlmText(llm: EvalRunLlm): string | undefined {
+  const judge = llm.judge;
+  if (!judge) return undefined;
+  if (judge.provider === llm.provider && judge.model === llm.model) return undefined;
+  return `${judge.provider} / ${judge.model}${judge.overridden ? " (override)" : ""}`;
+}
+
 /** `15,420 / 12,300 / 2,810`, or an em dash when nothing was reported. */
 function usageCell(usage: EvalUsage): string {
   if (usage.input === 0 && usage.cachedInput === 0 && usage.output === 0) return "—";
@@ -108,6 +123,9 @@ const OVERVIEW_HEADER = [
   "Errored",
   "Skipped",
   "Unstable",
+  // Cases whose FEEDBACK the judge flagged. Reported next to the verdict columns, but it
+  // gates nothing — a file can be ✅ and still carry flags.
+  "Flagged",
   "False-correct",
   "Tokens (in / cached / out)",
 ];
@@ -122,14 +140,14 @@ function overview(batch: EvalBatchResult): string[] {
   const lines = [
     row(OVERVIEW_HEADER),
     // Names left, numbers right — the shape a teacher scans down.
-    row(["---", "---", "---:", "---:", "---:", "---:", "---:", "---:", "---:", "---:"]),
+    row(["---", "---", "---:", "---:", "---:", "---:", "---:", "---:", "---:", "---:", "---:"]),
   ];
   for (const file of batch.files) {
     const name = cell(shortSource(file.source));
     if (!file.result) {
       // An invalid file keeps its row (it is part of the run) but claims no numbers;
       // its validation errors are listed in the details section.
-      lines.push(row([name, "**invalid**", "—", "—", "—", "—", "—", "—", "—", "—"]));
+      lines.push(row([name, "**invalid**", "—", "—", "—", "—", "—", "—", "—", "—", "—"]));
       continue;
     }
     const t = file.result.totals;
@@ -143,6 +161,8 @@ function overview(batch: EvalBatchResult): string[] {
         count(t.errored),
         count(t.skipped),
         count(t.unstable),
+        // An em dash, not a `0`: a file that was never judged has not been found clean.
+        anyJudged(file.result) ? count(t.feedbackFlagged) : "—",
         falseCorrectCell(file.result),
         usageCell(t.usage),
       ]),
@@ -150,6 +170,7 @@ function overview(batch: EvalBatchResult): string[] {
   }
   if (batch.files.length > 1) {
     const g = batch.totals;
+    const judged = batch.files.some((file) => file.result && anyJudged(file.result));
     lines.push(
       row([
         "**TOTAL**",
@@ -160,6 +181,7 @@ function overview(batch: EvalBatchResult): string[] {
         `**${count(g.errored)}**`,
         `**${count(g.skipped)}**`,
         `**${count(g.unstable)}**`,
+        judged ? `**${count(g.feedbackFlagged)}**` : "—",
         "",
         `**${usageCell(g.usage)}**`,
       ]),
@@ -189,6 +211,16 @@ function needsDetail(evalCase: EvalCaseResult): boolean {
   return evalCase.status === "failed" || evalCase.status === "errored" || evalCase.unstable;
 }
 
+/** The "**Question** / **Golden answer**" intro every case detail section opens with. */
+function questionAndAnswer(evalCase: EvalCaseResult, questionText: string | undefined): string[] {
+  const lines: string[] = [];
+  if (questionText) {
+    lines.push("**Question**", "", quote(questionText), "");
+  }
+  lines.push("**Golden answer**", "", quote(evalCase.answer), "");
+  return lines;
+}
+
 /**
  * One case's section: the question it belongs to, the golden answer, and what the
  * grader said — plus every repeat when they disagreed (the `--repeats` signal is
@@ -201,18 +233,7 @@ function caseSection(evalCase: EvalCaseResult, questionText: string | undefined)
     `### \`${evalCase.questionId}\` #${evalCase.answerIndex} — ${verdictSummary(evalCase)}${unstable}`,
   );
   lines.push("");
-
-  if (questionText) {
-    lines.push("**Question**");
-    lines.push("");
-    lines.push(quote(questionText));
-    lines.push("");
-  }
-
-  lines.push("**Golden answer**");
-  lines.push("");
-  lines.push(quote(evalCase.answer));
-  lines.push("");
+  lines.push(...questionAndAnswer(evalCase, questionText));
 
   const graded = evalCase.repeats.filter((r) => r.got !== undefined);
   const disagreed = new Set(graded.map((r) => r.got)).size > 1;
@@ -250,6 +271,47 @@ function caseSection(evalCase: EvalCaseResult, questionText: string | undefined)
   return lines;
 }
 
+/**
+ * The "Flagged feedback" section: what the LLM judge found wrong with the TEXT the
+ * grader wrote, per case, with each flagged repeat's verdict and feedback quoted verbatim
+ * and the judge's issues as `criterion — note` items.
+ *
+ * Separate from the verdict sections on purpose — these cases usually PASSED (the verdict
+ * was right, the wording was not), and mixing them into the mismatch list would suggest
+ * the run failed on them. Empty when the file has no flags.
+ */
+function flaggedSection(result: EvalRunResult, questionText: Map<string, string>): string[] {
+  const flagged = result.cases.filter((evalCase) => evalCase.feedbackFlagged);
+  if (flagged.length === 0) return [];
+
+  const lines = ["### Flagged feedback", ""];
+  lines.push(
+    "_An LLM judge audited each feedback text against the very grading prompt it was " +
+      "written under. Reported only — flagged feedback never fails a run._",
+  );
+  lines.push("");
+  for (const evalCase of flagged) {
+    lines.push(`#### \`${evalCase.questionId}\` #${evalCase.answerIndex}`);
+    lines.push("");
+    lines.push(...questionAndAnswer(evalCase, questionText.get(evalCase.questionId)));
+    for (const repeat of evalCase.repeats) {
+      const issues = repeat.judge?.issues ?? [];
+      if (issues.length === 0) continue;
+      // The repeat's OWN verdict — the feedback was judged against that one, never
+      // against the case majority.
+      lines.push(`**Repeat #${repeat.repeatIndex + 1} — \`${repeat.got ?? "?"}\`**`);
+      lines.push("");
+      lines.push(quote(repeat.feedback ?? ""));
+      lines.push("");
+      for (const issue of issues) {
+        lines.push(`- \`${cell(issue.criterion)}\` — ${inline(issue.note)}`);
+      }
+      lines.push("");
+    }
+  }
+  return lines;
+}
+
 /** One file's details section, or `[]` when the file has nothing to report. */
 function fileDetails(file: EvalBatchFile): string[] {
   const name = shortSource(file.source);
@@ -269,9 +331,10 @@ function fileDetails(file: EvalBatchFile): string[] {
   const result = file.result;
   const detailed = result.cases.filter(needsDetail);
   const skipped = result.totals.skipped;
-  if (detailed.length === 0 && skipped === 0 && !result.aborted) return [];
-
   const questionText = new Map(result.questions.map((question) => [question.id, question.text]));
+  const flagged = flaggedSection(result, questionText);
+  if (detailed.length === 0 && skipped === 0 && !result.aborted && flagged.length === 0) return [];
+
   const lines = [`## ${cell(name)} — \`${cell(result.id)}\``, ""];
   if (result.aborted) {
     lines.push("> [!WARNING]");
@@ -290,6 +353,9 @@ function fileDetails(file: EvalBatchFile): string[] {
     );
     lines.push("");
   }
+  // Last within the file: it is the only section whose cases usually PASSED, so it must
+  // not sit between the file's verdict problems and their summary line.
+  lines.push(...flagged);
   return lines;
 }
 
@@ -311,6 +377,16 @@ export function renderEvalMarkdownReport(batch: EvalBatchResult, meta: EvalRepor
   // Normally one line; a batch whose files declare different models keeps them all
   // rather than picking one and lying about the rest.
   for (const llm of llms) lines.push(`- **LLM** ${llm}`);
+
+  // Only when the judge ran on a DIFFERENT model than the grader — see judgeLlmText.
+  const judges = [
+    ...new Set(
+      batch.files
+        .map((file) => (file.result ? judgeLlmText(file.result.llm) : undefined))
+        .filter((text): text is string => text !== undefined),
+    ),
+  ];
+  for (const judge of judges) lines.push(`- **Feedback judge** ${judge}`);
 
   lines.push(
     `- **Run** ${count(batch.totals.files)} file(s), ${count(batch.totals.cases)} case(s) × ` +
@@ -335,6 +411,20 @@ export function renderEvalMarkdownReport(batch: EvalBatchResult, meta: EvalRepor
     lines.push("");
   }
 
+  // Judging degraded: the GRADING half of the run is complete and trustworthy, only the
+  // feedback audit stopped — so this is its own warning, never folded into the abort one.
+  const degradedAt = batch.files.find((file) => file.result?.judging === "degraded");
+  if (degradedAt?.result) {
+    lines.push("> [!WARNING]");
+    lines.push(
+      `> Feedback judging STOPPED during \`${cell(shortSource(degradedAt.source))}\` after ` +
+        "3 judge calls failed in a row — everything from there on was graded but NOT " +
+        "judged, and shows an em dash rather than a count in the Flagged column. " +
+        "Grading was unaffected.",
+    );
+    lines.push("");
+  }
+
   lines.push("## Overview");
   lines.push("");
   lines.push(...overview(batch));
@@ -351,7 +441,7 @@ export function renderEvalMarkdownReport(batch: EvalBatchResult, meta: EvalRepor
     lines.push("");
   } else {
     lines.push(
-      "_Below: only the mismatched, errored and unstable cases. Passing cases live in the `--json` report._",
+      "_Below: only the mismatched, errored and unstable cases, plus any feedback the judge flagged. Passing cases live in the `--json` report._",
     );
     lines.push("");
     lines.push(...details);

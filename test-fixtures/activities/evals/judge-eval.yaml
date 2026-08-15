@@ -1,0 +1,17 @@
+# Golden answers whose VERDICTS all match, but whose feedback the fixtures judge
+# flags: the fake judge answers an empty issue list unless the judge subject carries
+# `[judge:<criterion>]` markers, and the subject embeds the golden answer verbatim.
+#
+# So a run over this file exits 0 (feedback judging REPORTS, it never gates) while
+# reporting one flagged case — exactly the shape the feature promises.
+id: judge-eval
+target: ../quizzes/test-quiz.yaml
+questions:
+  - question: q1
+    answers:
+      - expect: correct
+        answer: |
+          4 — two plus two. [judge:ignores_instructions]
+      - expect: correct
+        answer: |
+          4, because two and two make four.

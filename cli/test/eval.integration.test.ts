@@ -19,22 +19,32 @@ const evalsDir = fileURLToPath(new URL("../../test-fixtures/activities/evals/", 
 const okEval = join(evalsDir, "test-eval.yaml");
 const mismatchEval = join(evalsDir, "mismatch-eval.yaml");
 const brokenEval = join(evalsDir, "broken-eval.yaml");
+/** Every verdict matches; one answer plants a `[judge:…]` marker the fake judge flags. */
+const judgeEval = join(evalsDir, "judge-eval.yaml");
 
 let fixtures:
-  | { server: Server; baseUrl: string; evalRequests: Array<Record<string, unknown>> }
+  | {
+      server: Server;
+      baseUrl: string;
+      evalRequests: Array<Record<string, unknown>>;
+      judgeRequests: Array<Record<string, unknown>>;
+    }
   | undefined;
 let retryFixtures: { server: Server; baseUrl: string } | undefined;
+let staleFixtures: { server: Server; baseUrl: string } | undefined;
 let dir: string;
 
 beforeAll(async () => {
   fixtures = await startFixturesServer(0);
   // A second server whose first two grading calls answer 504, for the retry path.
   retryFixtures = await startFixturesServer(0, { evalFailures: 2 });
+  // A third one built from a DIFFERENT CLI release, for the version warning.
+  staleFixtures = await startFixturesServer(0, { cliVersion: "99.0.0" });
   dir = mkdtempSync(join(tmpdir(), "novedu-eval-integration-"));
 });
 
 afterAll(async () => {
-  for (const handle of [fixtures?.server, retryFixtures?.server]) {
+  for (const handle of [fixtures?.server, retryFixtures?.server, staleFixtures?.server]) {
     if (handle) await new Promise<void>((resolve) => handle.close(() => resolve()));
   }
   if (dir) rmSync(dir, { recursive: true, force: true });
@@ -74,12 +84,19 @@ describe("novedu-cli eval", () => {
     const { code, stdout, stderr } = await runCli(["eval", okEval, "--server", baseUrl()]);
 
     expect(code).toBe(0);
-    expect(stderr).toContain("2 case(s) × 1 repeat(s) = 2 grading call(s)");
+    expect(stderr).toContain("2 case(s) × 1 repeat(s) = 2 grading + 2 judge call(s)");
     expect(stdout).toContain("Eval passed");
     expect(stdout).toContain("passed: 2");
     // The server really saw the app's grading prompt for q1.
     const seen = fixtures?.evalRequests.at(-1) as { system?: string } | undefined;
     expect(seen?.system).toContain("The answer is 4.");
+    // …and the judge really received that same prompt as the standard to measure against.
+    const judged = fixtures?.judgeRequests.at(-1) as
+      | { system?: string; subject?: string; criteria?: string[] }
+      | undefined;
+    expect(judged?.system).toContain("You are auditing the FEEDBACK");
+    expect(judged?.subject).toContain("The answer is 4.");
+    expect(judged?.criteria).toContain("ignores_instructions");
   });
 
   it("grades an eval served over http and writes the batch JSON with --out", async () => {
@@ -102,10 +119,11 @@ describe("novedu-cli eval", () => {
     expect(payload.files[0].passed).toBe(true);
     expect(payload.passed).toBe(true);
     expect(payload.totals).toMatchObject({ files: 1, cases: 2, passed: 2, failed: 0 });
-    // The fake grader reports usage, so the aggregation really ran end to end.
+    // Both fakes report usage, so the aggregation really ran end to end — and grading
+    // and judge tokens land in ONE bucket (2 gradings × 256 + 2 judgings × 128).
     expect(payload.totals.usage.input).toBeGreaterThan(0);
     expect(payload.totals.usage.output).toBeGreaterThan(0);
-    expect(payload.totals.usage.cachedInput).toBe(2 * 256);
+    expect(payload.totals.usage.cachedInput).toBe(2 * 256 + 2 * 128);
     expect(payload.files[0].result.cases[0].repeats[0].usage.input).toBeGreaterThan(0);
     expect(JSON.parse(readFileSync(out, "utf8"))).toEqual(payload);
   });
@@ -161,6 +179,85 @@ describe("novedu-cli eval", () => {
     expect(stdout).toContain("passed: 2");
   }, 60_000);
 
+  it("warns on stderr when the server was built with another CLI, but still grades", async () => {
+    if (!staleFixtures) throw new Error("stale fixtures server not started");
+
+    const { code, stdout, stderr } = await runCli([
+      "eval",
+      okEval,
+      "--server",
+      staleFixtures.baseUrl,
+    ]);
+
+    expect(stderr).toContain("the server was built with CLI 99.0.0");
+    expect(stderr).toContain("npm i -g @novedu/cli");
+    // Advisory only: the run is unaffected and stdout stays report-clean.
+    expect(code).toBe(0);
+    expect(stdout).toContain("passed: 2");
+    expect(stdout).not.toContain("Warning:");
+  });
+
+  it("does not warn when the server ships this CLI version", async () => {
+    const { code, stderr } = await runCli(["eval", okEval, "--server", baseUrl()]);
+
+    expect(code).toBe(0);
+    expect(stderr).not.toContain("Warning:");
+  });
+
+  it("flags the grader's feedback without failing the run", async () => {
+    const report = join(dir, "judge-report.md");
+
+    const { code, stdout } = await runCli([
+      "eval",
+      judgeEval,
+      "--json",
+      "--report",
+      report,
+      "--server",
+      baseUrl(),
+    ]);
+
+    const payload = JSON.parse(stdout);
+    const result = payload.files[0].result;
+    expect(result.judging).toBe("on");
+    expect(result.totals.feedbackFlagged).toBe(1);
+    expect(result.cases[0].repeats[0].judge.issues[0].criterion).toBe("ignores_instructions");
+    // REPORT-ONLY: every verdict matched, so the run is green all the way to exit 0.
+    expect(payload.passed).toBe(true);
+    expect(code).toBe(0);
+    // Judge tokens land in the SAME bucket as the gradings.
+    expect(payload.totals.usage.cachedInput).toBe(2 * 256 + 2 * 128);
+
+    const md = readFileSync(report, "utf8");
+    expect(md).toContain("# Eval report — ✅ passed");
+    expect(md).toContain("### Flagged feedback");
+    expect(md).toContain("- `ignores_instructions` — fixtures judge flagged");
+  });
+
+  it("sends ZERO judge requests with --no-judge-feedback", async () => {
+    const before = fixtures?.judgeRequests.length ?? 0;
+
+    const { code, stdout, stderr } = await runCli([
+      "eval",
+      judgeEval,
+      "--no-judge-feedback",
+      "--json",
+      "--server",
+      baseUrl(),
+    ]);
+
+    expect(code).toBe(0);
+    expect(fixtures?.judgeRequests.length).toBe(before);
+    expect(stderr).toContain("2 case(s) × 1 repeat(s) = 2 grading call(s)");
+    const result = JSON.parse(stdout).files[0].result;
+    expect(result.judging).toBe("off");
+    expect(result.totals.feedbackFlagged).toBe(0);
+  });
+
+  // The judge's degrade breaker is deliberately NOT exercised here: through the built
+  // binary it would mean exhausting real retry backoffs (minutes of sleeping) or a
+  // test-only env seam in the shipped CLI. `cli/src/eval-run.unit.test.ts` covers it.
+
   it("reports an unusable eval file as JSON on stderr, exit 1", async () => {
     const { code, stdout, stderr } = await runCli(["eval", brokenEval, "--server", baseUrl()]);
 
@@ -178,6 +275,23 @@ describe("novedu-cli eval", () => {
     expect(stdout).toContain("test-eval.yaml");
     expect(stdout).toContain("invalid");
     expect(stdout).toContain("TOTAL: 2 case(s), 2 passed, 0 failed, 0 errored");
+  });
+
+  // The spawned binary has no TTY, so this is the real non-interactive condition: the
+  // `\r` spinner is suppressed and each finished file must still announce itself, or a
+  // long redirected run looks indistinguishable from a hang (see references/eval.md).
+  it("prints a per-file completion line on stderr when stderr is not a TTY", async () => {
+    const { stderr } = await runCli(["eval", okEval, "--server", baseUrl()]);
+
+    expect(stderr).toContain("2 case(s), 2 passed, 0 failed, 0 errored");
+    // Progress lines are newline-terminated, never carriage-return spinner noise.
+    expect(stderr).not.toContain("\r");
+  });
+
+  it("labels each file in a batch's completion lines", async () => {
+    const { stderr } = await runCli(["eval", okEval, brokenEval, "--server", baseUrl()]);
+
+    expect(stderr).toContain("(1/2)");
   });
 });
 

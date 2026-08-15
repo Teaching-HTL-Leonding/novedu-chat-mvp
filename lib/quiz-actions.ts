@@ -13,6 +13,7 @@ import {
 import { validateAnswerImages } from "@/lib/answer-images";
 import { buildQuestionSeed, buildVerdictSeed } from "@/lib/quiz-discussion-prompt";
 import { buildAnswerMessage, buildGradingPrompt } from "@/lib/quiz-grading-prompt";
+import { gradeWithTruncationRetry } from "@/lib/quiz-truncation-retry";
 import type { QuizVerdict } from "@/lib/quiz-types";
 import { effectiveImageInput, type QuizCodeInput, verifyAndLoadQuestion } from "@/lib/quiz-verify";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
@@ -118,11 +119,15 @@ export async function submitAnswer(
         ];
 
   try {
-    const res = await mastra.getAgent("quizEvaluator").generate(prompt, {
-      structuredOutput: { schema: QUIZ_VERDICT_SCHEMA },
-      requestContext,
-    });
-    const object = res.object as { result: QuizVerdict; feedback: string } | undefined;
+    const { object } = await gradeWithTruncationRetry(
+      () =>
+        mastra.getAgent("quizEvaluator").generate(prompt, {
+          structuredOutput: { schema: QUIZ_VERDICT_SCHEMA },
+          requestContext,
+        }),
+      (res) => res.object as { result: QuizVerdict; feedback: string } | undefined,
+      { code: ctx.code },
+    );
     if (!object) {
       return { ok: false, message: "The answer could not be graded right now. Please try again." };
     }

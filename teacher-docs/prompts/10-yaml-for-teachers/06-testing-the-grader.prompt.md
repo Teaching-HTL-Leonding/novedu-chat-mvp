@@ -32,6 +32,26 @@ Cover:
   marked as not acceptable that the grader nevertheless called correct. Say plainly
   that the false-correct number is usually the one worth acting on, and that the fix is
   a sharper "grade incorrect when …" sentence in the quiz's evaluation criteria.
+- Checking the WORDING, not just the mark. A student never sees the mark alone — they
+  read the feedback sentence the AI wrote, and that sentence can be wrong while the mark
+  is right. So every run also has a second AI, a judge, read each piece of feedback and
+  check it against the grading instructions the grader itself was given. Make the point
+  that this needs NO extra authoring: the teacher's own evaluation criteria and shared
+  instructions already say what good feedback looks like, and the judge simply holds the
+  feedback to them. Name the four things it reports, in the teacher's words: feedback
+  that contradicts the mark (praise on a wrong answer, or the reverse), feedback that
+  states something the criteria contradict, feedback that breaks a rule the instructions
+  gave (most often: not naming the correct answer when the mark is not "correct", or
+  writing in the wrong language), and feedback that quotes the grading criteria at the
+  student. Say plainly that a flag NEVER fails a run — it is a note about wording, and
+  the fix is usually one sentence in the evaluation criteria or the shared instructions,
+  not a change to the golden answers. Then the two flags, verbatim: the one that turns
+  judging off (halves what a run costs, good for a quick check) and the pair that gives
+  the judge a different, stronger model than the grader (recommended, always both
+  together). Mention that judging is on by default and roughly doubles the number of AI
+  calls — which is what the run's own scope line shows — and that if the judge model
+  itself keeps failing, judging stops after a few failures while the grading finishes
+  normally, so a zero in the flagged column then means "not checked", not "all fine".
 - Is the grader consistent? The repeats option grades every answer several times and
   takes the majority, so one flaky run does not fail a case; answers whose runs
   disagreed are reported as "unstable". Explain why that matters pedagogically: a
@@ -44,10 +64,13 @@ Cover:
 - Several files at once, briefly: a folder of eval files in one run, with a per-file
   summary and totals, and a broken file reported rather than aborting the rest.
 - Keeping a readable report. The report flag writes the run as a Markdown file: an
-  overview table first (one row per file with the counts, the false-correct rate and
+  overview table first (one row per file with the counts, the flagged-feedback count,
+  the false-correct rate and
   the token spend), then details only for the answers that need attention — the
-  question, the teacher's golden answer and the grader's feedback, side by side.
-  Passing answers stay out of the details on purpose. The file is plain Markdown: it
+  question, the teacher's golden answer and the grader's feedback, side by side —
+  followed by a separate "Flagged feedback" section listing what the judge objected to
+  (those answers usually passed; it is the wording that needs work).
+  Passing, unflagged answers stay out of the details on purpose. The file is plain Markdown: it
   reads well in an editor preview, renders on GitHub, and can be kept next to the quiz
   or sent to a colleague. Quote the flag verbatim and show a small excerpt of a real
   report (the overview table and one mismatch section is enough).
@@ -76,10 +99,22 @@ Get right:
 - Question ids must match the quiz. For a quiz assembled from other quiz files, the
   ids carry the alias prefix; point at the prompt-dump command as the way to list the
   real ids.
+- Running a whole course at once takes real time and is all-or-nothing. Warn that it
+  can take up to several hours, but never state a rate, a per-answer time or a total:
+  speed depends on the model and how busy it is, it changes over time, and a concrete
+  number would read as a promise. Say that the counter animates only while they watch a
+  terminal, and that a run whose output goes to a file reports one line per finished
+  file instead, and that the report is written only at the very end — an interrupted run
+  saves nothing. The practical advice is to
+  run one folder at a time with its own report file. Keep this short and reassuring;
+  it belongs with the whole-folder section, not up front.
 - The pass/fail counting is per ANSWER (one golden answer = one case), and with repeats
   the majority decides — so asking for repeats never makes the check stricter.
   "Unstable" is information, not a failure.
-- Nothing is stored: no eval file, no answer and no mark is saved anywhere.
+- Nothing is stored: no eval file, no answer, no mark and no judgment is saved anywhere.
+- Flagged feedback is reported, never a failure. Do not let the chapter suggest a run
+  can fail because of it, and do not present the judge as a second opinion on the MARK —
+  it only ever looks at the wording.
 - An eval file is not an activity: it never gets a code and students never see it.
 - Photo answers cannot be evaluated yet; evals are text only.
 - Exit code 0 / 1 belongs in one sentence at most (a teacher may use it in a script);
