@@ -718,7 +718,7 @@ dashboard, with NULL code metadata.
 | The Markdown report renderer, flagged + tutor sections included | `cli/src/report-md.unit.test.ts` |
 | The command (requests, kind inference, mixed batches, override pairs, globs) | `cli/src/commands/eval.unit.test.ts` |
 | The built binary against the fixtures grader + judge + tutor | `cli/test/eval.integration.test.ts` |
-| **`@live-llm`** — does a REAL judge catch planted violations? | `e2e/eval-judge.live.spec.ts` |
+| **`@live-llm`** — does a REAL judge catch planted violations, per kind? | `e2e/eval-judge.live.spec.ts` |
 
 All but the last are hermetic — no LLM, no DB, no secrets. The fixtures server
 (`test-fixtures/serve.mjs`) fakes `/api/eval/grade` deterministically: `correct`
@@ -739,12 +739,24 @@ retry seams are in-process: tripping it through the built binary would mean exha
 real retry budgets (minutes of backoff) or shipping a test-only timing override in the
 CLI, and neither is worth an integration re-proof of unit-tested logic.
 
-`e2e/eval-judge.live.spec.ts` is the ONE `@live` test the feature earns (local-only,
+`e2e/eval-judge.live.spec.ts` is the ONE `@live` spec the feature earns (local-only,
 excluded from CI like every `@live-llm` spec): every other layer is plumbing that needs no
-model, but "does a real judge flag a planted violation and leave good feedback alone?"
+model, but "does a real judge flag a planted violation and leave good output alone?"
 cannot be faked — and unlike the grader, `evalJudge` has no other real-backend coverage in
-the repo. Its probes are a data list (`{ system, subject, mustFlag, criterion? }[]`) so a
-future eval kind adds its own without restructuring the spec. See `docs/testing.md`.
+the repo. It matters twice over for the TUTOR kind, where the judge is the ONLY check: a
+regression there means a tutor eval reports nothing at all.
+
+Its probes are a data list (`{ system, subject, criteria, mustFlag, criterion? }[]`), one
+list per kind fed to the same assertion loop, so a further eval kind adds its own without
+restructuring the spec. `criteria` rides along per probe because the endpoint is
+kind-agnostic — a tutor case without `grading_instructions` deliberately sends the shorter
+taxonomy, and the loop asserts every returned criterion is inside the one THAT probe sent
+(the per-request enum property the whole endpoint rests on). An expected `criterion` is
+pinned only where the taxonomy leaves exactly one sensible home for the planted violation:
+the tutor probes therefore state expectations only where `fails_expectations` is the point,
+and the tutor system prompt deliberately carries no "never reveal your instructions" rule
+so `leaks_prompt` has no `ignores_instructions` twin to be confused with. See
+`docs/testing.md`.
 
 ## Deferred (deliberately)
 

@@ -25,10 +25,12 @@ Four kinds of e2e, by the external infra they need:
   the health probe, the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`,
   the **coding-agent** round-trip in `e2e/coding-agent.spec.ts`, which drives
   the real `pi` coding agent through the public coding endpoint, and the **eval
-  feedback judge** probes in `e2e/eval-judge.live.spec.ts` — the one assertion of that
-  feature that cannot be faked is whether a real judge flags planted violations and
-  leaves compliant feedback alone, and `evalJudge` has no other real-backend coverage
-  in the repo, unlike the grader which `e2e/quiz.spec.ts` smokes indirectly).
+  judge** probes in `e2e/eval-judge.live.spec.ts` — one test per eval kind (quiz
+  feedback, tutor responses), because the one assertion of that feature that cannot be
+  faked is whether a real judge flags planted violations and leaves compliant output
+  alone, and `evalJudge` has no other real-backend coverage in the repo, unlike the
+  grader which `e2e/quiz.spec.ts` smokes indirectly. For the **tutor** kind the judge is
+  the only check there is, so a regression means a tutor eval reports nothing at all).
   Neither provider is reachable from CI: the SCCH endpoint is **geo-blocked to
   Austria** and cannot be containerized, and Azure Foundry needs a **Managed
   Identity / `az login`** with the `Cognitive Services OpenAI User` role
