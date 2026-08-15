@@ -680,12 +680,12 @@ const quizEvalRunner: EvalRunner = {
     const confusionCounts = new Map<string, number>();
     for (const result of results) {
       if (!result.verdict) continue;
-      const key = `${expectedKey(result.expected)} ${result.verdict}`;
+      const key = `${expectedKey(result.expected)}\u0000${result.verdict}`;
       confusionCounts.set(key, (confusionCounts.get(key) ?? 0) + 1);
     }
     const confusion: EvalConfusionRow[] = [...confusionCounts.entries()]
       .map(([key, count]) => {
-        const [expected = "", got = ""] = key.split(" ");
+        const [expected = "", got = ""] = key.split("\u0000");
         return { expected, got: got as EvalVerdict, count };
       })
       .sort((a, b) => a.expected.localeCompare(b.expected) || a.got.localeCompare(b.got));
