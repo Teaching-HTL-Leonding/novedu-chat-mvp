@@ -13,10 +13,12 @@ import { providerUnavailableReason } from "@/lib/llm/availability";
 import { DEFAULT_PROVIDER, parseLenientProvider } from "@/lib/llm/provider";
 import { classifyUpstreamLlmError } from "@/lib/llm/upstream-error";
 import { buildAnswerMessage } from "@/lib/quiz-grading-prompt";
+import { gradeWithTruncationRetry } from "@/lib/quiz-truncation-retry";
 import type { QuizVerdict } from "@/lib/quiz-types";
 import { recordError } from "@/lib/telemetry";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
 import { authErrorResponse, json } from "../../shared";
+import { llmCallUsage } from "../shared";
 
 // CLI/API bearer route backing `novedu-cli eval` (docs/cli-eval.md): grade ONE golden
 // answer with the EXACT production grading path — the same memory-less `quizEvaluator`
@@ -54,38 +56,6 @@ const EVAL_USAGE_CODE = "cli-eval";
 /** The usage module label for eval runs (its own group in the dashboard). */
 const EVAL_USAGE_MODULE = "eval";
 
-/**
- * The token usage of ONE grading call, in the shape the CLI aggregates
- * (`docs/cli-eval.md`): `input` is the total input as the provider reported it —
- * cached tokens INCLUDED — `cachedInput` the cache-read portion of it, `output` the
- * completion tokens. Read off Mastra's generate result: `totalUsage` (across all
- * steps) with the last step's `usage` as the fallback, both `LanguageModelUsage`
- * (`@mastra/core/dist/stream/types.d.ts`) = the AI-SDK v5 shape
- * `{ inputTokens, outputTokens, cachedInputTokens, … }`. A provider that reports no
- * usage at all yields `undefined`, and the route then OMITS the field rather than
- * inventing zeros — a missing measurement is not a measurement of zero.
- */
-function gradeUsage(
-  result: unknown,
-): { input: number; cachedInput: number; output: number } | undefined {
-  const holder = result as { totalUsage?: unknown; usage?: unknown } | null | undefined;
-  const source = (holder?.totalUsage ?? holder?.usage) as
-    | { inputTokens?: unknown; outputTokens?: unknown; cachedInputTokens?: unknown }
-    | undefined;
-  if (!source || typeof source !== "object") return undefined;
-  const reported = [source.inputTokens, source.outputTokens, source.cachedInputTokens];
-  if (!reported.some((value) => typeof value === "number" && Number.isFinite(value))) {
-    return undefined;
-  }
-  const count = (value: unknown) =>
-    typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
-  return {
-    input: count(source.inputTokens),
-    cachedInput: count(source.cachedInputTokens),
-    output: count(source.outputTokens),
-  };
-}
-
 const GradeBodySchema = z.strictObject({
   llm: z.strictObject({
     provider: z.string().optional(),
@@ -99,7 +69,7 @@ const GradeBodySchema = z.strictObject({
  * Grades one golden answer. Body
  * `{ llm: { provider?, model }, system, answer }` → `200 { result, feedback, usage? }`,
  * where the OPTIONAL `usage: { input, cachedInput, output }` carries this call's token
- * counts when the provider reported any (see {@link gradeUsage}).
+ * counts when the provider reported any (see {@link llmCallUsage}).
  * `400` on a malformed body, an unknown or unavailable provider, an answer that is empty
  * after trimming, or an upstream model call that can never succeed as sent (a deployment
  * name that does not exist — terminal, so the CLI does not retry it); `413` over the
@@ -159,13 +129,18 @@ export async function POST(request: Request): Promise<Response> {
     requestContext.set(USAGE_MODULE, EVAL_USAGE_MODULE);
 
     try {
-      const res = await mastra.getAgent("quizEvaluator").generate(buildAnswerMessage(answer), {
-        structuredOutput: { schema: QUIZ_VERDICT_SCHEMA },
-        requestContext,
-      });
-      const object = res.object as { result: QuizVerdict; feedback: string } | undefined;
+      // The same truncation retry as the student path — the ONE shared implementation,
+      // so an eval measures what a student would actually have been shown.
+      const { raw: res, object } = await gradeWithTruncationRetry(
+        () =>
+          mastra.getAgent("quizEvaluator").generate(buildAnswerMessage(answer), {
+            structuredOutput: { schema: QUIZ_VERDICT_SCHEMA },
+            requestContext,
+          }),
+        (result) => result.object as { result: QuizVerdict; feedback: string } | undefined,
+      );
       if (!object) return json({ message: "The grader returned no verdict." }, 502);
-      const usage = gradeUsage(res);
+      const usage = llmCallUsage(res);
       return json(
         { result: object.result, feedback: object.feedback, ...(usage ? { usage } : {}) },
         200,

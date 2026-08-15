@@ -78,9 +78,9 @@ Notes:
   id: welcome-quiz-eval
   target: file:///…/0010-welcome-quiz.yaml
   llm: SCCH / gemma-4
-  cases: 27 × 1 repeat(s) = 27 grading call(s)
+  cases: 27 × 1 repeat(s) = 27 grading call(s) + 27 judge call(s)
 
-  passed: 27   failed: 0   errored: 0
+  passed: 27   failed: 0   errored: 0   flagged feedback: 2
 
   confusion (expected → got):
     correct → correct: 12
@@ -101,6 +101,54 @@ Notes:
 - A failing run lists each mismatch as
   `question#index expected … got … "answer snippet…"` and exits with code `1`, so an
   eval works as a gate in a script or CI.
+- **`flagged feedback`** is the second half of the check — see the next section. It is
+  reported, never a failure, which is why the run above still says "Eval passed".
+
+### The wording, not just the verdict: feedback judging
+
+Your `expect` checks the **verdict**. But the student never sees the verdict alone — they
+read the **feedback text** the AI wrote. That text can be wrong while the verdict is
+right: praise on an answer graded `incorrect`, a question back instead of the correct
+answer, a sentence in the wrong language, the grading criteria quoted at the student.
+
+So after each grading, `eval` asks a second AI — a **judge** — to read that feedback and
+check it against **the grading instructions the grader itself was given**. That is the
+whole trick: your `evaluation` prompt and your shared course instructions already say
+what good feedback looks like, so **you write nothing extra**. The judge reports four
+kinds of problem:
+
+| It reports | When the feedback… |
+| --- | --- |
+| `contradicts_verdict` | praises an answer graded wrong, or corrects one graded right |
+| `misstates_facts` | says something your grading criteria contradict |
+| `ignores_instructions` | breaks a rule your prompt states — most often *not* stating the correct answer when the verdict is not `correct`, or writing in the wrong language |
+| `leaks_rubric` | quotes your grading criteria, or refers to "my instructions" |
+
+**It never fails a run.** A flag is a note about wording, not a broken rubric — the fix is
+usually a sentence in your `evaluation` prompt or your shared instructions ("when the
+verdict is not `correct`, state the correct answer"), not a change to your golden answers.
+
+Two flags control it:
+
+```bash
+# Off: half the AI calls, verdicts only — good for a quick check
+novedu-cli eval ./0010-welcome-quiz.eval.yaml --no-judge-feedback
+
+# A stronger model as the judge (recommended): both flags, always together
+novedu-cli eval ./0010-welcome-quiz.eval.yaml \
+  --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra
+```
+
+Judging is **on by default** and roughly **doubles** what a run costs — which is why the
+run tells you the number of calls before it starts. Without the judge flags the judge
+uses the same model as the grader; a stronger judge over a smaller grader gives noticeably
+better notes, and the report always records which model judged.
+
+If the judge model itself has trouble, judging **stops** after three failures in a row
+(you get one warning) and the grading finishes normally. Your verdict results are still
+complete, and the report says plainly which files went unchecked: anything the judge never
+looked at shows an em dash in the Flagged column instead of a number, so "not checked"
+can never be mistaken for "all fine".
 
 ### Is the grader consistent? `--repeats`
 
@@ -133,8 +181,25 @@ novedu-cli eval "./**/*.eval.yaml"       # quoted: the CLI expands it, ** includ
 ```
 
 You get a per-file summary plus grand totals; a broken eval file is reported and the
-others still run. `--json` / `--out <file>` write a machine-readable report (always
-the same shape, one file or many).
+others still run. `--json` prints a machine-readable report instead of the readable
+one, and `--out <file>` additionally writes it to a file (always the same shape, one
+file or many).
+
+**Plan for the wait, and split a big folder.** A whole course can take **up to
+several hours** — how long depends on the model, on how busy it is that day, and on
+`--concurrency`, so treat any estimate as a rough guess rather than a schedule. Two
+things follow. First, the live counter only animates when you are watching a terminal;
+if you send the output to a file you get one line per finished file instead, so you can
+still see how far along it is. Second, the report is written **once, at the very end**:
+if the run is interrupted, nothing is saved, however far it got. So for a whole course,
+run it one folder at a time with its own report file:
+
+```bash
+novedu-cli eval "./part-1/*.eval.yaml" --report part-1.md
+novedu-cli eval "./part-2/*.eval.yaml" --report part-2.md
+```
+
+Then an interruption costs you one part instead of the whole course.
 
 ### A report you can actually read: `--report`
 
@@ -144,14 +209,19 @@ novedu-cli eval ./0010-welcome-quiz.eval.yaml --report report.md
 
 This writes a **Markdown report** next to the normal terminal output — open it in any
 editor, or commit it so you can compare runs later. It starts with a table over the
-files you ran (cases, passed/failed, unstable, false-correct) and then shows, only for
-the answers that went wrong or came out unstable, the **question**, your **golden
-answer** and the **grader's feedback** side by side. Cases that simply passed are left
-out on purpose; the report is meant to be read, not to repeat everything.
+files you ran (cases, passed/failed, unstable, flagged, false-correct) and then shows,
+only for the answers that went wrong or came out unstable, the **question**, your
+**golden answer** and the **grader's feedback** side by side. Cases that simply passed
+are left out on purpose; the report is meant to be read, not to repeat everything.
+
+Anything the judge flagged gets its own **"Flagged feedback"** section at the end of each
+file: the question, your golden answer, the feedback exactly as the student would have
+read it, and one line per problem the judge found. Those cases usually *passed* — they
+are there because the wording needs work, not the verdict.
 
 The report also tells you what the run **cost in tokens** (input, of which cached, and
-output). It counts only the gradings that succeeded, so treat it as a floor, not an
-invoice.
+output). It counts only the calls that succeeded — gradings and judgings together — so
+treat it as a floor, not an invoice.
 
 ---
 
@@ -162,8 +232,9 @@ invoice.
   (`novedu-cli files upload`) — otherwise the live code keeps serving the old rubric.
 - The grading prompts are built **on your machine** from your local files, so an eval
   works on a quiz you have not pushed yet.
-- Nothing is stored: no eval, no answer and no verdict is saved anywhere. The token
-  usage of a run is metered like any other AI usage, under the name `cli-eval`.
+- Nothing is stored: no eval, no answer, no verdict and no judgment is saved anywhere.
+  The token usage of a run — grading and judging alike — is metered like any other AI
+  usage, under the name `cli-eval`.
 
 The engineering reference for all of this is
 [`../../docs/cli-eval.md`](../../docs/cli-eval.md); the CLI's own summary is in

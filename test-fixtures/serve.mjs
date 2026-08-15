@@ -21,6 +21,19 @@
 // `[grade:<verdict>]` marker, with a plausible `usage` block so token totals are
 // exercised — and `options.evalFailures` makes the first N requests answer 504 so
 // the CLI's retry path is exercised offline.
+//
+// `/api/eval/judge` (the feedback judge) follows the same convention one level up:
+// it answers an EMPTY `issues` list unless the request's `subject` carries
+// `[judge:<criterion>]` markers — one issue per marker. (The judge's DEGRADE breaker
+// is unit-tested in `cli/src/eval-run.unit.test.ts`; exercising it against the built
+// binary would mean exhausting real retry backoffs, so there is no judge-failure
+// option here.)
+//
+// It also fakes the public `GET /api/version` build-identity probe, whose
+// `cliVersion` `novedu-cli eval` checks against its own before grading
+// (`docs/cli-eval.md`). It defaults to the REAL `cli/package.json` version so an
+// integration run is warning-free; `options.cliVersion` serves a different one so
+// the mismatch warning is testable end to end.
 
 import { readFile } from "node:fs/promises";
 import http from "node:http";
@@ -28,6 +41,11 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ACTIVITIES_ROOT = fileURLToPath(new URL("./activities/", import.meta.url));
+
+/** The real CLI release this checkout ships — the default `/api/version` answer. */
+const CLI_PACKAGE_VERSION = JSON.parse(
+  await readFile(new URL("../cli/package.json", import.meta.url), "utf8"),
+).version;
 
 /**
  * Start the fixtures server on `port` (0 = an ephemeral free port). Resolves to
@@ -37,22 +55,28 @@ const ACTIVITIES_ROOT = fileURLToPath(new URL("./activities/", import.meta.url))
  * `options.codes` seeds the fake `/api/codes` store (the array is used as-is, so
  * a caller can inspect what a run minted). `options.evalFailures` makes the first
  * N `/api/eval/grade` requests answer 504 (retry testing); every graded request is
- * appended to the returned `evalRequests` array.
+ * appended to the returned `evalRequests` array; every judged `/api/eval/judge`
+ * request is appended to `judgeRequests`. `options.cliVersion` overrides the
+ * `cliVersion` `/api/version` reports (default: the real `cli/package.json` one), so
+ * `eval`'s mismatch warning can be exercised.
  *
  * The typed return is what TypeScript consumers (the CLI integration test) see —
  * `allowJs` picks this JSDoc up straight from the implementation, so there is no
  * separate declaration file to drift.
  *
  * @param {number} [port]
- * @param {{ codes?: Array<Record<string, unknown>>, evalFailures?: number }} [options]
- * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>>, evalRequests: Array<Record<string, unknown>> }>}
+ * @param {{ codes?: Array<Record<string, unknown>>, evalFailures?: number, cliVersion?: string }} [options]
+ * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>>, evalRequests: Array<Record<string, unknown>>, judgeRequests: Array<Record<string, unknown>> }>}
  */
 export function startFixturesServer(port = 0, options = {}) {
   const codes = options.codes ?? [];
   let minted = 0;
   /** @type {Array<Record<string, unknown>>} */
   const evalRequests = [];
+  /** @type {Array<Record<string, unknown>>} */
+  const judgeRequests = [];
   const evalState = { remainingFailures: options.evalFailures ?? 0 };
+  const reportedCliVersion = options.cliVersion ?? CLI_PACKAGE_VERSION;
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -62,12 +86,26 @@ export function startFixturesServer(port = 0, options = {}) {
         res.end("ok");
         return;
       }
+      if (url.pathname === "/api/version") {
+        // Public and unauthenticated, like the real route (app/api/version/route.ts).
+        sendJson(res, 200, {
+          version: "fixtures",
+          gitSha: "fixtures",
+          builtAt: "1970-01-01T00:00:00.000Z",
+          cliVersion: reportedCliVersion,
+        });
+        return;
+      }
       if (url.pathname === "/api/codes") {
         await handleCodes(req, res, codes, () => `synced${String(++minted).padStart(4, "0")}`);
         return;
       }
       if (url.pathname === "/api/eval/grade") {
         await handleEvalGrade(req, res, evalState, evalRequests);
+        return;
+      }
+      if (url.pathname === "/api/eval/judge") {
+        await handleEvalJudge(req, res, judgeRequests);
         return;
       }
       const rel = decodeURIComponent(url.pathname).replace(/^\/+/, "");
@@ -92,7 +130,13 @@ export function startFixturesServer(port = 0, options = {}) {
     server.listen(port, "127.0.0.1", () => {
       const address = server.address();
       const actualPort = typeof address === "object" && address ? address.port : port;
-      resolve({ server, baseUrl: `http://127.0.0.1:${actualPort}`, codes, evalRequests });
+      resolve({
+        server,
+        baseUrl: `http://127.0.0.1:${actualPort}`,
+        codes,
+        evalRequests,
+        judgeRequests,
+      });
     });
   });
 }
@@ -224,6 +268,48 @@ async function handleEvalGrade(req, res, state, requests) {
     output: 40 + String(body.answer).length,
   };
   sendJson(res, 200, { result, feedback: `fixtures grader says ${result}`, usage });
+}
+
+/**
+ * The fake `POST /api/eval/judge` (app/api/eval/judge/route.ts): bearer required,
+ * POST only, the same required fields — then a DETERMINISTIC judgment following the
+ * grader's marker convention one level up. The feedback is acceptable (an EMPTY
+ * `issues` list) unless the `subject` carries `[judge:<criterion>]` markers; each
+ * marker becomes one issue with fixed note text, so an integration test can assert
+ * exact flag counts.
+ */
+async function handleEvalJudge(req, res, requests) {
+  if (!/^Bearer .+/.test(req.headers.authorization ?? "")) {
+    sendJson(res, 401, { message: "Unauthorized" });
+    return;
+  }
+  if (req.method !== "POST") {
+    sendJson(res, 405, { message: "Method not allowed" });
+    return;
+  }
+  const body = await readJsonBody(req);
+  if (body === undefined) {
+    sendJson(res, 400, { message: "The request body must be JSON." });
+    return;
+  }
+  if (!body?.llm?.model || !body?.system || !body?.subject || !Array.isArray(body?.criteria)) {
+    sendJson(res, 400, { message: "llm.model, system, subject and criteria are required." });
+    return;
+  }
+
+  requests.push(body);
+  const subject = String(body.subject);
+  const issues = [...subject.matchAll(/\[judge:([a-z_]+)\]/g)]
+    // Constrained to the caller's taxonomy, exactly like the real route's structured
+    // output — a marker naming something else must not become an issue.
+    .filter((match) => body.criteria.includes(match[1]))
+    .map((match) => ({ criterion: match[1], note: `fixtures judge flagged ${match[1]}` }));
+  const usage = {
+    input: 500 + subject.length,
+    cachedInput: 128,
+    output: 20 + issues.length,
+  };
+  sendJson(res, 200, { issues, usage });
 }
 
 // Run directly (Playwright webServer): listen on a fixed port and stay up.

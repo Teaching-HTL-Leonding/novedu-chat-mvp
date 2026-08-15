@@ -19,7 +19,7 @@ The highest-cost rules to break. They always apply, regardless of subsystem; the
 - The session user id is the Entra **`oid`**, not `sub`.
 - Student access to any activity = **`checkCode()`** on the stored `novedu_codes` row + the **stateless-HMAC `x-thread-token`** over `(code, userId, threadId)`, both re-verified on **every** server touch. No signed links (`docs/codes.md`).
 - The activity YAML's `anonymous` default is module-specific: tutor/quiz `true`, **writing `false`**, coding always anonymous (`docs/writing.md`).
-- The quiz grader **`quizEvaluator` is never web-reachable by students** (the runtime route 404s it). Its only callers are `submitAnswer` and the teacher-only `POST /api/eval/grade`, which supplies its own client-side system prompt — the server-only quiz `evaluation` prompts never leave the server (`docs/codes.md`, `docs/cli-eval.md`).
+- The quiz grader **`quizEvaluator`** and the eval feedback judge **`evalJudge`** are **never web-reachable by students** (the runtime route 404s every agent id but the code module's own). Besides `submitAnswer`, their only callers are the teacher-only `POST /api/eval/grade` / `POST /api/eval/judge`, which supply their system prompts client-side — the server-only quiz `evaluation` prompts never leave the server (`docs/codes.md`, `docs/cli-eval.md`).
 - Exactly **two public, non-Entra API routes**: `GET /api/files/<name>` (raw YAML) and the coding `POST /api/coding/v1/chat/completions` (the code IS the bearer key — `docs/files.md`, `docs/coding.md`). The only other public surface is the static teacher guide under `/docs`, public by intent (`docs/teacher-docs.md`).
 - All other CLI/API routes are **Entra-bearer**: proxy-excluded per-path and gated **only** by `requireBearerUser`/`requireBearerTeacher` (`lib/api-auth.ts`) — token validated on every request, groups overage fails closed, **no student mode on this channel**; auth never enters the `lib/*-service.ts` pipelines. `docs/api.md` lists every route.
 - **LLM connectivity is server-only** behind `lib/llm/` — the provider branch exists ONLY in `resolveLanguageModel`, `resolveChatEndpoint`, and `providerUnavailableReason`; endpoints, keys, and Entra tokens never reach the browser. Foundry auth is passwordless Entra — never `DefaultAzureCredential`, never an API key. A code's **LLM override pair** is both-or-nothing via `effectiveLlm`, availability-gated on the effective provider (`docs/ai-models.md`).
@@ -183,18 +183,21 @@ Read before touching: `lib/prompt-dump.ts`, `lib/{quiz,writing,coding}-resolve.t
 
 - Every dumper CALLS the production builders/loaders — never a copy (grep-guarded in `lib/prompt-dump.unit.test.ts`).
 - CLI-bundled `lib/**` must import **nothing** from `app/**`, the DB, or `lib/llm/model.ts`, and carry no `"use server"` — the grep-guard walks the whole transitive closure.
+- Changing anything in that bundled closure warrants a CLI release (`docs/cli-publish.md`) — published CLIs carry a frozen copy.
 
 ### CLI grader evals → `docs/cli-eval.md`
 
-Read before touching: `lib/eval-schema.ts`, `lib/eval-validate.ts`, `cli/src/eval-run.ts`, `cli/src/report-md.ts`, `cli/src/retry.ts`, `cli/src/commands/eval.ts`, `app/api/eval/**`, or the fake grader in `test-fixtures/serve.mjs`.
+Read before touching: `lib/eval-schema.ts`, `lib/eval-validate.ts`, `lib/quiz-feedback-judge.ts`, `cli/src/eval-run.ts`, `cli/src/report-md.ts`, `cli/src/retry.ts`, `cli/src/commands/eval.ts`, `app/api/eval/**`, or the fake grader/judge in `test-fixtures/serve.mjs`.
 
 - The CLI assembles every grading prompt OFFLINE (via `dumpPrompts`) and fans out; the teacher-only `POST /api/eval/grade` grades exactly ONE answer per request — stateless, nothing persisted. Access model: see the security block.
+- The **feedback judge** REPORTS and never gates (flagged feedback changes no exit code), and DEGRADES rather than aborting when the judge model fails. `POST /api/eval/judge` is kind-agnostic — both prompts and the criteria arrive in the body — so another eval kind can reuse it with no server change.
 
 ### CLI publishing → `docs/cli-publish.md`
 
-Read before touching: `cli/package.json`, `.github/workflows/publish-cli.yml`, or cutting a CLI release.
+Read before touching: `cli/package.json`, `.github/workflows/publish-cli.yml`, changing CLI-bundled `lib/**` code, or cutting a CLI release.
 
 - Publishes as `@novedu/cli` via OIDC trusted publishing on a `cli-v*` tag — no `NPM_TOKEN`; the tag must match `cli/package.json`.
+- A change to CLI-bundled `lib/**` (validators, prompt builders, schemas) is release-worthy even with no `cli/` diff: bump `cli/package.json` and publish, or teachers keep running the old code (`docs/cli-publish.md`).
 
 ### Teacher docs & docs site → `docs/teacher-docs.md`
 

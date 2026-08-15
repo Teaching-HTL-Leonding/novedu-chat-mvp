@@ -577,6 +577,13 @@ in-page discussion live in `app/[code]/_quiz/`.
   `POST /api/eval/grade` (`novedu-cli eval`, `docs/cli-eval.md`), which supplies its
   OWN system prompt from the client: the server-only `evaluation` prompts still
   never leave the server, and that route persists nothing either.
+- The eval **feedback judge** (`app/mastra/eval-agents.ts`) is registered under the
+  same rule: **`evalJudge` is never web-reachable by students** — it is not any
+  module's `runtime.agentId`, so `agent/evalJudge/*` 404s on the runtime route
+  exactly as `quizEvaluator` does, and its ONLY caller is the teacher-only bearer
+  route `POST /api/eval/judge` (`docs/cli-eval.md`). That one is a step safer still:
+  both its prompts come from the client, so no server-held `evaluation` prompt is
+  involved at all, and it is likewise memory-less and persists nothing.
 - **Discussion** is **non-negotiably in-page**: clicking "Chat about this" opens a
   native modal `<dialog>` over the page (`quiz-runner.tsx` drives
   `showModal()`/`close()`; Escape, a Close button, and a backdrop click all close

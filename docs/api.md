@@ -5,7 +5,8 @@ non-browser client, e.g. a future MCP server) calling app API routes with an
 Entra **bearer token** instead of a session cookie. Read it before touching
 `lib/api-auth.ts`, `app/api/me/**`, `app/api/codes/**`, `app/api/files/**`
 (the bearer handlers), `app/api/images/**`, `app/api/reports/**`,
-`app/api/eval/**`, the services
+`app/api/eval/**`, the public `app/api/version/route.ts` (listed here because the
+CLI reads it), the services
 they share with the web actions (`lib/code-service.ts`, `lib/file-service.ts`,
 `lib/image-service.ts`), the CLI commands (`cli/src/auth.ts`, `cli/src/api.ts`,
 `cli/src/commands/{login,logout,whoami,codes,files,images,reports,eval}.ts`), or when
@@ -76,9 +77,10 @@ analogue of `checkCode()` for codes):
 
 ## Routes & conventions
 
-Shared conventions: every handler is `force-dynamic`, answers
+Shared conventions: every **bearer** handler is `force-dynamic`, answers
 `Cache-Control: no-store`, and maps store-level DB failures (`undefined`
-returns) to `503 { message }`. EVERY failure body on this channel — including
+returns) to `503 { message }`. (`GET /api/version` below is listed for
+completeness — it is public and shares none of this except `force-dynamic`.) EVERY failure body on this channel — including
 the generic 401/403 (sent with `WWW-Authenticate: Bearer` on an
 `ApiAuthError`) and the 500 fallback — is `{ message }` or
 `{ errors: ValidationError[] }` (the identical structured detail the web forms
@@ -91,6 +93,17 @@ deliberately **unpaged**: the CLI reads each result whole, so they call the stor
 without `paging` and return every match as a bare JSON array. The teacher list PAGES
 do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wire one.
 
+- **`GET /api/version`** (`app/api/version/route.ts`) — the ONE route in this list
+  that is **public and unauthenticated** (proxy-excluded, no bearer gate): the
+  build-identity probe for CD triage. Answers
+  `{ version, gitSha, builtAt, cliVersion }` — the first three baked into the image
+  as env vars (`lib/version.ts`), `cliVersion` the `version` of `cli/package.json`
+  as a build-time static JSON import (the file is absent from the standalone
+  output, so a runtime read would not work). CLI and server share this repo, so
+  `cliVersion` is the CLI release matching the `lib/**` code this server runs —
+  `novedu-cli eval` compares it against its own and warns on a mismatch
+  (`docs/cli-eval.md`). Everything here is public by construction: the repo is
+  public and the CLI is published on npm.
 - **`GET /api/me`** (`app/api/me/route.ts`) — the identity probe backing
   `novedu-cli whoami`: any valid token gets
   `{ name, userId, isTeacher }` (it reports the teacher flag rather than
@@ -220,10 +233,31 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   gate is `requireBearerTeacher` and the grading prompt comes from the client so the
   server-held quiz `evaluation` prompts never leave the server. Usage is metered
   under the `cli-eval` pseudo-code + `eval` module (`docs/usage-metering.md`).
+- **`POST /api/eval/judge`** (`app/api/eval/judge/route.ts`, teacher-only) — audits ONE
+  grader **feedback** text for `novedu-cli eval`'s feedback judge (`docs/cli-eval.md`).
+  Body `{ llm: { provider?, model }, system, subject, criteria }`, where `system` is the
+  judge prompt, `subject` the assembled `(grading prompt, answer, verdict, feedback)`
+  block, and `criteria` **1–8** names matching `/^[a-z_]{1,40}$/`; `200` with
+  `{ issues: [{ criterion, note }], usage? }`, an **empty `issues` array meaning the
+  feedback is acceptable** (there is deliberately no `ok` flag) and the same optional
+  `usage` shape the grade route reports. It runs the memory-less **`evalJudge`** agent
+  with `judgmentSchema(criteria)` as structured output and **persists nothing**.
+  **Kind-agnostic by construction:** both prompts AND the taxonomy arrive in the body,
+  and the criteria become the model's enum — so another eval kind can reuse this endpoint
+  with no server change, and the model can never name a criterion the caller cannot
+  render. Failure matrix identical to the grade route (`400` malformed body / unknown or
+  unavailable provider / terminal upstream model error; `413` above 256 KB; `401`/`403`
+  from the gate; `502` for no structured judgment or a retryable upstream failure — its
+  opaque wording names judging, not grading). Same trust argument as the grade route, one
+  step stronger: `evalJudge` is never web-reachable by students (the CopilotKit runtime
+  route 404s every agent id but the code module's own), the gate has no student mode, and
+  **no** server-held quiz `evaluation` prompt is involved at all. Usage is metered under
+  the same `cli-eval` pseudo-code + `eval` module as the gradings it audits.
 - **Proxy exclusion, per route:** bearer routes must not hit the cookie gate
   (a CLI has no session), so each one gets its own **path-bounded** entry in
   the `proxy.ts` matcher (`api/me(?:/|$)`, `api/codes(?:/|$)`,
-  `api/reports(?:/|$)`, `api/images(?:/|$)`, `api/eval(?:/|$)`) — never a blanket `/api` prefix. The files handlers ride
+  `api/reports(?:/|$)`, `api/images(?:/|$)`, `api/eval(?:/|$)` — which bounds BOTH eval
+  routes) — never a blanket `/api` prefix. The files handlers ride
   the pre-existing public `api/files` exclusion and self-gate. Adding a bearer endpoint = new route
   file gated by `requireBearerUser`/`requireBearerTeacher` + its own matcher
   exclusion + documentation here.
@@ -291,14 +325,17 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
 - **`eval <evalPathOrUrl…>`** (`cli/src/commands/eval.ts`) is the second exception
   to the JSON-only rule, for the same reason as `codes sync`: it makes MANY requests
   (one `POST /api/eval/grade` per golden answer × `--repeats`, bounded by
-  `--concurrency`) and prints a run report, keeping the machine-readable batch shape
-  behind `--json` / `--out`. It is the first command that both talks to the server
+  `--concurrency`, plus — unless `--no-judge-feedback` — one `POST /api/eval/judge` per
+  successfully graded repeat) and prints a run report, keeping the machine-readable batch
+  shape behind `--json` / `--out`. It is the first command that both talks to the server
   and does substantial offline work: the grading prompts are assembled locally
   through the app's own dump seam. Per-case failures are handled by the command
   (`performApiRequest({ quiet: true })` + the new `status` / `authFailed` markers:
   retry 5xx and network, abort the whole run on 401/403); hard failures — no usable
   eval file, half an `--llm-*` pair, an unwritable `--out` — stay JSON on stderr with
-  exit 1. See `docs/cli-eval.md`.
+  exit 1. It is also the one command that probes **`GET /api/version`** (public, no
+  token) before grading, warning on stderr when the server's `cliVersion` is not this
+  CLI's or cannot be read — advisory only, never an exit code. See `docs/cli-eval.md`.
 - **Token cache** `~/.novedu/token-cache.json` — plain JSON via an MSAL
   `ICachePlugin` (az-CLI model), directory `0700`, file `0600`. It holds the
   refresh token; treat it like a credential.
@@ -351,6 +388,10 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   empty-after-trim answer), the 413 cap, the 200 wire shape, the 502s, and — the
   production-parity assertion — that the agent receives `buildAnswerMessage` of the
   TRIMMED answer plus the `QUIZ_EVAL_*` and usage-sentinel RequestContext values.
+  `app/api/eval/judge/route.unit.test.ts` mirrors it for the feedback judge, adding the
+  `criteria` bounds/regex matrix and the kind-agnostic assertion: the structured-output
+  schema handed to the agent accepts exactly the CALLER's criteria and rejects everything
+  else.
 - **e2e:** `e2e/api-auth.setup.ts` generates the keypair once into the
   gitignored `e2e/.auth/` (once, not per run — the server caches the JWKS
   after the first bearer request); `playwright.config.ts` injects

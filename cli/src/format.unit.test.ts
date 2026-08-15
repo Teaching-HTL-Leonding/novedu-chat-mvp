@@ -167,6 +167,7 @@ function runResult(usage: { input: number; cachedInput: number; output: number }
     id: "demo-eval",
     target: "file:///quiz.yaml",
     llm: { provider: "SCCH", model: "gemma-4" },
+    judging: "off",
     totals: {
       cases: 1,
       passed: 1,
@@ -174,6 +175,8 @@ function runResult(usage: { input: number; cachedInput: number; output: number }
       errored: 0,
       skipped: 0,
       unstable: 0,
+      feedbackFlagged: 0,
+      judgeErrored: 0,
       repeats: 1,
       calls: 1,
       usage,
@@ -225,5 +228,131 @@ describe("formatEvalReport — token totals", () => {
     const out = formatEvalBatchReport(summarizeBatch(files));
 
     expect(out).toContain("tokens: 15 in (4 cached) / 3 out");
+  });
+});
+
+describe("formatEvalReport — the feedback judge", () => {
+  /** A judged run: the two counts the judge contributes, plus its llm pair. */
+  const judged = (
+    overrides: Partial<EvalRunResult> = {},
+    totals: Partial<EvalRunResult["totals"]> = {},
+  ): EvalRunResult => {
+    const base = runResult({ input: 10, cachedInput: 0, output: 2 });
+    return {
+      ...base,
+      judging: "on",
+      llm: { provider: "SCCH", model: "gemma-4" },
+      // One judged repeat: the flagged count renders only for a run that actually
+      // holds a judgment (the shared `anyJudged` rule), never off `judging` alone.
+      cases: [
+        {
+          questionId: "q1",
+          answerIndex: 1,
+          answer: "4",
+          expected: ["correct"],
+          status: "passed",
+          verdict: "correct",
+          unstable: false,
+          feedbackFlagged: false,
+          repeats: [{ repeatIndex: 0, got: "correct", feedback: "ok", judge: { issues: [] } }],
+        },
+      ],
+      ...overrides,
+      totals: { ...base.totals, ...totals },
+    } as EvalRunResult;
+  };
+
+  it("names both halves of the call budget and the flagged count", () => {
+    const out = formatEvalReport(judged({}, { feedbackFlagged: 2 }), "demo.eval.yaml");
+
+    expect(out).toContain("cases: 1 × 1 repeat(s) = 1 grading call(s) + 1 judge call(s)");
+    expect(out).toContain("flagged feedback: 2");
+    // Reported, never gating: the run still passes.
+    expect(out).toContain("Eval passed");
+  });
+
+  it("says nothing about judging when it was off", () => {
+    const out = formatEvalReport(runResult({ input: 10, cachedInput: 0, output: 2 }), "x.yaml");
+
+    expect(out).toContain("cases: 1 × 1 repeat(s) = 1 grading call(s)");
+    expect(out).not.toContain("judge call(s)");
+    expect(out).not.toContain("flagged");
+  });
+
+  it("confirms a clean judged run with an explicit zero", () => {
+    // "judged, nothing flagged" must not render identically to "never judged" — the
+    // terminal counterpart of the Markdown report's 0-vs-em-dash distinction.
+    const out = formatEvalReport(judged({}, { feedbackFlagged: 0 }), "demo.eval.yaml");
+
+    expect(out).toContain("flagged feedback: 0");
+  });
+
+  it("prints the judge pair only when it differs from the grading pair", () => {
+    const same = formatEvalReport(
+      judged({
+        llm: {
+          provider: "SCCH",
+          model: "gemma-4",
+          judge: { provider: "SCCH", model: "gemma-4", overridden: false },
+        },
+      }),
+      "x.yaml",
+    );
+    expect(same).not.toContain("judge llm:");
+
+    const differing = formatEvalReport(
+      judged({
+        llm: {
+          provider: "SCCH",
+          model: "gemma-4",
+          judge: { provider: "Azure Foundry", model: "gpt-5.6-terra", overridden: true },
+        },
+      }),
+      "x.yaml",
+    );
+    expect(differing).toContain("judge llm: Azure Foundry / gpt-5.6-terra");
+    expect(differing).toContain("(override)");
+  });
+
+  it("reports judge errors and a degraded run without failing it", () => {
+    const out = formatEvalReport(judged({ judging: "degraded" }, { judgeErrored: 3 }), "x.yaml");
+
+    expect(out).toContain("judge errors: 3");
+    expect(out).toContain("Feedback judging stopped after repeated judge failures");
+    expect(out).toContain("Eval passed");
+  });
+
+  it("counts flagged cases per file and in the batch TOTAL with one label", () => {
+    const out = formatEvalBatchReport(
+      summarizeBatch([
+        { source: "file:///a.eval.yaml", status: "ok", result: judged({}, { feedbackFlagged: 2 }) },
+        { source: "file:///b.eval.yaml", status: "ok", result: judged({}, { feedbackFlagged: 1 }) },
+      ]),
+    );
+
+    expect(out).toContain("2 flagged");
+    expect(out).toContain("1 flagged");
+    expect(out).toContain("TOTAL: 2 case(s), 2 passed, 0 failed, 0 errored, 3 flagged");
+  });
+
+  it("reports a zero flagged count per file and in the TOTAL once any file judged", () => {
+    const out = formatEvalBatchReport(
+      summarizeBatch([
+        { source: "file:///a.eval.yaml", status: "ok", result: judged({}, { feedbackFlagged: 0 }) },
+        { source: "file:///b.eval.yaml", status: "ok", result: judged({}, { feedbackFlagged: 0 }) },
+      ]),
+    );
+
+    expect(out).toContain("a.eval.yaml: 1 case(s), 1 passed, 0 failed, 0 errored, 0 flagged");
+    expect(out).toContain("TOTAL: 2 case(s), 2 passed, 0 failed, 0 errored, 0 flagged");
+  });
+
+  it("stays silent about flagged feedback in a batch where no file judged", () => {
+    const unjudged = runResult({ input: 10, cachedInput: 0, output: 2 });
+    const out = formatEvalBatchReport(
+      summarizeBatch([{ source: "file:///a.eval.yaml", status: "ok", result: unjudged }]),
+    );
+
+    expect(out).not.toContain("flagged");
   });
 });

@@ -10,7 +10,7 @@ import {
 } from "@/lib/prompt-fragments";
 import type { QuizCheckResult } from "@/lib/quiz-validate";
 import type { WritingCheckResult } from "@/lib/writing-validate";
-import type { EvalBatchResult, EvalRunResult, EvalUsage } from "./eval-run";
+import { anyJudged, type EvalBatchResult, type EvalRunResult, type EvalUsage } from "./eval-run";
 
 // Pure presentation: turn a `BuildResult` into a human-readable terminal report.
 // No validation logic lives here — it only renders the structured errors/warnings
@@ -279,13 +279,28 @@ export function formatEvalReport(result: EvalRunResult, source: string): string 
     ? `${result.llm.overrides.provider} / ${result.llm.overrides.model} ${yellow("→")} ${result.llm.provider} / ${result.llm.model} ${yellow("(override)")}`
     : `${result.llm.provider} / ${result.llm.model}`;
   lines.push(`  llm: ${llm}`);
+  // The judge pair, but only when it differs from the grading one — judge strictness
+  // varies by model, so a differing pair is exactly what makes two reports comparable.
+  const judge = result.llm.judge;
+  if (judge && (judge.provider !== result.llm.provider || judge.model !== result.llm.model)) {
+    lines.push(
+      `  judge llm: ${judge.provider} / ${judge.model}${judge.overridden ? ` ${yellow("(override)")}` : ""}`,
+    );
+  }
   lines.push(
-    `  cases: ${totals.cases} × ${totals.repeats} repeat(s) = ${totals.calls} grading call(s)`,
+    `  cases: ${totals.cases} × ${totals.repeats} repeat(s) = ${totals.calls} grading call(s)` +
+      (result.judging === "off" ? "" : ` + ${totals.calls} judge call(s)`),
   );
 
   if (result.aborted) {
     lines.push("");
     lines.push(red(`Run aborted: ${result.aborted.message}`));
+  }
+  if (result.judging === "degraded") {
+    lines.push("");
+    lines.push(
+      yellow("Feedback judging stopped after repeated judge failures — grading was unaffected."),
+    );
   }
 
   if (result.mismatches.length) {
@@ -298,7 +313,17 @@ export function formatEvalReport(result: EvalRunResult, source: string): string 
   lines.push(
     `  passed: ${totals.passed}   failed: ${totals.failed}   errored: ${totals.errored}` +
       (totals.skipped ? red(`   skipped: ${totals.skipped} (run aborted)`) : "") +
-      (totals.unstable ? dim(`   unstable: ${totals.unstable}`) : ""),
+      (totals.unstable ? dim(`   unstable: ${totals.unstable}`) : "") +
+      // Reported, never gating — hence yellow rather than red. Printed whenever ANY
+      // judgment exists, zero included: a silent line would make "judged, all clean" look
+      // exactly like "never judged" — the same `anyJudged` rule as the Markdown report's
+      // em dash, so a file the breaker left unjudged never claims a clean 0.
+      (!anyJudged(result)
+        ? ""
+        : totals.feedbackFlagged
+          ? yellow(`   flagged feedback: ${totals.feedbackFlagged}`)
+          : dim("   flagged feedback: 0")) +
+      (totals.judgeErrored ? dim(`   judge errors: ${totals.judgeErrored}`) : ""),
   );
 
   const tokens = formatUsageLine(totals.usage);
@@ -341,17 +366,39 @@ export function formatEvalBatchReport(batch: EvalBatchResult): string {
     lines.push(
       `  ${mark} ${name}: ${t.cases} case(s), ${t.passed} passed, ${t.failed} failed, ${t.errored} errored` +
         (t.skipped ? red(`, ${t.skipped} skipped`) : "") +
-        (t.unstable ? dim(`, ${t.unstable} unstable`) : ""),
+        (t.unstable ? dim(`, ${t.unstable} unstable`) : "") +
+        // `anyJudged`, the renderers' shared rule: no flagged segment for a file that
+        // was never judged — an unjudged file has not been found clean.
+        (!anyJudged(file.result)
+          ? ""
+          : t.feedbackFlagged
+            ? yellow(`, ${t.feedbackFlagged} flagged`)
+            : dim(", 0 flagged")),
     );
   }
 
   const g = batch.totals;
+  // Same rule as the per-file rows: a batch where no file judged says nothing about
+  // flagged feedback; one where any file did reports its count, zero included.
+  const judged = batch.files.some((file) => file.result && anyJudged(file.result));
   lines.push("");
   lines.push(
     `  TOTAL: ${g.cases} case(s), ${g.passed} passed, ${g.failed} failed, ${g.errored} errored` +
       (g.skipped ? red(`, ${g.skipped} skipped`) : "") +
+      (judged
+        ? g.feedbackFlagged
+          ? yellow(`, ${g.feedbackFlagged} flagged`)
+          : dim(", 0 flagged")
+        : "") +
       (g.invalid ? red(`, ${g.invalid} invalid file(s)`) : ""),
   );
+  if (batch.files.some((file) => file.result?.judging === "degraded")) {
+    lines.push(
+      yellow(
+        "  Feedback judging stopped mid-run after repeated judge failures — files without a flagged count were graded but not judged.",
+      ),
+    );
+  }
 
   const tokens = formatUsageLine(g.usage);
   if (tokens) lines.push(dim(`  ${tokens}`));

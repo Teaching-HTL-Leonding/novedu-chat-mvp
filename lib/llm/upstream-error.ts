@@ -44,7 +44,11 @@ export interface UpstreamLlmFailure {
   telemetry: Record<string, string | number | boolean>;
 }
 
-/** The generic fallback: nothing about this failure is worth promising to a caller. */
+/**
+ * The generic fallback: nothing about this failure is worth promising to a caller. It is
+ * the ONE message that names what the call was for, so a caller doing something other
+ * than grading (the feedback judge) overrides it via `context.opaqueMessage`.
+ */
 const OPAQUE_MESSAGE = "The answer could not be graded right now.";
 
 /**
@@ -88,15 +92,21 @@ function findApiCallError(error: unknown, depth = 4): APICallError | undefined {
  */
 export function classifyUpstreamLlmError(
   error: unknown,
-  context: { provider: LlmProvider; model: string },
+  context: {
+    provider: LlmProvider;
+    model: string;
+    /** Overrides the "could not be graded" wording for a non-grading call. */
+    opaqueMessage?: string;
+  },
 ): UpstreamLlmFailure {
   const { provider, model } = context;
+  const opaque = context.opaqueMessage ?? OPAQUE_MESSAGE;
   const apiError = findApiCallError(error);
 
   if (!apiError) {
     return {
       terminal: false,
-      message: OPAQUE_MESSAGE,
+      message: opaque,
       telemetry: { "novedu.llm.provider": provider, "novedu.llm.model": model },
     };
   }
@@ -118,7 +128,7 @@ export function classifyUpstreamLlmError(
   // retryable, everything else is not) — reusing it keeps rate limits and outages
   // retryable while a bad request fails on the first attempt.
   if (apiError.isRetryable) {
-    return { terminal: false, message: OPAQUE_MESSAGE, telemetry };
+    return { terminal: false, message: opaque, telemetry };
   }
 
   // e.g. " (upstream 404 DeploymentNotFound)" — status and code, whichever exist.

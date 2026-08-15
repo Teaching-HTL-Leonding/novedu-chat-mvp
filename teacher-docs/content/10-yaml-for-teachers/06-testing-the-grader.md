@@ -1,10 +1,10 @@
 ---
 title: Test how your quiz grades
-description: Write sample answers with the marks they should get, run them through the real grader, and see where your grading criteria disagree with you.
+description: Write sample answers with the marks they should get, run them through the real grader, and check both the marks and the feedback wording.
 sidebar:
   order: 6
 audience: teacher
-keywords: [eval, golden answers, grading, test the grader, rubric, evaluation, false-correct, repeats, unstable, quiz, report, tokens, cost]
+keywords: [eval, golden answers, grading, test the grader, rubric, evaluation, false-correct, repeats, unstable, feedback, flagged feedback, quiz, report, tokens, cost]
 related:
   - 10-yaml-for-teachers/04-cli-validation
   - 40-ai-llms/01-novedu-cli
@@ -19,6 +19,8 @@ generated: true
 -->
 
 Validation tells you your quiz file is well-formed. The prompt dump shows what the AI is told. This chapter closes the loop: it shows what the AI actually **does**. You write a handful of student answers yourself (a good one, a half one, a confidently wrong one), note the mark each should get, and the CLI's `eval` command grades them with the same grader your students meet. That's what "evaluation" means in practice, and it turns "the AI feels too lenient" into a number you can check again after every edit.
+
+A run checks both halves of a grading. Your expected marks check the **mark**. A second AI, called the judge, reads the **feedback sentence** the grader wrote for the student and checks it against your own grading instructions, so a nice-looking mark with unhelpful wording doesn't slip past you.
 
 ## Write a few golden answers
 
@@ -72,7 +74,7 @@ npx @novedu/cli eval ./sorting-quiz.eval.yaml
 Before the first call, the run prints its size, so you always see what you're about to spend:
 
 ```
-3 case(s) × 1 repeat(s) = 3 grading call(s)
+3 case(s) × 1 repeat(s) = 3 grading + 3 judge call(s)
 ```
 
 Then comes the report. Here is a real run over the sample file above:
@@ -82,10 +84,10 @@ Then comes the report. Here is a real run over the sample file above:
   id: sorting-quiz-eval
   target: file:///…/sorting-quiz.yaml
   llm: SCCH / RedHatAI/gemma-4-31B-it-FP8-Dynamic
-  cases: 3 × 1 repeat(s) = 3 grading call(s)
+  cases: 3 × 1 repeat(s) = 3 grading call(s) + 3 judge call(s)
 
-  passed: 3   failed: 0   errored: 0
-  tokens: 2,312 in (2,240 cached) / 2,098 out
+  passed: 3   failed: 0   errored: 0   flagged feedback: 1
+  tokens: 3,908 in (2,240 cached) / 2,431 out
 
   confusion (expected → got):
     correct → correct: 1
@@ -109,10 +111,41 @@ Work through it in this order:
 
 - **The confusion table** is "what I expected versus what it said", one line per combination. Rows with a `|` come from answers where you listed several acceptable marks.
 - **The false-correct rate** counts answers you marked as *not* acceptable that the grader nevertheless called `correct`, out of all answers where `correct` wasn't acceptable. This is usually the number worth acting on: anything above zero means the grader is letting wrong answers through. The fix is almost always a sharper sentence in the question's `evaluation` text, of the form "grade `incorrect` when the answer …", naming exactly the mistake it just accepted.
+- **flagged feedback** counts answers where the mark was fine but the wording wasn't. Flagged feedback never fails a run, which is why the sample report above still says "Eval passed". The section on checking the wording explains what gets flagged and what to do about it.
 
 A run with any mismatch finishes with exit code 1, so you can use it as a check in a script; that one sentence is all you need to know about it.
 
-The `tokens` line under the counts shows what the run spent: input tokens (with the cached share in brackets) and output tokens. It answers "what did this eval cost me?" and lets you roughly compare what two models charge for the same golden answers. The count covers the grading calls that succeeded.
+The `tokens` line under the counts shows what the run spent: input tokens (with the cached share in brackets) and output tokens. It answers "what did this eval cost me?" and lets you roughly compare what two models charge for the same golden answers. The count covers the grading and judging calls that succeeded.
+
+## Check the wording, not just the mark
+
+Your students never see the mark on its own. They read the feedback sentence the AI wrote, and that sentence can be wrong while the mark is right: praise on an answer marked wrong, a question back instead of the correct answer, a reply in the wrong language, or your grading criteria quoted straight at the student.
+
+So after each grading, a second AI, the judge, reads that feedback and holds it against the grading instructions the grader itself was given. You author nothing extra for this. Your `evaluation` criteria and your shared instructions already say what good feedback looks like, and the judge simply checks whether the feedback followed them. It reports four kinds of problem:
+
+| Reported as | The feedback |
+| --- | --- |
+| `contradicts_verdict` | praises an answer marked wrong, or corrects one marked right |
+| `misstates_facts` | says something your grading criteria contradict |
+| `ignores_instructions` | breaks a rule your instructions gave, most often not naming the correct answer when the mark isn't `correct`, or writing in the wrong language |
+| `leaks_rubric` | quotes your grading criteria, or refers to "my instructions" |
+
+A flag never fails a run. It's a note about wording, and the fix is usually one sentence in the question's `evaluation` text or in your shared instructions ("when the mark is not `correct`, state the correct answer"), not a change to your golden answers.
+
+Judging is on by default and roughly doubles the number of AI calls, which is exactly what the run's size line tells you before it starts. Two flags control it:
+
+```bash
+# Marks only: half the AI calls, good for a quick check
+npx @novedu/cli eval ./sorting-quiz.eval.yaml --no-judge-feedback
+
+# Let a stronger model do the judging (recommended): both flags, always together
+npx @novedu/cli eval ./sorting-quiz.eval.yaml \
+  --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra
+```
+
+Without the judge flags, the judge uses the same model as the grader. A stronger model as the judge gives noticeably better notes, because a small model judging its own work tends to flag things that aren't really problems. The report always records which model judged, so two runs are only comparable when that model is the same.
+
+If the judge model itself keeps failing, judging stops after three failures in a row and you get one warning, while the grading finishes normally. Your marks are then still complete, and the report tells you which files went unchecked: anything the judge never looked at shows a dash in the Flagged column instead of a number, so "not checked" can't be mistaken for "all fine".
 
 ## Is the grading consistent?
 
@@ -144,6 +177,17 @@ npx @novedu/cli eval "./quizzes/**/*.eval.yaml"
 
 You get a per-file summary plus grand totals. A broken eval file is reported as invalid and the others still run, so one typo doesn't sink the batch.
 
+A whole course takes a while, and can run for up to several hours. How long depends on which model marks the answers and how busy it is that day, so treat any estimate as a guess rather than a schedule. Two things are worth knowing before you start one. The counter that shows how far along the run is only animates while you are watching a terminal window; if you send the output to a file, you get one line per finished file instead, which is enough to see that it is still working. And the report is written at the very end, so a run you interrupt saves nothing at all.
+
+Both are easy to live with if you take a course one folder at a time and give each its own report:
+
+```bash
+npx @novedu/cli eval "./quizzes/part-1/*.eval.yaml" --report part-1.md
+npx @novedu/cli eval "./quizzes/part-2/*.eval.yaml" --report part-2.md
+```
+
+Then an interruption costs you one part, not the whole course.
+
 ## Keep a readable report
 
 The terminal output is gone when you close the window. To keep a run, add the `--report` flag:
@@ -155,11 +199,11 @@ npx @novedu/cli eval "./quizzes/**/*.eval.yaml" --report eval-report.md
 It writes the run as a Markdown file: an overview table first, then details only for the answers that need your attention. Here is the overview of a real two-file run:
 
 ```markdown
-| File | Eval | Cases | Passed | Failed | Errored | Skipped | Unstable | False-correct | Tokens (in / cached / out) |
-| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| ✅ sorting-quiz.eval.yaml | `sorting-quiz-eval` | 3 | 3 | 0 | 0 | 0 | 0 | 0/2 (0.0%) | 2,312 / 2,240 / 2,099 |
-| ❌ mismatch.eval.yaml | `sorting-quiz-eval` | 3 | 2 | 1 | 0 | 0 | 0 | 0/2 (0.0%) | 2,312 / 2,240 / 2,181 |
-| **TOTAL** |  | **6** | **5** | **1** | **0** | **0** | **0** |  | **4,624 / 4,480 / 4,280** |
+| File | Eval | Cases | Passed | Failed | Errored | Skipped | Unstable | Flagged | False-correct | Tokens (in / cached / out) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| ✅ sorting-quiz.eval.yaml | `sorting-quiz-eval` | 3 | 3 | 0 | 0 | 0 | 0 | 1 | 0/2 (0.0%) | 3,908 / 2,240 / 2,432 |
+| ❌ mismatch.eval.yaml | `sorting-quiz-eval` | 3 | 2 | 1 | 0 | 0 | 0 | 0 | 0/2 (0.0%) | 3,908 / 2,240 / 2,514 |
+| **TOTAL** |  | **6** | **5** | **1** | **0** | **0** | **0** | **1** |  | **7,816 / 4,480 / 4,946** |
 ```
 
 Below the table, every disagreement gets its own section with the question, your golden answer, and the grader's feedback side by side, so you can judge on the spot whether the grader had a point:
@@ -184,7 +228,33 @@ Below the table, every disagreement gets its own section with the question, your
 > ungenau, um den **Bubble Sort** exakt zu beschreiben.
 ```
 
-Passing answers stay out of the details on purpose; a clean run produces a short, quiet file. The report is plain Markdown, so it reads well in your editor's preview, renders nicely on GitHub, and can sit next to the quiz in your repository or go to a colleague by mail. Keeping the report of the run you did before handing out a quiz also documents that you tested it.
+Anything the judge flagged gets its own **Flagged feedback** section at the end of each file: the question, your golden answer, the feedback exactly as the student would have read it, and one line per problem the judge found.
+
+```markdown
+### Flagged feedback
+
+#### `bubble-idea` #2
+
+**Question**
+
+> Erkläre in eigenen Worten, wie **Bubble Sort** ein Array von Zahlen
+> sortiert. Was passiert in einem einzelnen Durchlauf, und warum ist das
+> Array am Ende sortiert?
+
+**Golden answer**
+
+> Man sucht das kleinste Element im Array und tauscht es an die erste
+> Stelle, dann das zweitkleinste an die zweite, und so weiter.
+
+**Repeat #1 — `incorrect`**
+
+> Das ist leider nicht Bubble Sort. Überleg noch einmal: Was passiert,
+> wenn du immer nur zwei *benachbarte* Zahlen vergleichst?
+
+- `ignores_instructions` — The feedback asks a follow-up question instead of naming the correct answer, although the grading instructions require it when the verdict is not correct.
+```
+
+Those answers usually passed: it's the wording that needs work, not the mark. Passing answers with acceptable feedback stay out of the details on purpose; a clean run produces a short, quiet file. The report is plain Markdown, so it reads well in your editor's preview, renders nicely on GitHub, and can sit next to the quiz in your repository or go to a colleague by mail. Keeping the report of the run you did before handing out a quiz also documents that you tested it.
 
 ## How many answers do you need?
 
@@ -192,10 +262,10 @@ Three or four per question you care about is already useful: one clearly right, 
 
 ## What you tested is what you must publish
 
-A green run certifies the file **on your machine**. If your quiz is hosted in the app, upload the same file afterwards, otherwise the shared code keeps grading with the old criteria you just improved. Nothing else is stored anywhere: no eval file, no answer, and no mark is saved by a run.
+A green run certifies the file **on your machine**. If your quiz is hosted in the app, upload the same file afterwards, otherwise the shared code keeps grading with the old criteria you just improved. Nothing else is stored anywhere: no eval file, no answer, no mark, and no judgment is saved by a run.
 
 Two current limits: eval files are text-only, so photo answers can't be tested this way yet, and an eval file is not an activity: it never gets a code and students never see it.
 
 ## Ask an AI assistant instead
 
-With the Novedu skill installed in your AI coding assistant, you can say "write golden answers for my sorting quiz", "run the eval", or "explain these mismatches", and it drafts the file, runs the commands, and tells you which `evaluation` sentence to sharpen, so you never have to remember a flag. The introduction chapter on the Novedu CLI and its AI skill shows how to install that skill.
+With the Novedu skill installed in your AI coding assistant, you can say "write golden answers for my sorting quiz", "run the eval", "explain these mismatches", or "what did the judge flag?", and it drafts the file, runs the commands, and tells you which `evaluation` sentence to sharpen, so you never have to remember a flag. The introduction chapter on the Novedu CLI and its AI skill shows how to install that skill.

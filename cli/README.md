@@ -104,6 +104,11 @@ each one must get — and `eval` replays them through the **real grader**, then 
 what it actually did. This is the one command that both **runs the model** and needs
 you signed in (`novedu-cli login`); everything else about it is local.
 
+It checks **both halves** of a grading: your `expect` gates the **verdict**, and an LLM
+**feedback judge** audits the **feedback text** the student would have read — measured
+against the quiz's own grading prompt, so there is nothing extra to author. Flagged
+feedback is **reported, never a failure**.
+
 ```yaml
 # sorting-quiz.eval.yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
@@ -134,6 +139,13 @@ npx @novedu/cli eval ./sorting-quiz.eval.yaml --repeats 3
 npx @novedu/cli eval ./sorting-quiz.eval.yaml \
   --llm-provider "Azure Foundry" --llm-model gpt-5-mini
 
+# A strong judge over the quiz's own grader — the recommended pairing
+npx @novedu/cli eval ./sorting-quiz.eval.yaml \
+  --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra
+
+# Verdicts only: half the LLM calls, for a cheap smoke run
+npx @novedu/cli eval ./sorting-quiz.eval.yaml --no-judge-feedback
+
 # Machine-readable, for CI
 npx @novedu/cli eval ./sorting-quiz.eval.yaml --json --out eval-report.json
 
@@ -163,14 +175,37 @@ npx @novedu/cli eval ./sorting-quiz.eval.yaml --report eval-report.md
   a broken file instead of aborting the batch. `--json` / `--out` always carry the
   same batch shape `{ files: [...], passed, totals }`, single file or not — `passed`
   is the exit-code verdict, per batch and per file.
+- **The feedback judge.** After each successful grading, an LLM reads the feedback the
+  grader wrote and checks it against **that grading's own system prompt** — the course
+  rules and the platform frame already in it. It reports four kinds of problem:
+  `contradicts_verdict` (praise on a wrong answer, or vice versa), `misstates_facts`,
+  `ignores_instructions` (most commonly: not stating the correct answer when the verdict
+  is not `correct`, or the wrong language), and `leaks_rubric` (quoting the grading
+  criteria at the student). Flags show as **`flagged feedback`** in the terminal report,
+  a **Flagged** column plus a **"Flagged feedback"** section in the Markdown report, and
+  `totals.feedbackFlagged` / `repeats[].judge.issues` in the JSON. They never change the
+  exit code.
+- **Choosing the judge.** By default the judge runs on the same model as the grader.
+  `--judge-llm-provider` + `--judge-llm-model` (both or neither) point it at another one,
+  which is the **recommended** setup: a strong judge over a smaller grader finds real
+  problems, while a small model judging itself mostly produces noise. `--no-judge-feedback`
+  turns judging off and halves the LLM calls; combining the two is rejected as
+  contradictory. Because judging roughly doubles the cost, the run's scope line says so
+  up front: `27 case(s) × 3 repeat(s) = 81 grading + 81 judge call(s)`.
+- **If the judge itself fails**, the run **degrades instead of aborting**: after three
+  consecutive judge failures it stops judging (one warning on stderr) and finishes the
+  grading normally. Your verdict results are complete; the feedback simply was not
+  audited: files that judged nothing show an em dash in the Flagged column rather than a
+  `0`, so "unchecked" never reads as "clean".
 - **`--report <file.md>`** additionally writes a readable **Markdown** report — an
   overview table over the files, then the question, the golden answer and the grader's
-  feedback for every mismatched, errored or unstable case (passing cases stay in the
+  feedback for every mismatched, errored or unstable case, plus the "Flagged feedback"
+  section (passing, unflagged cases stay in the
   JSON). It composes with `--json` / `--out` and leaves stdout untouched.
 - **Token totals.** The reports show what a run cost —
-  `tokens: 15,420 in (12,300 cached) / 2,810 out` — summed over the grading calls that
-  **succeeded**, so it is a lower bound (a retried or failed call reports nothing), and
-  nothing at all is printed when the server reports no usage.
+  `tokens: 15,420 in (12,300 cached) / 2,810 out` — summed over the grading **and** judge
+  calls that **succeeded**, so it is a lower bound (a retried or failed call reports
+  nothing), and nothing at all is printed when the server reports no usage.
 - **Failure handling**: a 5xx or network hiccup is retried (4 attempts, linear
   backoff); any 4xx is terminal; an auth failure aborts the run with one message; and
   three consecutive errored cases trip a circuit breaker so a down server fails fast.

@@ -168,9 +168,10 @@ async function resolveThreadOwnership(
 //     the threadId was issued (lib/thread-token.ts).
 //  4. AGENT — each module RUNS exactly one agent (codeModules[module].runtime
 //     .agentId); any other agent id 404s, so the registered-but-internal
-//     `quizEvaluator` grader is never reachable through this web route. (Its
-//     only other caller is the teacher-only bearer route /api/eval/grade, which
-//     brings its own system prompt — docs/cli-eval.md.)
+//     `quizEvaluator` grader and `evalJudge` feedback judge are never reachable
+//     through this web route. (Their only other callers are the teacher-only
+//     bearer routes /api/eval/grade and /api/eval/judge, which bring their own
+//     system prompts — docs/cli-eval.md.)
 //
 // The lone exception is GET `/info`: runtime metadata (the agent registry +
 // capabilities) with no chat data, gated by AUTHENTICATION ALONE — the teacher's
@@ -235,8 +236,9 @@ async function handler(req: Request): Promise<Response> {
   }
 
   // AGENT: each module runs exactly one agent; any other id 404s, so the
-  // registered-but-internal `quizEvaluator` grader stays unreachable from the
-  // web (the teacher-only /api/eval/grade is its one other caller).
+  // registered-but-internal `quizEvaluator` grader and `evalJudge` feedback
+  // judge stay unreachable from the web (the teacher-only /api/eval/grade and
+  // /api/eval/judge are their one other caller each).
   if (runtimeRequest.agentId !== def.runtime.agentId) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }

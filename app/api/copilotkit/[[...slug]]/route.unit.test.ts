@@ -281,6 +281,15 @@ describe("quiz module (reached via a quiz-module code)", () => {
     expect(getLocalAgents).not.toHaveBeenCalled();
   });
 
+  it("404s a quiz-module request targeting evalJudge (the judge is never web-reachable)", async () => {
+    // The second registered-but-internal agent (docs/cli-eval.md): its ONE caller is the
+    // teacher-only bearer route POST /api/eval/judge.
+    const threadId = crypto.randomUUID();
+    const res = await POST(runRequest({ threadId, token: token(threadId), agent: "evalJudge" }));
+    expect(res.status).toBe(404);
+    expect(getLocalAgents).not.toHaveBeenCalled();
+  });
+
   it("forwards the runtime status when buildRequestContext fails (e.g. quiz load 502)", async () => {
     buildRequestContext.mockResolvedValue({ ok: false, status: 502, message: "quiz unavailable" });
     const threadId = crypto.randomUUID();

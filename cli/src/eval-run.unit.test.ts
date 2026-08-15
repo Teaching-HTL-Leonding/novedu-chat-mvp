@@ -1,11 +1,23 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import type { EvalCheckOk } from "@/lib/eval-validate";
-import { batchPassed, type GradeResult, runEval, summarizeBatch } from "./eval-run";
+import { FEEDBACK_JUDGE_CRITERIA, FEEDBACK_JUDGE_SYSTEM } from "@/lib/quiz-feedback-judge";
+import {
+  batchPassed,
+  createJudgeBreaker,
+  type GradeResult,
+  type JudgeFn,
+  type JudgeResult,
+  runEval,
+  summarizeBatch,
+} from "./eval-run";
 
 // The pure runner over a fake GradeFn: flattening, repeats, list-expect membership,
 // the majority/tie rule, case-verdict totals, the confusion matrix, the false-correct
-// rate, an errored case continuing, the auth abort and the circuit breaker.
+// rate, an errored case continuing, the auth abort and the circuit breaker — plus the
+// FEEDBACK JUDGE layered on top: the any-repeat flag rule, judging against the repeat's
+// OWN verdict, judge errors staying isolated from the case status, and the run-wide
+// degrade breaker that stops judging without touching the grading half.
 
 /** A checked eval built inline — the runner only reads these three parts. */
 function checked(
@@ -63,6 +75,15 @@ const okWithUsage = (
   verdict: "correct" | "partial" | "incorrect",
   usage: { input: number; cachedInput: number; output: number },
 ): GradeResult => ({ ok: true, verdict, feedback: `graded ${verdict}`, usage });
+
+/** A judge that finds nothing — the "this feedback is fine" answer. */
+const cleanJudge: JudgeFn = async () => ({ ok: true, issues: [] });
+
+/** A judge that always flags, so the flag plumbing is exercised deterministically. */
+const flaggingJudge: JudgeFn = async () => ({
+  ok: true,
+  issues: [{ criterion: "ignores_instructions", note: "no correct answer stated" }],
+});
 
 describe("quiz eval runner — flattening and verdicts", () => {
   it("flattens questions × answers into cases and passes each its own grading prompt", async () => {
@@ -349,6 +370,295 @@ describe("quiz eval runner — report metrics", () => {
   });
 });
 
+describe("quiz eval runner — the feedback judge", () => {
+  it("judges every graded repeat with the platform prompt, taxonomy and its OWN verdict", async () => {
+    const judge = vi.fn(cleanJudge);
+    const verdicts: ("correct" | "partial")[] = ["correct", "partial"];
+    let call = 0;
+
+    const result = await runEval(
+      "quiz",
+      checked([{ id: "q1", answers: [{ expect: ["correct", "partial"], answer: "my answer" }] }]),
+      {
+        grade: async () => ok(verdicts[call++] ?? "correct"),
+        judge,
+        repeats: 2,
+        llm: LLM,
+        retry: NO_SLEEP,
+      },
+    );
+
+    expect(judge).toHaveBeenCalledTimes(2);
+    for (const [request] of judge.mock.calls) {
+      expect(request.system).toBe(FEEDBACK_JUDGE_SYSTEM);
+      expect(request.criteria).toEqual(FEEDBACK_JUDGE_CRITERIA);
+      // The grading prompt, the golden answer and the feedback all reach the judge.
+      expect(request.subject).toContain("system for q1");
+      expect(request.subject).toContain("my answer");
+    }
+    // Each repeat is judged against the verdict IT got — not the case majority, which
+    // would make an outvoted repeat's perfectly consistent feedback look contradictory.
+    expect(judge.mock.calls[0]?.[0].subject).toContain("=== The grader's verdict ===\ncorrect");
+    expect(judge.mock.calls[1]?.[0].subject).toContain("=== The grader's verdict ===\npartial");
+    expect(result.judging).toBe("on");
+  });
+
+  it("flags a case when ANY repeat collected an issue — no majority vote", async () => {
+    let call = 0;
+    const judge: JudgeFn = async () =>
+      call++ === 1
+        ? { ok: true, issues: [{ criterion: "leaks_rubric", note: "quotes the rubric" }] }
+        : { ok: true, issues: [] };
+
+    const result = await runEval(
+      "quiz",
+      checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
+      { grade: async () => ok("correct"), judge, repeats: 3, llm: LLM, retry: NO_SLEEP },
+    );
+
+    // One bad feedback out of three observations is exactly the --repeats signal wanted.
+    expect(result.cases[0]?.feedbackFlagged).toBe(true);
+    expect(result.totals.feedbackFlagged).toBe(1);
+    expect(result.cases[0]?.repeats.map((row) => row.judge?.issues.length)).toEqual([0, 1, 0]);
+    // …and it changes NOTHING about the verdict half of the report.
+    expect(result.totals).toMatchObject({ passed: 1, failed: 0, errored: 0 });
+  });
+
+  it("records NO judge fields at all when judging is off", async () => {
+    const result = await runEval(
+      "quiz",
+      checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
+      { grade: async () => ok("correct"), llm: LLM, retry: NO_SLEEP },
+    );
+
+    expect(result.judging).toBe("off");
+    expect(result.totals).toMatchObject({ feedbackFlagged: 0, judgeErrored: 0 });
+    expect(result.cases[0]?.feedbackFlagged).toBe(false);
+    expect(result.cases[0]?.repeats[0]).not.toHaveProperty("judge");
+  });
+
+  it("keeps a failed judge call OUT of the case status, retrying it like a grading", async () => {
+    const judge = vi.fn(
+      async (): Promise<JudgeResult> => ({
+        ok: false,
+        retryable: true,
+        error: { message: "504 Gateway timeout" },
+      }),
+    );
+
+    const result = await runEval(
+      "quiz",
+      checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
+      {
+        grade: async () => ok("correct"),
+        judge,
+        llm: LLM,
+        retry: { attempts: 2, ...NO_SLEEP },
+      },
+    );
+
+    expect(judge).toHaveBeenCalledTimes(2); // retried like any 5xx
+    // Grading succeeded, so the case PASSES — a judge outage must never fail a rubric.
+    expect(result.totals).toMatchObject({ passed: 1, errored: 0, judgeErrored: 1 });
+    expect(result.cases[0]?.repeats[0]?.judgeError).toBe("504 Gateway timeout");
+    expect(result.cases[0]?.repeats[0]?.judge).toBeNull();
+  });
+
+  it("DEGRADES after 3 consecutive judge failures, finishing the grading half", async () => {
+    const judge = vi.fn(
+      async (): Promise<JudgeResult> => ({
+        ok: false,
+        retryable: false,
+        error: { message: "502" },
+      }),
+    );
+    const onJudgeDegraded = vi.fn();
+
+    const result = await runEval(
+      "quiz",
+      checked([
+        { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
+        { id: "q2", answers: [{ expect: "correct", answer: "b" }] },
+        { id: "q3", answers: [{ expect: "correct", answer: "c" }] },
+        { id: "q4", answers: [{ expect: "correct", answer: "d" }] },
+        { id: "q5", answers: [{ expect: "correct", answer: "e" }] },
+      ]),
+      {
+        grade: async () => ok("correct"),
+        judge,
+        onJudgeDegraded,
+        llm: LLM,
+        concurrency: 1,
+        retry: { attempts: 1, ...NO_SLEEP },
+      },
+    );
+
+    // Judging stopped after the third failure; q4/q5 were never judged.
+    expect(judge).toHaveBeenCalledTimes(3);
+    expect(onJudgeDegraded).toHaveBeenCalledTimes(1);
+    expect(result.judging).toBe("degraded");
+    // The GRADING half is untouched — that is the whole point of degrading over aborting.
+    expect(result.totals).toMatchObject({ cases: 5, passed: 5, errored: 0, skipped: 0 });
+    expect(result.aborted).toBeUndefined();
+    expect(result.totals.judgeErrored).toBe(3);
+  });
+
+  it("carries the degradation across the batch's remaining files", async () => {
+    const judge = vi.fn(
+      async (): Promise<JudgeResult> => ({
+        ok: false,
+        retryable: false,
+        error: { message: "502" },
+      }),
+    );
+    // The breaker is the COMMAND's, shared by every file of the run.
+    const judgeBreaker = createJudgeBreaker();
+    const onJudgeDegraded = vi.fn();
+    const options = {
+      grade: async () => ok("correct"),
+      judge,
+      judgeBreaker,
+      onJudgeDegraded,
+      llm: LLM,
+      concurrency: 1,
+      retry: { attempts: 1, ...NO_SLEEP },
+    };
+    const threeCases = checked([
+      { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
+      { id: "q2", answers: [{ expect: "correct", answer: "b" }] },
+      { id: "q3", answers: [{ expect: "correct", answer: "c" }] },
+    ]);
+
+    const first = await runEval("quiz", threeCases, options);
+    const second = await runEval("quiz", threeCases, options);
+
+    expect(first.judging).toBe("degraded");
+    // The SECOND file made no judge call at all — a down judge stops costing calls for
+    // the rest of the run, not once per file — and it says so rather than reporting "on".
+    expect(judge).toHaveBeenCalledTimes(3);
+    expect(onJudgeDegraded).toHaveBeenCalledTimes(1);
+    expect(second.judging).toBe("degraded");
+    expect(second.totals).toMatchObject({ passed: 3, feedbackFlagged: 0, judgeErrored: 0 });
+  });
+
+  it("sums judge tokens into the SAME usage bucket as the gradings", async () => {
+    const result = await runEval(
+      "quiz",
+      checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
+      {
+        grade: async () => okWithUsage("correct", { input: 100, cachedInput: 40, output: 7 }),
+        judge: async () => ({
+          ok: true,
+          issues: [],
+          usage: { input: 20, cachedInput: 5, output: 3 },
+        }),
+        llm: LLM,
+        retry: NO_SLEEP,
+      },
+    );
+
+    // One eval run is one cost — there is deliberately no separate judge bucket.
+    expect(result.totals.usage).toEqual({ input: 120, cachedInput: 45, output: 10 });
+    expect(result.cases[0]?.repeats[0]?.judge?.usage).toEqual({
+      input: 20,
+      cachedInput: 5,
+      output: 3,
+    });
+  });
+
+  it("never judges a repeat that produced no verdict, and still marks it unjudged", async () => {
+    const judge = vi.fn(cleanJudge);
+
+    const result = await runEval(
+      "quiz",
+      checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
+      {
+        grade: async (): Promise<GradeResult> => ({
+          ok: false,
+          retryable: false,
+          error: { message: "400" },
+        }),
+        judge,
+        llm: LLM,
+        retry: { attempts: 1, ...NO_SLEEP },
+      },
+    );
+
+    expect(judge).not.toHaveBeenCalled();
+    // ONE convention for a judged run: every repeat carries `judge`, and `null` means
+    // "no judgment" — so `judge === null` catches an errored grading too, not only a
+    // degraded one.
+    expect(result.cases[0]?.repeats[0]).toHaveProperty("judge", null);
+    expect(result.totals.judgeErrored).toBe(0);
+  });
+
+  it("abandons a judge call's remaining retries when the breaker trips mid-backoff", async () => {
+    // The real concurrent scenario: this call is waiting out its backoff when OTHER cases
+    // finish failing and trip the shared breaker. Its remaining attempts would otherwise
+    // burn the full budget against a judge the run has already given up on, so `sleep`
+    // here stands in for those other workers.
+    const judge = vi.fn(
+      async (): Promise<JudgeResult> => ({ ok: false, retryable: true, error: { message: "504" } }),
+    );
+    const judgeBreaker = createJudgeBreaker();
+
+    const result = await runEval(
+      "quiz",
+      checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
+      {
+        grade: async () => ok("correct"),
+        judge,
+        judgeBreaker,
+        llm: LLM,
+        retry: {
+          attempts: 4,
+          baseDelayMs: 0,
+          sleep: async () => {
+            judgeBreaker.stopped = true;
+          },
+        },
+      },
+    );
+
+    // The breaker tripped during the first backoff, so attempt 2 is the last one the
+    // call makes: two attempts instead of the full four.
+    expect(judge).toHaveBeenCalledTimes(2);
+    expect(result.cases[0]?.repeats[0]?.judgeError).toBe("504");
+  });
+
+  it("ticks progress only once a repeat's judge call is done, never before", async () => {
+    // The counter must not read "M/M" while minutes of judging are still to come.
+    const seen: string[] = [];
+
+    await runEval("quiz", checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]), {
+      grade: async () => ok("correct"),
+      judge: async () => {
+        seen.push("judge");
+        return { ok: true, issues: [] };
+      },
+      onProgress: () => seen.push("progress"),
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(seen).toEqual(["judge", "progress"]);
+  });
+
+  it("does not gate: a flagged file still passes the CI gate", async () => {
+    const result = await runEval(
+      "quiz",
+      checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
+      { grade: async () => ok("correct"), judge: flaggingJudge, llm: LLM, retry: NO_SLEEP },
+    );
+
+    const batch = summarizeBatch([{ source: "file:///a.yaml", status: "ok", result }]);
+    expect(batch.totals.feedbackFlagged).toBe(1);
+    expect(batch.passed).toBe(true);
+    expect(batchPassed(batch)).toBe(true);
+    expect(batch.files[0]?.passed).toBe(true);
+  });
+});
+
 describe("summarizeBatch", () => {
   it("sums graded totals and counts invalid files", async () => {
     const result = await runEval(
@@ -375,6 +685,8 @@ describe("summarizeBatch", () => {
       errored: 0,
       skipped: 0,
       unstable: 0,
+      feedbackFlagged: 0,
+      judgeErrored: 0,
       usage: { input: 0, cachedInput: 0, output: 0 },
     });
   });

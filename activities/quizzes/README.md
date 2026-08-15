@@ -472,8 +472,14 @@ wrong* ones, which is where a lenient `evaluation` shows up as a **false-correct
 in the report. The eval also makes rubric edits safe: re-run it after every change
 and you will see immediately whether you fixed one case and broke another.
 
-The full guide (report semantics, `--repeats`, comparing models, running a whole
-folder at once) is in [`../evals/README.md`](../evals/README.md).
+The same run also checks the **wording** your students would read, not just the verdict:
+a second AI reads each piece of feedback and reports where it breaks the instructions you
+already wrote — praise on a wrong answer, no correct answer given, the wrong language,
+your grading criteria quoted back at the student. You author nothing extra for this, and
+it never fails a run; add `--no-judge-feedback` to skip it and halve the cost.
+
+The full guide (report semantics, `--repeats`, feedback judging, comparing models,
+running a whole folder at once) is in [`../evals/README.md`](../evals/README.md).
 
 ### Common problems and how to fix them
 
