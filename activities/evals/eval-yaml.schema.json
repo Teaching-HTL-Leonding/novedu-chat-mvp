@@ -2,91 +2,190 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json",
   "$comment": "Generated from lib/eval-schema.ts by `npm run generate:schemas` — do not edit by hand.",
-  "title": "Grader Eval YAML",
-  "description": "Schema for a golden-answer eval: teacher-written student answers with the verdict each one must be graded with, replayed against a quiz's rubric by `novedu-cli eval`.",
-  "type": "object",
-  "properties": {
-    "id": {
-      "type": "string",
-      "maxLength": 128,
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
-      "description": "Stable identifier of this eval, shown in the run report. Letters, digits, dot, dash and underscore."
-    },
-    "target": {
-      "type": "string",
-      "minLength": 1,
-      "description": "The quiz YAML this eval grades against — a path relative to THIS file, or an absolute http(s) URL."
-    },
-    "questions": {
-      "minItems": 1,
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "question": {
-            "type": "string",
-            "minLength": 1,
-            "description": "The question id in the target quiz. For a question imported through quiz_files this is the namespaced \"<alias>/<id>\" form."
+  "title": "Eval YAML",
+  "description": "Schema for an eval file run by `novedu-cli eval`: either a golden-answer eval of a quiz rubric (teacher-written student answers with the verdict each must be graded with) or a tutor eval (scripted conversations whose next tutor response is generated and judged).",
+  "oneOf": [
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "description": "The eval kind. Omit it (or write \"quiz\") for a golden-answer eval of a quiz rubric.",
+          "type": "string",
+          "const": "quiz"
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "description": "Stable identifier of this eval, shown in the run report. Letters, digits, dot, dash and underscore."
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The quiz YAML this eval grades against — a path relative to THIS file, or an absolute http(s) URL."
+        },
+        "questions": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "question": {
+                "type": "string",
+                "minLength": 1,
+                "description": "The question id in the target quiz. For a question imported through quiz_files this is the namespaced \"<alias>/<id>\" form."
+              },
+              "answers": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "expect": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": [
+                            "correct",
+                            "partial",
+                            "incorrect"
+                          ]
+                        },
+                        {
+                          "minItems": 1,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "correct",
+                              "partial",
+                              "incorrect"
+                            ]
+                          }
+                        }
+                      ],
+                      "description": "The verdict this answer must be graded with: one of \"correct\", \"partial\", \"incorrect\", or a non-empty list of acceptable verdicts (e.g. [correct, partial]) when more than one grading is defensible."
+                    },
+                    "answer": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "The student answer to grade, verbatim. Written as a YAML block scalar (|) for multi-line answers."
+                    }
+                  },
+                  "required": [
+                    "expect",
+                    "answer"
+                  ],
+                  "additionalProperties": false
+                },
+                "description": "The golden answers for this question — at least one."
+              }
+            },
+            "required": [
+              "question",
+              "answers"
+            ],
+            "additionalProperties": false
           },
-          "answers": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "expect": {
+          "description": "The evaluated questions — at least one, each with its golden answers."
+        }
+      },
+      "required": [
+        "id",
+        "target",
+        "questions"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "const": "tutor",
+          "description": "The eval kind. \"tutor\" evaluates a tutor's next response in a conversation."
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "description": "Stable identifier of this eval, shown in the run report. Letters, digits, dot, dash and underscore."
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The tutor YAML this eval runs against — a path relative to THIS file, or an absolute http(s) URL."
+        },
+        "conversations": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "description": "Optional short label for this case, used as its stable heading in the run report.",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128
+              },
+              "grading_instructions": {
+                "description": "Optional extra expectations for THIS case, judged alongside the tutor's own system prompt (e.g. \"the response must not contain a complete working loop\").",
+                "type": "string",
+                "minLength": 1
+              },
+              "conversation": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
                   "anyOf": [
                     {
-                      "type": "string",
-                      "enum": [
-                        "correct",
-                        "partial",
-                        "incorrect"
-                      ]
+                      "type": "object",
+                      "properties": {
+                        "student": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "What the student says in this turn."
+                        }
+                      },
+                      "required": [
+                        "student"
+                      ],
+                      "additionalProperties": false
                     },
                     {
-                      "minItems": 1,
-                      "type": "array",
-                      "items": {
-                        "type": "string",
-                        "enum": [
-                          "correct",
-                          "partial",
-                          "incorrect"
-                        ]
-                      }
+                      "type": "object",
+                      "properties": {
+                        "tutor": {
+                          "type": "string",
+                          "minLength": 1,
+                          "description": "What the tutor already said in this turn — scripted by the teacher, not generated."
+                        }
+                      },
+                      "required": [
+                        "tutor"
+                      ],
+                      "additionalProperties": false
                     }
-                  ],
-                  "description": "The verdict this answer must be graded with: one of \"correct\", \"partial\", \"incorrect\", or a non-empty list of acceptable verdicts (e.g. [correct, partial]) when more than one grading is defensible."
+                  ]
                 },
-                "answer": {
-                  "type": "string",
-                  "minLength": 1,
-                  "description": "The student answer to grade, verbatim. Written as a YAML block scalar (|) for multi-line answers."
-                }
-              },
-              "required": [
-                "expect",
-                "answer"
-              ],
-              "additionalProperties": false
+                "description": "The scripted exchange, in order: `student:` and `tutor:` turns. It must END with a `student:` turn — that is the message the model under test answers."
+              }
             },
-            "description": "The golden answers for this question — at least one."
-          }
-        },
-        "required": [
-          "question",
-          "answers"
-        ],
-        "additionalProperties": false
+            "required": [
+              "conversation"
+            ],
+            "additionalProperties": false
+          },
+          "description": "The evaluated conversations — at least one; each one is a case."
+        }
       },
-      "description": "The evaluated questions — at least one, each with its golden answers."
+      "required": [
+        "kind",
+        "id",
+        "target",
+        "conversations"
+      ],
+      "additionalProperties": false
     }
-  },
-  "required": [
-    "id",
-    "target",
-    "questions"
-  ],
-  "additionalProperties": false
+  ]
 }

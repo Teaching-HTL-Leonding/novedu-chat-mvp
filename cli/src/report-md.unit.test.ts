@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import type { EvalBatchFileInput, EvalCaseResult, EvalRunResult } from "./eval-run";
+import type {
+  EvalBatchFileInput,
+  EvalQuizCaseResult,
+  EvalRunResult,
+  EvalTutorCaseResult,
+} from "./eval-run";
 import { summarizeBatch } from "./eval-run";
 import { renderEvalMarkdownReport } from "./report-md";
 
@@ -23,7 +28,7 @@ const META = {
 /** The recommended pairing: a strong judge over the quiz's own grader. */
 const JUDGE_PAIR = { provider: "Azure Foundry", model: "gpt-5.6-terra" };
 
-function evalCase(overrides: Partial<EvalCaseResult> & Pick<EvalCaseResult, "questionId">) {
+function evalCase(overrides: Partial<EvalQuizCaseResult> & Pick<EvalQuizCaseResult, "questionId">) {
   return {
     answerIndex: 0,
     expected: ["correct"],
@@ -33,13 +38,14 @@ function evalCase(overrides: Partial<EvalCaseResult> & Pick<EvalCaseResult, "que
     feedbackFlagged: false,
     repeats: [{ repeatIndex: 0, got: "correct", feedback: "well done" }],
     ...overrides,
-  } as EvalCaseResult;
+  } as EvalQuizCaseResult;
 }
 
 function runResult(overrides: Partial<EvalRunResult> = {}): EvalRunResult {
   const cases = overrides.cases ?? [evalCase({ questionId: "q1" })];
   return {
     id: "demo-eval",
+    kind: "quiz",
     target: "file:///quiz.yaml",
     llm: { provider: "SCCH", model: "gemma-4" },
     judging: "off",
@@ -52,7 +58,9 @@ function runResult(overrides: Partial<EvalRunResult> = {}): EvalRunResult {
       unstable: cases.filter((c) => c.unstable).length,
       feedbackFlagged: cases.filter((c) => c.feedbackFlagged).length,
       judgeErrored: cases.reduce(
-        (sum, c) => sum + c.repeats.filter((row) => row.judgeError !== undefined).length,
+        (sum, c) =>
+          sum +
+          c.repeats.filter((row: { judgeError?: string }) => row.judgeError !== undefined).length,
         0,
       ),
       repeats: 1,

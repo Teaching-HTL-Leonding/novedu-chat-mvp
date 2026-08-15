@@ -165,6 +165,7 @@ describe("formatWritingResult", () => {
 function runResult(usage: { input: number; cachedInput: number; output: number }): EvalRunResult {
   return {
     id: "demo-eval",
+    kind: "quiz",
     target: "file:///quiz.yaml",
     llm: { provider: "SCCH", model: "gemma-4" },
     judging: "off",

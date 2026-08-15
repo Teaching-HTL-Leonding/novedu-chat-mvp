@@ -16,6 +16,7 @@ import {
   type EvalUsage,
   type GradeFn,
   type JudgeFn,
+  type RespondFn,
   runEval,
   summarizeBatch,
 } from "../eval-run";
@@ -26,18 +27,23 @@ import { resolveServerUrl } from "../server-url";
 import { cliVersion } from "../version";
 import { toUrl } from "./validate";
 
-// `novedu-cli eval <evalPathOrUrl...>` — replay a file of GOLDEN ANSWERS against the
-// real quiz grader and report how the rubric performed (docs/cli-eval.md).
+// `novedu-cli eval <evalPathOrUrl...>` — run an eval file against the real activity path
+// and report what the model actually did (docs/cli-eval.md). Two kinds, inferred from
+// each file's own `kind` (there is no flag, and a batch may MIX them):
 //
-// The split is deliberate: the CLI assembles every grading prompt OFFLINE (through the
-// app's own `dumpPrompts` seam, so unpushed local YAML works), and the server grades
-// ONE answer per request on the exact production path. The fan-out, the retries, the
-// majority vote and the whole report live here; the endpoint stays stateless.
+//   quiz  — replay GOLDEN ANSWERS through the real grader (`POST /api/eval/grade`).
+//   tutor — generate the next tutor turn of each scripted CONVERSATION
+//           (`POST /api/eval/respond`) and let the judge check it.
 //
-// The FEEDBACK JUDGE (on by default, `--no-judge-feedback` to skip) rides the same shape:
-// one `POST /api/eval/judge` per successfully graded repeat, auditing the grader's
-// feedback text for compliance with the very system prompt it graded under. It REPORTS
-// and never gates — a flagged feedback changes no exit code.
+// The split is deliberate: the CLI assembles every prompt OFFLINE (through the app's own
+// `dumpPrompts` seam, so unpushed local YAML works), and the server handles ONE case per
+// request on the exact production path. The fan-out, the retries, the majority vote and
+// the whole report live here; the endpoints stay stateless.
+//
+// The JUDGE (on by default, `--no-judge-feedback` to skip) rides the same shape for both
+// kinds: one `POST /api/eval/judge` per successful repeat, auditing that repeat's own
+// output for compliance with the very system prompt it ran under. It REPORTS and never
+// gates — a flag changes no exit code, for either kind.
 //
 // `eval` is a strict-mode reserved identifier, so every binding here is named
 // `registerEval` / `runEvalCommand` / `evalFile` — never `eval`.
@@ -215,6 +221,52 @@ function makeGradeFn(
 }
 
 /**
+ * The HTTP seam for ONE generated tutor turn, with the run's effective llm closed in —
+ * the tutor kind's sibling of {@link makeGradeFn}, sharing its failure classification
+ * exactly (5xx and network retryable, auth aborts the run, every other 4xx terminal).
+ */
+function makeRespondFn(
+  server: string | undefined,
+  llm: { provider: string; model: string },
+): RespondFn {
+  return async ({ system, tools, messages }) => {
+    const response = await performApiRequest({
+      server,
+      path: "/api/eval/respond",
+      method: "POST",
+      body: { llm, system, tools: [...tools], messages: messages.map((m) => ({ ...m })) },
+      quiet: true,
+    });
+    if (response.ok) {
+      const payload = response.payload as { text?: unknown; usage?: unknown } | null;
+      if (typeof payload?.text === "string" && payload.text !== "") {
+        const usage = parseUsage(payload?.usage);
+        return { ok: true, text: payload.text, ...(usage ? { usage } : {}) };
+      }
+      // Same reasoning as the grade seam: a 2xx that is not a response almost always
+      // means the server does not OFFER the endpoint, not that generation went wrong.
+      return {
+        ok: false,
+        retryable: false,
+        error: {
+          message:
+            "The server's response is not a generated tutor turn — it may not offer " +
+            "/api/eval/respond at all (does it run a Novedu version with tutor evals?). " +
+            "Check the target server, e.g. --server http://localhost:3000.",
+        },
+      };
+    }
+    return {
+      ok: false,
+      // No status ⇒ the request never reached the server (network) ⇒ worth retrying.
+      retryable: response.status === undefined || response.status >= 500,
+      ...(response.authFailed ? { auth: true as const } : {}),
+      error: response.error,
+    };
+  };
+}
+
+/**
  * The HTTP seam for ONE judge call, with the run's judge llm closed in. Mirrors
  * {@link makeGradeFn}'s failure classification, minus the auth branch: a judge failure
  * NEVER aborts the run — it degrades judging (see the runner's breaker) while the grading
@@ -347,9 +399,14 @@ function progressWriter(
  */
 function writeFileDone(label: string, result: EvalRunResult): void {
   const totals = result.totals;
+  const counts =
+    result.kind === "tutor"
+      ? `${totals.cases} conversation(s), ${totals.cases - totals.errored - totals.skipped} ok, ` +
+        `${totals.errored} errored`
+      : `${totals.cases} case(s), ${totals.passed} passed, ${totals.failed} failed, ` +
+        `${totals.errored} errored`;
   process.stderr.write(
-    `${label}: ${totals.cases} case(s), ${totals.passed} passed, ${totals.failed} failed, ` +
-      `${totals.errored} errored` +
+    `${label}: ${counts}` +
       (totals.skipped ? `, ${totals.skipped} skipped` : "") +
       // The renderers' shared rule: a count only means something once a judgment exists.
       (anyJudged(result) ? `, ${totals.feedbackFlagged} flagged` : "") +
@@ -437,15 +494,25 @@ export async function runEvalCommand(
   }
 
   {
-    const totalCases = [...checked.values()].reduce((sum, file) => sum + file.caseCount, 0);
-    const calls = totalCases * repeats;
     // A teacher about to fire hundreds of LLM calls should see the number FIRST — and
     // it anchors the progress counter that follows. Judging roughly DOUBLES the calls, so
-    // the scope line names both halves whenever it is on.
-    process.stderr.write(
-      `${totalCases} case(s) × ${repeats} repeat(s) = ${calls} grading` +
-        (judging ? ` + ${calls} judge call(s)\n` : " call(s)\n"),
-    );
+    // the scope line names both halves whenever it is on. A MIXED batch gets one line per
+    // kind: "case" and "conversation" are different units and adding them up would be a
+    // number nobody can act on.
+    const scope = (unit: string, generation: string, cases: number) => {
+      if (cases === 0) return;
+      const calls = cases * repeats;
+      process.stderr.write(
+        `${cases} ${unit}(s) × ${repeats} repeat(s) = ${calls} ${generation}` +
+          (judging ? ` + ${calls} judge call(s)\n` : " call(s)\n"),
+      );
+    };
+    const casesOf = (kind: "quiz" | "tutor") =>
+      [...checked.values()]
+        .filter((file) => file.kind === kind)
+        .reduce((sum, file) => sum + file.caseCount, 0);
+    scope("case", "grading", casesOf("quiz"));
+    scope("conversation", "generation", casesOf("tutor"));
   }
 
   // One advisory probe before the first grading call: is this CLI's frozen copy of the
@@ -471,22 +538,25 @@ export async function runEvalCommand(
     fileIndex += 1;
     const check = checked.get(file.source);
     if (!check) continue;
-    const quizLlm = { provider: check.quizDump.llm.provider, model: check.quizDump.llm.model };
-    const effective = override.llm ?? quizLlm;
-    // The judge falls back to the EFFECTIVE grading pair — a strong judge over a small
-    // grader is the realistic production pairing, but "same model as the grader" is the
-    // honest default when nobody said otherwise.
+    // The TARGET activity's own pair, whatever kind it is — the check already resolved it.
+    const activityLlm = { provider: check.llm.provider, model: check.llm.model };
+    const effective = override.llm ?? activityLlm;
+    // The judge falls back to the EFFECTIVE generation pair — a strong judge over a small
+    // model is the realistic production pairing, but "same model as the one under test"
+    // is the honest default when nobody said otherwise.
     const judgeLlm = judgeOverride.llm ?? effective;
     const llm: EvalRunLlm = {
       ...effective,
-      ...(override.llm ? { overrides: quizLlm } : {}),
+      ...(override.llm ? { overrides: activityLlm } : {}),
       ...(judging ? { judge: { ...judgeLlm, overridden: judgeOverride.llm !== undefined } } : {}),
     };
     const label =
       files.length > 1 ? `(${fileIndex}/${files.length}) ${check.evalFile.id}` : check.evalFile.id;
     const prefix = files.length > 1 ? `${label}: ` : "";
-    const result = await runEval("quiz", check, {
+    // The KIND comes from the file — there is no `--kind` flag, and a batch may mix them.
+    const result = await runEval(check.kind, check, {
       grade: makeGradeFn(options.server, effective),
+      respond: makeRespondFn(options.server, effective),
       ...(judging ? { judge: makeJudgeFn(options.server, judgeLlm) } : {}),
       judgeBreaker,
       onJudgeDegraded,
@@ -555,7 +625,7 @@ export function registerEval(program: Command): void {
   program
     .command("eval")
     .description(
-      "Grade a file of golden answers against its quiz's real rubric and report the result",
+      "Run an eval file (quiz golden answers, or tutor conversations) against the real activity path and report the result",
     )
     .argument(
       "<evalPathOrUrl...>",
@@ -565,27 +635,27 @@ export function registerEval(program: Command): void {
       "--server <url>",
       "Novedu server base URL (defaults to the NOVEDU_SERVER env var, then production)",
     )
-    .option("--concurrency <n>", "grading calls in flight per file", String(CONCURRENCY_DEFAULT))
-    .option("--repeats <n>", "grade every answer N times and take the majority verdict", "1")
+    .option("--concurrency <n>", "cases in flight per file", String(CONCURRENCY_DEFAULT))
+    .option("--repeats <n>", "run every case N times (quiz: take the majority verdict)", "1")
     .option(
       "--llm-provider <provider>",
-      'grade with this provider instead of the quiz\'s ("SCCH" or "Azure Foundry"; needs --llm-model)',
+      'run with this provider instead of the activity\'s ("SCCH" or "Azure Foundry"; needs --llm-model)',
     )
     .option(
       "--llm-model <model>",
-      "grade with this model instead of the quiz's (needs --llm-provider)",
+      "run with this model instead of the activity's (needs --llm-provider)",
     )
     .option(
       "--no-judge-feedback",
-      "skip the LLM audit of the grader's feedback (halves the LLM calls)",
+      "skip the LLM audit of what the model wrote (halves the LLM calls)",
     )
     .option(
       "--judge-llm-provider <provider>",
-      'judge the feedback with this provider ("SCCH" or "Azure Foundry"; needs --judge-llm-model)',
+      'judge with this provider ("SCCH" or "Azure Foundry"; needs --judge-llm-model)',
     )
     .option(
       "--judge-llm-model <model>",
-      "judge the feedback with this model instead of the grading one (needs --judge-llm-provider)",
+      "judge with this model instead of the one under test (needs --judge-llm-provider)",
     )
     .option("--json", "print the machine-readable batch report on stdout")
     .option("--out <file>", "additionally write the machine-readable batch report to a file")
@@ -597,7 +667,11 @@ Examples:
   # Evaluate one quiz's golden answers
   $ novedu-cli eval ./0010-welcome-quiz.eval.yaml
 
-  # A whole course part (quote the pattern so the CLI expands it, ** included)
+  # Check how a tutor answers a set of scripted conversations
+  $ novedu-cli eval ./loops-tutor.eval.yaml
+
+  # A whole course part — quiz and tutor evals may be mixed
+  # (quote the pattern so the CLI expands it, ** included)
   $ novedu-cli eval "./part-1/**/*.eval.yaml"
 
   # Measure grader stability: 3 runs per answer, majority verdict

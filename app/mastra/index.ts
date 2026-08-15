@@ -7,7 +7,7 @@ import { Observability } from "@mastra/observability";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "@/lib/azure-credential";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
-import { evalJudgeAgent } from "./eval-agents";
+import { evalJudgeAgent, evalTutorAgent } from "./eval-agents";
 import { quizDiscussionAgent, quizEvaluatorAgent } from "./quiz-agents";
 import { tutorAgent } from "./tutor-agent";
 import { usageExporter } from "./usage-exporter";
@@ -67,15 +67,17 @@ export const mastra = new Mastra({
   // through the runtime route); it is configured per request from the writing YAML
   // and has no write/edit tool, so it can never mutate the student's text.
   //
-  // `evalJudge` is the second internal-only agent: it audits a grader's FEEDBACK text
-  // for the teacher-only `POST /api/eval/judge` (docs/cli-eval.md). Like
-  // `quizEvaluator`, the runtime route never allows its id, so it is never
-  // web-reachable by students.
+  // `evalJudge` and `evalTutor` are the other internal-only agents: the first audits a
+  // model's output for the teacher-only `POST /api/eval/judge`, the second generates the
+  // ONE tutor turn a tutor eval measures for `POST /api/eval/respond`
+  // (docs/cli-eval.md). Like `quizEvaluator`, the runtime route never allows their ids,
+  // so neither is ever web-reachable by students.
   agents: {
     tutor: tutorAgent,
     quizDiscussion: quizDiscussionAgent,
     quizEvaluator: quizEvaluatorAgent,
     evalJudge: evalJudgeAgent,
+    evalTutor: evalTutorAgent,
     writing: writingAgent,
   },
   // Persistent storage is Azure SQL (Microsoft SQL Server) via `@mastra/mssql`,

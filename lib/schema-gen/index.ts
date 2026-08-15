@@ -113,9 +113,9 @@ export const schemaRegistry: readonly SchemaRegistryEntry[] = [
     root: EvalYamlSchema,
     outPath: "activities/evals/eval-yaml.schema.json",
     id: `${RAW_BASE}/evals/eval-yaml.schema.json`,
-    title: "Grader Eval YAML",
+    title: "Eval YAML",
     description:
-      "Schema for a golden-answer eval: teacher-written student answers with the verdict each one must be graded with, replayed against a quiz's rubric by `novedu-cli eval`.",
+      "Schema for an eval file run by `novedu-cli eval`: either a golden-answer eval of a quiz rubric (teacher-written student answers with the verdict each must be graded with) or a tutor eval (scripted conversations whose next tutor response is generated and judged).",
     sourceFile: "lib/eval-schema.ts",
   },
 ] as const;

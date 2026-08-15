@@ -5,9 +5,14 @@ import { FEEDBACK_JUDGE_CRITERIA, FEEDBACK_JUDGE_SYSTEM } from "@/lib/quiz-feedb
 import {
   batchPassed,
   createJudgeBreaker,
+  type EvalQuizCaseResult,
+  type EvalRunOptions,
+  type EvalRunResult,
+  type EvalTutorCaseResult,
   type GradeResult,
   type JudgeFn,
   type JudgeResult,
+  type RespondResult,
   runEval,
   summarizeBatch,
 } from "./eval-run";
@@ -25,6 +30,8 @@ function checked(
 ): EvalCheckOk {
   return {
     ok: true,
+    kind: "quiz",
+    llm: { provider: "SCCH", model: "test-model" },
     evalFile: {
       id: "fake-eval",
       target: "./quiz.yaml",
@@ -61,6 +68,22 @@ function checked(
   } as unknown as EvalCheckOk;
 }
 
+/**
+ * The quiz runner's result, with its cases narrowed to the quiz arm — every assertion
+ * below reads `expected` / `verdict` / `questionId`, which only that arm carries.
+ */
+type QuizRunResult = Omit<EvalRunResult, "cases" | "mismatches"> & {
+  cases: EvalQuizCaseResult[];
+  mismatches: EvalQuizCaseResult[];
+};
+
+async function runQuizEval(
+  checkedFile: EvalCheckOk,
+  options: EvalRunOptions,
+): Promise<QuizRunResult> {
+  return (await runEval("quiz", checkedFile, options)) as QuizRunResult;
+}
+
 const LLM = { provider: "SCCH", model: "test-model" };
 const NO_SLEEP = { baseDelayMs: 0, sleep: async () => {} };
 
@@ -89,8 +112,7 @@ describe("quiz eval runner — flattening and verdicts", () => {
   it("flattens questions × answers into cases and passes each its own grading prompt", async () => {
     const grade = vi.fn(async (_request: { system: string; answer: string }) => ok("correct"));
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([
         { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
         {
@@ -122,8 +144,7 @@ describe("quiz eval runner — flattening and verdicts", () => {
   it("accepts any member of a list expect and normalizes the set canonically", async () => {
     const grade = vi.fn(async () => ok("incorrect"));
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: ["incorrect", "partial"], answer: "a" }] }]),
       { grade, llm: LLM, retry: NO_SLEEP },
     );
@@ -137,8 +158,7 @@ describe("quiz eval runner — flattening and verdicts", () => {
   });
 
   it("fails a case whose verdict is outside the expected set", async () => {
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "incorrect", answer: "a" }] }]),
       { grade: async () => ok("correct"), llm: LLM, retry: NO_SLEEP },
     );
@@ -155,8 +175,7 @@ describe("quiz eval runner — repeats and the majority vote", () => {
     let call = 0;
     const grade = async () => ok(verdicts[call++] ?? "correct");
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       { grade, repeats: 3, llm: LLM, retry: NO_SLEEP },
     );
@@ -173,16 +192,14 @@ describe("quiz eval runner — repeats and the majority vote", () => {
     let call = 0;
     const grade = async () => ok(alternating[call++ % 2] ?? "correct");
 
-    const both = await runEval(
-      "quiz",
+    const both = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: ["correct", "partial"], answer: "a" }] }]),
       { grade, repeats: 2, llm: LLM, retry: NO_SLEEP },
     );
     expect(both.totals.passed).toBe(1);
 
     call = 0;
-    const one = await runEval(
-      "quiz",
+    const one = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       { grade, repeats: 2, llm: LLM, retry: NO_SLEEP },
     );
@@ -198,8 +215,7 @@ describe("quiz eval runner — failure handling", () => {
         : ok("correct"),
     );
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([
         { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
         { id: "q2", answers: [{ expect: "correct", answer: "b" }] },
@@ -222,7 +238,7 @@ describe("quiz eval runner — failure handling", () => {
       }),
     );
 
-    await runEval("quiz", checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]), {
+    await runQuizEval(checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]), {
       grade,
       llm: LLM,
       retry: { attempts: 4, ...NO_SLEEP },
@@ -241,8 +257,7 @@ describe("quiz eval runner — failure handling", () => {
       }),
     );
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([
         { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
         { id: "q2", answers: [{ expect: "correct", answer: "b" }] },
@@ -272,8 +287,7 @@ describe("quiz eval runner — failure handling", () => {
       }),
     );
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([
         { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
         { id: "q2", answers: [{ expect: "correct", answer: "b" }] },
@@ -298,8 +312,7 @@ describe("quiz eval runner — report metrics", () => {
       ok(request.answer === "wrong-but-accepted" ? "correct" : "incorrect"),
     );
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([
         {
           id: "q1",
@@ -323,8 +336,7 @@ describe("quiz eval runner — report metrics", () => {
   });
 
   it("records the effective llm, marking an override", async () => {
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       {
         grade: async () => ok("correct"),
@@ -347,8 +359,7 @@ describe("quiz eval runner — report metrics", () => {
   it("reports live progress over grading CALLS", async () => {
     const seen: number[] = [];
 
-    await runEval(
-      "quiz",
+    await runQuizEval(
       checked([
         { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
         { id: "q2", answers: [{ expect: "correct", answer: "b" }] },
@@ -376,8 +387,7 @@ describe("quiz eval runner — the feedback judge", () => {
     const verdicts: ("correct" | "partial")[] = ["correct", "partial"];
     let call = 0;
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: ["correct", "partial"], answer: "my answer" }] }]),
       {
         grade: async () => ok(verdicts[call++] ?? "correct"),
@@ -410,8 +420,7 @@ describe("quiz eval runner — the feedback judge", () => {
         ? { ok: true, issues: [{ criterion: "leaks_rubric", note: "quotes the rubric" }] }
         : { ok: true, issues: [] };
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       { grade: async () => ok("correct"), judge, repeats: 3, llm: LLM, retry: NO_SLEEP },
     );
@@ -425,8 +434,7 @@ describe("quiz eval runner — the feedback judge", () => {
   });
 
   it("records NO judge fields at all when judging is off", async () => {
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       { grade: async () => ok("correct"), llm: LLM, retry: NO_SLEEP },
     );
@@ -446,8 +454,7 @@ describe("quiz eval runner — the feedback judge", () => {
       }),
     );
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       {
         grade: async () => ok("correct"),
@@ -474,8 +481,7 @@ describe("quiz eval runner — the feedback judge", () => {
     );
     const onJudgeDegraded = vi.fn();
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([
         { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
         { id: "q2", answers: [{ expect: "correct", answer: "b" }] },
@@ -529,8 +535,8 @@ describe("quiz eval runner — the feedback judge", () => {
       { id: "q3", answers: [{ expect: "correct", answer: "c" }] },
     ]);
 
-    const first = await runEval("quiz", threeCases, options);
-    const second = await runEval("quiz", threeCases, options);
+    const first = await runQuizEval(threeCases, options);
+    const second = await runQuizEval(threeCases, options);
 
     expect(first.judging).toBe("degraded");
     // The SECOND file made no judge call at all — a down judge stops costing calls for
@@ -542,8 +548,7 @@ describe("quiz eval runner — the feedback judge", () => {
   });
 
   it("sums judge tokens into the SAME usage bucket as the gradings", async () => {
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       {
         grade: async () => okWithUsage("correct", { input: 100, cachedInput: 40, output: 7 }),
@@ -569,8 +574,7 @@ describe("quiz eval runner — the feedback judge", () => {
   it("never judges a repeat that produced no verdict, and still marks it unjudged", async () => {
     const judge = vi.fn(cleanJudge);
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       {
         grade: async (): Promise<GradeResult> => ({
@@ -602,8 +606,7 @@ describe("quiz eval runner — the feedback judge", () => {
     );
     const judgeBreaker = createJudgeBreaker();
 
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       {
         grade: async () => ok("correct"),
@@ -630,7 +633,7 @@ describe("quiz eval runner — the feedback judge", () => {
     // The counter must not read "M/M" while minutes of judging are still to come.
     const seen: string[] = [];
 
-    await runEval("quiz", checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]), {
+    await runQuizEval(checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]), {
       grade: async () => ok("correct"),
       judge: async () => {
         seen.push("judge");
@@ -645,8 +648,7 @@ describe("quiz eval runner — the feedback judge", () => {
   });
 
   it("does not gate: a flagged file still passes the CI gate", async () => {
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       { grade: async () => ok("correct"), judge: flaggingJudge, llm: LLM, retry: NO_SLEEP },
     );
@@ -661,8 +663,7 @@ describe("quiz eval runner — the feedback judge", () => {
 
 describe("summarizeBatch", () => {
   it("sums graded totals and counts invalid files", async () => {
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       { grade: async () => ok("correct"), llm: LLM, retry: NO_SLEEP },
     );
@@ -692,13 +693,11 @@ describe("summarizeBatch", () => {
   });
 
   it("stamps the CI verdict on the batch and on every file", async () => {
-    const green = await runEval(
-      "quiz",
+    const green = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       { grade: async () => ok("correct"), llm: LLM, retry: NO_SLEEP },
     );
-    const red = await runEval(
-      "quiz",
+    const red = await runQuizEval(
       checked([{ id: "q2", answers: [{ expect: "incorrect", answer: "b" }] }]),
       { grade: async () => ok("correct"), llm: LLM, retry: NO_SLEEP },
     );
@@ -724,8 +723,7 @@ describe("summarizeBatch", () => {
 
   it("sums token usage across files and tolerates calls that reported none", async () => {
     let call = 0;
-    const withUsage = await runEval(
-      "quiz",
+    const withUsage = await runQuizEval(
       checked([
         { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
         { id: "q2", answers: [{ expect: "correct", answer: "b" }] },
@@ -752,8 +750,7 @@ describe("summarizeBatch", () => {
     });
     expect(withUsage.cases[1]?.repeats[0]?.usage).toBeUndefined();
 
-    const noUsage = await runEval(
-      "quiz",
+    const noUsage = await runQuizEval(
       checked([{ id: "q1", answers: [{ expect: "correct", answer: "a" }] }]),
       { grade: async () => ok("correct"), llm: LLM, retry: NO_SLEEP },
     );
@@ -769,8 +766,7 @@ describe("summarizeBatch", () => {
   });
 
   it("fails the CI gate on skipped cases — an aborted run is never a pass", async () => {
-    const result = await runEval(
-      "quiz",
+    const result = await runQuizEval(
       checked([
         { id: "q1", answers: [{ expect: "correct", answer: "a" }] },
         { id: "q2", answers: [{ expect: "correct", answer: "b" }] },

@@ -201,7 +201,10 @@ describe("runValidate — evals (local files)", () => {
       expect(outcome.result.targetUrl).toMatch(/quizzes\/test-quiz\.yaml$/);
       expect(outcome.result.caseCount).toBe(2);
       // The target's grading prompts come from the app's own dump seam.
-      expect(outcome.result.quizDump.grading.questions[0]?.id).toBe("q1");
+      expect(outcome.result.kind).toBe("quiz");
+      if (outcome.result.kind === "quiz") {
+        expect(outcome.result.quizDump.grading.questions[0]?.id).toBe("q1");
+      }
     }
   });
 

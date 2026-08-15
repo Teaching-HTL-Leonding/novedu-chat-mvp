@@ -1,10 +1,20 @@
 import { z } from "zod";
 import { QUIZ_VERDICT_ENUM, QUIZ_VERDICT_VALUES } from "@/lib/quiz-verdict-schema";
 
-// The zod source of truth for the EVAL YAML format (`docs/cli-eval.md`): a file of
-// GOLDEN ANSWERS for one quiz — teacher-written student answers, each with the verdict
-// the grader is expected to produce. `novedu-cli eval` replays them against the real
-// grading path so a rubric change can be measured instead of guessed.
+// The zod source of truth for the EVAL YAML format (`docs/cli-eval.md`). ONE file format,
+// a DISCRIMINATED UNION on `kind`, with one arm per eval kind:
+//
+//   quiz  (`kind` omitted or `quiz`) — GOLDEN ANSWERS for one quiz: teacher-written
+//         student answers, each with the verdict the grader is expected to produce.
+//         `novedu-cli eval` replays them against the real grading path so a rubric
+//         change can be measured instead of guessed.
+//   tutor (`kind: tutor`) — CONVERSATIONS for one tutor: the teacher scripts the whole
+//         exchange (student turns AND any prior tutor turns) ending with a student turn;
+//         the model under test generates exactly ONE response and an LLM judge checks it
+//         against the tutor's own system prompt plus the case's grading instructions.
+//
+// `kind` is OPTIONAL on the quiz arm on purpose: every eval file written before the tutor
+// kind existed stays valid byte-for-byte.
 //
 // The verdict enum is DERIVED from the grader's own structured-output schema
 // (`QUIZ_VERDICT_ENUM`, lib/quiz-verdict-schema.ts) — never a mirrored literal list, so
@@ -16,6 +26,16 @@ import { QUIZ_VERDICT_ENUM, QUIZ_VERDICT_VALUES } from "@/lib/quiz-verdict-schem
 //
 // PURE / CLI-safe: zod only — no I/O, no `app/**`, no DB (see the purity guard in
 // `lib/prompt-dump.unit.test.ts`).
+
+/**
+ * The eval KINDS — the `kind` discriminator's values, and (by construction) a subset of
+ * `PromptKind`: every eval kind evaluates an activity whose prompts `dumpPrompts` can
+ * produce. `cli/src/eval-run.ts` re-exports these and pins that relationship in the type
+ * system, so a kind can never be added here without a runner.
+ */
+export const EVAL_KINDS = ["quiz", "tutor"] as const;
+
+export type EvalKind = (typeof EVAL_KINDS)[number];
 
 /** The verdict an eval case may expect — the grader's own three literals. */
 export type EvalVerdict = z.infer<typeof QUIZ_VERDICT_ENUM>;
@@ -55,12 +75,18 @@ export const EvalQuestionSchema = z.strictObject({
   }),
 });
 
-/** The whole eval file. */
-export const EvalYamlSchema = z.strictObject({
-  id: z.string().regex(EVAL_ID_PATTERN).max(MAX_ID_LENGTH).meta({
+const idSchema = z.string().regex(EVAL_ID_PATTERN).max(MAX_ID_LENGTH).meta({
+  description:
+    "Stable identifier of this eval, shown in the run report. Letters, digits, dot, dash and underscore.",
+});
+
+/** The QUIZ arm: golden answers replayed through the real grader. */
+export const QuizEvalYamlSchema = z.strictObject({
+  kind: z.literal("quiz").optional().meta({
     description:
-      "Stable identifier of this eval, shown in the run report. Letters, digits, dot, dash and underscore.",
+      'The eval kind. Omit it (or write "quiz") for a golden-answer eval of a quiz rubric.',
   }),
+  id: idSchema,
   target: z.string().min(1).meta({
     description:
       "The quiz YAML this eval grades against — a path relative to THIS file, or an absolute http(s) URL.",
@@ -70,9 +96,101 @@ export const EvalYamlSchema = z.strictObject({
   }),
 });
 
+/**
+ * ONE turn of a scripted conversation: a single-key map naming its speaker. The two
+ * TEACHER-facing role names (`student` / `tutor`) are deliberate — the wire roles
+ * (`user` / `assistant`) are an implementation detail nobody should have to author.
+ */
+export const EvalConversationTurnSchema = z.union([
+  z.strictObject({
+    student: z.string().min(1).meta({ description: "What the student says in this turn." }),
+  }),
+  z.strictObject({
+    tutor: z.string().min(1).meta({
+      description:
+        "What the tutor already said in this turn — scripted by the teacher, not generated.",
+    }),
+  }),
+]);
+
+/** The last turn a conversation may end on: the student message the model must answer. */
+function endsWithStudentTurn(turns: readonly EvalConversationTurn[]): boolean {
+  const last = turns.at(-1);
+  return last !== undefined && "student" in last;
+}
+
+/** ONE tutor case: a scripted conversation plus the teacher's optional expectations. */
+export const EvalConversationSchema = z.strictObject({
+  title: z.string().min(1).max(MAX_ID_LENGTH).optional().meta({
+    description:
+      "Optional short label for this case, used as its stable heading in the run report.",
+  }),
+  grading_instructions: z.string().min(1).optional().meta({
+    description:
+      'Optional extra expectations for THIS case, judged alongside the tutor\'s own system prompt (e.g. "the response must not contain a complete working loop").',
+  }),
+  conversation: z
+    .array(EvalConversationTurnSchema)
+    .min(1)
+    .refine(endsWithStudentTurn, {
+      // The model under test answers the LAST turn, so a conversation ending on a tutor
+      // turn has nothing to generate.
+      message: "The conversation must end with a `student` turn.",
+    })
+    .meta({
+      description:
+        "The scripted exchange, in order: `student:` and `tutor:` turns. It must END with a `student:` turn — that is the message the model under test answers.",
+    }),
+});
+
+/** The TUTOR arm: conversations whose next tutor turn is generated and judged. */
+export const TutorEvalYamlSchema = z.strictObject({
+  kind: z.literal("tutor").meta({
+    description: 'The eval kind. "tutor" evaluates a tutor\'s next response in a conversation.',
+  }),
+  id: idSchema,
+  target: z.string().min(1).meta({
+    description:
+      "The tutor YAML this eval runs against — a path relative to THIS file, or an absolute http(s) URL.",
+  }),
+  conversations: z.array(EvalConversationSchema).min(1).meta({
+    description: "The evaluated conversations — at least one; each one is a case.",
+  }),
+});
+
+/**
+ * The whole eval file: quiz (the default, `kind` omissible) or tutor.
+ *
+ * A discriminated union rather than a loose one, so a `kind: tutor` file with a typo in
+ * `conversations` reports THAT problem instead of "no union member matched".
+ */
+export const EvalYamlSchema = z.discriminatedUnion("kind", [
+  QuizEvalYamlSchema,
+  TutorEvalYamlSchema,
+]);
+
 export type EvalYaml = z.infer<typeof EvalYamlSchema>;
+export type QuizEvalYaml = z.infer<typeof QuizEvalYamlSchema>;
+export type TutorEvalYaml = z.infer<typeof TutorEvalYamlSchema>;
 export type EvalQuestion = z.infer<typeof EvalQuestionSchema>;
 export type EvalAnswer = z.infer<typeof EvalAnswerSchema>;
+export type EvalConversation = z.infer<typeof EvalConversationSchema>;
+export type EvalConversationTurn = z.infer<typeof EvalConversationTurnSchema>;
+
+/** The eval file's kind, with the quiz arm's omitted `kind` resolved to its default. */
+export function evalKindOf(evalFile: EvalYaml): EvalKind {
+  return evalFile.kind ?? "quiz";
+}
+
+/** A scripted turn as `{ role, text }` — the wire shape `POST /api/eval/respond` takes. */
+export function turnToMessage(turn: EvalConversationTurn): {
+  role: "user" | "assistant";
+  text: string;
+} {
+  return "student" in turn
+    ? { role: "user", text: turn.student }
+    : { role: "assistant", text: turn.tutor };
+}
 
 /**
  * The canonical expected-verdict SET of one golden answer: a single verdict or a list,

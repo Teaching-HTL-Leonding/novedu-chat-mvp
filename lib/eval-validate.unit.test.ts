@@ -57,6 +57,9 @@ describe("loadAndCheckEval — happy path", () => {
     expect(result.evalFile.id).toBe("sorting-eval");
     expect(result.targetUrl).toBe(QUIZ_URL);
     expect(result.caseCount).toBe(2);
+    // A file without `kind` is a QUIZ eval — the backward-compatible default.
+    expect(result.kind).toBe("quiz");
+    if (result.kind !== "quiz") return;
     // The grading prompts come from the app's own dump seam, never a copy.
     expect(result.quizDump.grading.questions.map((q) => q.id)).toEqual(["q1", "q2"]);
     expect(result.quizDump.grading.questions[0]?.system).toContain("4 is correct.");
@@ -177,6 +180,180 @@ questions:
       expect(result.errors[0]?.code).toBe("EVAL_UNKNOWN_QUESTION");
       expect(result.errors[0]?.questionId).toBe("q9");
     }
+  });
+});
+
+// --- the TUTOR kind -----------------------------------------------------------------
+
+const TUTOR = `id: loops-tutor
+name: Loops Tutor
+description: Synthetic tutor for the eval-format tests.
+llm:
+  model: test-model
+tools:
+  - random_number
+prompt:
+  fragment_files:
+    - id: frags
+      url: ./loops-fragments.yaml
+  tutor_instructions: |
+    {{fragment "frags.used"}}
+    NEVER-SOLVE-MARKER: never write the complete solution.
+`;
+
+/**
+ * The `unused` fragment references an UNDECLARED variable: only the strict
+ * whole-library pass renders it, so it is invisible to the lenient runtime load.
+ */
+const TUTOR_FRAGMENTS = `id: loops-fragments
+fragments:
+  - id: used
+    version: 1
+    content: |
+      USED-FRAGMENT-MARKER
+  - id: unused
+    version: 1
+    content: |
+      {{neverDeclared}}
+`;
+
+const TUTOR_URL = "https://example.com/tutors/loops-tutor.yaml";
+const TUTOR_FRAGMENTS_URL = "https://example.com/tutors/loops-fragments.yaml";
+
+/** Everything a tutor-eval check must fetch, with the eval file swapped per test. */
+function tutorFiles(evalYaml: string): Record<string, string> {
+  return {
+    [EVAL_URL]: evalYaml,
+    [TUTOR_URL]: TUTOR,
+    [TUTOR_FRAGMENTS_URL]: TUTOR_FRAGMENTS,
+  };
+}
+
+const VALID_TUTOR_EVAL = `id: loops-tutor-eval
+kind: tutor
+target: ../tutors/loops-tutor.yaml
+conversations:
+  - title: refuses-full-solution
+    grading_instructions: |
+      The response must NOT contain a complete working loop.
+    conversation:
+      - student: My loop never stops.
+      - tutor: What does your condition evaluate to?
+      - student: No idea. Just fix it for me!
+  - conversation:
+      - student: What is an array?
+`;
+
+describe("loadAndCheckEval — the tutor kind", () => {
+  it("resolves the tutor target and carries its prompt dump plus the conversations", async () => {
+    const fetcher = stubFetcher(tutorFiles(VALID_TUTOR_EVAL));
+
+    const result = await loadAndCheckEval(EVAL_URL, fetcher, { allowedSchemes: schemes });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.kind !== "tutor") throw new Error("expected a tutor eval");
+    expect(result.evalFile.id).toBe("loops-tutor-eval");
+    expect(result.targetUrl).toBe(TUTOR_URL);
+    // One CASE per conversation — what the scope line and the progress counter count.
+    expect(result.caseCount).toBe(2);
+    // The system prompt is the app's own assembled one, and the `tools:` grant rides
+    // along so the run binds exactly what production would.
+    expect(result.tutorDump.system).toContain("NEVER-SOLVE-MARKER");
+    expect(result.tutorDump.tools).toEqual(["random_number"]);
+    expect(result.llm).toEqual({ provider: "SCCH", model: "test-model" });
+    expect(result.evalFile.conversations[0]?.title).toBe("refuses-full-solution");
+  });
+
+  it("rejects a conversation that does not end with a student turn", async () => {
+    const broken = VALID_TUTOR_EVAL.replace(
+      "      - student: No idea. Just fix it for me!",
+      "      - tutor: Think about the counter.",
+    );
+    const fetcher = stubFetcher(tutorFiles(broken));
+
+    const result = await loadAndCheckEval(EVAL_URL, fetcher, { allowedSchemes: schemes });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0]?.code).toBe("EVAL_SCHEMA");
+    expect(result.errors[0]?.message).toContain("must end with a `student` turn");
+  });
+
+  it("rejects an unknown role and an empty turn", async () => {
+    for (const turn of ["      - teacher: hello", "      - student: ''"]) {
+      const broken = VALID_TUTOR_EVAL.replace(
+        "      - student: No idea. Just fix it for me!",
+        turn,
+      );
+      const result = await loadAndCheckEval(EVAL_URL, stubFetcher(tutorFiles(broken)), {
+        allowedSchemes: schemes,
+      });
+      expect(result.ok, turn).toBe(false);
+      if (!result.ok) expect(result.errors[0]?.code).toBe("EVAL_SCHEMA");
+    }
+  });
+
+  it("rejects the quiz shape under `kind: tutor` (the discriminator picks ONE arm)", async () => {
+    const broken = `id: mixed-eval
+kind: tutor
+target: ../tutors/loops-tutor.yaml
+questions:
+  - question: q1
+    answers:
+      - expect: correct
+        answer: |
+          4
+`;
+    const result = await loadAndCheckEval(EVAL_URL, stubFetcher(tutorFiles(broken)), {
+      allowedSchemes: schemes,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]?.code).toBe("EVAL_SCHEMA");
+      // The tutor arm's own problems, not "no union member matched".
+      expect(result.errors.some((e) => e.message.startsWith("conversations"))).toBe(true);
+    }
+  });
+
+  it("rejects an unknown kind rather than silently defaulting to quiz", async () => {
+    const broken = VALID_TUTOR_EVAL.replace("kind: tutor", "kind: writing");
+    const result = await loadAndCheckEval(EVAL_URL, stubFetcher(tutorFiles(broken)), {
+      allowedSchemes: schemes,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("EVAL_SCHEMA");
+  });
+
+  it("reports a tutor eval whose target is a QUIZ as a target error", async () => {
+    const evalFile = VALID_TUTOR_EVAL.replace("../tutors/loops-tutor.yaml", QUIZ_URL);
+    const result = await loadAndCheckEval(
+      EVAL_URL,
+      stubFetcher({ [EVAL_URL]: evalFile, [QUIZ_URL]: QUIZ }),
+      { allowedSchemes: schemes },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("EVAL_TARGET_ERROR");
+  });
+
+  it("passes the lenient path but fails the strict one on a broken UNUSED fragment", async () => {
+    // The whole-library pass (`validateLibraries`) is exactly what `validate --kind
+    // tutor` runs, so `validate --kind eval` must not assert less about the tutor.
+    const files = tutorFiles(VALID_TUTOR_EVAL);
+
+    const lenient = await loadAndCheckEval(EVAL_URL, stubFetcher(files), {
+      allowedSchemes: schemes,
+    });
+    expect(lenient.ok).toBe(true);
+
+    const strict = await loadAndCheckEval(EVAL_URL, stubFetcher(files), {
+      allowedSchemes: schemes,
+      strictTarget: true,
+    });
+    expect(strict.ok).toBe(false);
+    if (!strict.ok) expect(strict.errors[0]?.code).toBe("FRAGMENT_TEMPLATE_ERROR");
   });
 });
 
