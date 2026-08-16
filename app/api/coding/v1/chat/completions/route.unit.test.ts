@@ -30,7 +30,7 @@ vi.mock("@/lib/llm/foundry-endpoint", () => ({
   foundryChatCompletionsUrl: () => "https://res.openai.azure.com/openai/v1/chat/completions",
 }));
 
-import { OPTIONS, POST } from "@/app/api/coding/v1/chat/completions/route";
+import { POST } from "@/app/api/coding/v1/chat/completions/route";
 
 const CODE = "abc123code";
 const codingEntry = {
@@ -73,13 +73,10 @@ function chatBody() {
 
 let fetchSpy: ReturnType<typeof vi.spyOn>;
 
-const ALLOWED_ORIGIN = "https://play.example";
-
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.SCCH_BASE_URL = "https://scch.example/v1";
   process.env.SCCH_API_KEY = "scch-secret";
-  process.env.CODING_CORS_ORIGINS = ALLOWED_ORIGIN;
   checkCode.mockResolvedValue({ ok: true, entry: codingEntry });
   loadCoding.mockResolvedValue({
     ok: true,
@@ -91,7 +88,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
-  delete process.env.CODING_CORS_ORIGINS;
 });
 
 describe("POST /api/coding/v1/chat/completions — auth gate", () => {
@@ -380,113 +376,5 @@ describe("POST /api/coding/v1/chat/completions — forwarding via Azure Foundry"
     const res = await POST(postStream(stream));
     expect(res.status).toBe(413);
     expect(fetchSpy).not.toHaveBeenCalled();
-  });
-});
-
-// The browser surface. The policy itself is unit-tested in lib/coding-cors.unit.test.ts;
-// here we assert the ROUTE applies it — on the preflight, on success, and on the error
-// paths a browser must be able to read.
-describe("/api/coding/v1/chat/completions — CORS", () => {
-  function options(headers: Record<string, string> = {}): Request {
-    return new Request("http://localhost/api/coding/v1/chat/completions", {
-      method: "OPTIONS",
-      headers,
-    });
-  }
-
-  const acao = (res: Response) => res.headers.get("access-control-allow-origin");
-
-  it("answers a preflight from an allowed origin without touching the DB or the YAML", async () => {
-    const res = OPTIONS(
-      options({
-        origin: ALLOWED_ORIGIN,
-        "access-control-request-method": "POST",
-        "access-control-request-headers": "authorization,content-type",
-      }),
-    );
-    expect(res.status).toBe(204);
-    expect(acao(res)).toBe(ALLOWED_ORIGIN);
-    expect(res.headers.get("access-control-allow-methods")).toBe("POST, OPTIONS");
-    expect(res.headers.get("access-control-allow-headers")).toBe("authorization,content-type");
-    expect(res.headers.get("vary")).toContain("Origin");
-    expect(checkCode).not.toHaveBeenCalled();
-    expect(loadCoding).not.toHaveBeenCalled();
-  });
-
-  it("answers a preflight from a stranger with no CORS headers", async () => {
-    const res = OPTIONS(
-      options({ origin: "https://evil.example", "access-control-request-method": "POST" }),
-    );
-    expect(res.status).toBe(204);
-    expect(acao(res)).toBeNull();
-  });
-
-  it("still reports the allowed methods on an OPTIONS with no Origin (a CLI/probe)", async () => {
-    const res = OPTIONS(options());
-    expect(res.status).toBe(204);
-    expect(res.headers.get("allow")).toBe("POST, OPTIONS");
-    expect(acao(res)).toBeNull();
-  });
-
-  it("carries the header on a successful completion", async () => {
-    fetchSpy.mockResolvedValue(
-      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
-    );
-    const res = await POST(post(chatBody(), { origin: ALLOWED_ORIGIN }));
-    expect(res.status).toBe(200);
-    expect(acao(res)).toBe(ALLOWED_ORIGIN);
-  });
-
-  it("carries the header on a streamed completion", async () => {
-    const upstream = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
-        controller.close();
-      },
-    });
-    fetchSpy.mockResolvedValue(
-      new Response(upstream, { status: 200, headers: { "content-type": "text/event-stream" } }),
-    );
-    const res = await POST(post({ ...chatBody(), stream: true }, { origin: ALLOWED_ORIGIN }));
-    expect(res.headers.get("content-type")).toContain("text/event-stream");
-    expect(acao(res)).toBe(ALLOWED_ORIGIN);
-    await res.text();
-  });
-
-  // Without this the browser sees an opaque network error instead of the OpenAI envelope,
-  // so a bad key looks identical to the endpoint being down.
-  it("carries the header on the 401, 403 and 400 error paths", async () => {
-    const unauth = await POST(post(chatBody(), { origin: ALLOWED_ORIGIN, authorization: "" }));
-    expect(unauth.status).toBe(401);
-    expect(acao(unauth)).toBe(ALLOWED_ORIGIN);
-
-    checkCode.mockResolvedValue({ ok: false, reason: "expired" });
-    const expired = await POST(post(chatBody(), { origin: ALLOWED_ORIGIN }));
-    expect(expired.status).toBe(403);
-    expect(acao(expired)).toBe(ALLOWED_ORIGIN);
-
-    checkCode.mockResolvedValue({ ok: true, entry: codingEntry });
-    const badJson = await POST(post("not json {", { origin: ALLOWED_ORIGIN }));
-    expect(badJson.status).toBe(400);
-    expect(acao(badJson)).toBe(ALLOWED_ORIGIN);
-  });
-
-  it("serves a disallowed origin normally but without the header — CORS blocks the READ, not the request", async () => {
-    fetchSpy.mockResolvedValue(
-      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
-    );
-    const res = await POST(post(chatBody(), { origin: "https://evil.example" }));
-    expect(res.status).toBe(200);
-    expect(acao(res)).toBeNull();
-  });
-
-  it("leaves a request with no Origin (the CLI path) untouched", async () => {
-    fetchSpy.mockResolvedValue(
-      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
-    );
-    const res = await POST(post(chatBody()));
-    expect(res.status).toBe(200);
-    expect(acao(res)).toBeNull();
-    expect(res.headers.get("vary")).toBeNull();
   });
 });

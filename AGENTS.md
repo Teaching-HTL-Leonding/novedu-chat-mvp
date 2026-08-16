@@ -94,7 +94,6 @@ Read before touching: `lib/writing-*.ts`, `app/[code]/_writing/**`, `app/codes/[
 Read before touching: `app/api/coding/**`, `app/[code]/_coding/**`, `lib/coding-*.ts`, `lib/llm/endpoint.ts`, the `api/coding` matcher in `proxy.ts`.
 
 - No in-app chat, no Mastra — a thin pass-through proxy. `lib/llm/endpoint.ts` stays side-effect-free and must NOT import `app/mastra/scch.ts` or the fragment core.
-- Browser clients are gated by the **`CODING_CORS_ORIGINS` allowlist** (`lib/coding-cors.ts`) — **never** a wildcard `Access-Control-Allow-Origin`; the headers ride every response, success and error alike.
 
 ### AI models & LLM providers → `docs/ai-models.md`
 
