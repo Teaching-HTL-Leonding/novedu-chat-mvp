@@ -133,6 +133,15 @@ MSSQL_SQLAUTH_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;In
 # (The legacy name TUTOR_CODE_ORIGIN is still read as a fallback.)
 CODE_ORIGIN=https://your-public-origin
 
+# --- Coding endpoint CORS (optional) ---
+# Comma-separated browser origins allowed to call the public OpenAI-compatible coding
+# endpoint (POST /api/coding/v1/chat/completions) cross-origin. REQUIRED for any DEPLOYED
+# browser client (a web playground): unset falls back to the local dev origins
+# http://localhost:8080 + http://127.0.0.1:8080, and setting it REPLACES that default
+# rather than extending it. Each entry must carry a scheme (https://host[:port]).
+# CLI clients send no Origin and are unaffected. Never a wildcard — see docs/coding.md.
+CODING_CORS_ORIGINS=https://your-browser-client-origin
+
 # --- Images (optional) — Azure Blob Storage for teacher-uploaded images ---
 # The storage account name and container. Both are OPTIONAL and default to the
 # hosted prototype's values (stnoveduchatmvp / novedu-images). Bytes are addressed
