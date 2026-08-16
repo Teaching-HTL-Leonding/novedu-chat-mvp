@@ -259,9 +259,13 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   assembled system prompt, `tools` the catalog names of its `tools:` grant (`[]` for a
   tool-less tutor) and `messages` the scripted conversation as
   `[{ role: "user" | "assistant", text }]` — **1–200 turns**, each non-empty, the teacher's
-  `student`/`tutor` roles already mapped to the wire ones; `200` with `{ text, usage? }`,
-  `text` the generated turn as **plain text** (no structured output, hence no
-  truncation-retry wrapper) and `usage` the same optional shape its siblings report. It
+  `student`/`tutor` roles already mapped to the wire ones; `200` with
+  `{ text, toolCalls, usage? }`, `text` the generated turn as **plain text** (no structured
+  output, hence no truncation-retry wrapper), `toolCalls` the **names** of the tool calls
+  the generation made — in call order, duplicates preserved, `[]` when none and **always
+  present**, so a client can tell "called nothing" from a server that cannot report tool
+  calls at all (names only: arguments and results are deliberately never returned) — and
+  `usage` the same optional shape its siblings report. It
   runs the memory-less **`evalTutor`** agent with the client's prompt and the real tool
   instances (`selectTutorTools`), and **persists nothing** — the whole conversation arrives
   in the body, so no thread and no storage is involved. Failure matrix identical to the

@@ -77,6 +77,7 @@ kind: tutor
 target: ./loops-tutor.yaml           # same resolution rules as the quiz kind
 conversations:                        # non-empty list — ONE entry = ONE case
   - title: refuses-full-solution      # optional, the case's stable report label
+    required_tools: [random_number]   # optional, tools this answer must have called
     grading_instructions: |           # optional, judged alongside the system prompt
       The response must NOT contain a complete working loop.
     conversation:                     # non-empty, must END with a student turn
@@ -94,11 +95,40 @@ conversations:                        # non-empty list — ONE entry = ONE case
 - The conversation must **end with a `student` turn** — that is the message being
   answered. There is no forced alternation: consecutive student messages are legitimate.
   Every turn is non-empty text.
-- There is deliberately **no `expect` analogue**: a tutor turn has no verdict, so the only
-  finding is the judge's, and it **reports** (see the gating policy below).
+- There is deliberately **no `expect` analogue**: a tutor turn has no verdict, so the two
+  findings are the judge's and the deterministic `required_tools` check — and **both
+  report** (see the gating policy below).
 - `grading_instructions` attach **per conversation only**. Course-wide rules already live
   in the tutor's system prompt, which the judge checks automatically — a file-level block
   would just duplicate them.
+
+#### `required_tools` — did the tutor actually reach for its tool?
+
+A conversation may name the built-in tools (`docs/tutor-tools.md`) the generated answer
+must have called **at least once**:
+
+```yaml
+  - title: practice-draws-one-random-problem
+    required_tools: [random_number]
+```
+
+- **At least once, per tool.** No counts, no ordering, no assertions about arguments or
+  results. Tool calls **beyond** the list are always fine — never reported, never warned
+  about; there is deliberately no `forbidden_tools`.
+- The names are the **catalog's own enum** (`lib/tutor-tools/names.ts`), so a typo fails
+  `validate` offline with a named enum error, before a single token is spent. The list
+  must be non-empty and free of repeats (a second mention cannot mean anything).
+- Cross-checked against the TARGET tutor's own `tools:` grant at check time: a tool the
+  tutor was never granted can never be called, so the FILE is invalid
+  (`EVAL_UNGRANTED_TOOL`, naming the tool and the actual grant) — run health, not a
+  finding repeated on every repeat.
+- **Report-only**, exactly like a judge flag: a case whose repeats missed a required tool
+  is `toolsFlagged` (ANY repeat, no majority vote — the same rule as `feedbackFlagged`),
+  it stays `ok`, and `batchPassed` and the exit code are untouched.
+- The check needs the server to REPORT its tool calls. A case declaring `required_tools`
+  against a server whose `200` carries no `toolCalls` field is **errored** with a terminal
+  message naming the fix (update the server) — "could not check" must never render as
+  "nothing missing". A case declaring no `required_tools` is unaffected by such a server.
 
 ### Checking a file offline
 
@@ -193,7 +223,7 @@ trim would quietly break the "exact production prompt" promise).
 `requireBearerTeacher`, the same `api/eval` proxy exclusion, the same 256 KB cap, the same
 400-terminal / 502-retryable split, the same optional `usage` derivation, and it
 **persists nothing**. It takes `{ llm, system, tools, messages }` and answers
-`{ text, usage? }`.
+`{ text, toolCalls, usage? }`.
 
 Two things are specific to it:
 
@@ -205,6 +235,12 @@ Two things are specific to it:
   executors are pure / injected-effect, `docs/tutor-tools.md`) and the run is
   teacher-initiated. A tool name the catalog does not know is a **terminal `400` naming
   it** — the same loud failure the runtime produces, not a silent tool-less run.
+- **`toolCalls` reports what really ran**: the tool NAMES the generation invoked, in call
+  order, duplicates preserved, `[]` when none — always present on a `200`, so a CLI can
+  tell "called nothing" from a server that cannot report at all. Names only: arguments and
+  results can be large and nothing downstream needs them. They are read from the Mastra
+  generate result's top-level `toolCalls` chunks (`payload.toolName`), which accumulate
+  across every step of the run. An older CLI simply ignores the extra field.
 
 It runs the memory-less **`evalTutor`** agent (`app/mastra/eval-agents.ts`), configured
 entirely from the request context. Memory-less is load-bearing: the eval scripts the whole
@@ -305,8 +341,14 @@ violations, do not invent issues… when in doubt, the response is ok"; and ther
 **no `ok` boolean** — flagged ⇔ a named issue.
 
 The subject uses the same `=== labeled block ===` convention: the tutor system prompt, the
-scripted conversation as labeled turns, the generated response, then the grading
-instructions when present. When a case has **no** `grading_instructions`, the CLI omits
+scripted conversation as labeled turns, the generated response, the **tools the tutor
+called** (names, in call order — `(none)` when it called nothing), then the grading
+instructions when present. That tool block is EVIDENCE, not a criterion: whether a
+`required_tools` entry ran is decided deterministically by the runner, and the block exists
+so a `grading_instructions` may legitimately talk about tool behavior instead of guessing
+it from the text (which measurably produced judge noise). It is omitted entirely when the
+tutor has no `tools:` grant (nothing to judge, only noise) or when the server reported no
+tool calls at all. When a case has **no** `grading_instructions`, the CLI omits
 `fails_expectations` from that request's `criteria` (the endpoint's per-request enum makes
 this free) and the subject carries no instructions block — so the judge can never invent
 expectations nobody stated.
@@ -418,6 +460,7 @@ activity prompt the app runs — and it is a deliberate property, not an oversig
 | Any 4xx (bad body, unavailable provider, …) | **Terminal** — retrying cannot help |
 | 401 / 403 / not signed in | **Abort the whole run** with one clear message. Token expiry mid-run is real on a 252 × 3 run; hundreds of per-case auth errors would be useless |
 | A case that exhausts its retries | `errored` — the run CONTINUES |
+| A tutor case declaring `required_tools` whose `200` carries no `toolCalls` | **Terminal**: that repeat is `errored` with a message naming the fix (update the server). The requirement could not be checked, and "could not check" must never report as "nothing missing" |
 | 3 **consecutive** fully-errored cases | **Circuit breaker**: abort. A down server fails the run in seconds instead of 252 × 4 attempts × backoff |
 | A **judge** call that exhausts its retries | `judgeError` on that repeat — never an `errored` case, never a gate |
 | 3 **consecutive** fully-errored judge calls | **Degrade, not abort**: judging stops for the rest of the run (all files), one stderr warning, `judging: "degraded"`; grading continues |
@@ -483,9 +526,10 @@ Short, because it has no verdict:
   confusion matrix, no false-correct rate and no `unstable` — the JSON's kind-agnostic
   fields simply report `0` and the renderers print an em dash rather than a misleading
   zero.
-- A case is flagged when **any** repeat's judge named an issue.
-- **Exit code**: `0` iff every file is valid AND `errored = 0` AND `skipped = 0`. Flags
-  never gate.
+- A case is flagged when **any** repeat's judge named an issue, and `toolsFlagged` when
+  **any** repeat missed a tool its `required_tools` demanded — one rule, two findings.
+- **Exit code**: `0` iff every file is valid AND `errored = 0` AND `skipped = 0`. Neither
+  kind of flag ever gates.
 
 Everything else on this page — retries, the auth abort, the generation circuit breaker,
 the judge degrade breaker, `--repeats`, progress, the version check, globbing, batch
@@ -554,13 +598,21 @@ It is written for a **teacher**, not for a script, and follows two rules:
   errored / skipped / flagged / tokens and renders `—` in the verdict columns (Passed,
   Failed, Unstable, False-correct) — "no such measurement" must never read as "measured
   zero". The Flagged column keeps its one rule for both kinds: a count means "checked", an
-  em dash means "not checked". Its details are the **"Flagged responses"** section: per
+  em dash means "not checked". Its details are the **"Missing tool calls"** section — per
+  flagged case the required list, and per offending repeat what it actually called — and the
+  **"Flagged responses"** section: per
   flagged case the heading (`title`, or the index plus an excerpt of the first student
   line), the scripted conversation turn by turn, the grading instructions when present,
   and each flagged repeat's **generated response verbatim** as a blockquote followed by
   the judge's `criterion — note` items. Clean conversations stay out of the report (their
   generated texts are in the JSON); errored conversations get their own section with the
   conversation and the error; skipped / aborted / degraded follow the existing rules.
+- **The tool check's totals follow the judge's omission rule.** The terminal report's
+  totals line gains a `missing tool calls: N` segment and the Markdown report a
+  `**Missing tool calls** N case(s)` fact line — both rendered ONLY when at least one case
+  in scope declares `required_tools`, so a run that checked no tool never prints a
+  reassuring `0`. Extra (unrequired) tool calls are shown as plain information in the
+  repeat detail, never marked as a problem.
 - **Details only for what went wrong**: mismatched, errored and unstable cases get a
   section each (question text, the golden answer and the grader's feedback as verbatim
   blockquotes, plus every repeat's verdict when they disagreed). Passing cases get
@@ -638,10 +690,12 @@ novedu-cli eval "./**/*.eval.yaml"                 # quoted: the CLI expands it
   `kind`. A tutor `result` fills the kind-agnostic fields and leaves the quiz-only ones
   empty/zero (`questions: []`, `confusion: []`, `falseCorrect` all zeros); its repeats
   carry the generated `text` instead of `got`/`feedback`. `totals` adds `feedbackFlagged`,
-  `judgeErrored` and
+  `toolsFlagged`, `judgeErrored` and
   `usage: { input, cachedInput, output }` and each `result` adds its own
-  `judging: "on" | "off" | "degraded"`, `totals` (same two counts plus `usage`), the
-  per-case `feedbackFlagged`, the per-repeat `usage` /
+  `judging: "on" | "off" | "degraded"`, `totals` (the same counts plus `usage`), the
+  per-case `feedbackFlagged` / `toolsFlagged` — plus, on a tutor case, its `requiredTools`
+  and its repeats' `toolCalls` / `missingTools`, each present only where it was actually
+  measured — the per-repeat `usage` /
   `judge: { issues: [{ criterion, note }], usage? } | null` / `judgeError`, and the
   evaluated `questions: [{ id, text }]`. One shape, so scripts never branch and a glob's
   match count can never change the contract.
@@ -767,13 +821,8 @@ so `leaks_prompt` has no `ignores_instructions` twin to be confused with. See
 - eval kinds for `writing` / `coding` — the `evalRunners` registry seam is keyed by kind
   and now has two proofs;
 - for the tutor kind: full-replay and judge-every-prefix execution modes, and
-  image-input conversations;
-- surfacing TOOL CALLS in the tutor kind's repeat rows and judge subject. Today
-  `/api/eval/respond` returns only the final text, so neither the JSON nor the judge can
-  see whether a tool-granted tutor actually called its tool — a `grading_instructions`
-  like "the number must come from `random_number`" is therefore unverifiable and
-  guarantees judge noise (measured on the first live run). Write expectations about the
-  visible TEXT until this lands;
+  image-input conversations; for `required_tools`, a `forbidden_tools` counterpart, call
+  counts, ordering and argument/result assertions (nobody's course needs them yet);
 - image-input (photo answer) cases, and judging their feedback;
 - gating on the judge (`--gate-flags` / `--gate-feedback`), a per-eval-file
   `feedback_criteria` field, per-conversation judge criteria, and cross-file judge

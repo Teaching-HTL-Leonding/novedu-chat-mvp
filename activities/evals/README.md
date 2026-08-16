@@ -107,6 +107,7 @@ conversations:
 | `target` | yes | The tutor YAML this eval runs against. |
 | `conversations` | yes | One entry per case; at least one. |
 | `conversations[].title` | no | A short label for the case, used as its heading in the report. |
+| `conversations[].required_tools` | no | Built-in tools the answer must have used at least once (see below). |
 | `conversations[].grading_instructions` | no | Extra expectations for this one case, in plain language. |
 | `conversations[].conversation` | yes | The scripted turns, in order: `student:` and `tutor:` lines. |
 
@@ -138,6 +139,28 @@ without them is never judged against expectations nobody wrote down. And the jud
 in so many words **not** to grade teaching style: a response you would have phrased
 differently is not a problem, only one that breaks a stated rule.
 
+### Did the tutor use its tool?
+
+If your tutor has built-in **tools** (`tools:` in the tutor file — for example
+`random_number`), a case can require that the tutor actually reached for one:
+
+```yaml
+  - title: practice-draws-one-random-problem
+    required_tools: [random_number]
+    conversation:
+      - student: Give me a practice problem.
+```
+
+- It means **"called at least once"** while writing that answer — no counts, no order,
+  nothing about the values. Calling other tools as well is always fine.
+- Every name must be a tool **your tutor is given** in its own `tools:` list. If it is
+  not, the eval file is reported as invalid when you check it — before it costs anything.
+- Like everything else in a tutor eval, this is **reported, never a failure**: the run
+  says how many cases missed a required tool, and the Markdown report shows which run of
+  which case skipped it and what it called instead.
+- Write it only where the tool really is the point. For everything else, keep saying what
+  the ANSWER must look like in `grading_instructions`.
+
 ### Reading a tutor run
 
 ```
@@ -148,7 +171,7 @@ differently is not a problem, only one that breaks a stated rule.
   llm: SCCH / gemma-4
   conversations: 4 × 1 repeat(s) = 4 generation call(s) + 4 judge call(s)
 
-  ok: 4   errored: 0   flagged feedback: 1
+  ok: 4   errored: 0   flagged responses: 1   missing tool calls: 1
 ```
 
 - **`ok`** means the tutor answered; **`errored`** means the call itself never succeeded
@@ -156,6 +179,9 @@ differently is not a problem, only one that breaks a stated rule.
 - **`flagged`** is the interesting number, and it **never fails the run**. A tutor eval
   exits non-zero only when something went genuinely wrong with the run — a broken file, a
   failed call. Everything the judge found is a note for you to read, not a gate.
+- **`missing tool calls`** appears only when some case actually asked for a tool, and it
+  is a note in exactly the same way — never a failure. No line at all means nothing was
+  required, which is not the same as "every tool ran".
 - So for a tutor eval, **the `--report` Markdown file is the deliverable.** It shows every
   flagged case in full: your scripted conversation, your expectations, the response the
   tutor actually generated, and what the judge objected to. Clean cases are left out.

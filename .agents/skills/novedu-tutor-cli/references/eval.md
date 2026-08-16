@@ -54,6 +54,7 @@ kind: tutor                          # this line selects the kind
 target: ./loops-tutor.yaml           # relative to THIS file, or an http(s) URL
 conversations:
   - title: refuses-full-solution     # optional label; becomes the report heading
+    required_tools: [random_number]  # optional, built-in tools this answer must have called
     grading_instructions: |          # optional, judged ALONGSIDE the tutor's own prompt
       The response must not contain a complete working loop.
     conversation:
@@ -71,6 +72,13 @@ Authoring rules — get these wrong and `validate --kind eval` rejects the file:
 - Every turn is non-empty text. There is **no `expect:`** — a tutor turn has no verdict.
 - `grading_instructions` are **per conversation only**. Course-wide rules already live in
   the tutor's system prompt and are checked automatically; do not restate them.
+- **`required_tools`** names built-in tools (`random_number`, …) the generated answer must
+  have called **at least once** — no counts, no ordering, nothing about the values, and
+  extra tools are always fine. Every name must be in the TARGET tutor's own `tools:` grant;
+  a tool it was never given makes the eval file INVALID (`EVAL_UNGRANTED_TOOL`, offline).
+  Use it where the tool IS the point ("the practice number must come from the tool") and
+  keep text expectations in `grading_instructions` — a tool call is not visible in the
+  answer, so asking the judge about it only produces noise.
 
 **Write cases that bite on the tutor's REAL rules.** Read the target tutor (and its
 fragment libraries) first, pick the rules that are actually checkable, and script the
@@ -175,6 +183,14 @@ question against a language rule. A case that no rule speaks to teaches nothing.
   JSON keeps that one name across kinds), in the report's Flagged column and in a
   **"Flagged feedback"** / **"Flagged responses"** section. In the JSON they are
   `repeats[].judge.issues` plus the per-case `feedbackFlagged`.
+- **The `required_tools` check is the judge's deterministic sibling**, and it reports in
+  exactly the same way: `totals.toolsFlagged`, a `missing tool calls: N` segment (printed
+  ONLY when some case required a tool — no segment means nothing was checked, never "all
+  fine") and a **"Missing tool calls"** section in the Markdown report. In the JSON:
+  the case's `requiredTools` / `toolsFlagged` and each repeat's `toolCalls` /
+  `missingTools`. The judge merely SEES the tool calls as evidence; it never decides them.
+  If the server is too old to report tool calls, such a case ERRORS with a message saying
+  so — tell the user to update the server rather than dropping the field.
 - **If the judge model itself is down**, judging *degrades* rather than aborting: after 3
   consecutive judge failures it stops for the rest of the run (one stderr warning,
   `judging: "degraded"`) and the grading finishes normally. Tell the user their verdict

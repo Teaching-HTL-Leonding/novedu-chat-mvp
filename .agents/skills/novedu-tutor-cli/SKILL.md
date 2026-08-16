@@ -123,7 +123,8 @@ shows name, user id and teacher status; `logout` is purely local.
   answers (`kind` omitted), then `validate --kind eval`, then `eval`.
 - *"Does the tutor still follow its rules?"* → a `kind: tutor` eval file of
   scripted conversations, then the same two commands — the kind is inferred from
-  the file, and its verdict is the Markdown report, not the exit code.
+  the file, and its verdict is the Markdown report, not the exit code. A case may
+  add `required_tools:` to demand that the answer really called a built-in tool.
   Both spend real tokens, so read [eval.md](references/eval.md) before running them.
 - *"Get this in front of students."* → one-off: `files upload` + `codes create`
   ([teacher-api.md](references/teacher-api.md)). Material that lives in a repo:

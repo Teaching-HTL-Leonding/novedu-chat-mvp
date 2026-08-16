@@ -172,6 +172,7 @@ kind: tutor
 target: ./loops-tutor.yaml
 conversations:
   - title: refuses-full-solution
+    required_tools: [random_number]   # optional: tools this answer must have called
     grading_instructions: |
       The response must not contain a complete working loop.
     conversation:                  # must END with a student turn
@@ -216,6 +217,14 @@ npx @novedu/cli eval ./loops-tutor.eval.yaml --report loops.md
   a **Flagged** column plus a **"Flagged feedback"** section in the Markdown report, and
   `totals.feedbackFlagged` / `repeats[].judge.issues` in the JSON. They never change the
   exit code.
+- **`required_tools`** (tutor kind) names built-in tools the generated answer must have
+  called **at least once** — the one thing the judge cannot see, since a tool call leaves
+  no trace in the text. Extra tools are always fine, and a name the target tutor's own
+  `tools:` list does not grant makes the file invalid offline. Missing calls are
+  **reported, never a failure**: `missing tool calls: N` in the terminal report (printed
+  only when some case required a tool, so no line means "not checked"), a **"Missing tool
+  calls"** section in the Markdown report, and `totals.toolsFlagged` plus each repeat's
+  `toolCalls` / `missingTools` in the JSON.
 - **Choosing the judge.** By default the judge runs on the same model as the grader.
   `--judge-llm-provider` + `--judge-llm-model` (both or neither) point it at another one,
   which is the **recommended** setup: a strong judge over a smaller grader finds real
