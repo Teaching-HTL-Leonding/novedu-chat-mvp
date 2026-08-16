@@ -16,7 +16,9 @@ export const config = {
   // external coding agent has none — so it is excluded here too (see
   // app/api/coding/v1/chat/completions/route.ts). It is anchored with a path
   // boundary (`api/coding(?:/|$)`) so the exclusion cannot silently widen to a
-  // future, unrelated `/api/coding-*` route.
+  // future, unrelated `/api/coding-*` route. The matcher is method-agnostic, so
+  // the browser CORS preflight (OPTIONS, which carries no credentials by design)
+  // rides the same exclusion and is answered by the route itself.
   // The /api/me identity probe, the /api/codes list/create endpoints, the
   // /api/reports list/detail/resolve endpoints, the /api/eval eval endpoints —
   // grade, judge and respond, all bounded by the one `api/eval(?:/|$)` entry
