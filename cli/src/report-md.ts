@@ -1,5 +1,6 @@
 import {
   anyJudged,
+  anyToolsRequired,
   type EvalBatchFile,
   type EvalBatchResult,
   type EvalCaseResult,
@@ -21,8 +22,9 @@ import {
 //
 // Both eval kinds render into that one layout, branching on `EvalRunResult.kind`: a quiz
 // file fills the verdict columns and lists its mismatches, a TUTOR file leaves them as em
-// dashes (it has no verdict to measure) and its deliverable is the "Flagged responses"
-// section — the judge's findings over each generated turn.
+// dashes (it has no verdict to measure) and its deliverables are the "Missing tool calls"
+// section — the deterministic `required_tools` check — and the "Flagged responses" one,
+// the judge's findings over each generated turn.
 //
 // Two deliberate rules:
 //   * DETAILS ONLY FOR WHAT WENT WRONG — mismatched, errored and unstable cases,
@@ -365,6 +367,53 @@ function tutorErrorSection(evalCase: EvalTutorCaseResult): string[] {
   return lines;
 }
 
+/** `random_number, random_number` — a repeat's tool calls, or `(none)` when it made none. */
+function toolCallList(toolCalls: readonly string[] | undefined): string {
+  return toolCalls && toolCalls.length > 0
+    ? toolCalls.map((name) => `\`${name}\``).join(", ")
+    : "(none)";
+}
+
+/**
+ * The tutor kind's "Missing tool calls" section: every case that declares `required_tools`
+ * and had at least one repeat skip one. Per case the required list, what each offending
+ * repeat actually called, and which tools were missing there.
+ *
+ * Its own section rather than a column, for the same reason "Flagged responses" is one:
+ * these cases are `ok` and the run PASSED — a missing tool call is a note about the
+ * tutor's behavior, never a failure. Cases whose tools all ran stay out entirely; the
+ * `--json` report carries every repeat's `toolCalls` for anyone who wants them.
+ */
+function tutorMissingToolsSection(result: EvalRunResult): string[] {
+  const flagged = result.cases.filter(
+    (evalCase): evalCase is EvalTutorCaseResult => isTutorCase(evalCase) && evalCase.toolsFlagged,
+  );
+  if (flagged.length === 0) return [];
+
+  const lines = ["### Missing tool calls", ""];
+  lines.push(
+    "_These cases require a tool the tutor did not call in every run. Reported only — a " +
+      "missing tool call never fails a run, and tools beyond the required ones are fine._",
+  );
+  lines.push("");
+  for (const evalCase of flagged) {
+    lines.push(`#### ${tutorCaseLabel(evalCase)}`);
+    lines.push("");
+    lines.push(`**Required** ${toolCallList(evalCase.requiredTools)}`);
+    lines.push("");
+    for (const repeat of evalCase.repeats) {
+      const missing = repeat.missingTools ?? [];
+      if (missing.length === 0) continue;
+      lines.push(
+        `- Repeat #${repeat.repeatIndex + 1} — missing ${toolCallList(missing)}; ` +
+          `called ${toolCallList(repeat.toolCalls)}`,
+      );
+    }
+    lines.push("");
+  }
+  return lines;
+}
+
 /**
  * The tutor kind's "Flagged responses" section — the report's actual deliverable: per
  * flagged case the scripted conversation, the teacher's expectations when it states any,
@@ -394,6 +443,9 @@ function tutorFlaggedSection(result: EvalRunResult): string[] {
     if (evalCase.gradingInstructions) {
       lines.push("**Expectations for this case**", "", quote(evalCase.gradingInstructions), "");
     }
+    if (evalCase.requiredTools) {
+      lines.push(`**Required tools** ${toolCallList(evalCase.requiredTools)}`, "");
+    }
     for (const repeat of evalCase.repeats) {
       const issues = repeat.judge?.issues ?? [];
       if (issues.length === 0) continue;
@@ -401,6 +453,12 @@ function tutorFlaggedSection(result: EvalRunResult): string[] {
       lines.push("");
       lines.push(quote(repeat.text ?? ""));
       lines.push("");
+      // Context, never a verdict: the tools that ran alongside this response. Shown when
+      // the server reported any, or when the case required some (where `(none)` is the
+      // interesting fact) — tools beyond the required ones are plain information.
+      if (repeat.toolCalls && (repeat.toolCalls.length > 0 || evalCase.requiredTools)) {
+        lines.push(`*tool calls: ${toolCallList(repeat.toolCalls)}*`, "");
+      }
       for (const issue of issues) {
         lines.push(`- \`${cell(issue.criterion)}\` — ${inline(issue.note)}`);
       }
@@ -432,7 +490,16 @@ function fileDetails(file: EvalBatchFile): string[] {
   const skipped = result.totals.skipped;
   const questionText = new Map(result.questions.map((question) => [question.id, question.text]));
   const flagged = tutor ? tutorFlaggedSection(result) : flaggedSection(result, questionText);
-  if (detailed.length === 0 && skipped === 0 && !result.aborted && flagged.length === 0) return [];
+  const missingTools = tutor ? tutorMissingToolsSection(result) : [];
+  if (
+    detailed.length === 0 &&
+    skipped === 0 &&
+    !result.aborted &&
+    flagged.length === 0 &&
+    missingTools.length === 0
+  ) {
+    return [];
+  }
 
   const lines = [`## ${cell(name)} — \`${cell(result.id)}\``, ""];
   if (result.aborted) {
@@ -456,8 +523,10 @@ function fileDetails(file: EvalBatchFile): string[] {
     );
     lines.push("");
   }
-  // Last within the file: it is the only section whose cases usually PASSED, so it must
-  // not sit between the file's verdict problems and their summary line.
+  // Last within the file: these are the only sections whose cases usually PASSED, so they
+  // must not sit between the file's verdict problems and their summary line. The
+  // deterministic tool finding comes before the judge's — it is the harder fact.
+  lines.push(...missingTools);
   lines.push(...flagged);
   return lines;
 }
@@ -495,6 +564,15 @@ export function renderEvalMarkdownReport(batch: EvalBatchResult, meta: EvalRepor
     `- **Run** ${count(batch.totals.files)} file(s), ${count(batch.totals.cases)} case(s) × ` +
       `${count(meta.repeats)} repeat(s), concurrency ${count(meta.concurrency)}`,
   );
+  // The tool check's totals line, under the SAME omission rule as the Flagged column's em
+  // dash: it appears only when at least one case in the batch declared `required_tools`,
+  // so a run that required nothing never prints a reassuring `0`.
+  if (batch.files.some((file) => file.result && anyToolsRequired(file.result))) {
+    lines.push(
+      `- **Missing tool calls** ${count(batch.totals.toolsFlagged)} case(s) did not call a ` +
+        "required tool in every run — reported only, never a failure",
+    );
+  }
   const tokens = batch.totals.usage;
   if (tokens.input || tokens.cachedInput || tokens.output) {
     lines.push(

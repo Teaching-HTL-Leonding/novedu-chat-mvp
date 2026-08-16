@@ -1,0 +1,22 @@
+# A TUTOR eval exercising `required_tools` against the fixtures server's fake generator:
+# `[tools:a,b]` in the last student turn decides which tool calls the fake reports, and
+# `[respond:<text>]` (which must come LAST — its regex is greedy to the final bracket)
+# decides the generated text. Three cases, one per outcome: the required tool ran, it did
+# NOT run, and it ran alongside an extra call. A run over this file reports ONE missing
+# tool call and still exits 0 — the check is report-only.
+id: tutor-tools-eval
+kind: tutor
+target: ../tutors/tools-tutor.yaml
+conversations:
+  - title: draws-a-random-problem
+    required_tools: [random_number]
+    conversation:
+      - student: Give me a practice problem. [tools:random_number][respond:Convert 42 to binary.]
+  - title: forgets-the-tool
+    required_tools: [random_number]
+    conversation:
+      - student: Another one, please. [respond:Convert 7 to binary.]
+  - title: calls-more-than-required
+    required_tools: [random_number]
+    conversation:
+      - student: And one more. [tools:random_number,random_number][respond:Convert 3 to binary.]

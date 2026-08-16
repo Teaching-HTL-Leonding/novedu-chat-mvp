@@ -415,6 +415,7 @@ function tutorCase(
     status: "ok",
     unstable: false,
     feedbackFlagged: false,
+    toolsFlagged: false,
     repeats: [{ repeatIndex: 0, text: "What does your condition evaluate to?", judge: null }],
     ...overrides,
   } as EvalTutorCaseResult;
@@ -435,6 +436,7 @@ function tutorRunResult(cases: EvalTutorCaseResult[]): EvalRunResult {
       skipped: cases.filter((c) => c.status === "skipped").length,
       unstable: 0,
       feedbackFlagged: cases.filter((c) => c.feedbackFlagged).length,
+      toolsFlagged: cases.filter((c) => c.toolsFlagged).length,
       judgeErrored: 0,
       repeats: 1,
       calls: cases.length,
@@ -582,6 +584,111 @@ describe("renderEvalMarkdownReport — the tutor kind", () => {
     const md = render([{ source: "file:///a/loops.eval.yaml", status: "ok", result }]);
 
     expect(md).toContain("**2 conversation(s) were never attempted**");
+  });
+
+  it("gives every case that missed a required tool its own section", () => {
+    const md = render([
+      {
+        source: "file:///a/loops.eval.yaml",
+        status: "ok",
+        result: tutorRunResult([
+          tutorCase({
+            index: 0,
+            title: "draws-a-random-problem",
+            requiredTools: ["random_number"],
+            toolsFlagged: true,
+            repeats: [
+              {
+                repeatIndex: 0,
+                text: "Convert 42.",
+                toolCalls: [],
+                missingTools: ["random_number"],
+                judge: { issues: [] },
+              },
+              {
+                repeatIndex: 1,
+                text: "Convert 7.",
+                toolCalls: ["random_number"],
+                missingTools: [],
+                judge: { issues: [] },
+              },
+            ],
+          }),
+          // A case whose tools all ran contributes nothing.
+          tutorCase({
+            index: 1,
+            title: "always-draws",
+            requiredTools: ["random_number"],
+            repeats: [
+              {
+                repeatIndex: 0,
+                text: "Convert 3.",
+                toolCalls: ["random_number"],
+                missingTools: [],
+                judge: { issues: [] },
+              },
+            ],
+          }),
+        ]),
+      },
+    ]);
+
+    expect(md).toContain("### Missing tool calls");
+    expect(md).toContain("#### #1 draws-a-random-problem");
+    expect(md).toContain("**Required** `random_number`");
+    expect(md).toContain("- Repeat #1 — missing `random_number`; called (none)");
+    // Only the repeat that missed one is listed, and a clean case stays out entirely.
+    expect(md).not.toContain("Repeat #2");
+    expect(md).not.toContain("always-draws");
+    // The totals line appears because a case declared `required_tools`…
+    expect(md).toContain("- **Missing tool calls** 1 case(s)");
+    // …and a missing tool call never fails the run.
+    expect(md).toContain("# Eval report — ✅ passed");
+  });
+
+  it("omits the missing-tool-calls totals line when no case required a tool", () => {
+    // A run that checked nothing must never print a reassuring zero.
+    const md = render([
+      {
+        source: "file:///a/loops.eval.yaml",
+        status: "ok",
+        result: tutorRunResult([tutorCase({ index: 0 })]),
+      },
+    ]);
+
+    expect(md).not.toContain("Missing tool calls");
+  });
+
+  it("shows a flagged repeat's tool calls as context, extras included", () => {
+    const md = render([
+      {
+        source: "file:///a/loops.eval.yaml",
+        status: "ok",
+        result: tutorRunResult([
+          tutorCase({
+            index: 0,
+            title: "hands-over-the-solution",
+            requiredTools: ["random_number"],
+            feedbackFlagged: true,
+            repeats: [
+              {
+                repeatIndex: 0,
+                text: "while (true) { i++; }",
+                // An EXTRA call beyond the required one is plain information.
+                toolCalls: ["random_number", "random_number"],
+                missingTools: [],
+                judge: { issues: [{ criterion: "ignores_instructions", note: "handed it over" }] },
+              },
+            ],
+          }),
+        ]),
+      },
+    ]);
+
+    expect(md).toContain("**Required tools** `random_number`");
+    expect(md).toContain("*tool calls: `random_number`, `random_number`*");
+    // Extra tools are never marked as a problem — the case is not tools-flagged at all.
+    expect(md).not.toContain("### Missing tool calls");
   });
 
   it("keeps quiz and tutor rows side by side in a mixed batch", () => {

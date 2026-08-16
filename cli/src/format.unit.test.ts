@@ -177,6 +177,7 @@ function runResult(usage: { input: number; cachedInput: number; output: number }
       skipped: 0,
       unstable: 0,
       feedbackFlagged: 0,
+      toolsFlagged: 0,
       judgeErrored: 0,
       repeats: 1,
       calls: 1,
@@ -380,5 +381,76 @@ describe("formatEvalReport — the feedback judge", () => {
     );
 
     expect(out).not.toContain("flagged");
+  });
+});
+
+describe("formatEvalReport — the required-tools check", () => {
+  /** A tutor run whose single case does (or does not) declare `required_tools`. */
+  const tutorRun = (requiredTools: string[] | undefined, toolsFlagged: boolean): EvalRunResult => {
+    const base = runResult({ input: 10, cachedInput: 0, output: 2 });
+    return {
+      ...base,
+      kind: "tutor",
+      cases: [
+        {
+          index: 0,
+          conversation: [{ student: "hi" }],
+          ...(requiredTools ? { requiredTools } : {}),
+          status: "ok",
+          unstable: false,
+          feedbackFlagged: false,
+          toolsFlagged,
+          repeats: [{ repeatIndex: 0, text: "hello" }],
+        },
+      ],
+      totals: {
+        ...base.totals,
+        passed: 0,
+        toolsFlagged: toolsFlagged ? 1 : 0,
+      },
+    } as EvalRunResult;
+  };
+
+  it("names the missing count once a case required a tool", () => {
+    const out = formatEvalReport(tutorRun(["random_number"], true), "demo.eval.yaml");
+
+    expect(out).toContain("missing tool calls: 1");
+    // Reported, never gating.
+    expect(out).toContain("Eval passed");
+  });
+
+  it("confirms a checked run with an explicit zero", () => {
+    expect(formatEvalReport(tutorRun(["random_number"], false), "x.yaml")).toContain(
+      "missing tool calls: 0",
+    );
+  });
+
+  it("prints NO segment when no case required a tool", () => {
+    // A run that checked nothing must never read as "every required tool ran".
+    expect(formatEvalReport(tutorRun(undefined, false), "x.yaml")).not.toContain("tool calls");
+  });
+
+  it("follows the same rule per file and in the batch TOTAL", () => {
+    const checkedBatch = formatEvalBatchReport(
+      summarizeBatch([
+        { source: "file:///a.eval.yaml", status: "ok", result: tutorRun(["random_number"], true) },
+        { source: "file:///b.eval.yaml", status: "ok", result: tutorRun(undefined, false) },
+      ]),
+    );
+
+    expect(checkedBatch).toContain(
+      "a.eval.yaml: 1 conversation(s), 1 ok, 0 errored, 1 missing tool calls",
+    );
+    // The file that required nothing prints no segment of its own…
+    expect(checkedBatch).toContain("b.eval.yaml: 1 conversation(s), 1 ok, 0 errored\n");
+    // …but the TOTAL reports the batch's count, because SOME file checked.
+    expect(checkedBatch).toContain("1 missing tool calls");
+
+    const uncheckedBatch = formatEvalBatchReport(
+      summarizeBatch([
+        { source: "file:///a.eval.yaml", status: "ok", result: tutorRun(undefined, false) },
+      ]),
+    );
+    expect(uncheckedBatch).not.toContain("tool calls");
   });
 });

@@ -1,0 +1,12 @@
+# A TUTOR eval whose case requires a tool while the fake generator answers in the shape of
+# a server too OLD to report tool calls (`[no-tool-calls]` omits the field entirely). The
+# requirement then cannot be checked at all, which is run health: the case ERRORS with a
+# message naming the fix, and the run exits 1 — never a silent "nothing missing".
+id: tutor-old-server-eval
+kind: tutor
+target: ../tutors/tools-tutor.yaml
+conversations:
+  - title: server-cannot-report-tool-calls
+    required_tools: [random_number]
+    conversation:
+      - student: Give me a practice problem. [no-tool-calls][respond:Convert 42 to binary.]

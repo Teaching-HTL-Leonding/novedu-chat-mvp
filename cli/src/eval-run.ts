@@ -53,9 +53,10 @@ import { mapWithConcurrency, withRetry } from "./retry";
 // THE TUTOR KIND reuses that whole machinery with a different pair of calls per repeat: a
 // generated response (`RespondFn`) and then the judge over THAT repeat's own response. It
 // has no verdict, so it has no `passed`/`failed`, no majority, no confusion matrix and no
-// `unstable` — its case statuses are `ok` / `errored` / `skipped` and its ONLY finding is
-// the judge's, which (per-kind policy) still REPORTS and never gates. One report shape
-// serves both kinds; renderers branch on `EvalRunResult.kind`.
+// `unstable` — its case statuses are `ok` / `errored` / `skipped`, and it has two findings:
+// the judge's, and the DETERMINISTIC `required_tools` check (did every tool the case
+// demands get called at least once?). Both (per-kind policy) REPORT and never gate. One
+// report shape serves both kinds; renderers branch on `EvalRunResult.kind`.
 
 /**
  * The eval kinds. Re-exported from the format module (`lib/eval-schema.ts`) so the
@@ -113,7 +114,17 @@ export type GradeFn = (request: { system: string; answer: string }) => Promise<G
 
 /** One generated tutor turn, as the HTTP seam reports it. */
 export type RespondResult =
-  | { ok: true; text: string; usage?: EvalUsage }
+  | {
+      ok: true;
+      text: string;
+      /**
+       * The tool names the generation invoked, in call order, duplicates kept. ABSENT
+       * (rather than `[]`) when the server did not report the field at all — a server
+       * predating tool reporting, which the runner must never read as "called nothing".
+       */
+      toolCalls?: string[];
+      usage?: EvalUsage;
+    }
   | {
       ok: false;
       /** Worth another attempt: a 5xx or a true network failure. Any 4xx is terminal. */
@@ -237,6 +248,19 @@ export interface EvalRepeatRow {
   feedback?: string;
   /** TUTOR: the response the model generated for this observation, verbatim. */
   text?: string;
+  /**
+   * TUTOR: the tool names this generation invoked, verbatim — in call order, duplicates
+   * kept, `[]` when it called nothing. Absent when the server reported no tool calls at
+   * all (only possible on a case that declares no `required_tools`; a case that does
+   * declare them turns that silence into an error instead — see the tutor runner).
+   */
+  toolCalls?: string[];
+  /**
+   * TUTOR: the `required_tools` this observation never called. Present ONLY on a case
+   * that declares `required_tools`, so an empty array honestly means "all of them ran
+   * here" and a missing key means "nothing was required" — never "nothing was checked".
+   */
+  missingTools?: string[];
   /** This ONE generation call's tokens, when the server reported them. */
   usage?: EvalUsage;
   /** Present when this observation never produced a verdict. */
@@ -269,6 +293,13 @@ interface EvalCaseBase {
    * across kinds so one `summarizeBatch` and one report shape serve both.)
    */
   feedbackFlagged: boolean;
+  /**
+   * ANY repeat missed a tool the case's `required_tools` demanded. The exact sibling of
+   * {@link EvalCaseBase.feedbackFlagged}: same any-repeat rule, same standing — reported,
+   * never gating. Always `false` for a quiz case (the grader has no tools), kept on the
+   * base so one `summarizeBatch` and one report shape serve both kinds.
+   */
+  toolsFlagged: boolean;
   repeats: EvalRepeatRow[];
 }
 
@@ -296,8 +327,15 @@ export interface EvalTutorCaseResult extends EvalCaseBase {
   /** The teacher's per-case expectations, when this case states any. */
   gradingInstructions?: string;
   /**
+   * The tools this case demands at least one call of, verbatim from the file. Absent when
+   * the case declares none — which is what every renderer's "was this even checked?" rule
+   * reads, so a run that required nothing never prints a reassuring zero.
+   */
+  requiredTools?: string[];
+  /**
    * No verdict exists, so there is no `passed`/`failed`: a case either produced its
-   * responses (`ok`) or did not. Judge findings never change this — report-only.
+   * responses (`ok`) or did not. Judge findings and missing tool calls never change this —
+   * both are report-only.
    */
   status: "ok" | "errored" | "skipped";
   unstable: false;
@@ -343,6 +381,8 @@ export interface EvalRunResult {
     unstable: number;
     /** CASES whose output the judge flagged — reported, never gating, both kinds. */
     feedbackFlagged: number;
+    /** TUTOR only: CASES that missed a required tool call — reported, never gating. */
+    toolsFlagged: number;
     /** REPEATS whose judge call exhausted its retries (the generation still counted). */
     judgeErrored: number;
     repeats: number;
@@ -639,6 +679,9 @@ const quizEvalRunner: EvalRunner = {
           unstable: new Set(graded).size > 1,
           // ANY repeat, never a majority — see the header.
           feedbackFlagged: rows.some((row) => (row.judge?.issues.length ?? 0) > 0),
+          // The grader has no tools, so this is structurally false — carried only so both
+          // kinds share one case shape.
+          toolsFlagged: false,
           repeats: rows,
         };
       },
@@ -664,6 +707,7 @@ const quizEvalRunner: EvalRunner = {
       skipped: results.filter((c) => c.status === "skipped").length,
       unstable: results.filter((c) => c.unstable).length,
       feedbackFlagged: results.filter((c) => c.feedbackFlagged).length,
+      toolsFlagged: 0,
       judgeErrored: results.reduce(
         (sum, c) => sum + c.repeats.filter((row) => row.judgeError !== undefined).length,
         0,
@@ -734,6 +778,8 @@ interface PlannedTutorCase {
   title?: string;
   conversation: EvalConversationTurn[];
   gradingInstructions?: string;
+  /** The tools this case demands at least one call of; absent when it demands none. */
+  requiredTools?: string[];
   /** The scripted turns on the wire — `student`/`tutor` mapped to `user`/`assistant`. */
   messages: { role: "user" | "assistant"; text: string }[];
 }
@@ -747,8 +793,28 @@ function planTutorCases(checked: TutorEvalCheckOk): PlannedTutorCase[] {
     ...(conversation.grading_instructions
       ? { gradingInstructions: conversation.grading_instructions }
       : {}),
+    ...(conversation.required_tools ? { requiredTools: [...conversation.required_tools] } : {}),
     messages: conversation.conversation.map(turnToMessage),
   }));
+}
+
+/**
+ * The message a repeat carries when the case REQUIRES tools but the 200 answered without a
+ * `toolCalls` field: a new CLI against a server too old to report them. Terminal and loud
+ * — reporting "nothing missing" for a check that never ran would certify a tool
+ * expectation nobody verified, which is worse than failing. The advisory `/api/version`
+ * check cannot carry this: it only warns (never gates, never compares an ordering), while
+ * this must fail the run's health.
+ */
+const NO_TOOL_CALLS_REPORTED =
+  "This case declares `required_tools`, but the server's answer carried no tool calls — " +
+  "it is too old to report them, so the requirement could not be checked. Update the " +
+  "Novedu server, or remove `required_tools` from this case.";
+
+/** The required tools this repeat never called, in the case's own order. */
+function missingToolsOf(required: readonly string[], called: readonly string[]): string[] {
+  const seen = new Set(called);
+  return required.filter((tool) => !seen.has(tool));
 }
 
 /**
@@ -808,18 +874,37 @@ const tutorEvalRunner: EvalRunner = {
             },
           );
           if (outcome.ok) {
+            // A case that REQUIRES tools against a server that reports none cannot be
+            // checked at all — fail it loudly (run health) instead of silently reporting
+            // "nothing missing". Terminal: another attempt would answer the same way.
+            if (plan.requiredTools && outcome.toolCalls === undefined) {
+              progress();
+              rows.push({
+                repeatIndex,
+                error: { message: NO_TOOL_CALLS_REPORTED },
+                ...unjudged,
+              });
+              break;
+            }
+            const missingTools = plan.requiredTools
+              ? missingToolsOf(plan.requiredTools, outcome.toolCalls ?? [])
+              : undefined;
             // The judge call is a DEPENDENT step of this repeat: it audits THIS repeat's
             // own generated response, never another's. The progress tick happens AFTER
             // it, so the counter never reads "done" while judging is still to come.
             const judged = options.judge
               ? await judgeStep({
                   system: TUTOR_JUDGE_SYSTEM,
-                  subject: buildTutorJudgeSubject(
-                    system,
-                    plan.conversation,
-                    outcome.text,
-                    plan.gradingInstructions,
-                  ),
+                  subject: buildTutorJudgeSubject(system, plan.conversation, outcome.text, {
+                    ...(plan.gradingInstructions
+                      ? { gradingInstructions: plan.gradingInstructions }
+                      : {}),
+                    // EVIDENCE only: the tool block appears when this tutor HAS tools and
+                    // the server reported what ran. Whether a REQUIRED tool ran is decided
+                    // above, deterministically — never by the judge.
+                    tools,
+                    ...(outcome.toolCalls ? { toolCalls: outcome.toolCalls } : {}),
+                  }),
                   // A case that states no expectations drops `fails_expectations`, so the
                   // judge cannot invent expectations nobody wrote.
                   criteria: tutorJudgeCriteria(plan.gradingInstructions !== undefined),
@@ -829,6 +914,10 @@ const tutorEvalRunner: EvalRunner = {
             rows.push({
               repeatIndex,
               text: outcome.text,
+              ...(outcome.toolCalls ? { toolCalls: outcome.toolCalls } : {}),
+              // Present exactly when the case demanded tools — an empty array then means
+              // "all of them ran", which is a real (and reassuring) measurement.
+              ...(missingTools ? { missingTools } : {}),
               ...(outcome.usage ? { usage: outcome.usage } : {}),
               ...judged,
             });
@@ -869,11 +958,15 @@ const tutorEvalRunner: EvalRunner = {
           ...(plan.title ? { title: plan.title } : {}),
           conversation: plan.conversation,
           ...(plan.gradingInstructions ? { gradingInstructions: plan.gradingInstructions } : {}),
+          ...(plan.requiredTools ? { requiredTools: plan.requiredTools } : {}),
           status,
           unstable: false,
           // ANY repeat, never a majority — one flagged response out of three is exactly
           // the `--repeats` signal.
           feedbackFlagged: rows.some((row) => (row.judge?.issues.length ?? 0) > 0),
+          // Same any-repeat rule, same standing: a tool the tutor skipped once out of
+          // three is precisely what `--repeats` exists to surface. Reported, never gating.
+          toolsFlagged: rows.some((row) => (row.missingTools?.length ?? 0) > 0),
           repeats: rows,
         };
       },
@@ -904,6 +997,7 @@ const tutorEvalRunner: EvalRunner = {
         skipped: results.filter((c) => c.status === "skipped").length,
         unstable: 0,
         feedbackFlagged: results.filter((c) => c.feedbackFlagged).length,
+        toolsFlagged: results.filter((c) => c.toolsFlagged).length,
         judgeErrored: results.reduce(
           (sum, c) => sum + c.repeats.filter((row) => row.judgeError !== undefined).length,
           0,
@@ -997,6 +1091,8 @@ export interface EvalBatchResult {
     unstable: number;
     /** CASES whose feedback the judge flagged, across the batch — reported, never gating. */
     feedbackFlagged: number;
+    /** CASES that missed a required tool call, across the batch — reported, never gating. */
+    toolsFlagged: number;
     /** REPEATS whose judge call exhausted its retries, across the batch. */
     judgeErrored: number;
     /** Every file's usage added up, grading + judge — a LOWER bound ({@link EvalUsage}). */
@@ -1026,6 +1122,7 @@ export function summarizeBatch(files: EvalBatchFileInput[]): EvalBatchResult {
     skipped: 0,
     unstable: 0,
     feedbackFlagged: 0,
+    toolsFlagged: 0,
     judgeErrored: 0,
     usage: { ...ZERO_USAGE },
   };
@@ -1038,6 +1135,7 @@ export function summarizeBatch(files: EvalBatchFileInput[]): EvalBatchResult {
     totals.skipped += file.result.totals.skipped;
     totals.unstable += file.result.totals.unstable;
     totals.feedbackFlagged += file.result.totals.feedbackFlagged;
+    totals.toolsFlagged += file.result.totals.toolsFlagged;
     totals.judgeErrored += file.result.totals.judgeErrored;
     addUsage(totals.usage, file.result.totals.usage);
   }
@@ -1066,12 +1164,25 @@ export function anyJudged(result: EvalRunResult): boolean {
 }
 
 /**
+ * Did this file's run CHECK tool calls at all — i.e. does any case declare
+ * `required_tools`? The tool sibling of {@link anyJudged}, and the same rule: a run that
+ * required nothing has not been found complete, so its `toolsFlagged` count is OMITTED
+ * rather than printed as a reassuring `0`.
+ */
+export function anyToolsRequired(result: EvalRunResult): boolean {
+  return result.cases.some(
+    (evalCase) => isTutorCase(evalCase) && evalCase.requiredTools !== undefined,
+  );
+}
+
+/**
  * The CI gate: every file valid, and not a single failed, errored, or skipped CASE —
  * an aborted (and therefore incomplete) run must never read as a pass. The single
  * source of truth for the exit code AND for `EvalBatchResult.passed`.
  *
- * `unstable`, `feedbackFlagged` and `judgeErrored` deliberately do NOT appear here: all
- * three are reported, none gates. (Gating is per-KIND policy, not a property of judge
+ * `unstable`, `feedbackFlagged`, `toolsFlagged` and `judgeErrored` deliberately do NOT
+ * appear here: all four are reported, none gates. (Gating is per-KIND policy, not a
+ * property of judge
  * results — and BOTH shipped kinds are report-only. For the tutor kind that is the whole
  * policy: its exit code reflects RUN HEALTH only, so a flagged conversation changes
  * nothing, and the Markdown report is the deliverable — docs/cli-eval.md.)

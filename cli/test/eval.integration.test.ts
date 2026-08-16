@@ -27,6 +27,10 @@ const tutorEval = join(evalsDir, "tutor-eval.yaml");
 const tutorJudgeEval = join(evalsDir, "tutor-judge-eval.yaml");
 /** A tutor eval whose conversation ends on a `tutor:` turn — schema-invalid. */
 const brokenTutorEval = join(evalsDir, "broken-tutor-eval.yaml");
+/** Three `required_tools` cases: the tool ran, it did not, and it ran plus an extra. */
+const tutorToolsEval = join(evalsDir, "tutor-tools-eval.yaml");
+/** A `required_tools` case answered in the shape of a server too old to report tool calls. */
+const tutorOldServerEval = join(evalsDir, "tutor-old-server-eval.yaml");
 
 let fixtures:
   | {
@@ -406,6 +410,71 @@ describe("novedu-cli eval — the tutor kind", () => {
     const payload = JSON.parse(stderr);
     expect(payload.errors[0].code).toBe("EVAL_SCHEMA");
     expect(payload.errors[0].message).toContain("must end with a `student` turn");
+  });
+
+  it("checks required_tools end to end: satisfied, missing and extra calls", async () => {
+    const report = join(dir, "tutor-tools-report.md");
+
+    const { code, stdout } = await runCli([
+      "eval",
+      tutorToolsEval,
+      "--json",
+      "--report",
+      report,
+      "--server",
+      baseUrl(),
+    ]);
+
+    const payload = JSON.parse(stdout);
+    const result = payload.files[0].result;
+    const [satisfied, missing, extra] = result.cases;
+
+    expect(satisfied.requiredTools).toEqual(["random_number"]);
+    expect(satisfied.repeats[0].toolCalls).toEqual(["random_number"]);
+    expect(satisfied.repeats[0].missingTools).toEqual([]);
+    expect(satisfied.toolsFlagged).toBe(false);
+
+    expect(missing.repeats[0].toolCalls).toEqual([]);
+    expect(missing.repeats[0].missingTools).toEqual(["random_number"]);
+    expect(missing.toolsFlagged).toBe(true);
+
+    // Extra calls are always fine — never a finding.
+    expect(extra.repeats[0].toolCalls).toEqual(["random_number", "random_number"]);
+    expect(extra.toolsFlagged).toBe(false);
+
+    expect(result.totals.toolsFlagged).toBe(1);
+    // REPORT-ONLY: the exit code reflects run health only, exactly like a judge flag.
+    expect(payload.passed).toBe(true);
+    expect(code).toBe(0);
+
+    const md = readFileSync(report, "utf8");
+    expect(md).toContain("- **Missing tool calls** 1 case(s)");
+    expect(md).toContain("### Missing tool calls");
+    expect(md).toContain("#### #2 forgets-the-tool");
+    expect(md).toContain("- Repeat #1 — missing `random_number`; called (none)");
+
+    // …and the judge saw what really ran, as evidence.
+    const judged = fixtures?.judgeRequests.at(-1) as { subject?: string } | undefined;
+    expect(judged?.subject).toContain("Tools the tutor called while answering");
+  });
+
+  it("fails LOUDLY when the server reports no tool calls for a required-tools case", async () => {
+    const { code, stdout } = await runCli([
+      "eval",
+      tutorOldServerEval,
+      "--json",
+      "--server",
+      baseUrl(),
+    ]);
+
+    // Never a silent "nothing missing": the case errors, so the run is unhealthy.
+    const payload = JSON.parse(stdout);
+    const errorMessage = payload.files[0].result.cases[0].repeats[0].error.message;
+    expect(payload.files[0].result.cases[0].status).toBe("errored");
+    expect(errorMessage).toContain("required_tools");
+    expect(errorMessage).toContain("Update the Novedu server");
+    expect(payload.passed).toBe(false);
+    expect(code).toBe(1);
   });
 
   it("runs a MIXED quiz + tutor batch, one scope line per kind", async () => {

@@ -221,6 +221,17 @@ function makeGradeFn(
 }
 
 /**
+ * The `toolCalls: string[]` of a tutor 200, defensively: `undefined` when the field is
+ * absent (a server too old to report tool calls — a distinction the runner MUST be able to
+ * make), and non-string entries are dropped rather than breaking a run. Names only, in the
+ * order the server sent them, duplicates kept.
+ */
+function parseToolCalls(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((name): name is string => typeof name === "string" && name !== "");
+}
+
+/**
  * The HTTP seam for ONE generated tutor turn, with the run's effective llm closed in —
  * the tutor kind's sibling of {@link makeGradeFn}, sharing its failure classification
  * exactly (5xx and network retryable, auth aborts the run, every other 4xx terminal).
@@ -238,10 +249,23 @@ function makeRespondFn(
       quiet: true,
     });
     if (response.ok) {
-      const payload = response.payload as { text?: unknown; usage?: unknown } | null;
+      const payload = response.payload as {
+        text?: unknown;
+        toolCalls?: unknown;
+        usage?: unknown;
+      } | null;
       if (typeof payload?.text === "string" && payload.text !== "") {
         const usage = parseUsage(payload?.usage);
-        return { ok: true, text: payload.text, ...(usage ? { usage } : {}) };
+        const toolCalls = parseToolCalls(payload?.toolCalls);
+        return {
+          ok: true,
+          text: payload.text,
+          // ABSENT, never `[]`, when the server did not report the field: the runner turns
+          // that silence into a loud failure for a case that requires tools, which it
+          // could not do if a missing field looked like "called nothing".
+          ...(toolCalls ? { toolCalls } : {}),
+          ...(usage ? { usage } : {}),
+        };
       }
       // Same reasoning as the grade seam: a 2xx that is not a response almost always
       // means the server does not OFFER the endpoint, not that generation went wrong.

@@ -688,6 +688,7 @@ describe("summarizeBatch", () => {
       skipped: 0,
       unstable: 0,
       feedbackFlagged: 0,
+      toolsFlagged: 0,
       judgeErrored: 0,
       usage: { input: 0, cachedInput: 0, output: 0 },
     });
@@ -801,6 +802,7 @@ function checkedTutor(
   conversations: {
     title?: string;
     grading_instructions?: string;
+    required_tools?: string[];
     conversation: ({ student: string } | { tutor: string })[];
   }[],
   tools: string[] = [],
@@ -1102,6 +1104,154 @@ describe("tutor eval runner — the judge", () => {
     });
 
     expect(result.totals.usage).toEqual({ input: 110, cachedInput: 42, output: 8 });
+  });
+});
+
+// A case that requires tools, and a seam that reports exactly what ran.
+const TOOL_CASE = [
+  {
+    title: "draws-a-random-problem",
+    required_tools: ["random_number"],
+    conversation: [{ student: "Give me a practice problem." }],
+  },
+];
+
+const respondWithTools = (toolCalls: string[]): RespondResult => ({
+  ok: true,
+  text: "Convert 42 to binary.",
+  toolCalls,
+});
+
+describe("tutor eval runner — required_tools", () => {
+  it("records the calls and an EMPTY missing list when every required tool ran", async () => {
+    const result = await runTutorEval(checkedTutor(TOOL_CASE, ["random_number"]), {
+      respond: async () => respondWithTools(["random_number"]),
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(result.cases[0]).toMatchObject({
+      status: "ok",
+      requiredTools: ["random_number"],
+      toolsFlagged: false,
+    });
+    // Present and empty: a real measurement, not a missing key.
+    expect(result.cases[0]?.repeats[0]?.missingTools).toEqual([]);
+    expect(result.cases[0]?.repeats[0]?.toolCalls).toEqual(["random_number"]);
+    expect(result.totals.toolsFlagged).toBe(0);
+  });
+
+  it("flags a MISSING tool on ANY repeat without touching the status or the gate", async () => {
+    let call = 0;
+    const respond = async (): Promise<RespondResult> =>
+      call++ === 1 ? respondWithTools([]) : respondWithTools(["random_number"]);
+
+    const result = await runTutorEval(checkedTutor(TOOL_CASE, ["random_number"]), {
+      respond,
+      repeats: 3,
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(result.cases[0]?.toolsFlagged).toBe(true);
+    expect(result.cases[0]?.repeats.map((row) => row.missingTools)).toEqual([
+      [],
+      ["random_number"],
+      [],
+    ]);
+    expect(result.totals.toolsFlagged).toBe(1);
+    // REPORT-ONLY, exactly like a judge flag: the case is still `ok` and the run passes.
+    expect(result.cases[0]?.status).toBe("ok");
+    expect(result.totals.errored).toBe(0);
+    expect(batchPassed(summarizeBatch([{ source: "f", status: "ok", result }]))).toBe(true);
+  });
+
+  it("never minds EXTRA tools, and records no missing list for a case requiring none", async () => {
+    const result = await runTutorEval(
+      checkedTutor([...TOOL_CASE, { conversation: [{ student: "hi" }] }], ["random_number"]),
+      {
+        respond: async () => respondWithTools(["random_number", "random_number"]),
+        llm: LLM,
+        concurrency: 1,
+        retry: NO_SLEEP,
+      },
+    );
+
+    // A tool called twice, plus nothing required of the second case at all.
+    expect(result.cases[0]?.toolsFlagged).toBe(false);
+    expect(result.cases[0]?.repeats[0]?.missingTools).toEqual([]);
+    expect(result.cases[1]).not.toHaveProperty("requiredTools");
+    expect(result.cases[1]?.repeats[0]).not.toHaveProperty("missingTools");
+    expect(result.totals.toolsFlagged).toBe(0);
+  });
+
+  it("ERRORS a required-tools case when the server reports no tool calls at all", async () => {
+    // A new CLI against an old server: reporting "nothing missing" would certify a check
+    // that never ran, so this is run health — loud, terminal, and it names the fix.
+    const respond = vi.fn(async (): Promise<RespondResult> => ({ ok: true, text: "sure" }));
+
+    const result = await runTutorEval(checkedTutor(TOOL_CASE, ["random_number"]), {
+      respond,
+      repeats: 2,
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(result.cases[0]?.status).toBe("errored");
+    const failure = result.cases[0]?.repeats[0]?.error as { message?: string } | undefined;
+    expect(failure?.message).toContain("too old to report them");
+    // Terminal: the remaining repeats are not attempted, and nothing was retried.
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(result.totals.toolsFlagged).toBe(0);
+    expect(batchPassed(summarizeBatch([{ source: "f", status: "ok", result }]))).toBe(false);
+  });
+
+  it("leaves a case that requires nothing untouched on such a server", async () => {
+    const result = await runTutorEval(checkedTutor([{ conversation: [{ student: "hi" }] }]), {
+      respond: async (): Promise<RespondResult> => ({ ok: true, text: "sure" }),
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(result.cases[0]?.status).toBe("ok");
+    expect(result.totals.errored).toBe(0);
+  });
+
+  it("hands the judge the tool calls as evidence when the tutor has a grant", async () => {
+    const judge = vi.fn(cleanJudge);
+
+    await runTutorEval(checkedTutor(TOOL_CASE, ["random_number"]), {
+      respond: async () => respondWithTools(["random_number"]),
+      judge,
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    expect(judge.mock.calls[0]?.[0].subject).toContain("Tools the tutor called while answering");
+    // The deterministic check owns tool PRESENCE — the taxonomy is unchanged.
+    expect(judge.mock.calls[0]?.[0].criteria).not.toContain("missing_tools");
+  });
+
+  it("sums toolsFlagged across a batch", async () => {
+    const flagged = await runTutorEval(checkedTutor(TOOL_CASE, ["random_number"]), {
+      respond: async () => respondWithTools([]),
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+    const clean = await runTutorEval(checkedTutor(TOOL_CASE, ["random_number"]), {
+      respond: async () => respondWithTools(["random_number"]),
+      llm: LLM,
+      retry: NO_SLEEP,
+    });
+
+    const batch = summarizeBatch([
+      { source: "file:///a.eval.yaml", status: "ok", result: flagged },
+      { source: "file:///b.eval.yaml", status: "ok", result: clean },
+    ]);
+
+    expect(batch.totals.toolsFlagged).toBe(1);
+    // Never a gate — the batch still passes.
+    expect(batch.passed).toBe(true);
   });
 });
 

@@ -12,6 +12,7 @@ import type { QuizCheckResult } from "@/lib/quiz-validate";
 import type { WritingCheckResult } from "@/lib/writing-validate";
 import {
   anyJudged,
+  anyToolsRequired,
   type EvalBatchResult,
   type EvalRunResult,
   type EvalUsage,
@@ -359,6 +360,14 @@ export function formatEvalReport(result: EvalRunResult, source: string): string 
         : totals.feedbackFlagged
           ? yellow(`   ${flaggedLabel(result.kind)}: ${totals.feedbackFlagged}`)
           : dim(`   ${flaggedLabel(result.kind)}: 0`)) +
+      // The deterministic sibling of the judge's count, under the SAME omission rule
+      // (`anyToolsRequired`): a run where no case declared `required_tools` prints no
+      // segment at all, because a `0` there would claim a check nobody ran.
+      (!anyToolsRequired(result)
+        ? ""
+        : totals.toolsFlagged
+          ? yellow(`   missing tool calls: ${totals.toolsFlagged}`)
+          : dim("   missing tool calls: 0")) +
       (totals.judgeErrored ? dim(`   judge errors: ${totals.judgeErrored}`) : ""),
   );
 
@@ -417,7 +426,14 @@ export function formatEvalBatchReport(batch: EvalBatchResult): string {
           ? ""
           : t.feedbackFlagged
             ? yellow(`, ${t.feedbackFlagged} flagged`)
-            : dim(", 0 flagged")),
+            : dim(", 0 flagged")) +
+        // Same omission rule for the tool check: a file that required no tool says
+        // nothing about missing tool calls.
+        (!anyToolsRequired(file.result)
+          ? ""
+          : t.toolsFlagged
+            ? yellow(`, ${t.toolsFlagged} missing tool calls`)
+            : dim(", 0 missing tool calls")),
     );
   }
 
@@ -425,6 +441,9 @@ export function formatEvalBatchReport(batch: EvalBatchResult): string {
   // Same rule as the per-file rows: a batch where no file judged says nothing about
   // flagged feedback; one where any file did reports its count, zero included.
   const judged = batch.files.some((file) => file.result && anyJudged(file.result));
+  // …and the same for the tool check across the batch: no file required a tool ⇒ no
+  // segment, never a reassuring zero.
+  const toolChecked = batch.files.some((file) => file.result && anyToolsRequired(file.result));
   lines.push("");
   lines.push(
     `  TOTAL: ${g.cases} case(s), ${g.passed} passed, ${g.failed} failed, ${g.errored} errored` +
@@ -433,6 +452,11 @@ export function formatEvalBatchReport(batch: EvalBatchResult): string {
         ? g.feedbackFlagged
           ? yellow(`, ${g.feedbackFlagged} flagged`)
           : dim(", 0 flagged")
+        : "") +
+      (toolChecked
+        ? g.toolsFlagged
+          ? yellow(`, ${g.toolsFlagged} missing tool calls`)
+          : dim(", 0 missing tool calls")
         : "") +
       (g.invalid ? red(`, ${g.invalid} invalid file(s)`) : ""),
   );

@@ -26,7 +26,11 @@
 // the generated turn is the `[respond:<text>]` marker's payload when the LAST student
 // message carries one (so a test decides exactly what the judge then sees — including a
 // planted `[judge:<criterion>]` marker), otherwise a canned echo. `options.respondFailures`
-// makes the first N requests answer 504, exercising the retry path offline.
+// makes the first N requests answer 504, exercising the retry path offline. Two more
+// markers drive the `required_tools` check: `[tools:a,b]` reports those tool names as the
+// call the generation made (no marker = `toolCalls: []`), and `[no-tool-calls]` OMITS the
+// field entirely — the shape of a server too old to report tool calls, which the CLI must
+// turn into a loud failure rather than a silent "nothing missing".
 //
 // `/api/eval/judge` (the judge, shared by both eval kinds) follows the same convention one level up:
 // it answers an EMPTY `issues` list unless the request's `subject` carries
@@ -338,7 +342,21 @@ async function handleEvalRespond(req, res, state, requests) {
     cachedInput: 64,
     output: 30 + text.length,
   };
-  sendJson(res, 200, { text, usage });
+  // `[no-tool-calls]` fakes a server too OLD to report tool calls: the field is absent
+  // entirely, which a CLI must never read as "the tutor called nothing".
+  if (/\[no-tool-calls\]/.test(last)) {
+    sendJson(res, 200, { text, usage });
+    return;
+  }
+  // `[tools:a,b]` reports those tool names, in that order; no marker means none ran.
+  const toolMarker = /\[tools:([^\]]*)\]/.exec(last);
+  const toolCalls = toolMarker
+    ? String(toolMarker[1])
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean)
+    : [];
+  sendJson(res, 200, { text, toolCalls, usage });
 }
 
 /**

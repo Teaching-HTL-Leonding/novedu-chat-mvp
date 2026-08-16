@@ -645,7 +645,7 @@ describe("expandSources", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.sources).toHaveLength(7);
+    expect(result.sources).toHaveLength(9);
     expect(result.sources.map((s) => s.split("/").pop())).toEqual([
       "broken-eval.yaml",
       "broken-tutor-eval.yaml",
@@ -654,6 +654,8 @@ describe("expandSources", () => {
       "test-eval.yaml",
       "tutor-eval.yaml",
       "tutor-judge-eval.yaml",
+      "tutor-old-server-eval.yaml",
+      "tutor-tools-eval.yaml",
     ]);
   });
 
