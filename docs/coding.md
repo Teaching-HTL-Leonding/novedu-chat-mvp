@@ -20,9 +20,7 @@ samples (the coding YAML under `activities/examples/`).
 - A teacher mints a `novedu_codes` row with `module: "coding"` pointing at a coding
   YAML, exactly like any other code (`/codes/new`). **The code string IS the API
   key.** The student configures a coding agent with three things — base URL, key,
-  model — and codes. The client may be a CLI (little-coder / `pi`) or a browser-based
-  one (a web playground, which additionally needs its origin on the CORS allowlist
-  below).
+  model — and codes.
 - Unlike tutor/quiz/writing it has **no in-app chat**: there is no CopilotKit
   runtime agent and no Mastra memory. The `/<code>` web page is just a **connection
   page** showing how to point a tool at the endpoint.
@@ -49,19 +47,6 @@ samples (the coding YAML under `activities/examples/`).
   availability window on **every** request — the same single boundary every module
   shares, never a bare lookup. A non-`coding` code is rejected with the same opaque 401
   as an unknown key.
-- A **browser** client (a web playground) reaches the same route, so it answers the
-  CORS preflight and echoes `Access-Control-Allow-Origin` for an **allowlisted** origin
-  — **never a wildcard**. The allowlist is **`CODING_CORS_ORIGINS`** (comma-separated;
-  it REPLACES rather than extends the default `http://localhost:8080` +
-  `http://127.0.0.1:8080`), so a deployed browser client's origin is a per-deployment
-  app setting, not a code constant. The policy lives in `lib/coding-cors.ts`; entries
-  are normalized through `new URL().origin` and anything not `http:`/`https:` is
-  dropped — `new URL("localhost:8080")` does not throw but yields the origin string
-  `"null"`, which would otherwise match the `Origin: null` of a sandboxed iframe or a
-  `file://` page. CORS changes no capability here: the code is an explicit bearer
-  header, never a cookie, so a cross-origin page carries no ambient authority; the
-  allowlist just narrows where a leaked code can be spent. A request without an
-  `Origin` — every CLI client — gets exactly the response it always did.
 - It is **always anonymous**: the API path carries no `oid`, so there is no
   attribution, no `novedu_user_chats` row, and no per-student review. `readAnonymousFlag("coding")` returns `{ anonymous: true, definitive: true }` and the
   validator freezes `anonymous: true` onto the row.
@@ -132,18 +117,8 @@ instructions: |
 
 ## The proxy route
 
-`app/api/coding/v1/chat/completions/route.ts` (`POST` + `OPTIONS`,
-`dynamic = "force-dynamic"`):
+`app/api/coding/v1/chat/completions/route.ts` (`POST`, `dynamic = "force-dynamic"`):
 
-0. `codingCorsHeaders(req.headers.get("origin"))` resolves once per request and is
-   threaded through **every** return — the success headers and all eleven
-   `errorResponse` call sites — so a browser can read a `401`/`413`/`502` body instead
-   of an opaque network error. `OPTIONS` answers the preflight from the request alone
-   (no bearer key, no `checkCode`, no YAML load: a preflight carries no credentials by
-   design) with `204` + `Allow: POST, OPTIONS`, adding the CORS headers only for an
-   allowlisted origin. `Access-Control-Allow-Headers` **echoes** the requested headers,
-   so the OpenAI JS SDK's `x-stainless-*` batch passes. An unhandled throw is the one
-   path that still lands as a bare Next 500 with no CORS headers.
 1. `parseBearerKey` reads the code from `Authorization` (the verbatim token — nothing
    stripped). An oversized body (`Content-Length` over `MAX_BODY_BYTES`, 2 MiB) is
    rejected with `413` before any DB work.
@@ -223,19 +198,15 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
 - Hermetic unit tests: `parseCoding` (incl. the shipped sample) `lib/coding-yaml.unit.test.ts`;
   the strict authoring validator (schema errors, the always-anonymous mapping)
   `lib/coding-validate.unit.test.ts`; the pure proxy helpers (`buildUpstreamChatBody`,
-  `parseBearerKey`, `openaiError`) `lib/coding-proxy.unit.test.ts`; the CORS policy
-  (allowlist parsing incl. the scheme guard, the response + preflight headers)
-  `lib/coding-cors.unit.test.ts`; the descriptor + the
+  `parseBearerKey`, `openaiError`) `lib/coding-proxy.unit.test.ts`; the descriptor + the
   validator seam + the `readAnonymousFlag` branch (`lib/code-modules/coding.unit.test.ts`,
   `lib/file-validators.unit.test.ts`). The `@novedu/cli validate --kind coding` path is
   covered in `cli/src/commands/validate.unit.test.ts`.
 - HTTP-level **integration test** of the endpoint
   (`app/api/coding/v1/chat/completions/route.unit.test.ts`, node env): drives the
-  real `POST` (and `OPTIONS`) with `Request`s and a mocked SCCH `fetch` — auth/window
-  gating, non-coding rejection, the forwarded body transform, OpenAI error shapes, both
-  non-streamed JSON and streamed SSE passthrough, and the CORS surface (preflight,
-  allowed vs stranger origin, the headers on success and on the error paths, and the
-  unchanged no-`Origin` CLI path).
+  real `POST` with `Request`s and a mocked SCCH `fetch` — auth/window gating,
+  non-coding rejection, the forwarded body transform, OpenAI error shapes, and both
+  non-streamed JSON and streamed SSE passthrough.
 - The real end-to-end path is **`e2e/coding-agent.spec.ts`** (`@live-llm`, local
   only): drives the REAL `pi` coding agent (`@earendil-works/pi-coding-agent`, a
   pinned devDependency — little-coder's engine) through the endpoint once per

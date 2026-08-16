@@ -1,6 +1,5 @@
 import { readBoundedJson } from "@/lib/bounded-json";
 import { checkCode, effectiveLlm } from "@/lib/code-store";
-import { codingCorsHeaders, codingPreflightHeaders } from "@/lib/coding-cors";
 import { loadCoding } from "@/lib/coding-fetch";
 import {
   buildUpstreamChatBody,
@@ -26,11 +25,6 @@ import { recordLlmUsage } from "@/lib/usage-store";
 // learns which) and pipes the response stream straight back. No Mastra, no memory, no
 // server-side tool loop: client-side tools and streaming are preserved because the
 // body is forwarded verbatim and the response is never parsed.
-//
-// A BROWSER client (a web playground) reaches it too, so every response — success and
-// error alike — carries the CORS headers for an ALLOWLISTED origin, and `OPTIONS` answers
-// the preflight. The policy lives in `lib/coding-cors.ts`; a request without an `Origin`
-// (every CLI client) is unaffected.
 
 export const dynamic = "force-dynamic";
 
@@ -84,39 +78,19 @@ async function tapCodingUsage(
   }
 }
 
-// `cors` is threaded through EVERY error path: without it a browser sees an opaque
-// network error instead of the OpenAI envelope, so a bad key or malformed body would be
-// indistinguishable from the endpoint being down.
 function errorResponse(
   message: string,
   status: number,
   type = "invalid_request_error",
   code: string | null = null,
-  cors: Record<string, string> = {},
 ): Response {
-  return Response.json(openaiError(message, type, code), { status, headers: cors });
-}
-
-// Preflight. Answers from the request alone — no bearer key (a preflight carries none by
-// design), no DB work. A disallowed or absent origin still gets a valid `204`, just
-// without the CORS headers: the browser blocks the real request, and a non-browser
-// OPTIONS probe keeps working. `Allow` mirrors what Next's auto-implemented OPTIONS set
-// before this export superseded it.
-export function OPTIONS(req: Request): Response {
-  return new Response(null, {
-    status: 204,
-    headers: { Allow: "POST, OPTIONS", ...codingPreflightHeaders(req) },
-  });
+  return Response.json(openaiError(message, type, code), { status });
 }
 
 // The bounded body read lives in `lib/bounded-json.ts` — shared verbatim with the
 // teacher-only `/api/eval/grade`, the other route that buffers a client-supplied body.
 
 export async function POST(req: Request): Promise<Response> {
-  // 0. Resolve the CORS headers once — `{}` for a CLI client (no Origin) or an origin
-  // that is not allowlisted, so those responses are unchanged.
-  const cors = codingCorsHeaders(req.headers.get("origin"));
-
   // 1. The code is the Bearer key.
   const code = parseBearerKey(req.headers.get("authorization"));
   if (!code) {
@@ -125,7 +99,6 @@ export async function POST(req: Request): Promise<Response> {
       401,
       "invalid_request_error",
       "invalid_api_key",
-      cors,
     );
   }
 
@@ -139,7 +112,6 @@ export async function POST(req: Request): Promise<Response> {
       413,
       "invalid_request_error",
       "request_too_large",
-      cors,
     );
   }
 
@@ -148,13 +120,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!verification.ok) {
     switch (verification.reason) {
       case "unknown-code":
-        return errorResponse(
-          "Invalid API key.",
-          401,
-          "invalid_request_error",
-          "invalid_api_key",
-          cors,
-        );
+        return errorResponse("Invalid API key.", 401, "invalid_request_error", "invalid_api_key");
       case "not-started":
       case "expired":
         return errorResponse(
@@ -162,16 +128,15 @@ export async function POST(req: Request): Promise<Response> {
           403,
           "invalid_request_error",
           "key_inactive",
-          cors,
         );
       default:
-        return errorResponse("Service temporarily unavailable.", 503, "server_error", null, cors);
+        return errorResponse("Service temporarily unavailable.", 503, "server_error", null);
     }
   }
   const { entry } = verification;
   // A non-coding code is not a valid key for this endpoint — don't disclose more.
   if (entry.module !== "coding") {
-    return errorResponse("Invalid API key.", 401, "invalid_request_error", "invalid_api_key", cors);
+    return errorResponse("Invalid API key.", 401, "invalid_request_error", "invalid_api_key");
   }
 
   // 3. Load the teacher's coding YAML (system prompt + pinned model). The code's
@@ -179,7 +144,7 @@ export async function POST(req: Request): Promise<Response> {
   // model and the upstream endpoint below both follow the EFFECTIVE pair.
   const loaded = await loadCoding(entry.fileUrl);
   if (!loaded.ok) {
-    return errorResponse(loaded.message, 502, "server_error", null, cors);
+    return errorResponse(loaded.message, 502, "server_error", null);
   }
   const llm = effectiveLlm(entry, loaded.coding);
 
@@ -197,14 +162,14 @@ export async function POST(req: Request): Promise<Response> {
     authPromise.catch(() => {});
   } catch (error) {
     recordError(error, { route: "coding-proxy", stage: "config" });
-    return errorResponse("Service temporarily unavailable.", 500, "server_error", null, cors);
+    return errorResponse("Service temporarily unavailable.", 500, "server_error", null);
   }
 
   // 5. Read the client body under a hard byte cap, then build the upstream body and
   // let the provider adapt its parameter dialect (e.g. Foundry's max_completion_tokens).
   const parsed = await readBoundedJson(req, MAX_BODY_BYTES);
   if (!parsed.ok) {
-    return errorResponse(parsed.message, parsed.status, "invalid_request_error", parsed.code, cors);
+    return errorResponse(parsed.message, parsed.status, "invalid_request_error", parsed.code);
   }
   const upstreamBody = endpoint.adaptBody(
     buildUpstreamChatBody(parsed.value, {
@@ -219,7 +184,7 @@ export async function POST(req: Request): Promise<Response> {
     upstreamAuth = await authPromise;
   } catch (error) {
     recordError(error, { route: "coding-proxy", stage: "config" });
-    return errorResponse("Service temporarily unavailable.", 500, "server_error", null, cors);
+    return errorResponse("Service temporarily unavailable.", 500, "server_error", null);
   }
 
   // 7. Forward upstream. Pass the request's abort signal so a client disconnect cancels
@@ -240,12 +205,12 @@ export async function POST(req: Request): Promise<Response> {
     if (!req.signal.aborted) {
       recordError(error, { route: "coding-proxy", stage: "upstream-fetch" });
     }
-    return errorResponse("The upstream model is unreachable.", 502, "server_error", null, cors);
+    return errorResponse("The upstream model is unreachable.", 502, "server_error", null);
   }
 
   // 8. Pipe the response (streamed or not) straight back, untouched. Copy the
   // upstream content-type so `text/event-stream` and JSON both pass through.
-  const headers = new Headers(cors);
+  const headers = new Headers();
   const contentType = upstream.headers.get("content-type");
   if (contentType) headers.set("Content-Type", contentType);
   headers.set("Cache-Control", "no-store");
