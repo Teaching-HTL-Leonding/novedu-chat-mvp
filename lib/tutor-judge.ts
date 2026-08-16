@@ -104,9 +104,34 @@ function turnLabel(turn: EvalConversationTurn): string {
 }
 
 /**
+ * Everything beyond the three parts every subject carries. An OPTIONS bag rather than
+ * three more positional arguments: `tools` and `toolCalls` are both string lists, and a
+ * call site passing them positionally would be unreadable at exactly the place where
+ * mixing them up would silently mis-judge a run.
+ */
+export interface TutorJudgeSubjectOptions {
+  /** The teacher's per-case expectations, when this case states any. */
+  gradingInstructions?: string;
+  /**
+   * The target tutor's own `tools:` grant. A tool-LESS tutor gets no tool block at all:
+   * "called nothing" is not evidence about a tutor that had nothing to call, and the
+   * noise would only invite the judge to invent a finding.
+   */
+  tools?: readonly string[];
+  /**
+   * The tool names the generation actually invoked, in call order — as
+   * `POST /api/eval/respond` reports them. `undefined` means the server reported none at
+   * all (an older server); an empty array means "the tutor called nothing", which is real
+   * evidence and renders as `(none)`.
+   */
+  toolCalls?: readonly string[];
+}
+
+/**
  * The judge's USER message: the inputs in labeled `===` blocks — the tutor's system
- * prompt (the standard), the scripted conversation, the response under judgment, and
- * the teacher's expectations when the case states any.
+ * prompt (the standard), the scripted conversation, the response under judgment, the
+ * tools the tutor actually reached for, and the teacher's expectations when the case
+ * states any.
  *
  * Nothing is escaped — every part is DATA for the judge, not markup, and a course prompt
  * containing `===` or Markdown must reach the judge exactly as the tutor saw it.
@@ -115,8 +140,9 @@ export function buildTutorJudgeSubject(
   tutorSystem: string,
   conversation: readonly EvalConversationTurn[],
   response: string,
-  gradingInstructions?: string,
+  options: TutorJudgeSubjectOptions = {},
 ): string {
+  const { gradingInstructions, tools, toolCalls } = options;
   const blocks = [
     "=== The system prompt the tutor was given ===",
     tutorSystem,
@@ -127,6 +153,17 @@ export function buildTutorJudgeSubject(
     "=== The tutor's generated response (JUDGE THIS) ===",
     response,
   ];
+  // EVIDENCE, not a criterion: whether a REQUIRED tool ran is checked deterministically by
+  // the runner, never by the judge. This block exists so a `grading_instructions` may
+  // legitimately talk about tool behavior ("the number must come from `random_number`")
+  // instead of guessing from the text — which measurably produced judge noise.
+  if (tools !== undefined && tools.length > 0 && toolCalls !== undefined) {
+    blocks.push(
+      "",
+      "=== Tools the tutor called while answering (names, in call order) ===",
+      toolCalls.length > 0 ? toolCalls.join("\n") : "(none)",
+    );
+  }
   // Absent entirely when the teacher stated none — together with the dropped
   // `fails_expectations` criterion, that leaves the judge nothing to invent from.
   if (gradingInstructions) {

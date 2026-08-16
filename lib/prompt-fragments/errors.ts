@@ -102,6 +102,10 @@ export type ErrorCode =
   // An eval question id that the resolved target quiz does not have (a typo, or a
   // question removed from the quiz since the eval was written). Carries `questionId`.
   | "EVAL_UNKNOWN_QUESTION"
+  // A tutor eval case REQUIRES a tool the target tutor's own `tools:` grant does not
+  // contain: the catalog knows the name (the schema enum passed), but this tutor can
+  // never call it, so the expectation could never be met. Carries the resolved target URL.
+  | "EVAL_UNGRANTED_TOOL"
   // App-only: the YAML names an LLM provider this server does not have configured
   // (e.g. `Azure Foundry` without AZURE_FOUNDRY_ENDPOINT). Emitted by the app's
   // authoring gate (lib/file-validators.ts), never by the CLI-bundled loadAndCheck*

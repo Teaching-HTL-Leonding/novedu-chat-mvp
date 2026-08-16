@@ -62,12 +62,9 @@ const CONVERSATION: EvalConversationTurn[] = [
 
 describe("buildTutorJudgeSubject", () => {
   it("labels every block and quotes the conversation turn by turn", () => {
-    const subject = buildTutorJudgeSubject(
-      "TUTOR-SYSTEM-MARKER",
-      CONVERSATION,
-      "RESPONSE-MARKER",
-      "EXPECTATION-MARKER",
-    );
+    const subject = buildTutorJudgeSubject("TUTOR-SYSTEM-MARKER", CONVERSATION, "RESPONSE-MARKER", {
+      gradingInstructions: "EXPECTATION-MARKER",
+    });
 
     expect(subject).toContain("=== The system prompt the tutor was given ===");
     expect(subject).toContain("TUTOR-SYSTEM-MARKER");
@@ -88,6 +85,48 @@ describe("buildTutorJudgeSubject", () => {
     expect(subject).not.toContain("expectations");
     // Together with the dropped criterion, the judge has nothing to invent from.
     expect(subject.endsWith("response")).toBe(true);
+  });
+
+  it("carries the tools the tutor called, in call order, as EVIDENCE", () => {
+    const subject = buildTutorJudgeSubject("system", CONVERSATION, "response", {
+      tools: ["random_number"],
+      toolCalls: ["random_number", "random_number"],
+    });
+
+    expect(subject).toContain(
+      "=== Tools the tutor called while answering (names, in call order) ===",
+    );
+    // Duplicates are kept: the block reports what happened, it does not summarise it.
+    expect(subject).toContain("random_number\nrandom_number");
+  });
+
+  it("says `(none)` when a tool-granted tutor called nothing", () => {
+    // A real measurement, and the interesting one — never confuse it with "not reported".
+    const subject = buildTutorJudgeSubject("system", CONVERSATION, "response", {
+      tools: ["random_number"],
+      toolCalls: [],
+    });
+
+    expect(subject).toContain(
+      "=== Tools the tutor called while answering (names, in call order) ===",
+    );
+    expect(subject).toContain("(none)");
+  });
+
+  it("omits the tool block for a tutor with no tools, and when nothing was reported", () => {
+    // Nothing to judge about a tutor that had nothing to call…
+    const noGrant = buildTutorJudgeSubject("system", CONVERSATION, "response", {
+      tools: [],
+      toolCalls: [],
+    });
+    // …and an older server that reported no tool calls must add no block either.
+    const notReported = buildTutorJudgeSubject("system", CONVERSATION, "response", {
+      tools: ["random_number"],
+    });
+
+    for (const subject of [noGrant, notReported]) {
+      expect(subject).not.toContain("Tools the tutor called");
+    }
   });
 
   it("escapes nothing — every part is data for the judge", () => {

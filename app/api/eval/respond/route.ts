@@ -74,10 +74,33 @@ const RespondBodySchema = z.strictObject({
 });
 
 /**
+ * The tool NAMES one generate result invoked, in call order and with duplicates kept —
+ * Mastra 1.x reports tool calls as CHUNKS (`{ type: "tool-call", payload: { toolName, … } }`)
+ * on the result's top-level `toolCalls`, which accumulates across every step of the run.
+ * Names only, deliberately: arguments and results can be large and nothing downstream
+ * needs them.
+ *
+ * Defensive by construction — a result shape that carries no usable chunk yields `[]`
+ * rather than throwing, because a tool-less tutor and a provider that reports nothing must
+ * both simply produce an empty list.
+ */
+function toolCallNames(result: unknown): string[] {
+  const calls = (result as { toolCalls?: unknown } | null | undefined)?.toolCalls;
+  if (!Array.isArray(calls)) return [];
+  return calls.flatMap((call) => {
+    const name = (call as { payload?: { toolName?: unknown } } | null)?.payload?.toolName;
+    return typeof name === "string" && name !== "" ? [name] : [];
+  });
+}
+
+/**
  * Generates one tutor response. Body
- * `{ llm: { provider?, model }, system, tools, messages }` → `200 { text, usage? }`,
- * where `text` is the generated turn as plain text (no structured output, hence no
- * truncation-retry wrapper) and the OPTIONAL `usage: { input, cachedInput, output }`
+ * `{ llm: { provider?, model }, system, tools, messages }` →
+ * `200 { text, toolCalls, usage? }`, where `text` is the generated turn as plain text (no
+ * structured output, hence no truncation-retry wrapper), `toolCalls` the names the
+ * generation invoked (in call order, `[]` when none — ALWAYS present, so a CLI can tell a
+ * tool-less run from a server that cannot report tool calls at all) and the OPTIONAL
+ * `usage: { input, cachedInput, output }`
  * carries this call's tokens when the provider reported any (see {@link llmCallUsage}).
  * `400` on a malformed body, a tool name the catalog does not know, an unknown or
  * unavailable provider, or an upstream model call that can never succeed as sent (a
@@ -156,7 +179,7 @@ export async function POST(request: Request): Promise<Response> {
       const text = typeof res.text === "string" ? res.text.trim() : "";
       if (!text) return json({ message: "The tutor returned no response." }, 502);
       const usage = llmCallUsage(res);
-      return json({ text, ...(usage ? { usage } : {}) }, 200);
+      return json({ text, toolCalls: toolCallNames(res), ...(usage ? { usage } : {}) }, 200);
     } catch (error) {
       // The same terminal-vs-retryable split as its siblings: a deployment name that does
       // not exist is the CALLER's and must not be retried; an outage is the

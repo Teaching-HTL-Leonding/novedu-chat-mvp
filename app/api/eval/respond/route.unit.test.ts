@@ -228,7 +228,12 @@ describe("POST /api/eval/respond generation", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(await res.json()).toEqual({ text: "What happens after the first pass?" });
+    // `toolCalls` is ALWAYS present on a 200 — `[]` here, because nothing ran. A CLI must
+    // be able to tell "called nothing" from a server that cannot report tool calls at all.
+    expect(await res.json()).toEqual({
+      text: "What happens after the first pass?",
+      toolCalls: [],
+    });
 
     // The turns reach the agent verbatim and in order, with the teacher-facing roles
     // already mapped to the wire ones.
@@ -262,6 +267,35 @@ describe("POST /api/eval/respond generation", () => {
     expect(requestContext().get(EVAL_TUTOR_PROVIDER)).toBe("SCCH");
   });
 
+  it("reports the tool NAMES the generation made, in call order, duplicates kept", async () => {
+    // Mastra 1.x reports tool calls as CHUNKS on the result's top-level `toolCalls`,
+    // accumulated across every step — names live under `payload.toolName`.
+    mocks.generate.mockResolvedValue({
+      text: "Try 42.",
+      toolCalls: [
+        { type: "tool-call", payload: { toolCallId: "1", toolName: "random_number", args: {} } },
+        { type: "tool-call", payload: { toolCallId: "2", toolName: "random_number", args: {} } },
+      ],
+    });
+
+    const res = await postRequest({ ...VALID_BODY, tools: ["random_number"] }, await mint());
+
+    // Names only — arguments and results can be large and nothing downstream needs them.
+    expect(await res.json()).toEqual({
+      text: "Try 42.",
+      toolCalls: ["random_number", "random_number"],
+    });
+  });
+
+  it("answers an empty list rather than throwing on a result with no usable chunks", async () => {
+    mocks.generate.mockResolvedValue({ text: "hi", toolCalls: [{ type: "tool-call" }, null, 7] });
+
+    expect(await (await postRequest(VALID_BODY, await mint())).json()).toEqual({
+      text: "hi",
+      toolCalls: [],
+    });
+  });
+
   it("reports the generation call's tokens when the model reported usage", async () => {
     mocks.generate.mockResolvedValue({
       text: "Keep going.",
@@ -273,14 +307,17 @@ describe("POST /api/eval/respond generation", () => {
 
     expect(await res.json()).toEqual({
       text: "Keep going.",
+      toolCalls: [],
       usage: { input: 1200, cachedInput: 900, output: 87 },
     });
   });
 
   it("OMITS usage entirely when the result carries none", async () => {
-    // A missing measurement must never be reported as zero tokens.
+    // A missing measurement must never be reported as zero tokens. `toolCalls` is NOT
+    // optional the same way: an empty list IS the measurement.
     expect(await (await postRequest(VALID_BODY, await mint())).json()).toEqual({
       text: "What happens after the first pass?",
+      toolCalls: [],
     });
   });
 

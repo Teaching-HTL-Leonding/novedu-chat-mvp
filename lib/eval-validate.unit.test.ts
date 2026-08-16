@@ -357,6 +357,89 @@ questions:
   });
 });
 
+// --- `required_tools` ----------------------------------------------------------------
+// The FORMAT half (an enum derived from the catalog, non-empty, unique, tutor-only) plus
+// the cross-file half: a tool the target tutor was never granted can never be called, so
+// the FILE is invalid — run health, not a finding reported on every repeat.
+
+/** The valid tutor eval with `required_tools` spliced into its first conversation. */
+function withRequiredTools(value: string): string {
+  return VALID_TUTOR_EVAL.replace(
+    "  - title: refuses-full-solution\n",
+    `  - title: refuses-full-solution\n    required_tools: ${value}\n`,
+  );
+}
+
+describe("loadAndCheckEval — required_tools", () => {
+  it("accepts a catalog tool the target tutor is granted", async () => {
+    const result = await loadAndCheckEval(
+      EVAL_URL,
+      stubFetcher(tutorFiles(withRequiredTools("[random_number]"))),
+      { allowedSchemes: schemes },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.kind !== "tutor") throw new Error("expected a tutor eval");
+    expect(result.evalFile.conversations[0]?.required_tools).toEqual(["random_number"]);
+  });
+
+  it("rejects an unknown tool name, an empty list and a repeated name", async () => {
+    for (const value of ["[teleport]", "[]", "[random_number, random_number]"]) {
+      const result = await loadAndCheckEval(
+        EVAL_URL,
+        stubFetcher(tutorFiles(withRequiredTools(value))),
+        { allowedSchemes: schemes },
+      );
+
+      expect(result.ok, value).toBe(false);
+      if (result.ok) continue;
+      expect(result.errors[0]?.code).toBe("EVAL_SCHEMA");
+      // The dotted path leads the message, so an author sees WHICH conversation.
+      expect(result.errors[0]?.message).toContain("conversations.0.required_tools");
+    }
+  });
+
+  it("rejects the field on a QUIZ eval (the arms are strict objects)", async () => {
+    const broken = VALID_EVAL.replace(
+      "  - question: q1\n",
+      "  - question: q1\n    required_tools: [random_number]\n",
+    );
+
+    const result = await loadAndCheckEval(
+      EVAL_URL,
+      stubFetcher({ [EVAL_URL]: broken, [QUIZ_URL]: QUIZ }),
+      {
+        allowedSchemes: schemes,
+      },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("EVAL_SCHEMA");
+  });
+
+  it("rejects a tool the target tutor is not granted, naming it and the grant", async () => {
+    // The catalog knows `random_number`, so the schema passes — only the TARGET's own
+    // `tools:` grant can rule it out, which is why this check needs the dump.
+    const toollessTutor = TUTOR.replace("tools:\n  - random_number\n", "");
+    const result = await loadAndCheckEval(
+      EVAL_URL,
+      stubFetcher({
+        ...tutorFiles(withRequiredTools("[random_number]")),
+        [TUTOR_URL]: toollessTutor,
+      }),
+      { allowedSchemes: schemes },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors[0]?.code).toBe("EVAL_UNGRANTED_TOOL");
+      expect(result.errors[0]?.message).toContain("random_number");
+      expect(result.errors[0]?.message).toContain("(none)");
+      expect(result.errors[0]?.url).toBe(TUTOR_URL);
+    }
+  });
+});
+
 describe("loadAndCheckEval — strictTarget", () => {
   // Without `strictTarget` the LENIENT runtime load is used (what the grader really
   // gets); `validate --kind eval` opts into the same strict authoring check

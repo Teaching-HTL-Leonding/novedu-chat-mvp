@@ -209,6 +209,25 @@ export async function loadAndCheckEval(
   }
 
   if (dump.kind === "tutor" && evalFile.kind === "tutor") {
+    // 6a. Cross-check every `required_tools` entry against the TARGET tutor's own grant.
+    // The schema already proved the name exists in the catalog; a tool this tutor was
+    // never granted simply cannot be called, so the expectation could never be met —
+    // an authoring error, and therefore an INVALID FILE (run health) rather than a
+    // finding that would quietly report "missing" on every single repeat.
+    const granted = new Set(dump.tools);
+    const ungranted = evalFile.conversations.flatMap((conversation, index) =>
+      (conversation.required_tools ?? [])
+        .filter((tool) => !granted.has(tool))
+        .map((tool) =>
+          error(
+            "EVAL_UNGRANTED_TOOL",
+            `Conversation #${index + 1} requires the tool "${tool}", but the target tutor's tools are ${dump.tools.length ? dump.tools.map((name) => `"${name}"`).join(", ") : "(none)"}.`,
+            { url: targetUrl },
+          ),
+        ),
+    );
+    if (ungranted.length > 0) return fail(ungranted, warnings);
+
     return {
       ok: true,
       kind: "tutor",

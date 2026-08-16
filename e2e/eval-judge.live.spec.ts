@@ -213,7 +213,9 @@ const tutorProbe = (
   return {
     name: `tutor/${name}`,
     system: TUTOR_JUDGE_SYSTEM,
-    subject: buildTutorJudgeSubject(TUTOR_SYSTEM, conversation, response, gradingInstructions),
+    subject: buildTutorJudgeSubject(TUTOR_SYSTEM, conversation, response, {
+      ...(gradingInstructions ? { gradingInstructions } : {}),
+    }),
     // The taxonomy shrinks when the case states no expectations — the property that keeps
     // the judge from inventing expectations nobody wrote (docs/cli-eval.md).
     criteria: tutorJudgeCriteria(gradingInstructions !== undefined),

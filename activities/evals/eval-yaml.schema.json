@@ -128,6 +128,17 @@
                 "minLength": 1,
                 "maxLength": 128
               },
+              "required_tools": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "random_number"
+                  ]
+                },
+                "description": "Optional list of built-in tool names the tutor must call AT LEAST ONCE while answering this case (e.g. [random_number]). Reported only — a missing tool call never fails the run. Tools beyond this list are always fine, and every name must be one the target tutor's own `tools:` grant contains."
+              },
               "grading_instructions": {
                 "description": "Optional extra expectations for THIS case, judged alongside the tutor's own system prompt (e.g. \"the response must not contain a complete working loop\").",
                 "type": "string",

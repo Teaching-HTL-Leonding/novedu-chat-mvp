@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { QUIZ_VERDICT_ENUM, QUIZ_VERDICT_VALUES } from "@/lib/quiz-verdict-schema";
+import { TUTOR_TOOL_NAMES } from "@/lib/tutor-tools/names";
 
 // The zod source of truth for the EVAL YAML format (`docs/cli-eval.md`). ONE file format,
 // a DISCRIMINATED UNION on `kind`, with one arm per eval kind:
@@ -119,12 +120,34 @@ function endsWithStudentTurn(turns: readonly EvalConversationTurn[]): boolean {
   return last !== undefined && "student" in last;
 }
 
+/**
+ * The tool names a case may REQUIRE, derived from the catalog's own name list
+ * (`lib/tutor-tools/names.ts`) rather than a mirrored literal set — so a tool added to the
+ * catalog is immediately requirable and a typo fails `validate` offline with a named enum
+ * error, no run and no tokens spent.
+ *
+ * Non-empty and UNIQUE: an empty list would say nothing (write no `required_tools` at
+ * all), and a repeated name is always an authoring slip — the check is "called at least
+ * once", so naming a tool twice cannot mean anything a single mention does not.
+ */
+const requiredToolsSchema = z
+  .array(z.enum(TUTOR_TOOL_NAMES))
+  .min(1)
+  .refine((tools) => new Set(tools).size === tools.length, {
+    message: "Each tool may be listed only once.",
+  })
+  .meta({
+    description:
+      "Optional list of built-in tool names the tutor must call AT LEAST ONCE while answering this case (e.g. [random_number]). Reported only — a missing tool call never fails the run. Tools beyond this list are always fine, and every name must be one the target tutor's own `tools:` grant contains.",
+  });
+
 /** ONE tutor case: a scripted conversation plus the teacher's optional expectations. */
 export const EvalConversationSchema = z.strictObject({
   title: z.string().min(1).max(MAX_ID_LENGTH).optional().meta({
     description:
       "Optional short label for this case, used as its stable heading in the run report.",
   }),
+  required_tools: requiredToolsSchema.optional(),
   grading_instructions: z.string().min(1).optional().meta({
     description:
       'Optional extra expectations for THIS case, judged alongside the tutor\'s own system prompt (e.g. "the response must not contain a complete working loop").',
