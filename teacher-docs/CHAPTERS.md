@@ -35,6 +35,7 @@ _Enough YAML, tooling, and validation to author activities confidently._
 | 04 | Validating with the CLI | ✎ `10-yaml-for-teachers/04-cli-validation.prompt.md` | `cli/README.md`, `.agents/skills/novedu-tutor-cli/SKILL.md` |
 | 05 | See the exact prompt | ✎ `10-yaml-for-teachers/05-see-the-prompt.prompt.md` | `cli/README.md` (`prompts`), the "See the exact prompt" section of each module `README.md` under `activities/`, `.agents/skills/novedu-tutor-cli/SKILL.md` |
 | 06 | Testing how a quiz grades | ✎ `10-yaml-for-teachers/06-testing-the-grader.prompt.md` | `activities/evals/README.md`, the "Testing the grading itself" section of `activities/quizzes/README.md`, `cli/README.md` (`eval`), `docs/cli-eval.md` (behavior only), `.agents/skills/novedu-tutor-cli/SKILL.md` |
+| 07 | Testing how a tutor answers | ✎ `10-yaml-for-teachers/07-testing-a-tutor.prompt.md` | the "Tutor evals" section of `activities/evals/README.md`, `activities/tutors/README.md` (tools), `cli/README.md` (`eval`), `docs/cli-eval.md` (behavior only), `.agents/skills/novedu-tutor-cli/SKILL.md`, `activities/examples/sorting-algorithms/**` |
 
 ## 20: Building activities
 _What makes each activity, field by field, the YAML reference backbone._
