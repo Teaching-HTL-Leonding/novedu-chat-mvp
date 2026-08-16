@@ -301,6 +301,7 @@ describe("formatEvalReport — the feedback judge", () => {
               status: "ok",
               unstable: false,
               feedbackFlagged: true,
+              toolsFlagged: false,
               repeats: [{ repeatIndex: 0, text: "hello", judge: { issues: [] } }],
             },
           ],
