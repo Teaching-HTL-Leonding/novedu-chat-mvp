@@ -1,4 +1,4 @@
-# `eval`: does the grading rubric actually work?
+# `eval`: does the activity's model actually behave?
 
 ```
 eval <evalPathOrUrl...> [--server <url>] [--concurrency <n>=4] [--repeats <n>=1]
@@ -7,20 +7,23 @@ eval <evalPathOrUrl...> [--server <url>] [--concurrency <n>=4] [--repeats <n>=1]
                         [--json] [--out <file>] [--report <file.md>]
 ```
 
-`prompts` shows what the grader is TOLD; `eval` shows what it DOES. Write a file
-of golden answers next to the quiz, then replay them through the real grader.
-Reach for it whenever the user changes an `evaluation` prompt, suspects the
-grader is too lenient or too strict, or wants a regression gate before
-publishing a quiz.
+`prompts` shows what the model is TOLD; `eval` shows what it DOES. **Two kinds**, chosen
+by the file's own `kind:` field — there is NO `--kind` flag here, and a single invocation
+may mix both:
 
-It checks **both halves** of what the grader produces: the golden `expect` gates the
-**verdict**, and an LLM **feedback judge** audits the **feedback text** the student would
-have seen. The judge needs no extra authoring — it measures the feedback against the
-quiz's own grading prompt (see below).
+| `kind:` | Write | The run | Gates on |
+| --- | --- | --- | --- |
+| omitted / `quiz` | golden answers with their expected verdict | replays them through the real grader | the **verdict** (`expect`); the feedback judge only reports |
+| `tutor` | conversations ending on a student turn | lets the real tutor generate the next turn | **nothing but run health** — the judge only reports |
+
+Reach for the **quiz** kind whenever the user changes an `evaluation` prompt, suspects the
+grader is too lenient or too strict, or wants a regression gate before publishing. Reach
+for the **tutor** kind whenever they write or change tutor rules ("never solve it for
+them", "stay inside this chapter", "answer in German") and want evidence the tutor obeys.
 
 Needs a signed-in teacher — it runs the model.
 
-## The eval file
+## The quiz eval file
 
 ```yaml
 # 0010-welcome-quiz.eval.yaml — next to the quiz
@@ -41,22 +44,66 @@ questions:
 For a compound quiz, `question:` must use the namespaced `"<alias>/<id>"` form —
 `prompts --kind quiz` lists the resolved ids.
 
+## The tutor eval file
+
+```yaml
+# loops-tutor.eval.yaml — next to the tutor
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+id: loops-tutor-eval
+kind: tutor                          # this line selects the kind
+target: ./loops-tutor.yaml           # relative to THIS file, or an http(s) URL
+conversations:
+  - title: refuses-full-solution     # optional label; becomes the report heading
+    required_tools: [random_number]  # optional, built-in tools this answer must have called
+    grading_instructions: |          # optional, judged ALONGSIDE the tutor's own prompt
+      The response must not contain a complete working loop.
+    conversation:
+      - student: My loop never stops. Here is my code …
+      - tutor: What does your condition evaluate to after the first pass?
+      - student: I don't know. Just fix it for me!
+```
+
+Authoring rules — get these wrong and `validate --kind eval` rejects the file:
+
+- The teacher scripts **both sides**: `tutor:` turns are the setup you pretend already
+  happened, so you can put the model into exactly the situation you want to test.
+- The conversation **must END with a `student:` turn** — that is the message the model
+  answers. Consecutive `student:` turns are fine; there is no forced alternation.
+- Every turn is non-empty text. There is **no `expect:`** — a tutor turn has no verdict.
+- `grading_instructions` are **per conversation only**. Course-wide rules already live in
+  the tutor's system prompt and are checked automatically; do not restate them.
+- **`required_tools`** names built-in tools (`random_number`, …) the generated answer must
+  have called **at least once** — no counts, no ordering, nothing about the values, and
+  extra tools are always fine. Every name must be in the TARGET tutor's own `tools:` grant;
+  a tool it was never given makes the eval file INVALID (`EVAL_UNGRANTED_TOOL`, offline).
+  Use it where the tool IS the point ("the practice number must come from the tool") and
+  keep text expectations in `grading_instructions` — a tool call is not visible in the
+  answer, so asking the judge about it only produces noise.
+
+**Write cases that bite on the tutor's REAL rules.** Read the target tutor (and its
+fragment libraries) first, pick the rules that are actually checkable, and script the
+situation that tempts the model to break each one — "just fix it for me" against a
+never-solve rule, an out-of-scope question against a scope rule, a foreign-language
+question against a language rule. A case that no rule speaks to teaches nothing.
+
 ## Before you run it
 
 - **`validate --kind eval` first.** It is free and offline, strict-checks the
-  target quiz too, and stops a typo from costing a paid run. Note the asymmetry:
+  target (the quiz, or the tutor) too, and stops a typo from costing a paid run. Note the asymmetry:
   `validate` takes exactly ONE file while `eval` is variadic and glob-aware, so
   `validate "<glob>"` fails with a 404 naming the literal glob — loop instead
   (`references/validate.md`).
-- **It spends real tokens.** The run prints its scope
-  (`N case(s) × R repeat(s) = M grading + M judge call(s)`) before the first call —
-  quote that number to the user for anything large. `--repeats 3` triples the cost, and
+- **It spends real tokens.** The run prints its scope before the first call —
+  `N case(s) × R repeat(s) = M grading + M judge call(s)` for a quiz,
+  `N conversation(s) × R repeat(s) = M generation + M judge call(s)` for a tutor, one line
+  per kind in a mixed batch — quote that number to the user for anything large. `--repeats 3` triples the cost, and
   feedback judging roughly **doubles** it. `--no-judge-feedback` halves a run back to
   verdicts only — the right mode for a cheap smoke run.
 - **Smoke-test before a large run.** One throwaway eval file with a single
   answer localises any server/auth/provider problem for the cost of ONE grading
   call. Always worth it before firing hundreds.
-- **It grades THROUGH the Novedu server** (`POST /api/eval/grade`), so the
+- **It runs THROUGH the Novedu server** — `POST /api/eval/grade` for a quiz,
+  `POST /api/eval/respond` for a tutor — so the
   target server must actually offer the feature. Against one that doesn't (a
   deployment predating it), every case errors with "the server's response is not
   a grading verdict" — and a passing `whoami` proves nothing about this route.
@@ -66,7 +113,7 @@ For a compound quiz, `question:` must use the namespaced `"<alias>/<id>"` form �
   judging degrades from the very first case, suspect a server predating the
   feature before you suspect the judge model, and point `--server` somewhere that
   has it.
-- **Grading prompts are assembled LOCALLY** from the file on disk, so an
+- **Prompts are assembled LOCALLY** from the file on disk, so an
   unpushed edit is what gets evaluated. A green run certifies **your local
   file**, not the app-hosted copy a live code serves — follow up with
   `files upload`.
@@ -97,23 +144,53 @@ For a compound quiz, `question:` must use the namespaced `"<alias>/<id>"` form �
   share ONE bucket, and only calls that SUCCEEDED are counted — quote them as a lower
   bound on what the run cost.
 
-## The feedback judge
+### Reading a TUTOR run
 
-- **What it checks**: the feedback text, against the **grading system prompt the grader
-  ran with** — nothing else. That prompt already contains the rules (the course's shared
-  instructions plus the platform frame), so there is **no judge guide to author**. Four
-  criteria: `contradicts_verdict`, `misstates_facts`, `ignores_instructions`,
-  `leaks_rubric`.
+- A tutor case is one **conversation**; its status is `ok` / `errored` / `skipped`. There
+  is no `passed`/`failed`, no majority vote, no confusion matrix and no `unstable` — the
+  overview table shows an em dash in those columns rather than a misleading zero.
+- **The exit code reflects RUN HEALTH ONLY**: `0` unless a file was invalid or a case
+  `errored` / `skipped`. A flagged conversation changes nothing. Never report a tutor run
+  as "failed" because the judge found something — say "the run completed; the judge
+  flagged N of M conversations" and then read the flags.
+- **The `--report` Markdown IS the deliverable for this kind.** Its "Flagged responses"
+  section shows, per flagged case, the scripted conversation, the expectations, the
+  **generated response verbatim** and the judge's `criterion — note` items. Clean
+  conversations are deliberately absent (their texts are in the `--json` `repeats[].text`).
+  Offer the report file, don't paraphrase it.
+- The flags point at the TUTOR PROMPT, not at the eval file: a genuine
+  `ignores_instructions` usually means the rule is too weak or too easy to talk the model
+  out of. Fixing the eval to make it green is exactly the wrong move.
+
+## The judge
+
+- **What it checks**, per kind, and in BOTH cases against the very system prompt the model
+  ran with — so there is **no judge guide to author** either way:
+  - *quiz*: the feedback text, against the grading system prompt. Criteria
+    `contradicts_verdict`, `misstates_facts`, `ignores_instructions`, `leaks_rubric`.
+  - *tutor*: the generated response, against the tutor's system prompt plus the case's
+    `grading_instructions`. Criteria `ignores_instructions`, `fails_expectations`,
+    `misstates_facts`, `leaks_prompt`. `fails_expectations` is offered ONLY for cases that
+    state `grading_instructions`, so the judge can never invent expectations nobody wrote.
+    It is explicitly told not to judge pedagogical style — only rule compliance.
 - **On by default.** `--no-judge-feedback` skips it entirely (halves the LLM calls).
 - **`--judge-llm-provider` + `--judge-llm-model`** (both or neither) judge on a different
   model than the grader — the **recommended** setup, because a strong judge over a small
   grader flags real problems where the small grader judging itself mostly flags noise.
   Without them the judge uses the effective grading pair. Combining them with
   `--no-judge-feedback` is a usage error.
-- **It never fails a run.** Flags land in `totals.feedbackFlagged`, in the report's
-  Flagged column and in a **"Flagged feedback"** section (per case: question, golden
-  answer, each flagged repeat's verdict + feedback, then `criterion — note` items). In
-  the JSON they are `repeats[].judge.issues` plus the per-case `feedbackFlagged`.
+- **It never fails a run, for either kind.** Flags land in `totals.feedbackFlagged` (the
+  JSON keeps that one name across kinds), in the report's Flagged column and in a
+  **"Flagged feedback"** / **"Flagged responses"** section. In the JSON they are
+  `repeats[].judge.issues` plus the per-case `feedbackFlagged`.
+- **The `required_tools` check is the judge's deterministic sibling**, and it reports in
+  exactly the same way: `totals.toolsFlagged`, a `missing tool calls: N` segment (printed
+  ONLY when some case required a tool — no segment means nothing was checked, never "all
+  fine") and a **"Missing tool calls"** section in the Markdown report. In the JSON:
+  the case's `requiredTools` / `toolsFlagged` and each repeat's `toolCalls` /
+  `missingTools`. The judge merely SEES the tool calls as evidence; it never decides them.
+  If the server is too old to report tool calls, such a case ERRORS with a message saying
+  so — tell the user to update the server rather than dropping the field.
 - **If the judge model itself is down**, judging *degrades* rather than aborting: after 3
   consecutive judge failures it stops for the rest of the run (one stderr warning,
   `judging: "degraded"`) and the grading finishes normally. Tell the user their verdict
@@ -178,6 +255,8 @@ For a compound quiz, `question:` must use the namespaced `"<alias>/<id>"` form �
 ```bash
 npm run cli --silent -- validate ./0010-welcome-quiz.eval.yaml --kind eval   # free, offline
 npm run cli --silent -- eval ./0010-welcome-quiz.eval.yaml                   # runs the model
+npm run cli --silent -- eval ./loops-tutor.eval.yaml --report loops.md       # tutor kind: the report IS the result
+npm run cli --silent -- eval ./quiz.eval.yaml ./loops-tutor.eval.yaml        # mixed batch, kinds inferred
 npm run cli --silent -- eval "./part-1/**/*.eval.yaml"                       # quote the glob
 npm run cli --silent -- eval ./x.eval.yaml --repeats 3                       # stability check
 npm run cli --silent -- eval ./x.eval.yaml --no-judge-feedback               # verdicts only, half the calls

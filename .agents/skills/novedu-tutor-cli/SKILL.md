@@ -3,17 +3,19 @@ name: novedu-tutor-cli
 description: >-
   Use `novedu-cli`, the Novedu chat app's command-line companion, for anything
   touching Novedu activity YAML or the Novedu server. It validates any activity
-  file — tutor, fragment library, quiz, writing, coding, or golden-answer eval —
-  with the exact pipeline the app enforces, dumps the exact LLM prompts an
-  activity produces, replays a quiz's golden answers through the real grader,
+  file — tutor, fragment library, quiz, writing, coding, or eval — with the exact
+  pipeline the app enforces, dumps the exact LLM prompts an activity produces,
+  replays a quiz's golden answers through the real grader, checks a tutor's real
+  answers to scripted conversations against its own rules,
   and, signed in as a teacher, mints activity codes, uploads app-hosted YAML and
   images, and triages student reports. Trigger this skill whenever the user
   wants to validate, lint or debug an activity YAML or a schema, template or
   fragment error ("is this tutor valid?", "why won't my quiz load?"); see what
   the model actually receives ("show me the grading prompt for question 3", "did
   my safety fragment reach the tutor?"); measure or regression-test a grading
-  rubric ("run the eval", "is the grader too lenient?", "did my rubric change
-  break anything?"); authenticate ("log in to novedu", "who am I signed in
+  rubric or a tutor's behaviour ("run the eval", "is the grader too lenient?",
+  "did my rubric change break anything?", "does the tutor still refuse to hand
+  over the solution?"); authenticate ("log in to novedu", "who am I signed in
   as?"); share or host material ("create a code for this quiz", "upload this
   diagram"); mint codes for a whole repo of course material ("sync the activity
   registry", "update the lock file"); or act on student feedback ("what have
@@ -56,7 +58,7 @@ failure modes and the cost/safety notes that decide whether a run is correct.
 | --- | --- | --- | --- |
 | `validate <pathOrUrl> [--kind …] [--json]` | Is this file valid? | none | [references/validate.md](references/validate.md) |
 | `prompts <pathOrUrl> [--kind …] [--json]` | What does the model actually receive? | none | [references/prompts.md](references/prompts.md) |
-| `eval <evalPathOrUrl…>` | Does the grading rubric work? | teacher | [references/eval.md](references/eval.md) |
+| `eval <evalPathOrUrl…>` | Does the rubric grade — or the tutor behave — as intended? | teacher | [references/eval.md](references/eval.md) |
 | `login` / `logout` / `whoami` | Who am I signed in as? | — | below |
 | `codes create` / `codes list` | Share one activity with students | teacher | [references/teacher-api.md](references/teacher-api.md) |
 | `codes sync <registry-file>` | Mint codes for a whole repo of material | teacher | [references/registry-sync.md](references/registry-sync.md) |
@@ -118,8 +120,12 @@ shows name, user id and teacher status; `logout` is purely local.
   behaviour are different questions, and a confusing prompt usually wants both
   commands. → [prompts.md](references/prompts.md)
 - *"Is the grading too lenient? did my rubric change break anything?"* → golden
-  answers, then `validate --kind eval`, then `eval`. It spends real tokens, so
-  read [eval.md](references/eval.md) before running it.
+  answers (`kind` omitted), then `validate --kind eval`, then `eval`.
+- *"Does the tutor still follow its rules?"* → a `kind: tutor` eval file of
+  scripted conversations, then the same two commands — the kind is inferred from
+  the file, and its verdict is the Markdown report, not the exit code. A case may
+  add `required_tools:` to demand that the answer really called a built-in tool.
+  Both spend real tokens, so read [eval.md](references/eval.md) before running them.
 - *"Get this in front of students."* → one-off: `files upload` + `codes create`
   ([teacher-api.md](references/teacher-api.md)). Material that lives in a repo:
   a registry file + `codes sync`, never hand-pasted codes

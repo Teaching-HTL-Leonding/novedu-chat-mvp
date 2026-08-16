@@ -1,0 +1,12 @@
+# Synthetic tutor targeted by the TUTOR eval fixtures (test-fixtures/activities/evals/
+# tutor-*.yaml). Its rules are marker-shaped so an integration test can assert that the
+# real assembled system prompt reached both the respond endpoint and the judge.
+id: eval-tutor
+name: "Eval Test Tutor"
+description: "Synthetic tutor used only by automated tests — not a real activity."
+llm:
+  model: test-model
+prompt:
+  tutor_instructions: |
+    NEVER-SOLVE-MARKER: never write the complete solution for the student.
+    SCOPE-MARKER: only talk about loops.

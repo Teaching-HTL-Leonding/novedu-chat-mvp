@@ -10,11 +10,26 @@ import {
 } from "@/lib/prompt-fragments";
 import type { QuizCheckResult } from "@/lib/quiz-validate";
 import type { WritingCheckResult } from "@/lib/writing-validate";
-import { anyJudged, type EvalBatchResult, type EvalRunResult, type EvalUsage } from "./eval-run";
+import {
+  anyJudged,
+  anyToolsRequired,
+  type EvalBatchResult,
+  type EvalRunResult,
+  type EvalUsage,
+  isTutorCase,
+} from "./eval-run";
 
 // Pure presentation: turn a `BuildResult` into a human-readable terminal report.
 // No validation logic lives here — it only renders the structured errors/warnings
 // the core already produced.
+
+// What the judge audited, in the reader's words: a quiz judge reads the grader's
+// FEEDBACK, a tutor judge reads the generated RESPONSE. The JSON field stays
+// `feedbackFlagged` for both (one batch shape); only the human label branches —
+// the same wording the Markdown report uses.
+function flaggedLabel(kind: EvalRunResult["kind"]): string {
+  return kind === "tutor" ? "flagged responses" : "flagged feedback";
+}
 
 const useColor = process.stdout.isTTY && !process.env.NO_COLOR;
 const paint = (code: string, s: string) => (useColor ? `\x1b[${code}m${s}\x1b[0m` : s);
@@ -197,18 +212,23 @@ export function formatCodingResult(result: CodingCheckResult, source: string): s
 }
 
 /**
- * Renderer for a golden-answer eval check (`--kind eval`). An eval describes a quiz it
- * does not contain, so the summary names the resolved target and the size of the run
- * the file would produce.
+ * Renderer for an eval check (`--kind eval`). An eval describes an activity it does not
+ * contain, so the summary names the resolved target and the size of the run the file
+ * would produce — in the units of its own kind.
  */
 export function formatEvalResult(result: EvalCheckResult, source: string): string {
   if (!result.ok) return renderFailureAndWarnings(result, "eval", source);
 
   const lines = [green(`✔ Valid eval`) + dim(` — ${source}`)];
   lines.push(`  id: ${result.evalFile.id}`);
+  lines.push(`  kind: ${result.kind}`);
   lines.push(`  target: ${result.targetUrl}`);
-  lines.push(`  questions: ${result.evalFile.questions.length}   cases: ${result.caseCount}`);
-  lines.push(`  quiz model: ${result.quizDump.llm.provider} / ${result.quizDump.llm.model}`);
+  if (result.kind === "tutor") {
+    lines.push(`  conversations: ${result.caseCount}`);
+  } else {
+    lines.push(`  questions: ${result.evalFile.questions.length}   cases: ${result.caseCount}`);
+  }
+  lines.push(`  ${result.kind} model: ${result.llm.provider} / ${result.llm.model}`);
   if (result.warnings.length) {
     lines.push("");
     lines.push(yellow(`${result.warnings.length} warning(s):`));
@@ -241,17 +261,28 @@ export function formatUsageLine(usage: EvalUsage): string | undefined {
   return `tokens: ${formatTokenCount(usage.input)} in${cached} / ${formatTokenCount(usage.output)} out`;
 }
 
-/** `question#index expected … got … "answer…"` — one line per non-passing case. */
+/** The first error message a case's repeats recorded, for a one-line mismatch row. */
+function firstErrorMessage(repeats: readonly { error?: unknown }[], fallback: string): string {
+  const first = repeats.find((row) => row.error !== undefined)?.error;
+  return typeof first === "object" && first !== null && "message" in first
+    ? String((first as { message: unknown }).message)
+    : fallback;
+}
+
+/**
+ * One line per non-passing case: `question#index expected … got … "answer…"` for a quiz,
+ * `#n title — error …` for a tutor conversation (which has no verdict to compare).
+ */
 function mismatchLines(result: EvalRunResult): string[] {
   return result.mismatches.map((c) => {
+    if (isTutorCase(c)) {
+      const head = `#${c.index + 1}${c.title ? ` ${c.title}` : ""}`;
+      return `  ${red("✗")} ${head} ${red("error")} ${dim(firstErrorMessage(c.repeats, "no response"))}`;
+    }
     const head = `${c.questionId}#${c.answerIndex}`;
     const expected = c.expected.join("|");
     if (c.status === "errored") {
-      const first = c.repeats.find((row) => row.error !== undefined)?.error;
-      const message =
-        typeof first === "object" && first !== null && "message" in first
-          ? String((first as { message: unknown }).message)
-          : "no verdict";
+      const message = firstErrorMessage(c.repeats, "no verdict");
       return `  ${red("✗")} ${head} expected ${expected} got ${red("error")} ${dim(message)}`;
     }
     return (
@@ -287,8 +318,10 @@ export function formatEvalReport(result: EvalRunResult, source: string): string 
       `  judge llm: ${judge.provider} / ${judge.model}${judge.overridden ? ` ${yellow("(override)")}` : ""}`,
     );
   }
+  const unit = result.kind === "tutor" ? "conversation" : "case";
+  const generation = result.kind === "tutor" ? "generation" : "grading";
   lines.push(
-    `  cases: ${totals.cases} × ${totals.repeats} repeat(s) = ${totals.calls} grading call(s)` +
+    `  ${unit}s: ${totals.cases} × ${totals.repeats} repeat(s) = ${totals.calls} ${generation} call(s)` +
       (result.judging === "off" ? "" : ` + ${totals.calls} judge call(s)`),
   );
 
@@ -311,7 +344,11 @@ export function formatEvalReport(result: EvalRunResult, source: string): string 
 
   lines.push("");
   lines.push(
-    `  passed: ${totals.passed}   failed: ${totals.failed}   errored: ${totals.errored}` +
+    // A tutor run has no verdict, so `passed`/`failed` would always read 0/0 — it counts
+    // the conversations that produced a response instead.
+    (result.kind === "tutor"
+      ? `  ok: ${totals.cases - totals.errored - totals.skipped}   errored: ${totals.errored}`
+      : `  passed: ${totals.passed}   failed: ${totals.failed}   errored: ${totals.errored}`) +
       (totals.skipped ? red(`   skipped: ${totals.skipped} (run aborted)`) : "") +
       (totals.unstable ? dim(`   unstable: ${totals.unstable}`) : "") +
       // Reported, never gating — hence yellow rather than red. Printed whenever ANY
@@ -321,8 +358,16 @@ export function formatEvalReport(result: EvalRunResult, source: string): string 
       (!anyJudged(result)
         ? ""
         : totals.feedbackFlagged
-          ? yellow(`   flagged feedback: ${totals.feedbackFlagged}`)
-          : dim("   flagged feedback: 0")) +
+          ? yellow(`   ${flaggedLabel(result.kind)}: ${totals.feedbackFlagged}`)
+          : dim(`   ${flaggedLabel(result.kind)}: 0`)) +
+      // The deterministic sibling of the judge's count, under the SAME omission rule
+      // (`anyToolsRequired`): a run where no case declared `required_tools` prints no
+      // segment at all, because a `0` there would claim a check nobody ran.
+      (!anyToolsRequired(result)
+        ? ""
+        : totals.toolsFlagged
+          ? yellow(`   missing tool calls: ${totals.toolsFlagged}`)
+          : dim("   missing tool calls: 0")) +
       (totals.judgeErrored ? dim(`   judge errors: ${totals.judgeErrored}`) : ""),
   );
 
@@ -337,12 +382,16 @@ export function formatEvalReport(result: EvalRunResult, source: string): string 
     }
   }
 
-  const { count, denominator, rate } = result.falseCorrect;
-  lines.push("");
-  lines.push(
-    `  false-correct: ${count}/${denominator}` +
-      (denominator ? ` (${(rate * 100).toFixed(1)}%)` : ""),
-  );
+  // Verdict metrics belong to the quiz kind alone; printing an all-zero false-correct
+  // rate for a tutor run would invite reading meaning into it.
+  if (result.kind !== "tutor") {
+    const { count, denominator, rate } = result.falseCorrect;
+    lines.push("");
+    lines.push(
+      `  false-correct: ${count}/${denominator}` +
+        (denominator ? ` (${(rate * 100).toFixed(1)}%)` : ""),
+    );
+  }
   return lines.join("\n");
 }
 
@@ -363,8 +412,12 @@ export function formatEvalBatchReport(batch: EvalBatchResult): string {
     }
     const t = file.result.totals;
     const mark = t.failed === 0 && t.errored === 0 && t.skipped === 0 ? green("✔") : red("✗");
+    const counts =
+      file.result.kind === "tutor"
+        ? `${t.cases} conversation(s), ${t.cases - t.errored - t.skipped} ok, ${t.errored} errored`
+        : `${t.cases} case(s), ${t.passed} passed, ${t.failed} failed, ${t.errored} errored`;
     lines.push(
-      `  ${mark} ${name}: ${t.cases} case(s), ${t.passed} passed, ${t.failed} failed, ${t.errored} errored` +
+      `  ${mark} ${name}: ${counts}` +
         (t.skipped ? red(`, ${t.skipped} skipped`) : "") +
         (t.unstable ? dim(`, ${t.unstable} unstable`) : "") +
         // `anyJudged`, the renderers' shared rule: no flagged segment for a file that
@@ -373,7 +426,14 @@ export function formatEvalBatchReport(batch: EvalBatchResult): string {
           ? ""
           : t.feedbackFlagged
             ? yellow(`, ${t.feedbackFlagged} flagged`)
-            : dim(", 0 flagged")),
+            : dim(", 0 flagged")) +
+        // Same omission rule for the tool check: a file that required no tool says
+        // nothing about missing tool calls.
+        (!anyToolsRequired(file.result)
+          ? ""
+          : t.toolsFlagged
+            ? yellow(`, ${t.toolsFlagged} missing tool calls`)
+            : dim(", 0 missing tool calls")),
     );
   }
 
@@ -381,6 +441,9 @@ export function formatEvalBatchReport(batch: EvalBatchResult): string {
   // Same rule as the per-file rows: a batch where no file judged says nothing about
   // flagged feedback; one where any file did reports its count, zero included.
   const judged = batch.files.some((file) => file.result && anyJudged(file.result));
+  // …and the same for the tool check across the batch: no file required a tool ⇒ no
+  // segment, never a reassuring zero.
+  const toolChecked = batch.files.some((file) => file.result && anyToolsRequired(file.result));
   lines.push("");
   lines.push(
     `  TOTAL: ${g.cases} case(s), ${g.passed} passed, ${g.failed} failed, ${g.errored} errored` +
@@ -389,6 +452,11 @@ export function formatEvalBatchReport(batch: EvalBatchResult): string {
         ? g.feedbackFlagged
           ? yellow(`, ${g.feedbackFlagged} flagged`)
           : dim(", 0 flagged")
+        : "") +
+      (toolChecked
+        ? g.toolsFlagged
+          ? yellow(`, ${g.toolsFlagged} missing tool calls`)
+          : dim(", 0 missing tool calls")
         : "") +
       (g.invalid ? red(`, ${g.invalid} invalid file(s)`) : ""),
   );

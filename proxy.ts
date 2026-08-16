@@ -18,8 +18,8 @@ export const config = {
   // boundary (`api/coding(?:/|$)`) so the exclusion cannot silently widen to a
   // future, unrelated `/api/coding-*` route.
   // The /api/me identity probe, the /api/codes list/create endpoints, the
-  // /api/reports list/detail/resolve endpoints, the /api/eval grader-eval
-  // endpoints — grade and judge, both bounded by the one `api/eval(?:/|$)` entry
+  // /api/reports list/detail/resolve endpoints, the /api/eval eval endpoints —
+  // grade, judge and respond, all bounded by the one `api/eval(?:/|$)` entry
   // (teacher-only; docs/cli-eval.md) — and the /api/images
   // list/upload/confirm endpoints (all teacher-only; unlike /api/files there
   // is NO public GET under that prefix) are

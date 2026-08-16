@@ -28,6 +28,10 @@ const mismatchEval = join(evalsDir, "mismatch-eval.yaml");
 const brokenEval = join(evalsDir, "broken-eval.yaml");
 /** Verdicts all match; one answer plants a `[judge:…]` marker the fake judge flags. */
 const judgeEval = join(evalsDir, "judge-eval.yaml");
+/** A TUTOR eval whose `[respond:…]` markers make the fake generator answer predictably. */
+const tutorEval = join(evalsDir, "tutor-eval.yaml");
+/** The same, with one case's generated response carrying a `[judge:…]` marker. */
+const tutorJudgeEval = join(evalsDir, "tutor-judge-eval.yaml");
 
 const fetchMock = vi.fn();
 
@@ -73,17 +77,44 @@ function isJudgeCall(input: unknown): boolean {
   return String(input).endsWith("/api/eval/judge");
 }
 
+function isRespondCall(input: unknown): boolean {
+  return String(input).endsWith("/api/eval/respond");
+}
+
+/**
+ * The fake tutor: the generated turn is the `[respond:<text>]` payload of the LAST
+ * message (greedy to the final bracket, so a nested `[judge:…]` marker survives), else a
+ * canned echo — the same convention as the fixtures server.
+ */
+function responder(): Response {
+  const messages = lastBody().messages as { text: string }[];
+  const last = String(messages.at(-1)?.text ?? "");
+  const marker = /\[respond:([\s\S]*)\]/.exec(last);
+  return jsonResponse({ text: marker ? marker[1] : `fake tutor answers: ${last}` });
+}
+
 /** Routes one request to the right fake, so a test never has to branch by hand. */
 function serve(input: unknown, versionAnswer = jsonResponse({ cliVersion: cliVersion() })) {
   if (isVersionProbe(input)) return versionAnswer;
-  return isJudgeCall(input) ? judge() : grader();
+  if (isJudgeCall(input)) return judge();
+  return isRespondCall(input) ? responder() : grader();
 }
 
 /** Only the GRADING requests, so counts stay about grading and not about probes/judging. */
 function gradeCalls(): Array<[URL, RequestInit]> {
   return fetchMock.mock.calls.filter(
-    (call) => !isVersionProbe((call as unknown[])[0]) && !isJudgeCall((call as unknown[])[0]),
+    (call) =>
+      !isVersionProbe((call as unknown[])[0]) &&
+      !isJudgeCall((call as unknown[])[0]) &&
+      !isRespondCall((call as unknown[])[0]),
   ) as Array<[URL, RequestInit]>;
+}
+
+/** Only the tutor GENERATION requests. */
+function respondCalls(): Array<[URL, RequestInit]> {
+  return fetchMock.mock.calls.filter((call) => isRespondCall((call as unknown[])[0])) as Array<
+    [URL, RequestInit]
+  >;
 }
 
 /** Only the JUDGE requests. */
@@ -614,12 +645,17 @@ describe("expandSources", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.sources).toHaveLength(4);
+    expect(result.sources).toHaveLength(9);
     expect(result.sources.map((s) => s.split("/").pop())).toEqual([
       "broken-eval.yaml",
+      "broken-tutor-eval.yaml",
       "judge-eval.yaml",
       "mismatch-eval.yaml",
       "test-eval.yaml",
+      "tutor-eval.yaml",
+      "tutor-judge-eval.yaml",
+      "tutor-old-server-eval.yaml",
+      "tutor-tools-eval.yaml",
     ]);
   });
 
@@ -637,5 +673,128 @@ describe("expandSources", () => {
     if (!result.ok) return;
     expect(result.sources).toHaveLength(1);
     expect(result.duplicates).toHaveLength(1);
+  });
+});
+
+describe("eval — the tutor kind", () => {
+  it("infers the kind from the file and POSTs one generation call per conversation", async () => {
+    await run(tutorEval, "--server", "http://localhost:1234");
+
+    expect(gradeCalls()).toHaveLength(0);
+    const calls = respondCalls();
+    expect(calls).toHaveLength(2);
+    expect(String(calls[0]?.[0])).toBe("http://localhost:1234/api/eval/respond");
+
+    const body = JSON.parse(calls[0]?.[1].body as string);
+    // The tutor's own model, its real assembled system prompt and its `tools:` grant.
+    expect(body.llm).toEqual({ provider: "SCCH", model: "test-model" });
+    expect(body.system).toContain("NEVER-SOLVE-MARKER");
+    expect(body.tools).toEqual([]);
+    // Teacher-facing roles mapped to the wire ones, ending on the student turn.
+    expect(body.messages.at(-1).role).toBe("user");
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("sends the multi-turn conversation verbatim, in order", async () => {
+    await run(tutorEval, "--server", "http://localhost:1234");
+
+    const body = JSON.parse(respondCalls()[1]?.[1].body as string);
+    expect(body.messages.map((m: { role: string }) => m.role)).toEqual([
+      "user",
+      "assistant",
+      "user",
+    ]);
+    expect(body.messages[1].text).toBe("What have you tried so far?");
+  });
+
+  it("judges each generated response against the tutor prompt, with the case's criteria", async () => {
+    await run(tutorEval, "--server", "http://localhost:1234");
+
+    const judged = judgeCalls().map((call) => JSON.parse(call[1].body as string));
+    expect(judged).toHaveLength(2);
+    expect(judged[0].system).toContain("You are auditing ONE response an AI TUTOR gave");
+    expect(judged[0].subject).toContain("NEVER-SOLVE-MARKER");
+    expect(judged[0].subject).toContain("What does your condition evaluate to?");
+    // The first case states expectations, the second does not.
+    expect(judged[0].criteria).toContain("fails_expectations");
+    expect(judged[1].criteria).not.toContain("fails_expectations");
+  });
+
+  it("prints the tutor scope line in conversations and generation calls", async () => {
+    await run(tutorEval, "--server", "http://localhost:1234");
+
+    expect(stderrText()).toContain(
+      "2 conversation(s) × 1 repeat(s) = 2 generation + 2 judge call(s)",
+    );
+  });
+
+  it("reports a flagged response WITHOUT failing the run", async () => {
+    await run(tutorJudgeEval, "--json", "--server", "http://localhost:1234");
+
+    const payload = JSON.parse(log.mock.calls.at(-1)?.[0] as string);
+    const result = payload.files[0].result;
+    expect(payload.files[0].kind).toBe("tutor");
+    expect(result.kind).toBe("tutor");
+    expect(result.judging).toBe("on");
+    expect(result.totals.feedbackFlagged).toBe(1);
+    expect(result.cases[0].repeats[0].judge.issues[0].criterion).toBe("ignores_instructions");
+    // The generated text rides along in the JSON for every repeat, flagged or not.
+    expect(result.cases[0].repeats[0].text).toContain("Here is the whole loop");
+    expect(result.cases[1].repeats[0].text).toBe("What does your condition evaluate to?");
+    // REPORT-ONLY: the exit code reflects run health only.
+    expect(payload.passed).toBe(true);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("sends ZERO judge requests with --no-judge-feedback", async () => {
+    await run(tutorEval, "--no-judge-feedback", "--json", "--server", "http://localhost:1234");
+
+    expect(judgeCalls()).toHaveLength(0);
+    expect(stderrText()).toContain("2 conversation(s) × 1 repeat(s) = 2 generation call(s)");
+    const result = JSON.parse(log.mock.calls.at(-1)?.[0] as string).files[0].result;
+    expect(result.judging).toBe("off");
+  });
+
+  it("reports a conversation that does not end with a student turn as invalid", async () => {
+    await run(join(evalsDir, "broken-tutor-eval.yaml"), "--server", "http://localhost:1234");
+
+    expect(respondCalls()).toHaveLength(0);
+    const payload = JSON.parse(error.mock.calls.at(-1)?.[0] as string);
+    expect(payload.errors[0].code).toBe("EVAL_SCHEMA");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("runs a MIXED batch, one scope line per kind, one JSON shape", async () => {
+    await run(okEval, tutorEval, "--json", "--server", "http://localhost:1234");
+
+    // Each file went to its own endpoint.
+    expect(gradeCalls()).toHaveLength(2);
+    expect(respondCalls()).toHaveLength(2);
+    // Two scope lines — "case" and "conversation" are different units.
+    expect(stderrText()).toContain("2 case(s) × 1 repeat(s) = 2 grading + 2 judge call(s)");
+    expect(stderrText()).toContain(
+      "2 conversation(s) × 1 repeat(s) = 2 generation + 2 judge call(s)",
+    );
+
+    const payload = JSON.parse(log.mock.calls.at(-1)?.[0] as string);
+    expect(payload.files.map((file: { kind?: string }) => file.kind)).toEqual(["quiz", "tutor"]);
+    expect(payload.totals).toMatchObject({ files: 2, cases: 4, invalid: 0 });
+    expect(payload.passed).toBe(true);
+    expect(process.exitCode).toBe(0);
+  });
+
+  it("applies the --llm override to the tutor under test", async () => {
+    await run(
+      tutorEval,
+      "--llm-provider",
+      "Azure Foundry",
+      "--llm-model",
+      "gpt-5-mini",
+      "--server",
+      "http://localhost:1234",
+    );
+
+    const body = JSON.parse(respondCalls()[0]?.[1].body as string);
+    expect(body.llm).toEqual({ provider: "Azure Foundry", model: "gpt-5-mini" });
   });
 });

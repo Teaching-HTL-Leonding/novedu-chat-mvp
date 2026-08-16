@@ -1,5 +1,14 @@
-import { EVAL_VERDICTS, type EvalVerdict, expectedKey, normalizeExpect } from "@/lib/eval-schema";
-import type { EvalCheckOk } from "@/lib/eval-validate";
+import {
+  EVAL_KINDS,
+  EVAL_VERDICTS,
+  type EvalConversationTurn,
+  type EvalKind,
+  type EvalVerdict,
+  expectedKey,
+  normalizeExpect,
+  turnToMessage,
+} from "@/lib/eval-schema";
+import type { EvalCheckOk, QuizEvalCheckOk, TutorEvalCheckOk } from "@/lib/eval-validate";
 import type { PromptKind } from "@/lib/prompt-dump";
 import {
   buildFeedbackJudgeSubject,
@@ -7,11 +16,13 @@ import {
   FEEDBACK_JUDGE_SYSTEM,
   type FeedbackJudgeIssue,
 } from "@/lib/quiz-feedback-judge";
+import { buildTutorJudgeSubject, TUTOR_JUDGE_SYSTEM, tutorJudgeCriteria } from "@/lib/tutor-judge";
 import { mapWithConcurrency, withRetry } from "./retry";
 
 // The PURE core of `novedu-cli eval`: turn a checked eval file into a finished run
-// report by calling an injected `GradeFn` (the HTTP seam) once per grading call. No
-// fetch, no auth, no I/O — everything the command needs to be unit-testable.
+// report by calling injected HTTP seams — a `GradeFn` per grading call (quiz kind) or a
+// `RespondFn` per generated tutor turn (tutor kind), plus the kind-agnostic `JudgeFn`.
+// No fetch, no auth, no I/O — everything the command needs to be unit-testable.
 //
 // ONE HIERARCHY governs the whole report:
 //
@@ -38,11 +49,26 @@ import { mapWithConcurrency, withRetry } from "./retry";
 // so there is deliberately no majority vote over judgments. NOTHING the judge reports
 // touches `status`, `passed`, `batchPassed` or the exit code — it is report-only, the
 // same philosophy as `unstable` (docs/cli-eval.md).
+//
+// THE TUTOR KIND reuses that whole machinery with a different pair of calls per repeat: a
+// generated response (`RespondFn`) and then the judge over THAT repeat's own response. It
+// has no verdict, so it has no `passed`/`failed`, no majority, no confusion matrix and no
+// `unstable` — its case statuses are `ok` / `errored` / `skipped`, and it has two findings:
+// the judge's, and the DETERMINISTIC `required_tools` check (did every tool the case
+// demands get called at least once?). Both (per-kind policy) REPORT and never gate. One
+// report shape serves both kinds; renderers branch on `EvalRunResult.kind`.
 
-/** The eval kinds — quiz only for v1; the seam is ready for the others. */
-export type EvalKind = Extract<PromptKind, "quiz">;
+/**
+ * The eval kinds. Re-exported from the format module (`lib/eval-schema.ts`) so the
+ * `kind` discriminator, the runner registry and the JSON can never name different sets.
+ */
+export type { EvalKind };
+export { EVAL_KINDS };
 
-export const EVAL_KINDS: readonly EvalKind[] = ["quiz"];
+// Every eval kind must be a kind `dumpPrompts` can produce prompts for — a compile-time
+// tie rather than a comment, so adding a kind without a dumper fails the build.
+const _evalKindsArePromptKinds: readonly PromptKind[] = EVAL_KINDS;
+void _evalKindsArePromptKinds;
 
 /**
  * Token usage, in the shape `POST /api/eval/grade` reports it: `input` is the total
@@ -85,6 +111,40 @@ export type GradeResult =
 
 /** The injected HTTP seam: grade one answer with one grading prompt. */
 export type GradeFn = (request: { system: string; answer: string }) => Promise<GradeResult>;
+
+/** One generated tutor turn, as the HTTP seam reports it. */
+export type RespondResult =
+  | {
+      ok: true;
+      text: string;
+      /**
+       * The tool names the generation invoked, in call order, duplicates kept. ABSENT
+       * (rather than `[]`) when the server did not report the field at all — a server
+       * predating tool reporting, which the runner must never read as "called nothing".
+       */
+      toolCalls?: string[];
+      usage?: EvalUsage;
+    }
+  | {
+      ok: false;
+      /** Worth another attempt: a 5xx or a true network failure. Any 4xx is terminal. */
+      retryable: boolean;
+      /** 401/403/not-signed-in — aborts the WHOLE run, never retried. */
+      auth?: boolean;
+      /** The failure payload, verbatim, for the report. */
+      error: unknown;
+    };
+
+/**
+ * The injected HTTP seam for ONE generated tutor turn: the tutor's assembled system
+ * prompt, its `tools:` grant and the scripted conversation (ending on the student message
+ * the model must answer). The tutor-kind sibling of {@link GradeFn}.
+ */
+export type RespondFn = (request: {
+  system: string;
+  tools: readonly string[];
+  messages: readonly { role: "user" | "assistant"; text: string }[];
+}) => Promise<RespondResult>;
 
 /** One thing the judge found wrong with a feedback text — the `lib` wire type, re-exported. */
 export type EvalJudgeIssue = FeedbackJudgeIssue;
@@ -141,7 +201,10 @@ export function createJudgeBreaker(): JudgeBreaker {
 const JUDGE_BREAKER_LIMIT = 3;
 
 export interface EvalRunOptions {
-  grade: GradeFn;
+  /** The QUIZ kind's generation seam. Required by `evalRunners.quiz`. */
+  grade?: GradeFn;
+  /** The TUTOR kind's generation seam. Required by `evalRunners.tutor`. */
+  respond?: RespondFn;
   /**
    * The judge seam. ABSENT means judging is off for this run (`--no-judge-feedback`) —
    * no judge fields appear anywhere in the result.
@@ -179,9 +242,26 @@ export interface EvalRunLlm {
 
 export interface EvalRepeatRow {
   repeatIndex: number;
+  /** QUIZ: the verdict this observation produced. */
   got?: EvalVerdict;
+  /** QUIZ: the feedback text the grader wrote for the student. */
   feedback?: string;
-  /** This ONE grading call's tokens, when the server reported them. */
+  /** TUTOR: the response the model generated for this observation, verbatim. */
+  text?: string;
+  /**
+   * TUTOR: the tool names this generation invoked, verbatim — in call order, duplicates
+   * kept, `[]` when it called nothing. Absent when the server reported no tool calls at
+   * all (only possible on a case that declares no `required_tools`; a case that does
+   * declare them turns that silence into an error instead — see the tutor runner).
+   */
+  toolCalls?: string[];
+  /**
+   * TUTOR: the `required_tools` this observation never called. Present ONLY on a case
+   * that declares `required_tools`, so an empty array honestly means "all of them ran
+   * here" and a missing key means "nothing was required" — never "nothing was checked".
+   */
+  missingTools?: string[];
+  /** This ONE generation call's tokens, when the server reported them. */
   usage?: EvalUsage;
   /** Present when this observation never produced a verdict. */
   error?: unknown;
@@ -197,30 +277,80 @@ export interface EvalRepeatRow {
   judgeError?: string;
 }
 
-export interface EvalCaseResult {
+interface EvalCaseBase {
+  /**
+   * `errored` = attempted but produced nothing; `skipped` = never attempted because the
+   * run had already aborted (empty `repeats`). Both gate the exit code; only `errored`
+   * appears in the mismatch listing (an aborted run must not print hundreds of lines).
+   */
+  status: "passed" | "failed" | "ok" | "errored" | "skipped";
+  /** The repeats disagreed — reported, never gating. Always `false` for a tutor case. */
+  unstable: boolean;
+  /**
+   * ANY repeat's output collected a judge issue. Reported, never gating — the same
+   * standing as `unstable`. No majority vote: one bad response out of three observations
+   * is precisely the signal `--repeats` exists to surface. (The name is the JSON's, kept
+   * across kinds so one `summarizeBatch` and one report shape serve both.)
+   */
+  feedbackFlagged: boolean;
+  /**
+   * ANY repeat missed a tool the case's `required_tools` demanded. The exact sibling of
+   * {@link EvalCaseBase.feedbackFlagged}: same any-repeat rule, same standing — reported,
+   * never gating. Always `false` for a quiz case (the grader has no tools), kept on the
+   * base so one `summarizeBatch` and one report shape serve both kinds.
+   */
+  toolsFlagged: boolean;
+  repeats: EvalRepeatRow[];
+}
+
+/** One golden answer of a QUIZ eval — the case `(questionId, answerIndex)`. */
+export interface EvalQuizCaseResult extends EvalCaseBase {
   questionId: string;
   /** 0-based index of the golden answer within its question. */
   answerIndex: number;
   expected: EvalVerdict[];
   /** The golden answer, verbatim (the report shows a snippet). */
   answer: string;
-  /**
-   * `errored` = attempted but no verdict; `skipped` = never attempted because the run
-   * had already aborted (empty `repeats`). Both gate the exit code; only `errored`
-   * appears in the mismatch listing (an aborted run must not print hundreds of lines).
-   */
   status: "passed" | "failed" | "errored" | "skipped";
   /** The majority verdict over the graded repeats; absent when errored/skipped. */
   verdict?: EvalVerdict;
-  /** The repeats disagreed — reported, never gating. */
-  unstable: boolean;
+}
+
+/** One scripted conversation of a TUTOR eval. */
+export interface EvalTutorCaseResult extends EvalCaseBase {
+  /** 0-based position in the file — the case's identity when it has no `title`. */
+  index: number;
+  /** The teacher's optional label, the case's stable report heading. */
+  title?: string;
+  /** The scripted turns, verbatim — the report prints them so a flag can be read. */
+  conversation: EvalConversationTurn[];
+  /** The teacher's per-case expectations, when this case states any. */
+  gradingInstructions?: string;
   /**
-   * ANY graded repeat's feedback collected a judge issue. Reported, never gating — the
-   * same standing as `unstable`. No majority vote: one bad feedback out of three
-   * observations is precisely the signal `--repeats` exists to surface.
+   * The tools this case demands at least one call of, verbatim from the file. Absent when
+   * the case declares none — which is what every renderer's "was this even checked?" rule
+   * reads, so a run that required nothing never prints a reassuring zero.
    */
-  feedbackFlagged: boolean;
-  repeats: EvalRepeatRow[];
+  requiredTools?: string[];
+  /**
+   * No verdict exists, so there is no `passed`/`failed`: a case either produced its
+   * responses (`ok`) or did not. Judge findings and missing tool calls never change this —
+   * both are report-only.
+   */
+  status: "ok" | "errored" | "skipped";
+  unstable: false;
+}
+
+export type EvalCaseResult = EvalQuizCaseResult | EvalTutorCaseResult;
+
+/** Narrow a case to the quiz arm (the union has no `kind` field — the JSON stays lean). */
+export function isQuizCase(evalCase: EvalCaseResult): evalCase is EvalQuizCaseResult {
+  return "questionId" in evalCase;
+}
+
+/** Narrow a case to the tutor arm. */
+export function isTutorCase(evalCase: EvalCaseResult): evalCase is EvalTutorCaseResult {
+  return "conversation" in evalCase;
 }
 
 export interface EvalConfusionRow {
@@ -232,43 +362,57 @@ export interface EvalConfusionRow {
 
 export interface EvalRunResult {
   id: string;
+  /** Which eval kind produced this result — the ONE field a renderer branches on. */
+  kind: EvalKind;
   target: string;
   llm: EvalRunLlm;
-  /** Whether this file's feedback was judged at all ({@link EvalJudging}). */
+  /** Whether this file's output was judged at all ({@link EvalJudging}). */
   judging: EvalJudging;
   totals: {
     cases: number;
+    /** QUIZ only — a tutor file has no verdict to pass, so it reports `0`. */
     passed: number;
+    /** QUIZ only — likewise `0` for a tutor file. */
     failed: number;
     errored: number;
     /** Cases never attempted because the run aborted first. */
     skipped: number;
+    /** QUIZ only — a tutor run makes no majority vote, so it reports `0`. */
     unstable: number;
-    /** CASES whose feedback the judge flagged — reported, never gating. */
+    /** CASES whose output the judge flagged — reported, never gating, both kinds. */
     feedbackFlagged: number;
-    /** REPEATS whose judge call exhausted its retries (the grading still counted). */
+    /** TUTOR only: CASES that missed a required tool call — reported, never gating. */
+    toolsFlagged: number;
+    /** REPEATS whose judge call exhausted its retries (the generation still counted). */
     judgeErrored: number;
     repeats: number;
-    /** Grading calls this run intended to make (cases × repeats). */
+    /** Generation calls this run intended to make (cases × repeats). */
     calls: number;
     /**
-     * Summed over every repeat row that reported usage — GRADING **and** judge calls, in
-     * one bucket on purpose (one eval run is one cost). A LOWER bound ({@link EvalUsage}).
+     * Summed over every repeat row that reported usage — GENERATION **and** judge calls,
+     * in one bucket on purpose (one eval run is one cost). A LOWER bound
+     * ({@link EvalUsage}).
      */
     usage: EvalUsage;
   };
-  /** Every case that did not pass, in file order — what the human report lists. */
+  /**
+   * Every case the human report must list: quiz cases that failed or errored, tutor
+   * cases that errored. (`skipped` is deliberately absent — see the runners.)
+   */
   mismatches: EvalCaseResult[];
   cases: EvalCaseResult[];
   /**
-   * The evaluated questions' TEXT (id + Markdown), in eval-file order — so a report
-   * can show the question a mismatched answer belongs to without re-reading the quiz.
+   * QUIZ only: the evaluated questions' TEXT (id + Markdown), in eval-file order — so a
+   * report can show the question a mismatched answer belongs to without re-reading the
+   * quiz. Empty for a tutor run, whose cases carry their conversation instead.
    */
   questions: { id: string; text: string }[];
+  /** QUIZ only; empty for a tutor run, which has no verdicts to confuse. */
   confusion: EvalConfusionRow[];
   /**
-   * Cases the grader called `correct` although `correct` was NOT acceptable, over ALL
-   * cases whose expected set excludes `correct` (the pinned denominator).
+   * QUIZ only: cases the grader called `correct` although `correct` was NOT acceptable,
+   * over ALL cases whose expected set excludes `correct` (the pinned denominator). All
+   * zeros for a tutor run.
    */
   falseCorrect: { count: number; denominator: number; rate: number };
   /** Set when the run stopped early; the untouched cases are reported as `skipped`. */
@@ -291,7 +435,7 @@ interface PlannedCase {
 }
 
 /** Flatten questions × answers into cases, each carrying its grading prompt. */
-function planCases(checked: EvalCheckOk): PlannedCase[] {
+function planCases(checked: QuizEvalCheckOk): PlannedCase[] {
   const systemById = new Map(
     checked.quizDump.grading.questions.map((question) => [question.id, question.system]),
   );
@@ -344,8 +488,70 @@ function judgeErrorMessage(error: unknown): string {
   return JSON.stringify(error ?? null);
 }
 
+/**
+ * The `judge` field of a repeat that produced NO judgment — spread onto every row that
+ * is not a successful generation. Judging on ⇒ an explicit `null` (so a script reading
+ * `judge === null` catches every unjudged repeat, not only the degraded ones); judging
+ * off ⇒ nothing at all, since the whole run then carries no judge fields.
+ */
+function unjudgedFields(
+  options: EvalRunOptions,
+): Pick<EvalRepeatRow, "judge"> | Record<string, never> {
+  return options.judge ? { judge: null } : {};
+}
+
+/**
+ * The KIND-AGNOSTIC judge step: judge ONE repeat's output as a dependent step of that
+ * repeat, retrying and feeding the run-wide degrade breaker. Each kind assembles its own
+ * `system` / `subject` / `criteria` (quiz via `lib/quiz-feedback-judge.ts`, tutor via
+ * `lib/tutor-judge.ts`) — the endpoint and this step never learn the kind.
+ *
+ * Returns the fields to merge onto the row: a judgment, or `judge: null` plus a
+ * `judgeError` when the call failed, or a bare `judge: null` when the breaker had
+ * already degraded the run.
+ */
+function createJudgeStep(options: EvalRunOptions, breaker: JudgeBreaker) {
+  return async (request: {
+    system: string;
+    subject: string;
+    criteria: readonly string[];
+  }): Promise<Pick<EvalRepeatRow, "judge" | "judgeError">> => {
+    const judge = options.judge;
+    if (!judge || breaker.stopped) return { judge: null };
+    const outcome = await withRetry(() => judge(request), {
+      attempts: options.retry?.attempts,
+      baseDelayMs: options.retry?.baseDelayMs,
+      sleep: options.retry?.sleep,
+      // `!breaker.stopped` re-reads the SHARED breaker between attempts: judge calls
+      // already in flight when a concurrent one trips it would otherwise keep burning
+      // their full budget against a judge the run has already given up on.
+      shouldRetry: (value) => !value.ok && value.retryable && !breaker.stopped,
+    });
+    if (outcome.ok) {
+      breaker.consecutiveErrors = 0;
+      return {
+        judge: {
+          issues: outcome.issues,
+          ...(outcome.usage ? { usage: outcome.usage } : {}),
+        },
+      };
+    }
+    // DEGRADE, never abort: the generation half of the run must survive a down judge.
+    breaker.consecutiveErrors += 1;
+    if (!breaker.stopped && breaker.consecutiveErrors >= JUDGE_BREAKER_LIMIT) {
+      breaker.stopped = true;
+      options.onJudgeDegraded?.();
+    }
+    return { judge: null, judgeError: judgeErrorMessage(outcome.error) };
+  };
+}
+
 const quizEvalRunner: EvalRunner = {
-  async run(checked, options) {
+  async run(rawChecked, options) {
+    if (rawChecked.kind !== "quiz") throw new Error("The quiz eval runner needs a quiz eval file.");
+    const checked: QuizEvalCheckOk = rawChecked;
+    const grade = options.grade;
+    if (!grade) throw new Error("The quiz eval runner needs a `grade` seam.");
     const repeats = Math.max(1, Math.floor(options.repeats ?? 1));
     const concurrency = Math.max(1, Math.floor(options.concurrency ?? 4));
     const planned = planCases(checked);
@@ -354,69 +560,25 @@ const quizEvalRunner: EvalRunner = {
     // Absent breaker ⇒ this file owns one; the command passes a shared instance so
     // degradation carries across a batch.
     const breaker = options.judgeBreaker ?? createJudgeBreaker();
+    const judgeStep = createJudgeStep(options, breaker);
 
     let done = 0;
     let consecutiveErrored = 0;
     let aborted: EvalRunResult["aborted"];
 
-    /**
-     * The `judge` field of a repeat that produced NO judgment — spread onto every row
-     * that is not a successful grading. Judging on ⇒ an explicit `null` (so a script
-     * reading `judge === null` catches every unjudged repeat, not only the degraded
-     * ones); judging off ⇒ nothing at all, since the whole run carries no judge fields.
-     */
-    const unjudged: Pick<EvalRepeatRow, "judge"> | Record<string, never> = options.judge
-      ? { judge: null }
-      : {};
+    const unjudged = unjudgedFields(options);
 
     /**
-     * Judge ONE graded repeat's feedback, as a dependent step of that repeat. Judged
-     * against the repeat's OWN verdict, never the case majority. Returns the fields to
-     * merge onto the row: a judgment, or `judge: null` plus a `judgeError` when the call
-     * failed, or a bare `judge: null` when the breaker had already degraded the run.
+     * Judge ONE graded repeat's feedback, against the repeat's OWN verdict — never the
+     * case majority: an outvoted repeat's feedback is consistent with the verdict it
+     * actually got.
      */
-    const judgeRepeat = async (
-      system: string,
-      answer: string,
-      verdict: EvalVerdict,
-      feedback: string,
-    ): Promise<Pick<EvalRepeatRow, "judge" | "judgeError">> => {
-      const judge = options.judge;
-      if (!judge || breaker.stopped) return { judge: null };
-      const outcome = await withRetry(
-        () =>
-          judge({
-            system: FEEDBACK_JUDGE_SYSTEM,
-            subject: buildFeedbackJudgeSubject(system, answer, verdict, feedback),
-            criteria: FEEDBACK_JUDGE_CRITERIA,
-          }),
-        {
-          attempts: options.retry?.attempts,
-          baseDelayMs: options.retry?.baseDelayMs,
-          sleep: options.retry?.sleep,
-          // `!breaker.stopped` re-reads the SHARED breaker between attempts: judge calls
-          // already in flight when a concurrent one trips it would otherwise keep burning
-          // their full budget against a judge the run has already given up on.
-          shouldRetry: (value) => !value.ok && value.retryable && !breaker.stopped,
-        },
-      );
-      if (outcome.ok) {
-        breaker.consecutiveErrors = 0;
-        return {
-          judge: {
-            issues: outcome.issues,
-            ...(outcome.usage ? { usage: outcome.usage } : {}),
-          },
-        };
-      }
-      // DEGRADE, never abort: the grading half of the run must survive a down judge.
-      breaker.consecutiveErrors += 1;
-      if (!breaker.stopped && breaker.consecutiveErrors >= JUDGE_BREAKER_LIMIT) {
-        breaker.stopped = true;
-        options.onJudgeDegraded?.();
-      }
-      return { judge: null, judgeError: judgeErrorMessage(outcome.error) };
-    };
+    const judgeRepeat = (system: string, answer: string, verdict: EvalVerdict, feedback: string) =>
+      judgeStep({
+        system: FEEDBACK_JUDGE_SYSTEM,
+        subject: buildFeedbackJudgeSubject(system, answer, verdict, feedback),
+        criteria: FEEDBACK_JUDGE_CRITERIA,
+      });
 
     const progress = () => {
       done += 1;
@@ -426,7 +588,7 @@ const quizEvalRunner: EvalRunner = {
     const results = await mapWithConcurrency(
       planned,
       concurrency,
-      async (plan): Promise<EvalCaseResult> => {
+      async (plan): Promise<EvalQuizCaseResult> => {
         const rows: EvalRepeatRow[] = [];
         for (let repeatIndex = 0; repeatIndex < repeats; repeatIndex++) {
           // Once the run is aborted, remaining repeats are simply not attempted — no
@@ -444,7 +606,7 @@ const quizEvalRunner: EvalRunner = {
             continue;
           }
           const outcome = await withRetry(
-            () => options.grade({ system: plan.system as string, answer: plan.answer }),
+            () => grade({ system: plan.system as string, answer: plan.answer }),
             {
               attempts: options.retry?.attempts,
               baseDelayMs: options.retry?.baseDelayMs,
@@ -489,7 +651,7 @@ const quizEvalRunner: EvalRunner = {
 
         const graded = rows.flatMap((row) => (row.got ? [row.got] : []));
         const winner = majority(graded, plan.expected);
-        const status: EvalCaseResult["status"] =
+        const status: EvalQuizCaseResult["status"] =
           rows.length === 0 ? "skipped" : !winner ? "errored" : winner.passed ? "passed" : "failed";
 
         // Circuit breaker: a down server must fail the run in seconds, not after
@@ -517,6 +679,9 @@ const quizEvalRunner: EvalRunner = {
           unstable: new Set(graded).size > 1,
           // ANY repeat, never a majority — see the header.
           feedbackFlagged: rows.some((row) => (row.judge?.issues.length ?? 0) > 0),
+          // The grader has no tools, so this is structurally false — carried only so both
+          // kinds share one case shape.
+          toolsFlagged: false,
           repeats: rows,
         };
       },
@@ -542,6 +707,7 @@ const quizEvalRunner: EvalRunner = {
       skipped: results.filter((c) => c.status === "skipped").length,
       unstable: results.filter((c) => c.unstable).length,
       feedbackFlagged: results.filter((c) => c.feedbackFlagged).length,
+      toolsFlagged: 0,
       judgeErrored: results.reduce(
         (sum, c) => sum + c.repeats.filter((row) => row.judgeError !== undefined).length,
         0,
@@ -558,12 +724,12 @@ const quizEvalRunner: EvalRunner = {
     const confusionCounts = new Map<string, number>();
     for (const result of results) {
       if (!result.verdict) continue;
-      const key = `${expectedKey(result.expected)} ${result.verdict}`;
+      const key = `${expectedKey(result.expected)}\u0000${result.verdict}`;
       confusionCounts.set(key, (confusionCounts.get(key) ?? 0) + 1);
     }
     const confusion: EvalConfusionRow[] = [...confusionCounts.entries()]
       .map(([key, count]) => {
-        const [expected = "", got = ""] = key.split(" ");
+        const [expected = "", got = ""] = key.split("\u0000");
         return { expected, got: got as EvalVerdict, count };
       })
       .sort((a, b) => a.expected.localeCompare(b.expected) || a.got.localeCompare(b.got));
@@ -576,6 +742,7 @@ const quizEvalRunner: EvalRunner = {
 
     return {
       id: checked.evalFile.id,
+      kind: "quiz",
       target: checked.targetUrl,
       llm: options.llm,
       // `degraded` covers the rest of the batch too: once the breaker trips, every later
@@ -606,9 +773,256 @@ const quizEvalRunner: EvalRunner = {
   },
 };
 
+interface PlannedTutorCase {
+  index: number;
+  title?: string;
+  conversation: EvalConversationTurn[];
+  gradingInstructions?: string;
+  /** The tools this case demands at least one call of; absent when it demands none. */
+  requiredTools?: string[];
+  /** The scripted turns on the wire — `student`/`tutor` mapped to `user`/`assistant`. */
+  messages: { role: "user" | "assistant"; text: string }[];
+}
+
+/** One planned case per conversation, in file order. */
+function planTutorCases(checked: TutorEvalCheckOk): PlannedTutorCase[] {
+  return checked.evalFile.conversations.map((conversation, index) => ({
+    index,
+    ...(conversation.title ? { title: conversation.title } : {}),
+    conversation: conversation.conversation,
+    ...(conversation.grading_instructions
+      ? { gradingInstructions: conversation.grading_instructions }
+      : {}),
+    ...(conversation.required_tools ? { requiredTools: [...conversation.required_tools] } : {}),
+    messages: conversation.conversation.map(turnToMessage),
+  }));
+}
+
+/**
+ * The message a repeat carries when the case REQUIRES tools but the 200 answered without a
+ * `toolCalls` field: a new CLI against a server too old to report them. Terminal and loud
+ * — reporting "nothing missing" for a check that never ran would certify a tool
+ * expectation nobody verified, which is worse than failing. The advisory `/api/version`
+ * check cannot carry this: it only warns (never gates, never compares an ordering), while
+ * this must fail the run's health.
+ */
+const NO_TOOL_CALLS_REPORTED =
+  "This case declares `required_tools`, but the server's answer carried no tool calls — " +
+  "it is too old to report them, so the requirement could not be checked. Update the " +
+  "Novedu server, or remove `required_tools` from this case.";
+
+/** The required tools this repeat never called, in the case's own order. */
+function missingToolsOf(required: readonly string[], called: readonly string[]): string[] {
+  const seen = new Set(called);
+  return required.filter((tool) => !seen.has(tool));
+}
+
+/**
+ * The TUTOR runner: one generated turn per repeat, judged against the tutor's own system
+ * prompt plus the case's expectations. Shares every piece of machinery with the quiz
+ * runner (retry, concurrency, the auth abort, the generation circuit breaker, the judge
+ * breaker) and differs only in what a "case" is and in having no verdict — hence no
+ * majority, no confusion matrix, no `unstable`, and a report-only judge as the sole
+ * finding.
+ */
+const tutorEvalRunner: EvalRunner = {
+  async run(rawChecked, options) {
+    if (rawChecked.kind !== "tutor") {
+      throw new Error("The tutor eval runner needs a tutor eval file.");
+    }
+    const checked: TutorEvalCheckOk = rawChecked;
+    const respond = options.respond;
+    if (!respond) throw new Error("The tutor eval runner needs a `respond` seam.");
+    const repeats = Math.max(1, Math.floor(options.repeats ?? 1));
+    const concurrency = Math.max(1, Math.floor(options.concurrency ?? 4));
+    const planned = planTutorCases(checked);
+    const total = planned.length * repeats;
+    const system = checked.tutorDump.system;
+    const tools = checked.tutorDump.tools;
+    const breaker = options.judgeBreaker ?? createJudgeBreaker();
+    const judgeStep = createJudgeStep(options, breaker);
+
+    let done = 0;
+    let consecutiveErrored = 0;
+    let aborted: EvalRunResult["aborted"];
+
+    const unjudged = unjudgedFields(options);
+
+    const progress = () => {
+      done += 1;
+      options.onProgress?.({ done, total });
+    };
+
+    const results = await mapWithConcurrency(
+      planned,
+      concurrency,
+      async (plan): Promise<EvalTutorCaseResult> => {
+        const rows: EvalRepeatRow[] = [];
+        for (let repeatIndex = 0; repeatIndex < repeats; repeatIndex++) {
+          // Once the run is aborted, remaining repeats are simply not attempted — no
+          // filler error rows; a case with ZERO rows becomes `skipped` below.
+          if (aborted) break;
+          const outcome = await withRetry(
+            () => respond({ system, tools, messages: plan.messages }),
+            {
+              attempts: options.retry?.attempts,
+              baseDelayMs: options.retry?.baseDelayMs,
+              sleep: options.retry?.sleep,
+              // ONLY 5xx + true network failures. Auth failures and any other 4xx are
+              // terminal — retrying them would just burn the budget.
+              shouldRetry: (value) => !value.ok && value.retryable && value.auth !== true,
+            },
+          );
+          if (outcome.ok) {
+            // A case that REQUIRES tools against a server that reports none cannot be
+            // checked at all — fail it loudly (run health) instead of silently reporting
+            // "nothing missing". Terminal: another attempt would answer the same way.
+            if (plan.requiredTools && outcome.toolCalls === undefined) {
+              progress();
+              rows.push({
+                repeatIndex,
+                error: { message: NO_TOOL_CALLS_REPORTED },
+                ...unjudged,
+              });
+              break;
+            }
+            const missingTools = plan.requiredTools
+              ? missingToolsOf(plan.requiredTools, outcome.toolCalls ?? [])
+              : undefined;
+            // The judge call is a DEPENDENT step of this repeat: it audits THIS repeat's
+            // own generated response, never another's. The progress tick happens AFTER
+            // it, so the counter never reads "done" while judging is still to come.
+            const judged = options.judge
+              ? await judgeStep({
+                  system: TUTOR_JUDGE_SYSTEM,
+                  subject: buildTutorJudgeSubject(system, plan.conversation, outcome.text, {
+                    ...(plan.gradingInstructions
+                      ? { gradingInstructions: plan.gradingInstructions }
+                      : {}),
+                    // EVIDENCE only: the tool block appears when this tutor HAS tools and
+                    // the server reported what ran. Whether a REQUIRED tool ran is decided
+                    // above, deterministically — never by the judge.
+                    tools,
+                    ...(outcome.toolCalls ? { toolCalls: outcome.toolCalls } : {}),
+                  }),
+                  // A case that states no expectations drops `fails_expectations`, so the
+                  // judge cannot invent expectations nobody wrote.
+                  criteria: tutorJudgeCriteria(plan.gradingInstructions !== undefined),
+                })
+              : {};
+            progress();
+            rows.push({
+              repeatIndex,
+              text: outcome.text,
+              ...(outcome.toolCalls ? { toolCalls: outcome.toolCalls } : {}),
+              // Present exactly when the case demanded tools — an empty array then means
+              // "all of them ran", which is a real (and reassuring) measurement.
+              ...(missingTools ? { missingTools } : {}),
+              ...(outcome.usage ? { usage: outcome.usage } : {}),
+              ...judged,
+            });
+            continue;
+          }
+          progress();
+          rows.push({ repeatIndex, error: outcome.error, ...unjudged });
+          if (outcome.auth) {
+            aborted ??= {
+              reason: "auth",
+              message: "Authentication failed — the run was aborted. Run `novedu-cli login`.",
+            };
+            break;
+          }
+        }
+
+        const generated = rows.some((row) => row.text !== undefined);
+        const status: EvalTutorCaseResult["status"] =
+          rows.length === 0 ? "skipped" : generated ? "ok" : "errored";
+
+        // Circuit breaker: a down server must fail the run in seconds. Same rule as the
+        // quiz runner — counted over COMPLETIONS, any produced case resets it, and
+        // `skipped` cases are consequences of an abort rather than causes.
+        if (status === "errored") {
+          consecutiveErrored += 1;
+          if (consecutiveErrored >= CIRCUIT_BREAKER_LIMIT) {
+            aborted ??= {
+              reason: "circuit-breaker",
+              message: `${CIRCUIT_BREAKER_LIMIT} cases failed in a row — the run was aborted.`,
+            };
+          }
+        } else if (status !== "skipped") {
+          consecutiveErrored = 0;
+        }
+
+        return {
+          index: plan.index,
+          ...(plan.title ? { title: plan.title } : {}),
+          conversation: plan.conversation,
+          ...(plan.gradingInstructions ? { gradingInstructions: plan.gradingInstructions } : {}),
+          ...(plan.requiredTools ? { requiredTools: plan.requiredTools } : {}),
+          status,
+          unstable: false,
+          // ANY repeat, never a majority — one flagged response out of three is exactly
+          // the `--repeats` signal.
+          feedbackFlagged: rows.some((row) => (row.judge?.issues.length ?? 0) > 0),
+          // Same any-repeat rule, same standing: a tool the tutor skipped once out of
+          // three is precisely what `--repeats` exists to surface. Reported, never gating.
+          toolsFlagged: rows.some((row) => (row.missingTools?.length ?? 0) > 0),
+          repeats: rows,
+        };
+      },
+    );
+
+    const usage: EvalUsage = { ...ZERO_USAGE };
+    for (const result of results) {
+      for (const row of result.repeats) {
+        addUsage(usage, row.usage);
+        addUsage(usage, row.judge?.usage);
+      }
+    }
+
+    return {
+      id: checked.evalFile.id,
+      kind: "tutor",
+      target: checked.targetUrl,
+      llm: options.llm,
+      judging: !options.judge ? "off" : breaker.stopped ? "degraded" : "on",
+      totals: {
+        cases: results.length,
+        // A tutor case has no verdict, so it can neither pass nor fail a comparison —
+        // the kind-agnostic fields stay 0 and the exit-code rule (which only looks at
+        // failed/errored/skipped) works unchanged.
+        passed: 0,
+        failed: 0,
+        errored: results.filter((c) => c.status === "errored").length,
+        skipped: results.filter((c) => c.status === "skipped").length,
+        unstable: 0,
+        feedbackFlagged: results.filter((c) => c.feedbackFlagged).length,
+        toolsFlagged: results.filter((c) => c.toolsFlagged).length,
+        judgeErrored: results.reduce(
+          (sum, c) => sum + c.repeats.filter((row) => row.judgeError !== undefined).length,
+          0,
+        ),
+        repeats,
+        calls: total,
+        usage,
+      },
+      // Quiz-only surfaces, empty by construction for this kind.
+      questions: [],
+      confusion: [],
+      falseCorrect: { count: 0, denominator: 0, rate: 0 },
+      // Only `errored` cases: a flagged case is REPORTED, never a failure, so it must not
+      // appear in the list a reader reads as "what went wrong with the run".
+      mismatches: results.filter((result) => result.status === "errored"),
+      cases: results,
+      ...(aborted ? { aborted } : {}),
+    };
+  },
+};
+
 /** The seam: one runner per eval kind (mirrors `promptDumpers`). */
 export const evalRunners: Record<EvalKind, EvalRunner> = {
   quiz: quizEvalRunner,
+  tutor: tutorEvalRunner,
 };
 
 /** Run ONE checked eval file — the single entry point the command uses. */
@@ -642,6 +1056,12 @@ export interface EvalBatchFileInput {
 /** A batch entry in the emitted report — the input plus its own pass/fail verdict. */
 export interface EvalBatchFile extends EvalBatchFileInput {
   /**
+   * Which eval kind this file ran as — absent only for an `invalid` file, whose kind
+   * could not be determined. Lets a script tell a mixed batch's rows apart without
+   * reaching into `result`.
+   */
+  kind?: EvalKind;
+  /**
    * This file alone would pass the CI gate: it is valid AND has no failed, errored or
    * skipped case. Always `false` for an `invalid` file. Carried so a script can point
    * at the offending file without re-deriving the rule.
@@ -671,6 +1091,8 @@ export interface EvalBatchResult {
     unstable: number;
     /** CASES whose feedback the judge flagged, across the batch — reported, never gating. */
     feedbackFlagged: number;
+    /** CASES that missed a required tool call, across the batch — reported, never gating. */
+    toolsFlagged: number;
     /** REPEATS whose judge call exhausted its retries, across the batch. */
     judgeErrored: number;
     /** Every file's usage added up, grading + judge — a LOWER bound ({@link EvalUsage}). */
@@ -700,6 +1122,7 @@ export function summarizeBatch(files: EvalBatchFileInput[]): EvalBatchResult {
     skipped: 0,
     unstable: 0,
     feedbackFlagged: 0,
+    toolsFlagged: 0,
     judgeErrored: 0,
     usage: { ...ZERO_USAGE },
   };
@@ -712,12 +1135,17 @@ export function summarizeBatch(files: EvalBatchFileInput[]): EvalBatchResult {
     totals.skipped += file.result.totals.skipped;
     totals.unstable += file.result.totals.unstable;
     totals.feedbackFlagged += file.result.totals.feedbackFlagged;
+    totals.toolsFlagged += file.result.totals.toolsFlagged;
     totals.judgeErrored += file.result.totals.judgeErrored;
     addUsage(totals.usage, file.result.totals.usage);
   }
   // `passed` is DERIVED from `batchPassed`, never a second implementation of the rule.
   return {
-    files: files.map((file) => ({ ...file, passed: filePassed(file) })),
+    files: files.map((file) => ({
+      ...file,
+      ...(file.result ? { kind: file.result.kind } : {}),
+      passed: filePassed(file),
+    })),
     passed: batchPassed({ totals }),
     totals,
   };
@@ -736,13 +1164,28 @@ export function anyJudged(result: EvalRunResult): boolean {
 }
 
 /**
+ * Did this file's run CHECK tool calls at all — i.e. does any case declare
+ * `required_tools`? The tool sibling of {@link anyJudged}, and the same rule: a run that
+ * required nothing has not been found complete, so its `toolsFlagged` count is OMITTED
+ * rather than printed as a reassuring `0`.
+ */
+export function anyToolsRequired(result: EvalRunResult): boolean {
+  return result.cases.some(
+    (evalCase) => isTutorCase(evalCase) && evalCase.requiredTools !== undefined,
+  );
+}
+
+/**
  * The CI gate: every file valid, and not a single failed, errored, or skipped CASE —
  * an aborted (and therefore incomplete) run must never read as a pass. The single
  * source of truth for the exit code AND for `EvalBatchResult.passed`.
  *
- * `unstable`, `feedbackFlagged` and `judgeErrored` deliberately do NOT appear here: all
- * three are reported, none gates. (Gating is per-KIND policy, not a property of judge
- * results — the quiz kind reports; a kind whose only check is the judge would gate on it.)
+ * `unstable`, `feedbackFlagged`, `toolsFlagged` and `judgeErrored` deliberately do NOT
+ * appear here: all four are reported, none gates. (Gating is per-KIND policy, not a
+ * property of judge
+ * results — and BOTH shipped kinds are report-only. For the tutor kind that is the whole
+ * policy: its exit code reflects RUN HEALTH only, so a flagged conversation changes
+ * nothing, and the Markdown report is the deliverable — docs/cli-eval.md.)
  */
 export function batchPassed(batch: { totals: EvalBatchResult["totals"] }): boolean {
   return (

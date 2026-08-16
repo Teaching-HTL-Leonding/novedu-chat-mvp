@@ -5,7 +5,7 @@ non-browser client, e.g. a future MCP server) calling app API routes with an
 Entra **bearer token** instead of a session cookie. Read it before touching
 `lib/api-auth.ts`, `app/api/me/**`, `app/api/codes/**`, `app/api/files/**`
 (the bearer handlers), `app/api/images/**`, `app/api/reports/**`,
-`app/api/eval/**`, the public `app/api/version/route.ts` (listed here because the
+`app/api/eval/**` (grade, judge and respond), the public `app/api/version/route.ts` (listed here because the
 CLI reads it), the services
 they share with the web actions (`lib/code-service.ts`, `lib/file-service.ts`,
 `lib/image-service.ts`), the CLI commands (`cli/src/auth.ts`, `cli/src/api.ts`,
@@ -253,11 +253,35 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   route 404s every agent id but the code module's own), the gate has no student mode, and
   **no** server-held quiz `evaluation` prompt is involved at all. Usage is metered under
   the same `cli-eval` pseudo-code + `eval` module as the gradings it audits.
+- **`POST /api/eval/respond`** (`app/api/eval/respond/route.ts`, teacher-only) — generates
+  ONE tutor turn for `novedu-cli eval`'s **tutor** kind (`docs/cli-eval.md`). Body
+  `{ llm: { provider?, model }, system, tools, messages }`, where `system` is the tutor's
+  assembled system prompt, `tools` the catalog names of its `tools:` grant (`[]` for a
+  tool-less tutor) and `messages` the scripted conversation as
+  `[{ role: "user" | "assistant", text }]` — **1–200 turns**, each non-empty, the teacher's
+  `student`/`tutor` roles already mapped to the wire ones; `200` with
+  `{ text, toolCalls, usage? }`, `text` the generated turn as **plain text** (no structured
+  output, hence no truncation-retry wrapper), `toolCalls` the **names** of the tool calls
+  the generation made — in call order, duplicates preserved, `[]` when none and **always
+  present**, so a client can tell "called nothing" from a server that cannot report tool
+  calls at all (names only: arguments and results are deliberately never returned) — and
+  `usage` the same optional shape its siblings report. It
+  runs the memory-less **`evalTutor`** agent with the client's prompt and the real tool
+  instances (`selectTutorTools`), and **persists nothing** — the whole conversation arrives
+  in the body, so no thread and no storage is involved. Failure matrix identical to the
+  grade route, plus one of its own: a `tools` entry the catalog does not know is `400`
+  naming it (terminal — the runtime throws on the same input, so retrying cannot help).
+  Same trust argument as the judge route: `evalTutor` is never web-reachable by students
+  (the CopilotKit runtime route 404s every agent id but the code module's own), the gate
+  has no student mode, and the prompt comes from the client. Real tool calls DO execute —
+  harmless by construction: the catalog's executors are pure / injected-effect
+  (`docs/tutor-tools.md`) and the run is teacher-initiated. Usage is metered under the same
+  `cli-eval` pseudo-code + `eval` module as the gradings and judgings beside it.
 - **Proxy exclusion, per route:** bearer routes must not hit the cookie gate
   (a CLI has no session), so each one gets its own **path-bounded** entry in
   the `proxy.ts` matcher (`api/me(?:/|$)`, `api/codes(?:/|$)`,
-  `api/reports(?:/|$)`, `api/images(?:/|$)`, `api/eval(?:/|$)` — which bounds BOTH eval
-  routes) — never a blanket `/api` prefix. The files handlers ride
+  `api/reports(?:/|$)`, `api/images(?:/|$)`, `api/eval(?:/|$)` — which bounds ALL THREE
+  eval routes) — never a blanket `/api` prefix. The files handlers ride
   the pre-existing public `api/files` exclusion and self-gate. Adding a bearer endpoint = new route
   file gated by `requireBearerUser`/`requireBearerTeacher` + its own matcher
   exclusion + documentation here.
@@ -324,11 +348,13 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   they stay web-only.
 - **`eval <evalPathOrUrl…>`** (`cli/src/commands/eval.ts`) is the second exception
   to the JSON-only rule, for the same reason as `codes sync`: it makes MANY requests
-  (one `POST /api/eval/grade` per golden answer × `--repeats`, bounded by
+  (one `POST /api/eval/grade` per golden answer, or one `POST /api/eval/respond` per
+  scripted conversation, × `--repeats`, bounded by
   `--concurrency`, plus — unless `--no-judge-feedback` — one `POST /api/eval/judge` per
-  successfully graded repeat) and prints a run report, keeping the machine-readable batch
-  shape behind `--json` / `--out`. It is the first command that both talks to the server
-  and does substantial offline work: the grading prompts are assembled locally
+  successful repeat) and prints a run report, keeping the machine-readable batch
+  shape behind `--json` / `--out`. Which generation endpoint it calls follows the eval
+  file's own `kind`; a batch may mix both. It is the first command that both talks to the
+  server and does substantial offline work: the prompts are assembled locally
   through the app's own dump seam. Per-case failures are handled by the command
   (`performApiRequest({ quiet: true })` + the new `status` / `authFailed` markers:
   retry 5xx and network, abort the whole run on 401/403); hard failures — no usable
@@ -391,7 +417,10 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   `app/api/eval/judge/route.unit.test.ts` mirrors it for the feedback judge, adding the
   `criteria` bounds/regex matrix and the kind-agnostic assertion: the structured-output
   schema handed to the agent accepts exactly the CALLER's criteria and rejects everything
-  else.
+  else. `app/api/eval/respond/route.unit.test.ts` mirrors both for the tutor generator,
+  adding the message-shape matrix, the terminal 400 on an unknown tool name, and the
+  production-parity assertion that the scripted turns reach the agent verbatim and in
+  order alongside the `EVAL_TUTOR_*` and usage-sentinel RequestContext values.
 - **e2e:** `e2e/api-auth.setup.ts` generates the keypair once into the
   gitignored `e2e/.auth/` (once, not per run — the server caches the JWKS
   after the first bearer request); `playwright.config.ts` injects

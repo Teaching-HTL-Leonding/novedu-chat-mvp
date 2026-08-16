@@ -1,11 +1,15 @@
 import {
   anyJudged,
+  anyToolsRequired,
   type EvalBatchFile,
   type EvalBatchResult,
   type EvalCaseResult,
+  type EvalQuizCaseResult,
   type EvalRunLlm,
   type EvalRunResult,
+  type EvalTutorCaseResult,
   type EvalUsage,
+  isTutorCase,
 } from "./eval-run";
 
 // The Markdown report of an eval run (`novedu-cli eval --report <file.md>`): a PURE
@@ -16,16 +20,23 @@ import {
 // reader (or a diff between two runs) never has to learn a second structure because a
 // glob happened to match one file.
 //
+// Both eval kinds render into that one layout, branching on `EvalRunResult.kind`: a quiz
+// file fills the verdict columns and lists its mismatches, a TUTOR file leaves them as em
+// dashes (it has no verdict to measure) and its deliverables are the "Missing tool calls"
+// section — the deterministic `required_tools` check — and the "Flagged responses" one,
+// the judge's findings over each generated turn.
+//
 // Two deliberate rules:
 //   * DETAILS ONLY FOR WHAT WENT WRONG — mismatched, errored and unstable cases,
-//     skipped counts, invalid files, and the feedback an LLM judge flagged. A clean pass
+//     skipped counts, invalid files, and whatever an LLM judge flagged. A clean pass
 //     has no per-case section; the JSON carries every case for anyone who wants them.
-//     "Flagged feedback" is the one section whose cases usually PASSED — it reports on the
-//     grader's WORDING, never on its verdict, and gates nothing.
-//   * TEACHER-AUTHORED TEXT IS DATA — question texts, golden answers and grader
-//     feedback are neutralized where Markdown structure would break (pipes and newlines
-//     in table cells, list items), and otherwise quoted verbatim line by line so an
-//     answer is never silently reformatted.
+//     The flagged section is the one whose cases usually PASSED — it reports on WORDING,
+//     never on a verdict, and gates nothing, for either kind.
+//   * TEACHER-AUTHORED AND MODEL-GENERATED TEXT IS DATA — question texts, golden
+//     answers, grader feedback, scripted conversations and generated responses are
+//     neutralized where Markdown structure would break (pipes and newlines in table
+//     cells, list items), and otherwise quoted verbatim line by line so nothing is
+//     silently reformatted.
 //
 // Everything variable (the timestamp included) is injected, so the output is a pure
 // function of its inputs and unit-testable byte for byte.
@@ -151,19 +162,22 @@ function overview(batch: EvalBatchResult): string[] {
       continue;
     }
     const t = file.result.totals;
+    // A tutor file has no verdicts, so the verdict columns render as em dashes rather
+    // than zeros — "no such measurement" must not read as "measured zero".
+    const tutor = file.result.kind === "tutor";
     lines.push(
       row([
         `${file.passed ? "✅" : "❌"} ${name}`,
         `\`${cell(file.result.id)}\``,
         count(t.cases),
-        count(t.passed),
-        count(t.failed),
+        tutor ? "—" : count(t.passed),
+        tutor ? "—" : count(t.failed),
         count(t.errored),
         count(t.skipped),
-        count(t.unstable),
+        tutor ? "—" : count(t.unstable),
         // An em dash, not a `0`: a file that was never judged has not been found clean.
         anyJudged(file.result) ? count(t.feedbackFlagged) : "—",
-        falseCorrectCell(file.result),
+        tutor ? "—" : falseCorrectCell(file.result),
         usageCell(t.usage),
       ]),
     );
@@ -200,7 +214,7 @@ function errorMessage(error: unknown): string {
 }
 
 /** `expected correct, got incorrect` — the heading's verdict half. */
-function verdictSummary(evalCase: EvalCaseResult): string {
+function verdictSummary(evalCase: EvalQuizCaseResult): string {
   const expected = evalCase.expected.join(" | ");
   const got = evalCase.status === "errored" ? "error" : (evalCase.verdict ?? "no verdict");
   return `expected ${expected}, got ${got}`;
@@ -212,7 +226,10 @@ function needsDetail(evalCase: EvalCaseResult): boolean {
 }
 
 /** The "**Question** / **Golden answer**" intro every case detail section opens with. */
-function questionAndAnswer(evalCase: EvalCaseResult, questionText: string | undefined): string[] {
+function questionAndAnswer(
+  evalCase: EvalQuizCaseResult,
+  questionText: string | undefined,
+): string[] {
   const lines: string[] = [];
   if (questionText) {
     lines.push("**Question**", "", quote(questionText), "");
@@ -226,7 +243,7 @@ function questionAndAnswer(evalCase: EvalCaseResult, questionText: string | unde
  * grader said — plus every repeat when they disagreed (the `--repeats` signal is
  * exactly what a teacher wants to read here, not a majority hidden behind one line).
  */
-function caseSection(evalCase: EvalCaseResult, questionText: string | undefined): string[] {
+function caseSection(evalCase: EvalQuizCaseResult, questionText: string | undefined): string[] {
   const lines: string[] = [];
   const unstable = evalCase.unstable ? " *(unstable)*" : "";
   lines.push(
@@ -281,7 +298,10 @@ function caseSection(evalCase: EvalCaseResult, questionText: string | undefined)
  * the run failed on them. Empty when the file has no flags.
  */
 function flaggedSection(result: EvalRunResult, questionText: Map<string, string>): string[] {
-  const flagged = result.cases.filter((evalCase) => evalCase.feedbackFlagged);
+  const flagged = result.cases.filter(
+    (evalCase): evalCase is EvalQuizCaseResult =>
+      evalCase.feedbackFlagged && !isTutorCase(evalCase),
+  );
   if (flagged.length === 0) return [];
 
   const lines = ["### Flagged feedback", ""];
@@ -312,6 +332,142 @@ function flaggedSection(result: EvalRunResult, questionText: Map<string, string>
   return lines;
 }
 
+/**
+ * A tutor case's stable heading: the teacher's `title` when it has one, otherwise its
+ * 1-based index plus an excerpt of the FIRST student line — enough to recognise the case
+ * in a report without opening the eval file.
+ */
+function tutorCaseLabel(evalCase: EvalTutorCaseResult): string {
+  if (evalCase.title) return `#${evalCase.index + 1} ${cell(evalCase.title)}`;
+  const firstStudent = evalCase.conversation.find((turn) => "student" in turn);
+  const excerpt = firstStudent && "student" in firstStudent ? inline(firstStudent.student) : "";
+  const short = excerpt.length > 60 ? `${excerpt.slice(0, 59)}…` : excerpt;
+  return short ? `#${evalCase.index + 1} — ${short}` : `#${evalCase.index + 1}`;
+}
+
+/** The scripted conversation as one labeled, verbatim blockquote per turn. */
+function conversationBlock(evalCase: EvalTutorCaseResult): string[] {
+  const lines = ["**Conversation**", ""];
+  for (const turn of evalCase.conversation) {
+    const role = "student" in turn ? "student" : "tutor";
+    const text = "student" in turn ? turn.student : turn.tutor;
+    lines.push(`*${role}*`, "", quote(text), "");
+  }
+  return lines;
+}
+
+/** One ERRORED tutor case: what was asked, and why nothing came back. */
+function tutorErrorSection(evalCase: EvalTutorCaseResult): string[] {
+  const lines = [`### ${tutorCaseLabel(evalCase)} — error`, ""];
+  lines.push(...conversationBlock(evalCase));
+  const failure = evalCase.repeats.find((r) => r.error !== undefined);
+  if (failure) {
+    lines.push("**Error**", "", quote(errorMessage(failure.error)), "");
+  }
+  return lines;
+}
+
+/** `random_number, random_number` — a repeat's tool calls, or `(none)` when it made none. */
+function toolCallList(toolCalls: readonly string[] | undefined): string {
+  return toolCalls && toolCalls.length > 0
+    ? toolCalls.map((name) => `\`${name}\``).join(", ")
+    : "(none)";
+}
+
+/**
+ * The tutor kind's "Missing tool calls" section: every case that declares `required_tools`
+ * and had at least one repeat skip one. Per case the required list, what each offending
+ * repeat actually called, and which tools were missing there.
+ *
+ * Its own section rather than a column, for the same reason "Flagged responses" is one:
+ * these cases are `ok` and the run PASSED — a missing tool call is a note about the
+ * tutor's behavior, never a failure. Cases whose tools all ran stay out entirely; the
+ * `--json` report carries every repeat's `toolCalls` for anyone who wants them.
+ */
+function tutorMissingToolsSection(result: EvalRunResult): string[] {
+  const flagged = result.cases.filter(
+    (evalCase): evalCase is EvalTutorCaseResult => isTutorCase(evalCase) && evalCase.toolsFlagged,
+  );
+  if (flagged.length === 0) return [];
+
+  const lines = ["### Missing tool calls", ""];
+  lines.push(
+    "_These cases require a tool the tutor did not call in every run. Reported only — a " +
+      "missing tool call never fails a run, and tools beyond the required ones are fine._",
+  );
+  lines.push("");
+  for (const evalCase of flagged) {
+    lines.push(`#### ${tutorCaseLabel(evalCase)}`);
+    lines.push("");
+    lines.push(`**Required** ${toolCallList(evalCase.requiredTools)}`);
+    lines.push("");
+    for (const repeat of evalCase.repeats) {
+      const missing = repeat.missingTools ?? [];
+      if (missing.length === 0) continue;
+      lines.push(
+        `- Repeat #${repeat.repeatIndex + 1} — missing ${toolCallList(missing)}; ` +
+          `called ${toolCallList(repeat.toolCalls)}`,
+      );
+    }
+    lines.push("");
+  }
+  return lines;
+}
+
+/**
+ * The tutor kind's "Flagged responses" section — the report's actual deliverable: per
+ * flagged case the scripted conversation, the teacher's expectations when it states any,
+ * and each flagged repeat's GENERATED RESPONSE verbatim followed by the judge's issues.
+ *
+ * Clean cases stay out entirely (their generated texts are in the `--json` report), and
+ * a flag never means the run failed — the tutor kind is report-only.
+ */
+function tutorFlaggedSection(result: EvalRunResult): string[] {
+  const flagged = result.cases.filter(
+    (evalCase): evalCase is EvalTutorCaseResult =>
+      isTutorCase(evalCase) && evalCase.feedbackFlagged,
+  );
+  if (flagged.length === 0) return [];
+
+  const lines = ["### Flagged responses", ""];
+  lines.push(
+    "_An LLM judge audited each generated response against the tutor's own system " +
+      "prompt and, where the case states any, the teacher's expectations. Reported only — " +
+      "a flagged response never fails a run._",
+  );
+  lines.push("");
+  for (const evalCase of flagged) {
+    lines.push(`#### ${tutorCaseLabel(evalCase)}`);
+    lines.push("");
+    lines.push(...conversationBlock(evalCase));
+    if (evalCase.gradingInstructions) {
+      lines.push("**Expectations for this case**", "", quote(evalCase.gradingInstructions), "");
+    }
+    if (evalCase.requiredTools) {
+      lines.push(`**Required tools** ${toolCallList(evalCase.requiredTools)}`, "");
+    }
+    for (const repeat of evalCase.repeats) {
+      const issues = repeat.judge?.issues ?? [];
+      if (issues.length === 0) continue;
+      lines.push(`**Generated response — repeat #${repeat.repeatIndex + 1}**`);
+      lines.push("");
+      lines.push(quote(repeat.text ?? ""));
+      lines.push("");
+      // Context, never a verdict: the tools that ran alongside this response. Shown when
+      // the server reported any, or when the case required some (where `(none)` is the
+      // interesting fact) — tools beyond the required ones are plain information.
+      if (repeat.toolCalls && (repeat.toolCalls.length > 0 || evalCase.requiredTools)) {
+        lines.push(`*tool calls: ${toolCallList(repeat.toolCalls)}*`, "");
+      }
+      for (const issue of issues) {
+        lines.push(`- \`${cell(issue.criterion)}\` — ${inline(issue.note)}`);
+      }
+      lines.push("");
+    }
+  }
+  return lines;
+}
+
 /** One file's details section, or `[]` when the file has nothing to report. */
 function fileDetails(file: EvalBatchFile): string[] {
   const name = shortSource(file.source);
@@ -321,7 +477,7 @@ function fileDetails(file: EvalBatchFile): string[] {
     return [
       `## ${cell(name)} — invalid`,
       "",
-      "This file was not graded; fix the problems below and run it again.",
+      "This file was not run; fix the problems below and run it again.",
       "",
       ...errors.map((issue) => `- \`${cell(issue.code)}\` — ${inline(issue.message)}`),
       "",
@@ -329,11 +485,21 @@ function fileDetails(file: EvalBatchFile): string[] {
   }
 
   const result = file.result;
+  const tutor = result.kind === "tutor";
   const detailed = result.cases.filter(needsDetail);
   const skipped = result.totals.skipped;
   const questionText = new Map(result.questions.map((question) => [question.id, question.text]));
-  const flagged = flaggedSection(result, questionText);
-  if (detailed.length === 0 && skipped === 0 && !result.aborted && flagged.length === 0) return [];
+  const flagged = tutor ? tutorFlaggedSection(result) : flaggedSection(result, questionText);
+  const missingTools = tutor ? tutorMissingToolsSection(result) : [];
+  if (
+    detailed.length === 0 &&
+    skipped === 0 &&
+    !result.aborted &&
+    flagged.length === 0 &&
+    missingTools.length === 0
+  ) {
+    return [];
+  }
 
   const lines = [`## ${cell(name)} — \`${cell(result.id)}\``, ""];
   if (result.aborted) {
@@ -342,19 +508,25 @@ function fileDetails(file: EvalBatchFile): string[] {
     lines.push("");
   }
   for (const evalCase of detailed) {
-    lines.push(...caseSection(evalCase, questionText.get(evalCase.questionId)));
+    lines.push(
+      ...(isTutorCase(evalCase)
+        ? tutorErrorSection(evalCase)
+        : caseSection(evalCase, questionText.get(evalCase.questionId))),
+    );
   }
   if (skipped > 0) {
     // One line, never one section per case: an aborted 252-case run must not print
     // hundreds of identical "never attempted" blocks.
     const reason = result.aborted ? ` (${inline(result.aborted.message)})` : "";
     lines.push(
-      `**${count(skipped)} case(s) were never attempted**${reason} — the run is incomplete, so it cannot pass.`,
+      `**${count(skipped)} ${tutor ? "conversation" : "case"}(s) were never attempted**${reason} — the run is incomplete, so it cannot pass.`,
     );
     lines.push("");
   }
-  // Last within the file: it is the only section whose cases usually PASSED, so it must
-  // not sit between the file's verdict problems and their summary line.
+  // Last within the file: these are the only sections whose cases usually PASSED, so they
+  // must not sit between the file's verdict problems and their summary line. The
+  // deterministic tool finding comes before the judge's — it is the harder fact.
+  lines.push(...missingTools);
   lines.push(...flagged);
   return lines;
 }
@@ -392,11 +564,20 @@ export function renderEvalMarkdownReport(batch: EvalBatchResult, meta: EvalRepor
     `- **Run** ${count(batch.totals.files)} file(s), ${count(batch.totals.cases)} case(s) × ` +
       `${count(meta.repeats)} repeat(s), concurrency ${count(meta.concurrency)}`,
   );
+  // The tool check's totals line, under the SAME omission rule as the Flagged column's em
+  // dash: it appears only when at least one case in the batch declared `required_tools`,
+  // so a run that required nothing never prints a reassuring `0`.
+  if (batch.files.some((file) => file.result && anyToolsRequired(file.result))) {
+    lines.push(
+      `- **Missing tool calls** ${count(batch.totals.toolsFlagged)} case(s) did not call a ` +
+        "required tool in every run — reported only, never a failure",
+    );
+  }
   const tokens = batch.totals.usage;
   if (tokens.input || tokens.cachedInput || tokens.output) {
     lines.push(
       `- **Tokens** ${count(tokens.input)} in (${count(tokens.cachedInput)} cached) / ` +
-        `${count(tokens.output)} out — successful grading calls only, so a lower bound`,
+        `${count(tokens.output)} out — successful calls only, so a lower bound`,
     );
   }
   lines.push("");
@@ -436,12 +617,12 @@ export function renderEvalMarkdownReport(batch: EvalBatchResult, meta: EvalRepor
   const details = batch.files.flatMap((file) => fileDetails(file));
   if (details.length === 0) {
     lines.push(
-      "_Nothing else to report — every case matched its expected verdict. The `--json` report carries every case, including the passing ones._",
+      "_Nothing else to report. The `--json` report carries every case, including the clean ones._",
     );
     lines.push("");
   } else {
     lines.push(
-      "_Below: only the mismatched, errored and unstable cases, plus any feedback the judge flagged. Passing cases live in the `--json` report._",
+      "_Below: only the mismatched, errored and unstable cases, plus anything the judge flagged. Clean cases live in the `--json` report._",
     );
     lines.push("");
     lines.push(...details);
