@@ -52,19 +52,6 @@ Cover:
   calls — which is what the run's own scope line shows — and that if the judge model
   itself keeps failing, judging stops after a few failures while the grading finishes
   normally, so a zero in the flagged column then means "not checked", not "all fine".
-- Tutor evals only: did the tutor actually use its tool? A conversation may list the
-  built-in tools (the ones the tutor file grants it) that the generated answer must have
-  called at least once. Explain it in the teacher's terms: this is the one thing the
-  judge cannot see, because a tool call leaves no trace in the answer text — so it is
-  checked directly instead. Say that it means "called at least once", that calling other
-  tools as well is fine, that a name the tutor was not given makes the file invalid when
-  they check it (free, before any AI call), and that a missing tool call is REPORTED and
-  never fails the run, like everything else a tutor eval finds. Mention that the run's
-  missing-tool-calls line appears only when some case asked for a tool at all, so no line
-  means nothing was checked rather than "all fine", and that the Markdown report names
-  which run of which case skipped the tool and what it called instead. Keep it short and
-  practical: use it where the tool IS the point (a practice number that must be drawn),
-  and keep everything else in the case's expectations.
 - Is the grader consistent? The repeats option grades every answer several times and
   takes the majority, so one flaky run does not fail a case; answers whose runs
   disagreed are reported as "unstable". Explain why that matters pedagogically: a
