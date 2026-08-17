@@ -134,11 +134,16 @@ function entry(overrides: Partial<CodeEntry> = {}): CodeEntry {
   };
 }
 
-// The DB-row shape the store reads: the entry's `llm` pair flattened into the
-// two nullable columns.
+// The DB-row shape the store reads: the entry's `llm` override flattened into
+// the three nullable columns.
 function toRow(e: CodeEntry): Record<string, unknown> {
   const { llm, ...rest } = e;
-  return { ...rest, llmProvider: llm?.provider ?? null, llmModel: llm?.model ?? null };
+  return {
+    ...rest,
+    llmProvider: llm?.provider ?? null,
+    llmModel: llm?.model ?? null,
+    llmReasoning: llm?.reasoning ?? null,
+  };
 }
 
 // mssql duplicate-key errors arrive wrapped (DrizzleQueryError → cause chain).
@@ -189,6 +194,7 @@ describe("validateCodeRequest", () => {
     note: "  My class  ",
     llmProvider: "",
     llmModel: "",
+    llmReasoning: "",
   };
 
   it("accepts a valid request, normalizing the URL and trimming the note", () => {
@@ -302,6 +308,50 @@ describe("validateCodeRequest", () => {
     });
     expect(result).toMatchObject({ ok: false, message: expect.stringContaining("256") });
   });
+
+  it("carries a reasoning level alongside the pair, trimmed", () => {
+    const result = validateCodeRequest({
+      ...valid,
+      llmProvider: "Azure Foundry",
+      llmModel: "gpt-5.6-terra",
+      llmReasoning: " high ",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payload.llm).toEqual({
+        provider: "Azure Foundry",
+        model: "gpt-5.6-terra",
+        reasoning: "high",
+      });
+    }
+  });
+
+  it("omits a blank reasoning level from an otherwise full override", () => {
+    const result = validateCodeRequest({ ...valid, llmProvider: "SCCH", llmModel: "gemma" });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.payload.llm).toEqual({ provider: "SCCH", model: "gemma" });
+  });
+
+  it("rejects a reasoning level without the override pair", () => {
+    const result = validateCodeRequest({ ...valid, llmReasoning: "high" });
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/provider and a model override/),
+    });
+  });
+
+  it("rejects an unknown reasoning level, naming the four levels", () => {
+    const result = validateCodeRequest({
+      ...valid,
+      llmProvider: "SCCH",
+      llmModel: "gemma",
+      llmReasoning: "turbo",
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      message: expect.stringMatching(/minimal.*low.*medium.*high/),
+    });
+  });
 });
 
 describe("effectiveLlm", () => {
@@ -316,6 +366,35 @@ describe("effectiveLlm", () => {
     expect(effectiveLlm(withOverride, activityLlm)).toEqual({
       provider: "Azure Foundry",
       model: "gpt-5.4-mini",
+    });
+  });
+
+  it("carries the activity YAML's reasoning level when the code has no override", () => {
+    expect(effectiveLlm(entry(), { ...activityLlm, reasoning: "medium" })).toEqual({
+      ...activityLlm,
+      reasoning: "medium",
+    });
+  });
+
+  it("carries the override's own reasoning level when it has one", () => {
+    const withOverride = entry({
+      llm: { provider: "Azure Foundry", model: "gpt-5.6-terra", reasoning: "high" },
+    });
+    expect(effectiveLlm(withOverride, { ...activityLlm, reasoning: "medium" })).toEqual({
+      provider: "Azure Foundry",
+      model: "gpt-5.6-terra",
+      reasoning: "high",
+    });
+  });
+
+  // WHOLESALE: the override replaces the whole llm block, so a code that pins
+  // only provider+model runs with NO reasoning effort — the YAML's level does
+  // not leak through onto a different model.
+  it("suppresses the activity YAML's reasoning level when the override has none", () => {
+    const withOverride = entry({ llm: { provider: "SCCH", model: "gemma" } });
+    expect(effectiveLlm(withOverride, { ...activityLlm, reasoning: "medium" })).toEqual({
+      provider: "SCCH",
+      model: "gemma",
     });
   });
 });
@@ -347,9 +426,10 @@ describe("createCode", () => {
       origin: "http://localhost:3000",
       // The activity's anonymity flag is frozen onto the row at create time.
       anonymous: false,
-      // No LLM override → both columns NULL.
+      // No LLM override → all three columns NULL.
       llmProvider: null,
       llmModel: null,
+      llmReasoning: null,
     });
     expect(fake.state.inserted[0]?.createdAt).toBeInstanceOf(Date);
   });
@@ -363,6 +443,21 @@ describe("createCode", () => {
     expect(fake.state.inserted[0]).toMatchObject({
       llmProvider: "Azure Foundry",
       llmModel: "gpt-5.4-mini",
+      // No level on the override → the third column stays NULL.
+      llmReasoning: null,
+    });
+  });
+
+  it("stores an override's reasoning level in the third column", async () => {
+    const result = await createCode("teacher-sub-1", {
+      ...data,
+      llm: { provider: "Azure Foundry", model: "gpt-5.6-terra", reasoning: "high" },
+    });
+    expect(result.stored).toBe(true);
+    expect(fake.state.inserted[0]).toMatchObject({
+      llmProvider: "Azure Foundry",
+      llmModel: "gpt-5.6-terra",
+      llmReasoning: "high",
     });
   });
 
@@ -591,6 +686,29 @@ describe("LLM override on read", () => {
     await expect(getCode("a1b2c3d4e5")).resolves.toEqual(row);
   });
 
+  it("maps the third column to the override's reasoning level", async () => {
+    const row = entry({
+      llm: { provider: "Azure Foundry", model: "gpt-5.6-terra", reasoning: "high" },
+    });
+    fake.state.rows = [toRow(row)];
+    await expect(getCode("a1b2c3d4e5")).resolves.toEqual(row);
+  });
+
+  // A corrupt reasoning level is the MILDER corruption: the pair still means
+  // something on its own, so it survives and only the level is dropped (the code
+  // then runs at the model's default effort instead of failing).
+  it("keeps the pair but drops an invalid stored reasoning level", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const stored = entry({ llm: { provider: "SCCH", model: "gemma" } });
+      fake.state.rows = [{ ...toRow(stored), llmReasoning: "turbo" }];
+      await expect(getCode("a1b2c3d4e5")).resolves.toEqual(stored);
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   // Only the validated actions write the pair, so a lone half or an unknown
   // provider is a corrupt row: the store logs it and treats it as NO override,
   // keeping the code usable on the activity YAML's own llm values.
@@ -625,9 +743,10 @@ describe("updateCode", () => {
       validFrom: data.validFrom,
       validUntil: data.validUntil,
       note: "edited",
-      // A null override CLEARS both columns (the pair is set/cleared as a whole).
+      // A null override CLEARS all three columns (it is set/cleared as a whole).
       llmProvider: null,
       llmModel: null,
+      llmReasoning: null,
     });
   });
 
@@ -638,6 +757,22 @@ describe("updateCode", () => {
     expect(fake.state.updated[0]).toMatchObject({
       llmProvider: "SCCH",
       llmModel: "some-model",
+      // An override without a level clears the column too.
+      llmReasoning: null,
+    });
+  });
+
+  it("stores an override's reasoning level into the third column", async () => {
+    await expect(
+      updateCode("a1b2c3d4e5", {
+        ...data,
+        llm: { provider: "Azure Foundry", model: "gpt-5.6-terra", reasoning: "low" },
+      }),
+    ).resolves.toEqual({ ok: true });
+    expect(fake.state.updated[0]).toMatchObject({
+      llmProvider: "Azure Foundry",
+      llmModel: "gpt-5.6-terra",
+      llmReasoning: "low",
     });
   });
 

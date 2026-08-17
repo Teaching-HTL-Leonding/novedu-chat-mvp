@@ -20,6 +20,7 @@ vi.mock("@/app/mastra/writing-agents", () => ({
   WRITING_INSTRUCTIONS: "writing-instructions",
   WRITING_MODEL: "writing-model",
   WRITING_PROVIDER: "writing-provider",
+  WRITING_REASONING: "writing-reasoning",
 }));
 vi.mock("@mastra/core/request-context", () => ({
   RequestContext: class {
@@ -113,8 +114,38 @@ describe("writingModule.runtime.buildRequestContext", () => {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("writing-model")).toBe("override-model");
       expect(ctx.get("writing-provider")).toBe("SCCH");
+      // The override carries no level, so none is set (wholesale replacement).
+      expect(ctx.get("writing-reasoning")).toBeUndefined();
       // The instructions still come from the YAML — the override swaps only the LLM.
       expect(ctx.get("writing-instructions")).toBe("Be a writing coach.");
+    }
+  });
+
+  it("sets the reasoning level from the EFFECTIVE llm", async () => {
+    loadWriting.mockResolvedValue({
+      ok: true,
+      writing: {
+        model: "yaml-model",
+        provider: "SCCH",
+        reasoning: "minimal",
+        instructions: "Be a writing coach.",
+      },
+    });
+    // The YAML's level with no override…
+    const fromYaml = await writingModule.runtime?.buildRequestContext(entry);
+    if (fromYaml?.ok) {
+      const ctx = fromYaml.context as unknown as { get(k: string): unknown };
+      expect(ctx.get("writing-reasoning")).toBe("minimal");
+    }
+    // …and the override's level when the code carries one.
+    const withOverride = {
+      ...entry,
+      llm: { provider: "SCCH", model: "override-model", reasoning: "high" },
+    } as CodeEntry;
+    const overridden = await writingModule.runtime?.buildRequestContext(withOverride);
+    if (overridden?.ok) {
+      const ctx = overridden.context as unknown as { get(k: string): unknown };
+      expect(ctx.get("writing-reasoning")).toBe("high");
     }
   });
 

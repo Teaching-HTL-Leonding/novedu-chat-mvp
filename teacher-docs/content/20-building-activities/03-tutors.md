@@ -42,7 +42,7 @@ prompt:
 - **`id`** is a short machine name, such as `fractions-de`. Students never see it.
 - **`name`** is the human-readable title of the tutor.
 - **`description`** appears to students on the empty chat, below the greeting. Write it for them: say what the tutor helps with, in the language your class speaks.
-- **`llm.model`** names the AI model. An optional `provider` chooses where it runs, and when you create a code for the tutor you can override both without touching the file. The chapter on choosing an AI model covers the details.
+- **`llm.model`** names the AI model. An optional `provider` chooses where it runs, and an optional `reasoning` level says how hard the model thinks before it answers. When you create a code for the tutor you can override all three without touching the file. The chapter on choosing an AI model covers the details.
 - **`tutor_instructions`** is where your own guidance goes: free text that tells the tutor how to behave.
 
 ## Your instructions

@@ -4,7 +4,7 @@ description: Turn an activity into a short link for your class, with a note, an 
 sidebar:
   order: 1
 audience: teacher
-keywords: [code, share link, create code, note, availability window, model override, codes create, owner]
+keywords: [code, share link, create code, note, availability window, model override, reasoning, codes create, owner]
 related:
   - 30-sharing-activities/03-time-limitation
   - 30-sharing-activities/04-anonymous-vs-per-user
@@ -37,8 +37,18 @@ Novedu checks the activity file before storing anything. If the file has errors,
 3. Paste the file's address into **Activity YAML URL**.
 4. Add a **Note** for yourself, for example "3AHIF linked lists exercise". Only teachers see it; it labels the code in your list.
 5. Set **Available from** and **Available until** if the code should only work during a certain time. Both fields use your local time, and either may stay blank to leave that side open. The **Now**, **+1h**, **+1d**, and **+1w** buttons fill common values.
-6. Fill in the **LLM override** only if this one code should run on a different AI model than the activity file names. Provider and model always go together (both or neither); the preset buttons fill a known-good pair in one click, and **Clear** removes the override.
+6. Fill in the **LLM override** only if this one code should run on different AI settings than the activity file names.
 7. Select **Create code**.
+
+## The LLM override section
+
+The override section has three fields and a row of buttons:
+
+- **LLM provider override** and **LLM model override**, two free-text fields. They always go together: fill in both, or leave both blank.
+- **Reasoning (optional)**, a dropdown that starts on **Provider default** and offers the four thinking-effort levels `minimal`, `low`, `medium`, and `high`. A level only works alongside a provider and a model; on its own it is rejected.
+- **Preset buttons** that fill the whole override in one click, one per common combination. A preset for a reasoning model sets its level too, a preset for a plain model puts the dropdown back on **Provider default**. **Clear** empties all three fields, so the code uses the activity's own settings again.
+
+The override replaces the activity file's whole `llm:` block for this code. If the activity file sets a reasoning level and you leave the dropdown on **Provider default**, the code runs without one. Repeat the level in the override whenever you want to keep it. The chapter on choosing an AI model explains the settings themselves.
 
 ## What you get
 
@@ -75,4 +85,4 @@ npx @novedu/cli codes create --module quiz \
   --start 2026-07-07T08:00:00Z --end 2026-07-07T10:00:00Z
 ```
 
-`--start` and `--end` take ISO 8601 times with an explicit offset (the `Z` above means UTC) and may be left out for an open-ended code. `--llm-provider` and `--llm-model` set the model override, always together. `novedu-cli codes list` shows your codes.
+`--start` and `--end` take ISO 8601 times with an explicit offset (the `Z` above means UTC) and may be left out for an open-ended code. `--llm-provider` and `--llm-model` set the model override, always together, and `--llm-reasoning` adds a thinking-effort level (`minimal`, `low`, `medium`, or `high`) on top of that pair; without the pair it is rejected, and left out it drops whatever level the activity file sets. `novedu-cli codes list` shows your codes.

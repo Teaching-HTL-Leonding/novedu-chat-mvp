@@ -1,6 +1,11 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
-import { TUTOR_MODEL_OVERRIDE, TUTOR_PROVIDER_OVERRIDE, TUTOR_URL } from "@/app/mastra/tutor-agent";
+import {
+  TUTOR_MODEL_OVERRIDE,
+  TUTOR_PROVIDER_OVERRIDE,
+  TUTOR_REASONING_OVERRIDE,
+  TUTOR_URL,
+} from "@/app/mastra/tutor-agent";
 import type { CodeModuleDef } from "./registry";
 
 // The tutor module: a chat tutor whose system prompt + model come from the tutor
@@ -20,6 +25,9 @@ export const tutorModule: CodeModuleDef = {
       if (entry.llm) {
         context.set(TUTOR_PROVIDER_OVERRIDE, entry.llm.provider);
         context.set(TUTOR_MODEL_OVERRIDE, entry.llm.model);
+        // Only when the override carries one — an absent key lets the agent
+        // pin no reasoning effort at all (the wholesale rule, see the agent).
+        if (entry.llm.reasoning) context.set(TUTOR_REASONING_OVERRIDE, entry.llm.reasoning);
       }
       return { ok: true, context };
     },

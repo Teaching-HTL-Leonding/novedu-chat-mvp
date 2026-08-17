@@ -17,7 +17,9 @@ retries, the breakers, the reports.
 ```
 novedu-cli eval <evalPathOrUrl...> [--server <url>] [--concurrency <n>=4]
                 [--repeats <n>=1] [--llm-provider <p> --llm-model <m>]
+                [--llm-reasoning <level>]
                 [--no-judge-feedback | --judge-llm-provider <p> --judge-llm-model <m>]
+                [--judge-llm-reasoning <level>]
                 [--json] [--out <file>] [--report <file.md>]
 ```
 
@@ -203,7 +205,7 @@ The judge rides the identical shape: one request judges exactly one feedback tex
 ### The endpoint
 
 `POST /api/eval/grade` (`app/api/eval/grade/route.ts`, wire contract in
-`docs/api.md`) takes `{ llm: { provider?, model }, system, answer }` and answers
+`docs/api.md`) takes `{ llm: { provider?, model, reasoning? }, system, answer }` and answers
 `{ result, feedback, usage? }`. The **optional** `usage: { input, cachedInput, output }`
 is derived from the generate result — Mastra's `totalUsage` (falling back to the last
 step's `usage`), whose AI-SDK v5 field names are `inputTokens` / `outputTokens` /
@@ -360,19 +362,23 @@ expectations nobody stated.
 | *(none)* | Judging is **on** — one judge call per successfully graded repeat |
 | `--no-judge-feedback` | Skips every judge call; the JSON records `judging: "off"` |
 | `--judge-llm-provider <p> --judge-llm-model <m>` | Judge on this pair instead of the grading one |
+| `--judge-llm-reasoning <level>` | Judge at this reasoning level (independent of the pair flags) |
 
 The judge pair is **strictly both-or-nothing** (the `effectiveLlm` rule,
-`docs/ai-models.md`), and combining it with `--no-judge-feedback` is a usage error — the
-two flags contradict each other, so the CLI names the contradiction instead of silently
-honoring one. When no judge pair is given the judge uses the **effective grading pair**
-(the quiz's `llm`, or the `--llm-*` override).
+`docs/ai-models.md`), and combining either judge flag with `--no-judge-feedback` is a
+usage error — the
+flags contradict each other, so the CLI names the contradiction instead of silently
+honoring one. When no judge pair is given the judge uses the **effective grading spec**
+(the quiz's `llm` including its reasoning level, or the `--llm-*` override); a judge
+pair replaces it wholesale (dropping the level), and `--judge-llm-reasoning` overrides
+only the level.
 
 **Recommended pairing: a strong judge over the quiz's own grader.** Judge strictness
 varies markedly by model — a small grader judging itself flags noise, while a strong
 judge over the same grader caught every planted violation with none. That is why the
-resolved judge pair is recorded in every report (`llm.judge = { provider, model,
-overridden }`, absent when judging was off): two runs are only comparable when it
-matches.
+resolved judge spec is recorded in every report (`llm.judge = { provider, model,
+reasoning?, overridden }`, absent when judging was off): two runs are only comparable
+when it matches.
 
 ```bash
 novedu-cli eval ./my-quiz.eval.yaml \
@@ -717,9 +723,16 @@ novedu-cli eval ./welcome-quiz.eval.yaml \
 
 `--llm-provider` / `--llm-model` is **strictly both-or-nothing** (mirroring the
 code-override rule and `effectiveLlm`, `docs/ai-models.md`) and replaces the target
-activity's `llm` pair for the whole run — every file in a batch included, whatever its
-kind. Run the same rubric and
+activity's `llm` block WHOLESALE for the whole run — every file in a batch included,
+whatever its kind, the file's `reasoning` level dropped unless re-stated. Run the same
+rubric and
 the same golden answers against a different backend and diff the two reports.
+`--llm-reasoning <level>` overrides only the reasoning level: alone it keeps the
+file's pair ("same model, different effort" — the gpt-5.6 comparison run), combined
+with the pair flags it completes the replacement. The reasoning is sent in the request
+bodies only when a level applies, and the JSON records `llm.overrides` whenever the
+effective spec differs from the file's in ANY part — so a level-only run still renders
+as a comparison run.
 
 This required **zero server change**: the endpoint is already LLM-agnostic (the CLI
 supplies the pair in every request body, availability-gated by the route's
@@ -731,9 +744,10 @@ Distinguish this clearly from a **code's stored per-code LLM override**: that on
 belongs to a `novedu_codes` row and is out of scope here. An eval describes a FILE —
 the same rule as the prompt dump (`docs/cli-prompts.md`).
 
-`--judge-llm-provider` / `--judge-llm-model` is the same rule for the **judge**, and it
-is independent: overriding the grader does not change who judges (the judge simply
-follows the *effective* grading pair when nobody names it), and overriding the judge does
+`--judge-llm-provider` / `--judge-llm-model` / `--judge-llm-reasoning` are the same
+rules for the **judge**, and they are independent: overriding the grader does not change
+who judges (the judge simply
+follows the *effective* grading spec when nobody names it), and overriding the judge does
 not change who grades.
 
 ## Caveat: what you evaluated is what you must publish

@@ -254,13 +254,29 @@ instead — then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`)
 rather than an SCCH model id.
 
 The `llm:` values are the **default**: when a teacher mints a code for this
-activity, the code's create/edit form can **override provider + model per
-code** (always both together) — the YAML file itself stays unchanged.
+activity, the code's create/edit form can **override the whole `llm:` block per
+code** (provider + model always together, plus an optional reasoning level) — the
+YAML file itself stays unchanged.
 
 ```yaml
 llm:
   model: gpt-5.4-mini
   provider: Azure Foundry
+```
+
+### `llm.reasoning`
+
+Optional, no default. How much **thinking effort** the model spends before it
+answers — `minimal`, `low`, `medium` or `high`. Omitted, the model decides for
+itself. Only reasoning-capable models act on it (e.g. a `gpt-5.6` deployment); a
+model that does not know the setting fails at runtime, just like a wrong model
+name.
+
+```yaml
+llm:
+  model: gpt-5.6-terra
+  provider: Azure Foundry
+  reasoning: low
 ```
 
 ### `tools`

@@ -46,6 +46,8 @@ export async function createCodeForUser(
     note: unknown;
     llmProvider: unknown;
     llmModel: unknown;
+    /** The override pair's optional reasoning level; blank/absent for none. */
+    llmReasoning: unknown;
   },
 ): Promise<CreateCodeServiceResult> {
   const module = input.module;
@@ -60,6 +62,7 @@ export async function createCodeForUser(
     note: input.note,
     llmProvider: input.llmProvider,
     llmModel: input.llmModel,
+    llmReasoning: input.llmReasoning,
   });
   if (!validation.ok) return { ok: false, reason: "invalid", message: validation.message };
 

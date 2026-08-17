@@ -66,16 +66,18 @@ npx @novedu/cli validate ./activities/examples/review-writing/restaurant-review-
 npx @novedu/cli validate ./activities/examples/sorting-algorithms/sorting-visualizer.yaml --kind coding
 ```
 
-Every module's `llm:` block takes the same two fields: a required `model` and an
+Every module's `llm:` block takes the same three fields: a required `model`, an
 optional `provider` (`SCCH` when omitted — the school's self-hosted server;
 `Azure Foundry` serves the activity from an Azure OpenAI deployment, with `model`
-naming the deployment). See each guide's `llm.provider` section. Validating a
-file that sets `llm.provider` requires `@novedu/cli` ≥ 0.6.0 — older releases
-bundle strict schemas that reject the key.
+naming the deployment) and an optional `reasoning` effort (`minimal`, `low`,
+`medium` or `high`; omitted, the model's own default applies). See each guide's
+`llm.provider` section. Validating a file that sets `llm.provider` requires
+`@novedu/cli` ≥ 0.6.0 — older releases bundle strict schemas that reject the key.
 
 The `llm:` block is the activity's **default**: when a teacher mints a code for
-it, the code's create/edit form can **override provider + model per code**
-(always both together, with one-click presets), so the same YAML file can be
-handed out once on SCCH and once on Azure Foundry without duplicating it.
+it, the code's create/edit form can **override the whole block per code**
+(provider + model always together, with an optional reasoning level on top and
+one-click presets), so the same YAML file can be handed out once on SCCH and once
+on Azure Foundry without duplicating it.
 
 These files are content only — they are not bundled into the runtime image.

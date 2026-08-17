@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { parse as parseYamlText } from "yaml";
 import { z } from "zod";
 import type { CodeModule } from "@/lib/code-modules/types";
-import type { LlmProvider } from "@/lib/llm/provider";
+import type { LlmProvider, ReasoningLevel } from "@/lib/llm/provider";
 import {
   GROUP_MODULES,
   GROUP_NAMES,
@@ -31,7 +31,13 @@ export interface RegistryEntry {
   validFrom: string | null;
   validUntil: string | null;
   note: string | null;
-  llm: { provider: LlmProvider; model: string } | null;
+  /**
+   * The per-code LLM override, whole or absent. `reasoning` is its optional third
+   * member: it rides ALONG with the pair (the server rejects it on its own) and a
+   * differing level makes an existing code stop matching, so `codes sync` mints a new
+   * one rather than silently serving the old effort.
+   */
+  llm: { provider: LlmProvider; model: string; reasoning?: ReasoningLevel } | null;
 }
 
 export interface RegistryIssue {
@@ -248,7 +254,15 @@ export function parseRegistry(text: string): RegistryResult {
         validFrom: entry.start ?? null,
         validUntil: entry.end ?? null,
         note: entry.note ?? null,
-        llm: entry.llm ? { provider: entry.llm.provider, model: entry.llm.model } : null,
+        llm: entry.llm
+          ? {
+              provider: entry.llm.provider,
+              model: entry.llm.model,
+              // Omitted, never `undefined`-valued: the entry is serialized straight into
+              // the mint body, and a `reasoning: undefined` key would appear as `null`.
+              ...(entry.llm.reasoning ? { reasoning: entry.llm.reasoning } : {}),
+            }
+          : null,
       });
     }
   }

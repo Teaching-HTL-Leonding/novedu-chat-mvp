@@ -109,7 +109,7 @@ export async function GET(request: Request) {
 
 /**
  * Mints a code. JSON body
- * `{ module, fileUrl, validFrom?, validUntil?, note?, llm?: { provider, model } }`;
+ * `{ module, fileUrl, validFrom?, validUntil?, note?, llm?: { provider, model, reasoning? } }`;
  * the window bounds are ISO 8601 with an explicit offset. Runs the identical
  * validation pipeline as the web form and answers 201 with the stored code (same
  * shape as GET), 400 with `{ message }` or `{ errors }` (the structured
@@ -148,6 +148,7 @@ export async function POST(request: Request) {
       note: note ?? "",
       llmProvider: override.provider ?? "",
       llmModel: override.model ?? "",
+      llmReasoning: override.reasoning ?? "",
     });
     if (!result.ok) {
       if (result.reason === "validation") return json({ errors: result.errors }, 400);

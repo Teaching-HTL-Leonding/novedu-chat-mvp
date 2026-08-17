@@ -214,6 +214,7 @@ describe("POST /api/codes", () => {
       note: "My class",
       llmProvider: "",
       llmModel: "",
+      llmReasoning: "",
     });
   });
 
@@ -229,7 +230,18 @@ describe("POST /api/codes", () => {
     await postRequest({ ...BODY, llm: { provider: "SCCH", model: "m1" } }, await mint());
     expect(mocks.createCodeForUser).toHaveBeenCalledWith(
       "teacher-oid-1",
-      expect.objectContaining({ llmProvider: "SCCH", llmModel: "m1" }),
+      expect.objectContaining({ llmProvider: "SCCH", llmModel: "m1", llmReasoning: "" }),
+    );
+  });
+
+  it("passes the override's optional reasoning level through", async () => {
+    await postRequest(
+      { ...BODY, llm: { provider: "SCCH", model: "m1", reasoning: "high" } },
+      await mint(),
+    );
+    expect(mocks.createCodeForUser).toHaveBeenCalledWith(
+      "teacher-oid-1",
+      expect.objectContaining({ llmProvider: "SCCH", llmModel: "m1", llmReasoning: "high" }),
     );
   });
 

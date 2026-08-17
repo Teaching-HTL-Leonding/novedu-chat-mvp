@@ -218,7 +218,7 @@ Three or four conversations that each aim at a real rule are worth more than a d
 
 ## The options you already know
 
-Everything else works exactly as it does for a quiz eval, and the chapter on testing how your quiz grades covers each one in detail: grading every conversation several times with `--repeats`, turning the judge off, giving the judge a stronger model than the tutor, running a whole folder in one go, and the token totals that show what a run spent.
+Everything else works exactly as it does for a quiz eval, and the chapter on testing how your quiz grades covers each one in detail: running every conversation several times with `--repeats`, turning the judge off, giving the judge a stronger model or a higher thinking effort than the tutor, answering the conversations with a different model or effort than the tutor file names, running a whole folder in one go, and the token totals that show what a run spent.
 
 ## What you tested is what you must publish
 

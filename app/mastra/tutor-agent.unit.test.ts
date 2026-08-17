@@ -30,14 +30,18 @@ vi.mock("@/lib/llm/model", () => ({ resolveLanguageModel }));
 import {
   TUTOR_MODEL_OVERRIDE,
   TUTOR_PROVIDER_OVERRIDE,
+  TUTOR_REASONING_OVERRIDE,
   TUTOR_URL,
   tutorAgent,
 } from "@/app/mastra/tutor-agent";
 
+// The resolver returns Mastra's ModelWithRetries ARRAY form — the only shape that
+// carries `providerOptions` (the reasoning-effort seam) into a run.
+type ModelEntry = { model: unknown; providerOptions?: Record<string, unknown> };
 type Resolver<T> = (args: { requestContext: unknown }) => Promise<T>;
 const config = (tutorAgent as unknown as { config: Record<string, unknown> }).config;
 const instructions = config.instructions as Resolver<string>;
-const model = config.model as Resolver<unknown>;
+const model = config.model as Resolver<ModelEntry[]>;
 const tools = config.tools as Resolver<Record<string, { execute: unknown }>>;
 
 // A fresh per-request context object (the real one is a RequestContext; the agent
@@ -64,10 +68,79 @@ describe("tutorAgent per-request resolution", () => {
   it("resolves prompt + model from the YAML when the code has no override", async () => {
     const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
     await expect(instructions({ requestContext: ctx })).resolves.toBe("YAML PROMPT");
-    await model({ requestContext: ctx });
+    const entries = await model({ requestContext: ctx });
     expect(resolveLanguageModel).toHaveBeenCalledWith("SCCH", "yaml-model");
+    // The array form, and — with no reasoning level anywhere — NO providerOptions
+    // key at all, so the model's own default effort applies.
+    expect(entries).toEqual([{ model: "resolved-model" }]);
+    expect(entries[0]).not.toHaveProperty("providerOptions");
     // Both resolvers share ONE request-scoped build.
     expect(loadAndBuildTutorPrompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries the YAML's reasoning level as providerOptions on the model entry", async () => {
+    loadAndBuildTutorPrompt.mockResolvedValue({
+      ok: true,
+      prompt: "YAML PROMPT",
+      model: "yaml-model",
+      provider: "SCCH",
+      reasoning: "medium",
+      tools: [],
+    });
+    const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
+    await expect(model({ requestContext: ctx })).resolves.toEqual([
+      { model: "resolved-model", providerOptions: { openai: { reasoningEffort: "medium" } } },
+    ]);
+  });
+
+  it("applies the override's reasoning level over the YAML's", async () => {
+    loadAndBuildTutorPrompt.mockResolvedValue({
+      ok: true,
+      prompt: "YAML PROMPT",
+      model: "yaml-model",
+      provider: "SCCH",
+      reasoning: "medium",
+      tools: [],
+    });
+    const ctx = requestContext({
+      [TUTOR_URL]: "https://example.com/t.yaml",
+      [TUTOR_PROVIDER_OVERRIDE]: "SCCH",
+      [TUTOR_MODEL_OVERRIDE]: "override-model",
+      [TUTOR_REASONING_OVERRIDE]: "high",
+    });
+    await expect(model({ requestContext: ctx })).resolves.toEqual([
+      { model: "resolved-model", providerOptions: { openai: { reasoningEffort: "high" } } },
+    ]);
+    expect(resolveLanguageModel).toHaveBeenCalledWith("SCCH", "override-model");
+  });
+
+  it("an override WITHOUT a level suppresses the YAML's (the override is wholesale)", async () => {
+    loadAndBuildTutorPrompt.mockResolvedValue({
+      ok: true,
+      prompt: "YAML PROMPT",
+      model: "yaml-model",
+      provider: "SCCH",
+      reasoning: "medium",
+      tools: [],
+    });
+    const ctx = requestContext({
+      [TUTOR_URL]: "https://example.com/t.yaml",
+      [TUTOR_PROVIDER_OVERRIDE]: "SCCH",
+      [TUTOR_MODEL_OVERRIDE]: "override-model",
+    });
+    const entries = await model({ requestContext: ctx });
+    expect(entries).toEqual([{ model: "resolved-model" }]);
+    expect(entries[0]).not.toHaveProperty("providerOptions");
+  });
+
+  it("fails loud on a present-but-invalid reasoning override (wiring bug)", async () => {
+    const ctx = requestContext({
+      [TUTOR_URL]: "https://example.com/t.yaml",
+      [TUTOR_PROVIDER_OVERRIDE]: "SCCH",
+      [TUTOR_MODEL_OVERRIDE]: "override-model",
+      [TUTOR_REASONING_OVERRIDE]: "extreme",
+    });
+    await expect(model({ requestContext: ctx })).rejects.toThrow(/override is invalid/);
   });
 
   it("applies the code's LLM override pair over the YAML's llm values", async () => {

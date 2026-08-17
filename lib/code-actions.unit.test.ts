@@ -133,6 +133,20 @@ describe("createCodeAction", () => {
     );
   });
 
+  it("passes the override's reasoning level through to the pipeline", async () => {
+    const data = formData();
+    data.set("llmProvider", "SCCH");
+    data.set("llmModel", "some-model");
+    data.set("llmReasoning", "high");
+    await createCodeAction({ status: "idle" }, data);
+    expect(mocks.createCode).toHaveBeenCalledWith(
+      "teacher-sub-1",
+      expect.objectContaining({
+        llm: { provider: "SCCH", model: "some-model", reasoning: "high" },
+      }),
+    );
+  });
+
   it("rejects a missing/invalid module without touching storage", async () => {
     const data = formData();
     data.set("module", "future-module"); // not a built module
@@ -211,6 +225,17 @@ describe("updateCodeAction", () => {
       "a1b2c3d4e5",
       expect.objectContaining({ llm: { provider: "SCCH", model: "another-model" } }),
     );
+  });
+
+  it("rejects a reasoning level without the override pair, without writing", async () => {
+    const data = formData();
+    data.set("llmReasoning", "low");
+    const state = await updateCodeAction("a1b2c3d4e5", { status: "idle" }, data);
+    expect(state).toMatchObject({
+      status: "error",
+      message: expect.stringMatching(/reasoning level/i),
+    });
+    expect(mocks.updateCode).not.toHaveBeenCalled();
   });
 
   it("rejects an override provider this server has not configured, without writing", async () => {

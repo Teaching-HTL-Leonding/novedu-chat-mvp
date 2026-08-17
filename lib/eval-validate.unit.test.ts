@@ -46,6 +46,33 @@ questions:
 
 const schemes = ["http:", "https:", "file:"];
 
+describe("loadAndCheckEval — the target's llm", () => {
+  // The run's default spec comes from the target activity's own `llm:` block — reasoning
+  // effort included, since a level is part of what the file asks to be run with.
+  it("carries the target's reasoning level, and omits it when the target pins none", async () => {
+    const withLevel = await loadAndCheckEval(
+      EVAL_URL,
+      stubFetcher({
+        [EVAL_URL]: VALID_EVAL,
+        [QUIZ_URL]: QUIZ.replace("  model: test-model", "  model: test-model\n  reasoning: high"),
+      }),
+      { allowedSchemes: schemes },
+    );
+    expect(withLevel.ok).toBe(true);
+    if (!withLevel.ok) return;
+    expect(withLevel.llm.reasoning).toBe("high");
+
+    const plain = await loadAndCheckEval(
+      EVAL_URL,
+      stubFetcher({ [EVAL_URL]: VALID_EVAL, [QUIZ_URL]: QUIZ }),
+      { allowedSchemes: schemes },
+    );
+    expect(plain.ok).toBe(true);
+    if (!plain.ok) return;
+    expect(plain.llm.reasoning).toBeUndefined();
+  });
+});
+
 describe("loadAndCheckEval — happy path", () => {
   it("resolves the target relative to the eval file and dumps its grading prompts", async () => {
     const fetcher = stubFetcher({ [EVAL_URL]: VALID_EVAL, [QUIZ_URL]: QUIZ });

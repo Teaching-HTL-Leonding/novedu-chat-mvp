@@ -1,8 +1,13 @@
 import { Agent } from "@mastra/core/agent";
 import type { RequestContext } from "@mastra/core/request-context";
 import { Memory } from "@mastra/memory";
-import { resolveLanguageModel } from "@/lib/llm/model";
-import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
+import {
+  DEFAULT_PROVIDER,
+  type LlmProvider,
+  parseLenientProvider,
+  parseLenientReasoningLevel,
+} from "@/lib/llm/provider";
+import { modelEntry } from "./model-entry";
 
 // The agent that backs the Writing feature's feedback chat. It is configured
 // ENTIRELY per request from values the caller places on the `RequestContext` (the
@@ -23,6 +28,8 @@ import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "@/lib/
 export const WRITING_INSTRUCTIONS = "writing-instructions";
 export const WRITING_MODEL = "writing-model";
 export const WRITING_PROVIDER = "writing-provider";
+/** Optional reasoning effort for the feedback chat; absent = the model's default. */
+export const WRITING_REASONING = "writing-reasoning";
 
 function requiredString(requestContext: RequestContext, key: string): string {
   const value = requestContext.get(key);
@@ -33,7 +40,8 @@ function requiredString(requestContext: RequestContext, key: string): string {
 }
 
 // An absent provider key means SCCH (matching the YAML default); an invalid value
-// was already rejected by the writing load, so lenient reading here is safe.
+// was already rejected by the writing load, so lenient reading here is safe. The
+// reasoning key is read the same way at the resolver: absent pins no effort.
 function providerFrom(requestContext: RequestContext): LlmProvider {
   return parseLenientProvider(requestContext.get(WRITING_PROVIDER)) ?? DEFAULT_PROVIDER;
 }
@@ -48,9 +56,10 @@ export const writingAgent = new Agent({
   name: "Writing",
   instructions: ({ requestContext }) => requiredString(requestContext, WRITING_INSTRUCTIONS),
   model: ({ requestContext }) =>
-    resolveLanguageModel(
+    modelEntry(
       providerFrom(requestContext),
       requiredString(requestContext, WRITING_MODEL),
+      parseLenientReasoningLevel(requestContext.get(WRITING_REASONING)),
     ),
   memory: new Memory({
     options: {

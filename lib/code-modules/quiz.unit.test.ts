@@ -18,6 +18,7 @@ vi.mock("@/app/mastra/quiz-agents", () => ({
   QUIZ_DISCUSSION_INSTRUCTIONS: "quiz-discussion-instructions",
   QUIZ_DISCUSSION_MODEL: "quiz-discussion-model",
   QUIZ_DISCUSSION_PROVIDER: "quiz-discussion-provider",
+  QUIZ_DISCUSSION_REASONING: "quiz-discussion-reasoning",
 }));
 vi.mock("@mastra/core/request-context", () => ({
   RequestContext: class {
@@ -73,6 +74,7 @@ describe("quizModule.runtime.buildRequestContext", () => {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("quiz-discussion-model")).toBe("gemma-4");
       expect(ctx.get("quiz-discussion-provider")).toBe("Azure Foundry");
+      expect(ctx.get("quiz-discussion-reasoning")).toBeUndefined();
       const instr = ctx.get("quiz-discussion-instructions") as string;
       expect(instr).toContain("single quiz question"); // the default frame
       expect(instr).toContain("Focus on big-O."); // appended quiz-authored instructions
@@ -117,8 +119,33 @@ describe("quizModule.runtime.buildRequestContext", () => {
       const ctx = result.context as unknown as { get(k: string): unknown };
       expect(ctx.get("quiz-discussion-model")).toBe("override-model");
       expect(ctx.get("quiz-discussion-provider")).toBe("SCCH");
+      // The override carries no level, so none is set (wholesale replacement).
+      expect(ctx.get("quiz-discussion-reasoning")).toBeUndefined();
       // The instructions still come from the YAML — the override swaps only the LLM.
       expect(ctx.get("quiz-discussion-instructions")).toContain("Focus on big-O.");
+    }
+  });
+
+  it("sets the discussion reasoning level from the EFFECTIVE llm", async () => {
+    loadQuiz.mockResolvedValue({
+      ok: true,
+      quiz: { model: "yaml-model", provider: "SCCH", reasoning: "minimal", questions: [] },
+    });
+    // The YAML's level with no override…
+    const fromYaml = await quizModule.runtime?.buildRequestContext(entry);
+    if (fromYaml?.ok) {
+      const ctx = fromYaml.context as unknown as { get(k: string): unknown };
+      expect(ctx.get("quiz-discussion-reasoning")).toBe("minimal");
+    }
+    // …and the override's level when the code carries one.
+    const withOverride = {
+      ...entry,
+      llm: { provider: "SCCH", model: "override-model", reasoning: "high" },
+    } as CodeEntry;
+    const overridden = await quizModule.runtime?.buildRequestContext(withOverride);
+    if (overridden?.ok) {
+      const ctx = overridden.context as unknown as { get(k: string): unknown };
+      expect(ctx.get("quiz-discussion-reasoning")).toBe("high");
     }
   });
 

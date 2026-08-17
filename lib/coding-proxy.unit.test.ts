@@ -129,6 +129,27 @@ describe("buildUpstreamChatBody", () => {
     const out = buildUpstreamChatBody({ messages: [] }, { instructions: "P", model: "m" });
     expect(out.stream_options).toBeUndefined();
   });
+
+  it("PINS reasoning_effort, overwriting whatever the client sent", () => {
+    const out = buildUpstreamChatBody(
+      { messages: [], reasoning_effort: "minimal" },
+      { instructions: "P", model: "m", reasoning: "high" },
+    );
+    expect(out.reasoning_effort).toBe("high");
+  });
+
+  it("leaves a client-sent reasoning_effort untouched when the activity pins none", () => {
+    const out = buildUpstreamChatBody(
+      { messages: [], reasoning_effort: "minimal" },
+      { instructions: "P", model: "m" },
+    );
+    expect(out.reasoning_effort).toBe("minimal");
+  });
+
+  it("sends no reasoning_effort at all when neither side asks for one", () => {
+    const out = buildUpstreamChatBody({ messages: [] }, { instructions: "P", model: "m" });
+    expect(out).not.toHaveProperty("reasoning_effort");
+  });
 });
 
 describe("extractCodingUsage", () => {

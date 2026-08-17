@@ -1,5 +1,11 @@
 import { parse as parseYamlText } from "yaml";
-import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "./llm/provider";
+import {
+  DEFAULT_PROVIDER,
+  type LlmProvider,
+  parseLenientProvider,
+  parseLenientReasoningLevel,
+  type ReasoningLevel,
+} from "./llm/provider";
 import type { FragmentBlock } from "./prompt-fragments";
 import { readFragmentBlock } from "./prompt-fragments/block";
 
@@ -32,6 +38,12 @@ export interface Coding {
   model: string;
   /** The LLM provider serving `model` (`llm.provider`, default SCCH). SERVER-ONLY. */
   provider: LlmProvider;
+  /**
+   * Optional reasoning effort for `model` (`llm.reasoning`). Absent ⇒ no
+   * `reasoning_effort` is pinned and the client's own value passes through.
+   * SERVER-ONLY.
+   */
+  reasoning?: ReasoningLevel;
   /**
    * The teacher's system prompt, prepended ahead of the client's. SERVER-ONLY.
    * `loadCoding` prepends the assembled document-level fragment block ahead of it;
@@ -96,6 +108,18 @@ export function parseCoding(content: string): CodingParseResult {
     };
   }
 
+  // Absent ⇒ nothing is pinned; present-but-invalid is rejected so an activity
+  // never silently runs at the model's default effort.
+  const reasoning =
+    llm?.reasoning === undefined ? undefined : parseLenientReasoningLevel(llm.reasoning);
+  if (llm?.reasoning !== undefined && !reasoning) {
+    return {
+      ok: false,
+      message:
+        'This coding activity uses an unsupported llm.reasoning (use "minimal", "low", "medium" or "high").',
+    };
+  }
+
   const instructions = asString(root.instructions);
   if (!instructions) {
     return { ok: false, message: "This coding activity has no instructions for the assistant." };
@@ -108,6 +132,7 @@ export function parseCoding(content: string): CodingParseResult {
       title: asString(root.title),
       model,
       provider,
+      reasoning,
       instructions,
       // Carried through for `loadCoding` to resolve + prepend to `instructions`.
       fragmentBlock: readFragmentBlock(root),

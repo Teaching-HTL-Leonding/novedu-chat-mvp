@@ -82,8 +82,8 @@ Cover:
   a topic rule. A question in the wrong language against a language rule. Say plainly that
   a conversation no rule speaks to teaches nothing, however realistic it looks.
 - The shared options, briefly, pointing at chapter 06 rather than repeating it: repeats,
-  turning the judge off, giving the judge a stronger model, a folder at once, and the token
-  totals all work exactly as they do for a quiz eval.
+  turning the judge off, giving the judge a stronger model or a higher thinking effort, a
+  folder at once, and the token totals all work exactly as they do for a quiz eval.
 - The bundled AI skill: the teacher can ask it to read their tutor, script the
   conversations, run the eval, and explain what the judge flagged, instead of typing flags.
   Don't explain what the skill is or how to install it, that's the introduction chapter

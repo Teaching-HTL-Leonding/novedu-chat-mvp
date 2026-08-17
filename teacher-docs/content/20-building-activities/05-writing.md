@@ -39,7 +39,7 @@ instructions: |
 ```
 
 - `id` is a short machine name for the activity, such as `my-essay`.
-- `llm.model` picks the AI model that drives the feedback chat. It works the same as in tutors and quizzes, and a code can override it later without touching the file.
+- `llm.model` picks the AI model that drives the feedback chat, with an optional `llm.provider` for where it runs and an optional `llm.reasoning` level for how hard it thinks. It works the same as in tutors and quizzes, and a code can override the whole block later without touching the file.
 - `instructions` is the coach's prompt: how it should behave, what to look for, and how to talk to the student. Students never see this text, so you can spell out your assessment criteria freely.
 
 ## The task students see

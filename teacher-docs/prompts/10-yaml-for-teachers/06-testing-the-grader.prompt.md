@@ -45,11 +45,13 @@ Cover:
   writing in the wrong language), and feedback that quotes the grading criteria at the
   student. Say plainly that a flag NEVER fails a run — it is a note about wording, and
   the fix is usually one sentence in the evaluation criteria or the shared instructions,
-  not a change to the golden answers. Then the two flags, verbatim: the one that turns
-  judging off (halves what a run costs, good for a quick check) and the pair that gives
+  not a change to the golden answers. Then the flags, verbatim: the one that turns
+  judging off (halves what a run costs, good for a quick check), the pair that gives
   the judge a different, stronger model than the grader (recommended, always both
-  together). Mention that judging is on by default and roughly doubles the number of AI
-  calls — which is what the run's own scope line shows — and that if the judge model
+  together), and the one that sets how hard the judge thinks (on its own, no pair
+  needed). Say that a judge left unflagged runs on the same model AND the same thinking
+  effort as the grader. Mention that judging is on by default and roughly doubles the
+  number of AI calls — which is what the run's own scope line shows — and that if the judge model
   itself keeps failing, judging stops after a few failures while the grading finishes
   normally, so a zero in the flagged column then means "not checked", not "all fine".
 - Is the grader consistent? The repeats option grades every answer several times and
@@ -57,10 +59,15 @@ Cover:
   disagreed are reported as "unstable". Explain why that matters pedagogically: a
   criterion that decides the same answer differently on different runs will do the same
   to two students who wrote the same thing. Mention that repeats multiply the cost.
-- Trying a different AI model. The two model flags (always together) grade the same
+- Trying a different AI model, or more thinking. The two model flags (always together)
+  grade the same
   golden answers with another model, so a teacher can compare reports before switching
-  a quiz over. Say clearly that this changes only the run, not the quiz and not any
-  code already handed out.
+  a quiz over. A third flag sets the thinking effort: on its own it keeps the quiz's own
+  model and changes only how hard it thinks — the "same model, more thinking"
+  comparison. Warn about the one trap: the model pair replaces the quiz's whole `llm:`
+  block, so a run with the pair alone drops the effort the quiz file sets unless the
+  effort flag restates it. Say clearly that all of this changes only the run, not the
+  quiz and not any code already handed out.
 - Several files at once, briefly: a folder of eval files in one run, with a per-file
   summary and totals, and a broken file reported rather than aborting the rest.
 - Keeping a readable report. The report flag writes the run as a Markdown file: an

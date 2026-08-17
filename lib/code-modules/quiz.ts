@@ -4,6 +4,7 @@ import {
   QUIZ_DISCUSSION_INSTRUCTIONS,
   QUIZ_DISCUSSION_MODEL,
   QUIZ_DISCUSSION_PROVIDER,
+  QUIZ_DISCUSSION_REASONING,
 } from "@/app/mastra/quiz-agents";
 import { effectiveLlm } from "@/lib/code-store";
 import { providerUnavailableReason } from "@/lib/llm/availability";
@@ -40,6 +41,8 @@ export const quizModule: CodeModuleDef = {
       context.set(QUIZ_DISCUSSION_INSTRUCTIONS, buildDiscussionInstructions(loaded.quiz));
       context.set(QUIZ_DISCUSSION_MODEL, llm.model);
       context.set(QUIZ_DISCUSSION_PROVIDER, llm.provider);
+      // Only when the effective llm carries one — an absent key pins no effort.
+      if (llm.reasoning) context.set(QUIZ_DISCUSSION_REASONING, llm.reasoning);
       return { ok: true, context };
     },
   },

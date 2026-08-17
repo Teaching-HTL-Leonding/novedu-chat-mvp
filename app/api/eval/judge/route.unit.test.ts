@@ -44,6 +44,7 @@ import {
   EVAL_JUDGE_INSTRUCTIONS,
   EVAL_JUDGE_MODEL,
   EVAL_JUDGE_PROVIDER,
+  EVAL_JUDGE_REASONING,
 } from "@/app/mastra/eval-agents";
 import { resetApiAuthForTests } from "@/lib/api-auth";
 import { FEEDBACK_JUDGE_CRITERIA } from "@/lib/quiz-feedback-judge";
@@ -242,6 +243,27 @@ describe("POST /api/eval/judge judging", () => {
     expect(ctx.get(USAGE_CODE)).toBe("cli-eval");
     expect(ctx.get(USAGE_MODULE)).toBe("eval");
     expect(ctx.get(USAGE_USER_ID)).toBe("teacher-oid-1");
+  });
+
+  it("sets the reasoning key only when the body pins a level", async () => {
+    await postRequest(
+      { ...VALID_BODY, llm: { model: "judge-model", reasoning: "high" } },
+      await mint(),
+    );
+    const [, withLevel] = mocks.generate.mock.calls[0] as [
+      string,
+      { requestContext: { get(key: string): unknown } },
+    ];
+    expect(withLevel.requestContext.get(EVAL_JUDGE_REASONING)).toBe("high");
+
+    mocks.generate.mockClear();
+    await postRequest(VALID_BODY, await mint());
+    const [, without] = mocks.generate.mock.calls[0] as [
+      string,
+      { requestContext: { get(key: string): unknown } },
+    ];
+    // Unset ⇒ no `reasoning_effort` is sent at all.
+    expect(without.requestContext.get(EVAL_JUDGE_REASONING)).toBeUndefined();
   });
 
   it("constrains the model to the CALLER's criteria — the kind-agnostic property", async () => {

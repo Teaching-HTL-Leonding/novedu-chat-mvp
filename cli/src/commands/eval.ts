@@ -2,7 +2,7 @@ import { globSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import type { Command } from "commander";
 import { type EvalCheckOk, loadAndCheckEval } from "@/lib/eval-validate";
-import { LLM_PROVIDERS } from "@/lib/llm/provider";
+import { LLM_PROVIDERS, REASONING_LEVELS, type ReasoningLevel } from "@/lib/llm/provider";
 import { failJson, performApiRequest } from "../api";
 import {
   anyJudged,
@@ -11,13 +11,16 @@ import {
   type EvalBatchFileInput,
   type EvalBatchIssue,
   type EvalJudgeIssue,
+  type EvalLlmSpec,
   type EvalRunLlm,
   type EvalRunResult,
   type EvalUsage,
   type GradeFn,
   type JudgeFn,
   type RespondFn,
+  resolveEvalSpec,
   runEval,
+  sameEvalSpec,
   summarizeBatch,
 } from "../eval-run";
 import { cliFetcher } from "../file-fetcher";
@@ -56,10 +59,12 @@ interface EvalOptions {
   repeats?: string;
   llmProvider?: string;
   llmModel?: string;
+  llmReasoning?: string;
   /** Commander's `--no-judge-feedback`: `false` when passed, `true` (the default) otherwise. */
   judgeFeedback?: boolean;
   judgeLlmProvider?: string;
   judgeLlmModel?: string;
+  judgeLlmReasoning?: string;
   json?: boolean;
   out?: string;
   report?: string;
@@ -144,6 +149,29 @@ function parsePair(
 }
 
 /**
+ * One reasoning-effort flag: absent, or one of the four known levels. Checked here rather
+ * than left to the server for the same reason `parsePair` checks the provider — a typo
+ * must cost nothing, not a whole run's worth of terminal 400s.
+ *
+ * Deliberately INDEPENDENT of its pair flag (unlike the pair's both-or-nothing rule): the
+ * common comparison run is "same model, different effort", so `--llm-reasoning` alone is
+ * a first-class invocation rather than a usage error.
+ */
+function parseReasoning(
+  flag: string,
+  value: string | undefined,
+): { ok: true; reasoning?: ReasoningLevel } | { ok: false; message: string } {
+  if (value === undefined) return { ok: true };
+  if (!(REASONING_LEVELS as readonly string[]).includes(value)) {
+    return {
+      ok: false,
+      message: `Unknown --${flag} "${value}": expected ${REASONING_LEVELS.map((level) => `"${level}"`).join(", ")}.`,
+    };
+  }
+  return { ok: true, reasoning: value as ReasoningLevel };
+}
+
+/**
  * The optional `usage: { input, cachedInput, output }` of a 200 response, defensively:
  * anything that is not three finite numbers is simply absent (an older server, or one
  * whose provider reports nothing, must never break a run).
@@ -165,10 +193,7 @@ function parseUsage(value: unknown): EvalUsage | undefined {
  * Classifies the failure for the retry policy: 5xx and true network failures are
  * retryable, auth failures abort the run, every other 4xx is terminal.
  */
-function makeGradeFn(
-  server: string | undefined,
-  llm: { provider: string; model: string },
-): GradeFn {
+function makeGradeFn(server: string | undefined, llm: EvalLlmSpec): GradeFn {
   return async ({ system, answer }) => {
     const response = await performApiRequest({
       server,
@@ -236,10 +261,7 @@ function parseToolCalls(value: unknown): string[] | undefined {
  * the tutor kind's sibling of {@link makeGradeFn}, sharing its failure classification
  * exactly (5xx and network retryable, auth aborts the run, every other 4xx terminal).
  */
-function makeRespondFn(
-  server: string | undefined,
-  llm: { provider: string; model: string },
-): RespondFn {
+function makeRespondFn(server: string | undefined, llm: EvalLlmSpec): RespondFn {
   return async ({ system, tools, messages }) => {
     const response = await performApiRequest({
       server,
@@ -296,10 +318,7 @@ function makeRespondFn(
  * NEVER aborts the run — it degrades judging (see the runner's breaker) while the grading
  * half finishes untouched.
  */
-function makeJudgeFn(
-  server: string | undefined,
-  llm: { provider: string; model: string },
-): JudgeFn {
+function makeJudgeFn(server: string | undefined, llm: EvalLlmSpec): JudgeFn {
   return async ({ system, subject, criteria }) => {
     const response = await performApiRequest({
       server,
@@ -454,20 +473,32 @@ export async function runEvalCommand(
     return;
   }
 
+  const overrideReasoning = parseReasoning("llm-reasoning", options.llmReasoning);
+  if (!overrideReasoning.ok) {
+    failJson({ message: overrideReasoning.message });
+    return;
+  }
+
   const judgeOverride = parsePair("judge-llm", options.judgeLlmProvider, options.judgeLlmModel);
   if (!judgeOverride.ok) {
     failJson({ message: judgeOverride.message });
     return;
   }
 
+  const judgeOverrideReasoning = parseReasoning("judge-llm-reasoning", options.judgeLlmReasoning);
+  if (!judgeOverrideReasoning.ok) {
+    failJson({ message: judgeOverrideReasoning.message });
+    return;
+  }
+
   // Feedback judging is ON by default; `--no-judge-feedback` turns it off. Asking for
   // BOTH is contradictory — name the contradiction rather than silently honoring one.
   const judging = options.judgeFeedback !== false;
-  if (!judging && judgeOverride.llm) {
+  if (!judging && (judgeOverride.llm || judgeOverrideReasoning.reasoning)) {
     failJson({
       message:
-        "--judge-llm-provider/--judge-llm-model cannot be combined with " +
-        "--no-judge-feedback: the first configures the feedback judge, the second " +
+        "--judge-llm-provider/--judge-llm-model/--judge-llm-reasoning cannot be combined " +
+        "with --no-judge-feedback: the first configure the feedback judge, the second " +
         "switches it off.",
     });
     return;
@@ -562,17 +593,38 @@ export async function runEvalCommand(
     fileIndex += 1;
     const check = checked.get(file.source);
     if (!check) continue;
-    // The TARGET activity's own pair, whatever kind it is — the check already resolved it.
-    const activityLlm = { provider: check.llm.provider, model: check.llm.model };
-    const effective = override.llm ?? activityLlm;
-    // The judge falls back to the EFFECTIVE generation pair — a strong judge over a small
-    // model is the realistic production pairing, but "same model as the one under test"
-    // is the honest default when nobody said otherwise.
-    const judgeLlm = judgeOverride.llm ?? effective;
+    // The TARGET activity's own spec, whatever kind it is — the check already resolved it,
+    // reasoning level included when the file pins one.
+    const activityLlm: EvalLlmSpec = {
+      provider: check.llm.provider,
+      model: check.llm.model,
+      ...(check.llm.reasoning ? { reasoning: check.llm.reasoning } : {}),
+    };
+    const effective = resolveEvalSpec(activityLlm, override.llm, overrideReasoning.reasoning);
+    // The judge falls back to the EFFECTIVE generation spec — a strong judge over a small
+    // model is the realistic production pairing, but "same model, same effort as the one
+    // under test" is the honest default when nobody said otherwise. Its own two flags then
+    // apply exactly as the grading ones do.
+    const judgeLlm = resolveEvalSpec(
+      effective,
+      judgeOverride.llm,
+      judgeOverrideReasoning.reasoning,
+    );
     const llm: EvalRunLlm = {
       ...effective,
-      ...(override.llm ? { overrides: activityLlm } : {}),
-      ...(judging ? { judge: { ...judgeLlm, overridden: judgeOverride.llm !== undefined } } : {}),
+      // Recorded whenever the run does NOT grade what the file asked for — a changed pair
+      // or only a changed effort. A comparison report must never be mistaken for a
+      // baseline one.
+      ...(sameEvalSpec(effective, activityLlm) ? {} : { overrides: activityLlm }),
+      ...(judging
+        ? {
+            judge: {
+              ...judgeLlm,
+              overridden:
+                judgeOverride.llm !== undefined || judgeOverrideReasoning.reasoning !== undefined,
+            },
+          }
+        : {}),
     };
     const label =
       files.length > 1 ? `(${fileIndex}/${files.length}) ${check.evalFile.id}` : check.evalFile.id;
@@ -670,6 +722,10 @@ export function registerEval(program: Command): void {
       "run with this model instead of the activity's (needs --llm-provider)",
     )
     .option(
+      "--llm-reasoning <level>",
+      'run at this reasoning effort ("minimal", "low", "medium" or "high"); on its own it keeps the activity\'s model',
+    )
+    .option(
       "--no-judge-feedback",
       "skip the LLM audit of what the model wrote (halves the LLM calls)",
     )
@@ -680,6 +736,10 @@ export function registerEval(program: Command): void {
     .option(
       "--judge-llm-model <model>",
       "judge with this model instead of the one under test (needs --judge-llm-provider)",
+    )
+    .option(
+      "--judge-llm-reasoning <level>",
+      'judge at this reasoning effort ("minimal", "low", "medium" or "high"); on its own it keeps the judge\'s model',
     )
     .option("--json", "print the machine-readable batch report on stdout")
     .option("--out <file>", "additionally write the machine-readable batch report to a file")
@@ -703,6 +763,9 @@ Examples:
 
   # How would this rubric perform on another model? (both flags, always together)
   $ novedu-cli eval ./my-quiz.eval.yaml --llm-provider "Azure Foundry" --llm-model gpt-5-mini
+
+  # Same model, more thinking: the level alone keeps the activity's provider/model
+  $ novedu-cli eval ./my-quiz.eval.yaml --llm-reasoning high
 
   # A strong judge over the quiz's own grader — the recommended pairing
   $ novedu-cli eval ./my-quiz.eval.yaml --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra

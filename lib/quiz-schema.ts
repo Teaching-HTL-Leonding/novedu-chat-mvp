@@ -15,7 +15,7 @@
 // Reused sub-schemas carry `.meta({ id })` so the generator emits named `$defs`.
 
 import { z } from "zod";
-import { providerSchema } from "@/lib/llm/provider";
+import { providerSchema, reasoningLevelSchema } from "@/lib/llm/provider";
 import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
 
 /**
@@ -142,8 +142,9 @@ export const QuizYamlSchema = z.strictObject({
     description:
       "Other quiz files whose questions are ALL included live into this quiz (a compound/final quiz). One level deep — an included quiz may not itself declare quiz_files.",
   }),
-  // `provider` selects which LLM endpoint serves `model` (default SCCH); the one
-  // model grades answers AND drives the discussion chat. `imageInput` (default
+  // `provider` selects which LLM endpoint serves `model` (default SCCH), and
+  // `reasoning` optionally pins a reasoning model's effort level (absent ⇒ the
+  // parameter is not sent); the one model grades answers AND drives the discussion chat. `imageInput` (default
   // false) lets students attach photos to their answers — the model must be
   // vision-capable; a per-question `imageInput` overrides it.
   llm: z
@@ -152,6 +153,7 @@ export const QuizYamlSchema = z.strictObject({
         description: "The model that grades answers and drives the per-question discussion chat.",
       }),
       provider: providerSchema,
+      reasoning: reasoningLevelSchema,
       imageInput: z.boolean().optional().meta({
         default: false,
         description:

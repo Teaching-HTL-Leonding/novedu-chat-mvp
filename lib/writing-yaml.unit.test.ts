@@ -88,6 +88,29 @@ instructions: Give feedback.
     if (!result.ok) expect(result.message).toContain("llm.provider");
   });
 
+  it("leaves a missing llm.reasoning undefined and carries an explicit level", () => {
+    const absent = parseWriting(VALID);
+    expect(absent.ok && absent.writing.reasoning).toBeUndefined();
+    const pinned = parseWriting(`
+llm:
+  model: m
+  reasoning: high
+instructions: Give feedback.
+`);
+    expect(pinned.ok && pinned.writing.reasoning).toBe("high");
+  });
+
+  it("rejects an unsupported llm.reasoning, naming the four levels", () => {
+    const result = parseWriting(`
+llm:
+  model: m
+  reasoning: turbo
+instructions: Give feedback.
+`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/minimal.*low.*medium.*high/);
+  });
+
   it("honours an explicit anonymous: true", () => {
     const result = parseWriting(`
 anonymous: true

@@ -16,6 +16,9 @@ import { CodingConnection } from "./coding-connection";
 export async function CodingDetail({ entry }: { entry: CodeEntry }) {
   const loaded = await loadCoding(entry.fileUrl);
   const origin = await resolveAppOriginOr("");
+  // The EFFECTIVE llm — what the proxy actually pins: the code's LLM override
+  // when set, the YAML's values otherwise.
+  const llm = loaded.ok ? effectiveLlm(entry, loaded.coding) : undefined;
 
   return (
     <>
@@ -24,9 +27,13 @@ export async function CodingDetail({ entry }: { entry: CodeEntry }) {
           <div className="mb-6">
             <p className={`mb-1.5 ${META_LABEL}`}>Model (pinned)</p>
             <p>
-              {/* The EFFECTIVE model — what the proxy actually pins: the code's
-                  LLM override when set, the YAML's model otherwise. */}
-              <code>{effectiveLlm(entry, loaded.coding).model}</code>
+              <code>{llm?.model}</code>
+              {llm?.reasoning ? (
+                <>
+                  {" · reasoning "}
+                  <code>{llm.reasoning}</code>
+                </>
+              ) : null}
               {entry.llm ? (
                 <span className="text-foreground/70 text-sm"> (overridden by this code)</span>
               ) : null}

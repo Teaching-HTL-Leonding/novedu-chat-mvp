@@ -65,7 +65,14 @@ The example is the real registry shape used by the Creative Coding book, a TypeS
 
 - `start` and `end` set the availability window, written as a full date and time with a time zone offset, for example `2026-09-01T00:00:00+02:00`, or `Z` for UTC. These are the same window rules the create form uses.
 - `note` is your own label for the code, up to 200 characters. Only teachers see it.
-- `llm` sets a model override for this one code, with `provider` and `model` always given together.
+- `llm` sets a model override for this one code, with `provider` and `model` always given together and an optional `reasoning` level (`minimal`, `low`, `medium`, or `high`) on top of them:
+
+  ```yaml
+  llm:
+    provider: Azure Foundry
+    model: gpt-5.6-terra
+    reasoning: low
+  ```
 
 You can also add your own extra lines to an entry, for example a chapter number. Anything the registry does not recognise is ignored, so annotate freely.
 
@@ -124,7 +131,7 @@ Commit this file together with the registry. It is generated: never edit it by h
 Running the command again is the normal workflow, not something to be careful about. Whether an entry keeps its code or gets a new one follows three rules:
 
 - **Nothing changed, nothing happens.** An entry whose activity file, availability window, and model override still match one of your codes reuses that code. Editing the activity file itself changes nothing here: a code always points at the file's address, so students get your edits without a new code.
-- **A new window or a new model override means a new code.** The command never edits or deletes an existing code, so it creates a second one and reports the old one as superseded. The old code keeps working and keeps its statistics until you delete it in Novedu, which matters because links you have already handed to students still point at it.
+- **A new window, or any change to the model override, means a new code.** That includes the reasoning level on its own: the same provider and model at a different thinking effort is a different code. The command never edits or deletes an existing code, so it creates a second one and reports the old one as superseded. The old code keeps working and keeps its statistics until you delete it in Novedu, which matters because links you have already handed to students still point at it.
 - **A different note changes nothing.** The note is a label for you, so it is not part of what makes a code match. Novedu keeps the note the code was created with.
 
 Removing an entry from the registry drops its name from the lock file on the next run. The code itself is untouched and still works; the command mentions it so you can decide whether to delete it.

@@ -5,12 +5,17 @@ import {
   QUIZ_EVAL_INSTRUCTIONS,
   QUIZ_EVAL_MODEL,
   QUIZ_EVAL_PROVIDER,
+  QUIZ_EVAL_REASONING,
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
 import { ApiAuthError, requireBearerTeacher } from "@/lib/api-auth";
 import { readBoundedJson } from "@/lib/bounded-json";
 import { providerUnavailableReason } from "@/lib/llm/availability";
-import { DEFAULT_PROVIDER, parseLenientProvider } from "@/lib/llm/provider";
+import {
+  DEFAULT_PROVIDER,
+  parseLenientProvider,
+  parseLenientReasoningLevel,
+} from "@/lib/llm/provider";
 import { classifyUpstreamLlmError } from "@/lib/llm/upstream-error";
 import { buildAnswerMessage } from "@/lib/quiz-grading-prompt";
 import { gradeWithTruncationRetry } from "@/lib/quiz-truncation-retry";
@@ -60,6 +65,9 @@ const GradeBodySchema = z.strictObject({
   llm: z.strictObject({
     provider: z.string().optional(),
     model: z.string().min(1).max(256),
+    // Free-form here and hand-parsed below, exactly like `provider`: an unknown level
+    // deserves a message that names it rather than a generic schema complaint.
+    reasoning: z.string().optional(),
   }),
   system: z.string().min(1),
   answer: z.string().min(1),
@@ -67,10 +75,12 @@ const GradeBodySchema = z.strictObject({
 
 /**
  * Grades one golden answer. Body
- * `{ llm: { provider?, model }, system, answer }` → `200 { result, feedback, usage? }`,
+ * `{ llm: { provider?, model, reasoning? }, system, answer }` →
+ * `200 { result, feedback, usage? }`,
  * where the OPTIONAL `usage: { input, cachedInput, output }` carries this call's token
  * counts when the provider reported any (see {@link llmCallUsage}).
- * `400` on a malformed body, an unknown or unavailable provider, an answer that is empty
+ * `400` on a malformed body, an unknown reasoning level, an unknown or unavailable
+ * provider, an answer that is empty
  * after trimming, or an upstream model call that can never succeed as sent (a deployment
  * name that does not exist — terminal, so the CLI does not retry it); `413` over the
  * 256 KB cap; `401`/`403` from the bearer gate; `502` when the grader returns no
@@ -92,7 +102,10 @@ export async function POST(request: Request): Promise<Response> {
 
     const parsed = GradeBodySchema.safeParse(read.value);
     if (!parsed.success) {
-      return json({ message: "Provide `llm: { provider?, model }`, `system` and `answer`." }, 400);
+      return json(
+        { message: "Provide `llm: { provider?, model, reasoning? }`, `system` and `answer`." },
+        400,
+      );
     }
     const body = parsed.data;
 
@@ -103,6 +116,15 @@ export async function POST(request: Request): Promise<Response> {
       body.llm.provider === undefined ? DEFAULT_PROVIDER : parseLenientProvider(body.llm.provider);
     if (provider === undefined) {
       return json({ message: `Unknown LLM provider "${body.llm.provider}".` }, 400);
+    }
+
+    // An UNKNOWN reasoning level is rejected on the same argument as the provider — and
+    // TERMINALLY (400), because no number of retries turns it into a valid one. Absent
+    // means no `reasoning_effort` at all, the model's own default.
+    const reasoning =
+      body.llm.reasoning === undefined ? undefined : parseLenientReasoningLevel(body.llm.reasoning);
+    if (body.llm.reasoning !== undefined && reasoning === undefined) {
+      return json({ message: `Unknown reasoning level "${body.llm.reasoning}".` }, 400);
     }
 
     // TERMINAL, not retryable: a deployment without Azure Foundry can never grade a
@@ -121,6 +143,9 @@ export async function POST(request: Request): Promise<Response> {
     requestContext.set(QUIZ_EVAL_INSTRUCTIONS, body.system);
     requestContext.set(QUIZ_EVAL_MODEL, body.llm.model);
     requestContext.set(QUIZ_EVAL_PROVIDER, provider);
+    // Only when the caller pinned one: an unset key leaves the agent's resolver sending
+    // no `reasoning_effort` at all, which is what "the model decides" means.
+    if (reasoning) requestContext.set(QUIZ_EVAL_REASONING, reasoning);
     // Usage attribution: evals are metered under their own pseudo-code + module, so a
     // teacher's eval spend shows as its own group in the dashboard and can never be
     // mistaken for a class's usage (docs/usage-metering.md).

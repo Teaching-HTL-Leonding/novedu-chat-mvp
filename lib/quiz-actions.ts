@@ -8,6 +8,7 @@ import {
   QUIZ_EVAL_INSTRUCTIONS,
   QUIZ_EVAL_MODEL,
   QUIZ_EVAL_PROVIDER,
+  QUIZ_EVAL_REASONING,
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
 import { validateAnswerImages } from "@/lib/answer-images";
@@ -94,6 +95,9 @@ export async function submitAnswer(
   );
   requestContext.set(QUIZ_EVAL_MODEL, ctx.llm.model);
   requestContext.set(QUIZ_EVAL_PROVIDER, ctx.llm.provider);
+  // Only when the effective llm (quiz YAML or the code's override) carries one —
+  // an absent key grades at the model's own default effort.
+  if (ctx.llm.reasoning) requestContext.set(QUIZ_EVAL_REASONING, ctx.llm.reasoning);
   // Attribute the server-only grader's token usage exactly like a runtime-route
   // agent — the observability exporter reads these off its MODEL_GENERATION span.
   requestContext.set(USAGE_CODE, ctx.code);

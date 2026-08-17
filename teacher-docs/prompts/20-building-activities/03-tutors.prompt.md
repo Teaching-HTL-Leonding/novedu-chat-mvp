@@ -41,8 +41,8 @@ Get right:
   format; do not describe priority ordering.
 - An optional fragment input can carry a default the library author set; supplying a
   value as a marker argument overrides it.
-- Provider and model can be overridden per code; link to "Available AI models" instead
-  of repeating it.
+- Provider, model and reasoning level can be overridden per code; link to
+  "Available AI models" instead of repeating it.
 - Reuse real YAML from activities/examples/**.
 
 Look: activities/tutors/README.md (incl. the `tools` section with the tool table),

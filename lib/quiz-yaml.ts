@@ -1,6 +1,12 @@
 import { parse as parseYamlText } from "yaml";
 import type { ImageRef } from "./image-ref";
-import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "./llm/provider";
+import {
+  DEFAULT_PROVIDER,
+  type LlmProvider,
+  parseLenientProvider,
+  parseLenientReasoningLevel,
+  type ReasoningLevel,
+} from "./llm/provider";
 import type { FragmentBlock } from "./prompt-fragments";
 import { readFragmentBlock } from "./prompt-fragments/block";
 import type { QuizPublic, QuizQuestionPublic } from "./quiz-types";
@@ -65,6 +71,11 @@ export interface Quiz {
   model: string;
   /** The LLM provider serving `model` (`llm.provider`, default SCCH). */
   provider: LlmProvider;
+  /**
+   * Optional reasoning effort for `model` (`llm.reasoning`). Absent ⇒ no
+   * `reasoning_effort` is sent and the model's own default applies.
+   */
+  reasoning?: ReasoningLevel;
   /**
    * Quiz-level default for photo answers (`llm.imageInput`, default `false` —
    * the model must be vision-capable). Per-question `imageInput` overrides it.
@@ -192,6 +203,18 @@ export function parseQuiz(content: string): QuizParseResult {
     };
   }
 
+  // Absent ⇒ no reasoning effort is sent; present-but-invalid is rejected so a
+  // quiz never silently grades at the model's default effort.
+  const reasoning =
+    llm?.reasoning === undefined ? undefined : parseLenientReasoningLevel(llm.reasoning);
+  if (llm?.reasoning !== undefined && !reasoning) {
+    return {
+      ok: false,
+      message:
+        'This quiz uses an unsupported llm.reasoning (use "minimal", "low", "medium" or "high").',
+    };
+  }
+
   // Lifted leniently like the fragment block: the declared array passes through as-is
   // for `loadQuiz` to resolve fail-closed (a malformed entry errors the LOAD rather
   // than silently dropping a chapter's questions).
@@ -252,6 +275,7 @@ export function parseQuiz(content: string): QuizParseResult {
       shuffle: asBool(root.shuffle, true),
       model,
       provider,
+      reasoning,
       questionCount,
       imageInput: asBool(llm?.imageInput, false),
       discussionInstructions: asString(

@@ -1,8 +1,13 @@
 import { Agent } from "@mastra/core/agent";
 import type { RequestContext } from "@mastra/core/request-context";
 import { Memory } from "@mastra/memory";
-import { resolveLanguageModel } from "@/lib/llm/model";
-import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
+import {
+  DEFAULT_PROVIDER,
+  type LlmProvider,
+  parseLenientProvider,
+  parseLenientReasoningLevel,
+} from "@/lib/llm/provider";
+import { modelEntry } from "./model-entry";
 
 // Two agents that back the Quizzes feature. Both are configured ENTIRELY per
 // request from values the caller places on the `RequestContext` (the quiz's
@@ -24,9 +29,13 @@ export { QUIZ_VERDICT_SCHEMA } from "@/lib/quiz-verdict-schema";
 export const QUIZ_EVAL_INSTRUCTIONS = "quiz-eval-instructions";
 export const QUIZ_EVAL_MODEL = "quiz-eval-model";
 export const QUIZ_EVAL_PROVIDER = "quiz-eval-provider";
+/** Optional reasoning effort for the grader; absent = the model's own default. */
+export const QUIZ_EVAL_REASONING = "quiz-eval-reasoning";
 export const QUIZ_DISCUSSION_INSTRUCTIONS = "quiz-discussion-instructions";
 export const QUIZ_DISCUSSION_MODEL = "quiz-discussion-model";
 export const QUIZ_DISCUSSION_PROVIDER = "quiz-discussion-provider";
+/** Optional reasoning effort for the discussion chat; absent = the model's default. */
+export const QUIZ_DISCUSSION_REASONING = "quiz-discussion-reasoning";
 
 function requiredString(requestContext: RequestContext, key: string): string {
   const value = requestContext.get(key);
@@ -37,7 +46,9 @@ function requiredString(requestContext: RequestContext, key: string): string {
 }
 
 // An absent provider key means SCCH (matching the YAML default); an invalid value
-// was already rejected by the quiz load, so lenient reading here is safe.
+// was already rejected by the quiz load, so lenient reading here is safe. The
+// reasoning key is read the same way, inline at each resolver: absent (or, by the
+// same argument, unparseable) simply pins no effort.
 function providerFrom(requestContext: RequestContext, key: string): LlmProvider {
   return parseLenientProvider(requestContext.get(key)) ?? DEFAULT_PROVIDER;
 }
@@ -52,9 +63,10 @@ export const quizEvaluatorAgent = new Agent({
   name: "Quiz Evaluator",
   instructions: ({ requestContext }) => requiredString(requestContext, QUIZ_EVAL_INSTRUCTIONS),
   model: ({ requestContext }) =>
-    resolveLanguageModel(
+    modelEntry(
       providerFrom(requestContext, QUIZ_EVAL_PROVIDER),
       requiredString(requestContext, QUIZ_EVAL_MODEL),
+      parseLenientReasoningLevel(requestContext.get(QUIZ_EVAL_REASONING)),
     ),
 });
 
@@ -69,9 +81,10 @@ export const quizDiscussionAgent = new Agent({
   instructions: ({ requestContext }) =>
     requiredString(requestContext, QUIZ_DISCUSSION_INSTRUCTIONS),
   model: ({ requestContext }) =>
-    resolveLanguageModel(
+    modelEntry(
       providerFrom(requestContext, QUIZ_DISCUSSION_PROVIDER),
       requiredString(requestContext, QUIZ_DISCUSSION_MODEL),
+      parseLenientReasoningLevel(requestContext.get(QUIZ_DISCUSSION_REASONING)),
     ),
   memory: new Memory({
     options: {

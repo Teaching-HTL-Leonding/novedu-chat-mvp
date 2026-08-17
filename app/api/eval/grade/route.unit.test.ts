@@ -46,6 +46,7 @@ import {
   QUIZ_EVAL_INSTRUCTIONS,
   QUIZ_EVAL_MODEL,
   QUIZ_EVAL_PROVIDER,
+  QUIZ_EVAL_REASONING,
 } from "@/app/mastra/quiz-agents";
 import { resetApiAuthForTests } from "@/lib/api-auth";
 import { buildAnswerMessage } from "@/lib/quiz-grading-prompt";
@@ -174,6 +175,17 @@ describe("POST /api/eval/grade validation", () => {
     expect(mocks.generate).not.toHaveBeenCalled();
   });
 
+  it("400s an unknown reasoning level, terminally", async () => {
+    const res = await postRequest(
+      { ...VALID_BODY, llm: { model: "m", reasoning: "turbo" } },
+      await mint(),
+    );
+    // A retry could never turn "turbo" into a level, so this must not be a 502.
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ message: expect.stringContaining("turbo") });
+    expect(mocks.generate).not.toHaveBeenCalled();
+  });
+
   it("400s an answer that is empty after trimming", async () => {
     const res = await postRequest({ ...VALID_BODY, answer: "   \n  " }, await mint());
     expect(res.status).toBe(400);
@@ -218,6 +230,30 @@ describe("POST /api/eval/grade grading", () => {
     expect(ctx.get(USAGE_CODE)).toBe("cli-eval");
     expect(ctx.get(USAGE_MODULE)).toBe("eval");
     expect(ctx.get(USAGE_USER_ID)).toBe("teacher-oid-1");
+  });
+
+  it("passes a valid reasoning level through as the agent's context key", async () => {
+    await postRequest(
+      { ...VALID_BODY, llm: { model: "test-model", reasoning: "high" } },
+      await mint(),
+    );
+
+    const [, opts] = mocks.generate.mock.calls[0] as [
+      string,
+      { requestContext: { get(key: string): unknown } },
+    ];
+    expect(opts.requestContext.get(QUIZ_EVAL_REASONING)).toBe("high");
+  });
+
+  it("leaves the reasoning key UNSET when the body carries no level", async () => {
+    await postRequest(VALID_BODY, await mint());
+
+    const [, opts] = mocks.generate.mock.calls[0] as [
+      string,
+      { requestContext: { get(key: string): unknown } },
+    ];
+    // Unset ⇒ the resolver sends no `reasoning_effort` at all, the model's own default.
+    expect(opts.requestContext.get(QUIZ_EVAL_REASONING)).toBeUndefined();
   });
 
   it("defaults the provider to SCCH when the body omits it", async () => {

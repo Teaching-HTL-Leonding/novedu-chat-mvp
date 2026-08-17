@@ -58,8 +58,9 @@ Get right:
 - --kind is caller-declared, exactly like validate's, minus fragment.
 - A local path and a public URL both work. A URL reads the published file, so commit
   and push first.
-- The dump reports the activity file's own AI model. A model chosen per code when
-  sharing is not applied, because a dump describes a file.
+- The dump reports the activity file's own AI model, and its reasoning level when the
+  file sets one. What a code overrides when sharing is not applied, because a dump
+  describes a file.
 - A quiz's grading prompts contain the teacher-only evaluation criteria and are never
   shown to students. Say plainly that the output is teacher material, like the file.
 - No version history and no "this arrived later than that". The app is under heavy

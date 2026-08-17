@@ -1,3 +1,5 @@
+import type { ReasoningLevel } from "@/lib/llm/provider";
+
 // Pure helpers for the OpenAI-compatible coding proxy. No I/O, so they unit-test
 // hermetically. The route handler (app/api/coding/v1/chat/completions) wires these
 // to checkCode + loadCoding + the SCCH fetch.
@@ -57,10 +59,14 @@ function appendInstructions(existing: unknown, instructions: string): unknown {
  * client sent no system message, a leading one carrying only the teacher's instructions
  * is added. Everything else (messages, tools, tool_choice, temperature, stream, …)
  * passes through verbatim, so client-side tools and streaming are all preserved.
+ *
+ * A `reasoning` level (the effective activity/code setting) is pinned exactly like
+ * `model` — it OVERWRITES whatever the client sent as `reasoning_effort`. Without one
+ * the client's own `reasoning_effort` passes through untouched, like any other parameter.
  */
 export function buildUpstreamChatBody(
   clientBody: Record<string, unknown>,
-  opts: { instructions: string; model: string },
+  opts: { instructions: string; model: string; reasoning?: ReasoningLevel },
 ): Record<string, unknown> {
   const clientMessages = Array.isArray(clientBody.messages) ? clientBody.messages : [];
   const systemIndex = clientMessages.findLastIndex((m) => isRecord(m) && m.role === "system");
@@ -81,6 +87,7 @@ export function buildUpstreamChatBody(
   }
 
   const upstream: Record<string, unknown> = { ...clientBody, model: opts.model, messages };
+  if (opts.reasoning) upstream.reasoning_effort = opts.reasoning;
   // When the client streams, ask the upstream to emit a final usage chunk so the
   // route can meter tokens (non-streamed responses already carry `usage`). Any
   // client-supplied `stream_options` are preserved.

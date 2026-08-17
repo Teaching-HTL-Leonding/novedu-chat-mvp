@@ -36,6 +36,33 @@ describe("loadAndBuildTutorPrompt — happy path", () => {
   });
 });
 
+describe("loadAndBuildTutorPrompt — reasoning level", () => {
+  // The tutor declares no `llm.reasoning`; the variant patches the llm block to
+  // exercise the field without a second fixture.
+  const withReasoning = (value: string) =>
+    TUTOR_YAML.replace("  model: test-model", `  model: test-model\n  reasoning: ${value}`);
+
+  it("leaves reasoning undefined when the tutor omits llm.reasoning", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.reasoning).toBeUndefined();
+  });
+
+  it("surfaces an explicit level from the tutor's llm block", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withReasoning("high"))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.reasoning).toBe("high");
+  });
+
+  it("TUTOR_SCHEMA_ERROR for an unknown level", async () => {
+    const overrides = new Map([[TUTOR_URL, fixtureResponse(withReasoning("turbo"))]]);
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.errors[0]?.code).toBe("TUTOR_SCHEMA_ERROR");
+  });
+});
+
 describe("loadAndBuildTutorPrompt — image input flag", () => {
   // The tutor declares no `llm.imageInput`; these variants patch the llm block to
   // exercise the flag without a second fixture.

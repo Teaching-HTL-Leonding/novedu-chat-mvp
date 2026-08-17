@@ -126,7 +126,7 @@
           "maxLength": 200
         },
         "llm": {
-          "description": "Per-code LLM override replacing the activity YAML's own `llm:`. Provider and model must be given together.",
+          "description": "Per-code LLM override replacing the activity YAML's own `llm:`. Provider and model must be given together; `reasoning` is optional on top of them.",
           "type": "object",
           "properties": {
             "provider": {
@@ -142,6 +142,16 @@
               "minLength": 1,
               "maxLength": 256,
               "description": "Model id (for Azure Foundry, the deployment name). Required when `llm` is present."
+            },
+            "reasoning": {
+              "description": "Optional reasoning effort for reasoning models, applied on top of the provider/model pair. Omit to let the model decide.",
+              "type": "string",
+              "enum": [
+                "minimal",
+                "low",
+                "medium",
+                "high"
+              ]
             }
           },
           "required": [

@@ -228,7 +228,7 @@ export function formatEvalResult(result: EvalCheckResult, source: string): strin
   } else {
     lines.push(`  questions: ${result.evalFile.questions.length}   cases: ${result.caseCount}`);
   }
-  lines.push(`  ${result.kind} model: ${result.llm.provider} / ${result.llm.model}`);
+  lines.push(`  ${result.kind} model: ${llmSpecText(result.llm)}`);
   if (result.warnings.length) {
     lines.push("");
     lines.push(yellow(`${result.warnings.length} warning(s):`));
@@ -293,6 +293,15 @@ function mismatchLines(result: EvalRunResult): string[] {
 }
 
 /**
+ * One llm spec as the reports name it: `SCCH / gemma-4`, with ` (reasoning: high)`
+ * appended whenever an effort level applies — two runs of one model at different efforts
+ * behave differently, so the level belongs in the header.
+ */
+function llmSpecText(spec: { provider: string; model: string; reasoning?: string }): string {
+  return `${spec.provider} / ${spec.model}${spec.reasoning ? ` (reasoning: ${spec.reasoning})` : ""}`;
+}
+
+/**
  * The human report for ONE eval run: header (id, target, the EFFECTIVE llm — rendered
  * as `quiz-llm → override-llm` when `--llm-provider`/`--llm-model` was used, so a
  * comparison report can never be mistaken for a baseline one), one line per
@@ -307,15 +316,21 @@ export function formatEvalReport(result: EvalRunResult, source: string): string 
     `  target: ${result.target}`,
   ];
   const llm = result.llm.overrides
-    ? `${result.llm.overrides.provider} / ${result.llm.overrides.model} ${yellow("→")} ${result.llm.provider} / ${result.llm.model} ${yellow("(override)")}`
-    : `${result.llm.provider} / ${result.llm.model}`;
+    ? `${llmSpecText(result.llm.overrides)} ${yellow("→")} ${llmSpecText(result.llm)} ${yellow("(override)")}`
+    : llmSpecText(result.llm);
   lines.push(`  llm: ${llm}`);
-  // The judge pair, but only when it differs from the grading one — judge strictness
-  // varies by model, so a differing pair is exactly what makes two reports comparable.
+  // The judge spec, but only when it differs from the grading one — judge strictness
+  // varies by model AND by reasoning effort, so a differing spec is exactly what makes
+  // two reports comparable.
   const judge = result.llm.judge;
-  if (judge && (judge.provider !== result.llm.provider || judge.model !== result.llm.model)) {
+  if (
+    judge &&
+    (judge.provider !== result.llm.provider ||
+      judge.model !== result.llm.model ||
+      judge.reasoning !== result.llm.reasoning)
+  ) {
     lines.push(
-      `  judge llm: ${judge.provider} / ${judge.model}${judge.overridden ? ` ${yellow("(override)")}` : ""}`,
+      `  judge llm: ${llmSpecText(judge)}${judge.overridden ? ` ${yellow("(override)")}` : ""}`,
     );
   }
   const unit = result.kind === "tutor" ? "conversation" : "case";
@@ -508,7 +523,10 @@ export function formatPromptDump(
 ): string {
   const lines = [green(`✔ Prompts — ${dump.kind}`) + dim(` — ${source}`)];
   lines.push(`  id: ${dump.id}`);
-  lines.push(`  provider: ${dump.llm.provider}   model: ${dump.llm.model}`);
+  lines.push(
+    `  provider: ${dump.llm.provider}   model: ${dump.llm.model}` +
+      (dump.llm.reasoning ? `   reasoning: ${dump.llm.reasoning}` : ""),
+  );
   // A tutor's opted-in built-in tools ship to the model alongside the prompt.
   if (dump.kind === "tutor" && dump.tools.length > 0) {
     lines.push(`  tools: ${dump.tools.join(", ")}`);

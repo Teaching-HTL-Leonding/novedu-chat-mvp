@@ -1,14 +1,18 @@
 # AI models & LLM providers
 
 How the app talks to language models: two OpenAI-compatible providers behind one
-isolated seam. Every activity YAML picks its model with `llm.model` and its
-provider with `llm.provider` (`"SCCH"` when missing); no other code in the app
+isolated seam. Every activity YAML picks its model with `llm.model`, its
+provider with `llm.provider` (`"SCCH"` when missing), and optionally a
+**reasoning level** with `llm.reasoning` (below); no other code in the app
 knows which provider serves a request. The YAML values are the **default**: a
-code may carry a per-code `(provider, model)` **override pair**
-(`novedu_codes.llm_provider`/`llm_model`, both-or-nothing) that replaces them for
-every request served under that code — the precedence is `effectiveLlm`
-(`lib/code-store.ts`), applied at every consumption site (`docs/codes.md`), and
-the availability gate below runs on the EFFECTIVE provider. Metering is
+code may carry a per-code `{provider, model, reasoning?}` **override**
+(`novedu_codes.llm_provider`/`llm_model`/`llm_reasoning`; the pair is
+both-or-nothing, `reasoning` an optional third member) that replaces the whole
+`llm:` block for every request served under that code — WHOLESALE, so an
+override without a level also drops the YAML's level. The precedence is
+`effectiveLlm` (`lib/code-store.ts`), applied at every consumption site
+(`docs/codes.md`), and the availability gate below runs on the EFFECTIVE
+provider. Metering is
 unaffected: the exporter reads the actually-resolved provider/model off the span
 (the named-provider contract below), and the coding proxy meters its effective
 pair explicitly.
@@ -51,7 +55,9 @@ learns which provider answered.
 - `lib/llm/provider.ts` — pure, client-safe: the `LlmProvider` type, the two
   literals, `DEFAULT_PROVIDER`, the zod `providerSchema` (default `"SCCH"`) all
   four activity schemas embed, `parseLenientProvider` for the lenient runtime
-  parsers, and the ai-sdk **provider names** (`"scch"` / `"azure-foundry"`) with
+  parsers, the reasoning-level counterparts (`REASONING_LEVELS`,
+  `reasoningLevelSchema`, `parseLenientReasoningLevel` — below), and the ai-sdk
+  **provider names** (`"scch"` / `"azure-foundry"`) with
   `providerFromModelProviderId` — the metering contract (below).
 - `lib/llm/model.ts` — **the agent path**: `resolveLanguageModel(provider, model)`
   returns an ai-sdk chat model (`scchProvider.chat(model)` or the lazily-built
@@ -66,7 +72,8 @@ learns which provider answered.
   reject `max_tokens` (it becomes `max_completion_tokens`) and non-default
   `temperature`/`top_p` (dropped), while SCCH's vLLM speaks the classic dialect
   (identity). The hook is pure and never touches `stream`/`stream_options`
-  (the usage tap's `include_usage`) or `model`/`messages`.
+  (the usage tap's `include_usage`), `model`/`messages`, or `reasoning_effort`
+  (which both dialects accept — asserted in `lib/llm/endpoint.unit.test.ts`).
 - `lib/llm/availability.ts` — **the availability check** (app-only, never bundled
   by the CLI): `providerUnavailableReason(provider)` → `null` or a teacher-readable
   reason (Foundry named without `AZURE_FOUNDRY_ENDPOINT`). Consumed by the
@@ -82,6 +89,36 @@ learns which provider answered.
 Adding a provider = one branch in each of the three functions above + a name
 constant/mapping in `provider.ts` + the schema enum literal (+ docs). Nothing else
 changes.
+
+## The reasoning level
+
+Reasoning models (e.g. Foundry's gpt-5.6 deployments) accept an OpenAI
+`reasoning_effort` parameter. The app models it as an optional `llm.reasoning`
+field — one of `minimal`/`low`/`medium`/`high` (`REASONING_LEVELS`,
+`lib/llm/provider.ts`) — in every activity YAML and as the optional third member
+of the per-code override (above). Absent means the parameter is **not sent**, so
+the model's own default applies. The value is provider-AGNOSTIC: it is sent to
+SCCH too (both providers speak the OpenAI dialect), and a model that rejects a
+level fails at runtime exactly like a wrong model name. SCCH additionally serves
+some models as separate reasoning-ON/OFF ids — that stays a `model` choice, not a
+`reasoning` one.
+
+How the level reaches the wire, per path:
+
+- **Agent path**: every agent's `model:` resolver returns `modelEntry(provider,
+  model, reasoning)` (`app/mastra/model-entry.ts`) — the `ModelWithRetries[]`
+  array form carrying `providerOptions: { openai: { reasoningEffort } }`. The
+  array form is REQUIRED: a bare-model return drops `providerOptions`, and
+  Mastra's `modelSettings.reasoning` is a no-op on ai-sdk v3, so neither is an
+  alternative. The `"openai"` key is fixed by `@ai-sdk/openai` regardless of the
+  instance name, so one shape serves both providers.
+- **Raw path** (the coding proxy): `buildUpstreamChatBody` (`lib/coding-proxy.ts`)
+  pins `reasoning_effort` exactly like it pins `model` — the effective level
+  OVERWRITES a client-sent value; with no level configured the client's own
+  `reasoning_effort` passes through untouched.
+
+Metering is unaffected (output tokens already include reasoning tokens,
+`docs/usage-metering.md`).
 
 ## Reporting an upstream failure
 

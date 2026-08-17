@@ -17,7 +17,7 @@ export interface ServerCode {
   note: string | null;
   validFrom: string | null;
   validUntil: string | null;
-  llm: { provider: string; model: string } | null;
+  llm: { provider: string; model: string; reasoning: string | null } | null;
   createdAt: string | null;
 }
 
@@ -67,6 +67,12 @@ export function parseServerCodes(payload: unknown): ServerCode[] {
           ? {
               provider: String((llm as Record<string, unknown>).provider ?? ""),
               model: String((llm as Record<string, unknown>).model ?? ""),
+              // A server predating the reasoning level simply omits the field; read
+              // defensively so "no level" and "some other shape" both compare as null.
+              reasoning:
+                typeof (llm as Record<string, unknown>).reasoning === "string"
+                  ? ((llm as Record<string, unknown>).reasoning as string)
+                  : null,
             }
           : null,
       createdAt: typeof value.createdAt === "string" ? value.createdAt : null,
@@ -87,9 +93,20 @@ function sameInstant(a: string | null, b: string | null): boolean {
   return !Number.isNaN(left) && left === right;
 }
 
+/**
+ * The override compares WHOLE, reasoning level included: a code minted at a different
+ * effort serves different behavior, so it must not be reused. A differing level therefore
+ * fails the match and the entry mints a NEW code — sync never modifies an existing one
+ * (docs/registry.md). An absent level on either side compares as null, so an entry
+ * without `reasoning` keeps matching the codes minted before the field existed.
+ */
 function sameLlm(a: RegistryEntry["llm"], b: ServerCode["llm"]): boolean {
   if (a === null || b === null) return a === b;
-  return a.provider === b.provider && a.model === b.model;
+  return (
+    a.provider === b.provider &&
+    a.model === b.model &&
+    (a.reasoning ?? null) === (b.reasoning ?? null)
+  );
 }
 
 /**

@@ -5,11 +5,12 @@ import {
   EVAL_JUDGE_INSTRUCTIONS,
   EVAL_JUDGE_MODEL,
   EVAL_JUDGE_PROVIDER,
+  EVAL_JUDGE_REASONING,
 } from "@/app/mastra/eval-agents";
 import { ApiAuthError, requireBearerTeacher } from "@/lib/api-auth";
 import { readBoundedJson } from "@/lib/bounded-json";
 import { providerUnavailableReason } from "@/lib/llm/availability";
-import { DEFAULT_PROVIDER, parseLenientProvider } from "@/lib/llm/provider";
+import { DEFAULT_PROVIDER, parseLenientProvider, REASONING_LEVELS } from "@/lib/llm/provider";
 import { classifyUpstreamLlmError } from "@/lib/llm/upstream-error";
 import { type FeedbackJudgeIssue, judgmentSchema } from "@/lib/quiz-feedback-judge";
 import { recordError } from "@/lib/telemetry";
@@ -53,6 +54,10 @@ const JudgeBodySchema = z.strictObject({
   llm: z.strictObject({
     provider: z.string().optional(),
     model: z.string().min(1).max(256),
+    // The judge's optional reasoning effort. Enum-checked right here (unlike the grade
+    // route's hand-parsed `provider`), so an unknown level is the same terminal 400 a
+    // malformed body gets — a retry could never turn it into a valid one.
+    reasoning: z.enum(REASONING_LEVELS).optional(),
   }),
   system: z.string().min(1),
   subject: z.string().min(1),
@@ -66,7 +71,7 @@ const JudgeBodySchema = z.strictObject({
 
 /**
  * Judges one grader feedback. Body
- * `{ llm: { provider?, model }, system, subject, criteria }` →
+ * `{ llm: { provider?, model, reasoning? }, system, subject, criteria }` →
  * `200 { issues: [{ criterion, note }], usage? }`, where an EMPTY `issues` array means the
  * feedback is acceptable (there is deliberately no `ok` flag) and the OPTIONAL
  * `usage: { input, cachedInput, output }` carries this call's tokens when the provider
@@ -92,7 +97,10 @@ export async function POST(request: Request): Promise<Response> {
     const parsed = JudgeBodySchema.safeParse(read.value);
     if (!parsed.success) {
       return json(
-        { message: "Provide `llm: { provider?, model }`, `system`, `subject` and `criteria`." },
+        {
+          message:
+            "Provide `llm: { provider?, model, reasoning? }`, `system`, `subject` and `criteria`.",
+        },
         400,
       );
     }
@@ -115,6 +123,9 @@ export async function POST(request: Request): Promise<Response> {
     requestContext.set(EVAL_JUDGE_INSTRUCTIONS, body.system);
     requestContext.set(EVAL_JUDGE_MODEL, body.llm.model);
     requestContext.set(EVAL_JUDGE_PROVIDER, provider);
+    // Only when the caller pinned one: an unset key means no `reasoning_effort` is sent
+    // at all, which is what "let the model decide" means.
+    if (body.llm.reasoning) requestContext.set(EVAL_JUDGE_REASONING, body.llm.reasoning);
     // Judge tokens land in the SAME buckets as the gradings they audit — one eval run is
     // one cost, and splitting it would only make the dashboard harder to read.
     requestContext.set(USAGE_CODE, EVAL_USAGE_CODE);

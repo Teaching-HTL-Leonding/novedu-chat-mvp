@@ -95,6 +95,16 @@
             "Azure Foundry"
           ]
         },
+        "reasoning": {
+          "description": "Optional reasoning effort for reasoning models. Omit to let the model decide (the parameter is then not sent).",
+          "type": "string",
+          "enum": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
         "imageInput": {
           "default": true,
           "description": "Image uploads are enabled by default. Set to false to hide the upload UI for text-only tutors or non-vision-capable models.",

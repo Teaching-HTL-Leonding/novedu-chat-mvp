@@ -1,0 +1,1 @@
+ALTER TABLE [novedu_codes] ADD [llm_reasoning] varchar(16);

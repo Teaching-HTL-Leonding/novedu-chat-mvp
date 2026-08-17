@@ -50,6 +50,7 @@ export async function loadAndBuildTutorPrompt(
     prompt: assembled.prompt,
     model: tutor.llm.model,
     provider: tutor.llm.provider,
+    reasoning: tutor.llm.reasoning,
     imageInput: tutor.llm.imageInput ?? true,
     tools: tutor.tools,
     anonymous: tutor.anonymous ?? true,

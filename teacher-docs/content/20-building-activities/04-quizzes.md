@@ -65,7 +65,7 @@ Field by field:
 - **`title`** and **`description`** (optional): what students see on the welcome screen before the first question. Write the `description` for your students.
 - **`anonymous`** (optional, default `true`): by default a quiz is anonymous, so answers feed the statistics but aren't linked to a student. Set `anonymous: false` to attribute each attempt to the signed-in student. The setting is frozen onto a code when you create one; editing the file later doesn't change a live code.
 - **`shuffle`** (optional, default `true`): questions appear in a random order per attempt. Set `shuffle: false` to keep your authored order.
-- **`llm.model`** (required): the model that grades the answers and drives the discussion chat. You can also set an optional `llm.provider` (the provider decides where the AI runs); the create-code form can override both per code.
+- **`llm.model`** (required): the model that grades the answers and drives the discussion chat. You can also set an optional `llm.provider` (the provider decides where the AI runs) and an optional `llm.reasoning` level (how hard the model thinks before it grades); the create-code form can override all three per code.
 - **`question_count`** (optional): how many questions one attempt asks. Leave it out to ask every question exactly once; see "How many questions one attempt asks" below.
 - **`questions`** (required, unless the quiz pulls its questions from other quiz files with `quiz_files`): each question needs an `id` (unique within the quiz), a `question`, and an `evaluation`; an optional `title` labels it in the statistics and progress display.
 

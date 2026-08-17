@@ -74,6 +74,35 @@ questions:
     expect(foundry.ok && foundry.quiz.provider).toBe("Azure Foundry");
   });
 
+  it("leaves a missing llm.reasoning undefined and carries an explicit level", () => {
+    const absent = parseQuiz(VALID);
+    expect(absent.ok && absent.quiz.reasoning).toBeUndefined();
+    const pinned = parseQuiz(`
+llm:
+  model: m
+  reasoning: high
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+`);
+    expect(pinned.ok && pinned.quiz.reasoning).toBe("high");
+  });
+
+  it("rejects an unsupported llm.reasoning, naming the four levels", () => {
+    const result = parseQuiz(`
+llm:
+  model: m
+  reasoning: turbo
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+`);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/minimal.*low.*medium.*high/);
+  });
+
   it.each([
     ["invalid YAML", ":::not yaml::: ["],
     ["missing model", "questions:\n  - id: a\n    question: Q\n    evaluation: E\n"],

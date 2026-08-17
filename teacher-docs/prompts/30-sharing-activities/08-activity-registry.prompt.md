@@ -18,7 +18,8 @@ Cover:
 - The registry file, with a worked multi-module example (quizzes and a tutor): the
   base address, the four groups (quizzes, tutors, writing, coding) and which activity
   kind each one means, and what an entry may say (the file, an availability window, a
-  note, a model override). Say plainly which of those are optional.
+  note, a model override that may also carry a reasoning level). Say plainly which of
+  those are optional.
 - The names: you pick them, they must be unique across the whole file, and lowercase
   letters, digits and hyphens only.
 - Running the command, what its report says (reused, minted, failed), and the
@@ -26,7 +27,8 @@ Cover:
 - The generated lock file: commit it, never edit it, it is rewritten every run.
 - What happens on re-runs, which is the part teachers most need to trust: an activity
   whose file, window and model override are unchanged keeps its code, so re-running is
-  routine and safe. Changing the window or the model override gives a NEW code, and the
+  routine and safe. Changing the window or any part of the model override — the
+  reasoning level included, on its own — gives a NEW code, and the
   old one keeps working until deleted; changing only the note never changes the code.
   Removing an entry drops the name from the lock file and leaves the code alone.
 - Using the lock file in the material, with the Quarto book as the worked example:

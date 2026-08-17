@@ -1,7 +1,12 @@
 import { Agent } from "@mastra/core/agent";
 import type { RequestContext } from "@mastra/core/request-context";
-import { resolveLanguageModel } from "@/lib/llm/model";
-import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
+import {
+  DEFAULT_PROVIDER,
+  type LlmProvider,
+  parseLenientProvider,
+  parseLenientReasoningLevel,
+} from "@/lib/llm/provider";
+import { modelEntry } from "./model-entry";
 import { selectTutorTools } from "./tutor-tools";
 
 // The two agents behind the teacher-only eval endpoints (docs/cli-eval.md):
@@ -31,11 +36,15 @@ import { selectTutorTools } from "./tutor-tools";
 export const EVAL_JUDGE_INSTRUCTIONS = "eval-judge-instructions";
 export const EVAL_JUDGE_MODEL = "eval-judge-model";
 export const EVAL_JUDGE_PROVIDER = "eval-judge-provider";
+/** Optional reasoning effort for the judge; absent = the model's own default. */
+export const EVAL_JUDGE_REASONING = "eval-judge-reasoning";
 
 // The tutor-generation agent's own keys, distinct again for the same reason.
 export const EVAL_TUTOR_INSTRUCTIONS = "eval-tutor-instructions";
 export const EVAL_TUTOR_MODEL = "eval-tutor-model";
 export const EVAL_TUTOR_PROVIDER = "eval-tutor-provider";
+/** Optional reasoning effort for the tutor under test; absent = the model's default. */
+export const EVAL_TUTOR_REASONING = "eval-tutor-reasoning";
 /** The tutor's `tools:` grant for this run, as the catalog names the route validated. */
 export const EVAL_TUTOR_TOOLS = "eval-tutor-tools";
 
@@ -48,7 +57,8 @@ function requiredString(requestContext: RequestContext, key: string): string {
 }
 
 // An absent provider key means SCCH (matching the YAML default); the route already
-// rejected an invalid value, so lenient reading here is safe.
+// rejected an invalid value, so lenient reading here is safe. The reasoning key is
+// read the same way at each resolver: absent pins no effort.
 function providerFrom(requestContext: RequestContext, key: string): LlmProvider {
   return parseLenientProvider(requestContext.get(key)) ?? DEFAULT_PROVIDER;
 }
@@ -72,9 +82,10 @@ export const evalJudgeAgent = new Agent({
   name: "Eval Judge",
   instructions: ({ requestContext }) => requiredString(requestContext, EVAL_JUDGE_INSTRUCTIONS),
   model: ({ requestContext }) =>
-    resolveLanguageModel(
+    modelEntry(
       providerFrom(requestContext, EVAL_JUDGE_PROVIDER),
       requiredString(requestContext, EVAL_JUDGE_MODEL),
+      parseLenientReasoningLevel(requestContext.get(EVAL_JUDGE_REASONING)),
     ),
 });
 
@@ -91,9 +102,10 @@ export const evalTutorAgent = new Agent({
   name: "Eval Tutor",
   instructions: ({ requestContext }) => requiredString(requestContext, EVAL_TUTOR_INSTRUCTIONS),
   model: ({ requestContext }) =>
-    resolveLanguageModel(
+    modelEntry(
       providerFrom(requestContext, EVAL_TUTOR_PROVIDER),
       requiredString(requestContext, EVAL_TUTOR_MODEL),
+      parseLenientReasoningLevel(requestContext.get(EVAL_TUTOR_REASONING)),
     ),
   tools: ({ requestContext }) => selectTutorTools(toolNames(requestContext, EVAL_TUTOR_TOOLS)),
 });

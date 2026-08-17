@@ -120,6 +120,40 @@ describe("renderEvalMarkdownReport — a clean run", () => {
 
     expect(md).toContain("- **LLM** SCCH / gemma-4 → Azure Foundry / gpt-5-mini (override)");
   });
+
+  // The effort is part of a run's identity: the same model at another level behaves
+  // differently, so two reports are only comparable when this line matches.
+  it("names the reasoning effort wherever a spec carries one", () => {
+    const md = render([
+      {
+        source: "file:///a/pass.eval.yaml",
+        status: "ok",
+        result: runResult({
+          judging: "on",
+          llm: {
+            provider: "Azure Foundry",
+            model: "gpt-5.6-terra",
+            reasoning: "high",
+            overrides: { provider: "SCCH", model: "gemma-4", reasoning: "low" },
+            judge: {
+              provider: "Azure Foundry",
+              model: "gpt-5.6-terra",
+              reasoning: "minimal",
+              overridden: true,
+            },
+          },
+        }),
+      },
+    ]);
+
+    expect(md).toContain(
+      "- **LLM** SCCH / gemma-4 (reasoning: low) → Azure Foundry / gpt-5.6-terra (reasoning: high) (override)",
+    );
+    // The judge shares the grading PAIR but not its effort — still a different judge.
+    expect(md).toContain(
+      "- **Feedback judge** Azure Foundry / gpt-5.6-terra (reasoning: minimal) (override)",
+    );
+  });
 });
 
 describe("renderEvalMarkdownReport — a batch that went wrong", () => {

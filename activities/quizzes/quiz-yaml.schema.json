@@ -127,6 +127,16 @@
             "Azure Foundry"
           ]
         },
+        "reasoning": {
+          "description": "Optional reasoning effort for reasoning models. Omit to let the model decide (the parameter is then not sent).",
+          "type": "string",
+          "enum": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ]
+        },
         "imageInput": {
           "default": false,
           "description": "Default for all questions: students may attach photos (up to 3, 5 MB each) to their answers. The model must be vision-capable. A per-question imageInput overrides it.",

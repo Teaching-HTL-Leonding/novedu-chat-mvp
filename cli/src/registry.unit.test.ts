@@ -102,6 +102,42 @@ activities:
     expect(entry?.llm).toEqual({ provider: "Azure Foundry", model: "gpt-5" });
   });
 
+  it("carries the override's optional reasoning level, and omits it when absent", () => {
+    const [withLevel] = entries(
+      parseRegistry(`
+activities:
+  tutors:
+    t:
+      url: https://example.com/t.yaml
+      llm:
+        provider: Azure Foundry
+        model: gpt-5.6-terra
+        reasoning: high
+`),
+    );
+    expect(withLevel?.llm).toEqual({
+      provider: "Azure Foundry",
+      model: "gpt-5.6-terra",
+      reasoning: "high",
+    });
+
+    const [withoutLevel] = entries(
+      parseRegistry(`
+activities:
+  tutors:
+    t:
+      url: https://example.com/t.yaml
+      llm:
+        provider: SCCH
+        model: gemma-4
+`),
+    );
+    // The key is ABSENT, not `undefined`: the entry is serialized straight into the mint
+    // body, where an undefined-valued key would travel as `null`.
+    expect(withoutLevel?.llm).toEqual({ provider: "SCCH", model: "gemma-4" });
+    expect(withoutLevel?.llm && "reasoning" in withoutLevel.llm).toBe(false);
+  });
+
   it("accepts unknown extra properties at root, group and entry level", () => {
     const result = parseRegistry(`
 base-url: "${BASE}"
@@ -390,6 +426,23 @@ activities:
 `),
       )[0]?.path,
     ).toBe("activities.tutors.t.llm.provider");
+  });
+
+  it("rejects an unknown reasoning level", () => {
+    const [issue] = errors(
+      parseRegistry(`
+activities:
+  tutors:
+    t:
+      url: https://example.com/t.yaml
+      llm:
+        provider: SCCH
+        model: gemma-4
+        reasoning: turbo
+`),
+    );
+    expect(issue?.path).toBe("activities.tutors.t.llm.reasoning");
+    expect(issue?.message).toContain("minimal");
   });
 
   it("rejects an incomplete llm pair", () => {

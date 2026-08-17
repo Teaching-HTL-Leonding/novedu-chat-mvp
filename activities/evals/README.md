@@ -262,13 +262,15 @@ novedu-cli eval ./0010-welcome-quiz.eval.yaml --no-judge-feedback
 
 # A stronger model as the judge (recommended): both flags, always together
 novedu-cli eval ./0010-welcome-quiz.eval.yaml \
-  --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra
+  --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra \
+  --judge-llm-reasoning high
 ```
 
 Judging is **on by default** and roughly **doubles** what a run costs — which is why the
 run tells you the number of calls before it starts. Without the judge flags the judge
-uses the same model as the grader; a stronger judge over a smaller grader gives noticeably
-better notes, and the report always records which model judged.
+uses the same model **and reasoning effort** as the grader; `--judge-llm-reasoning`
+changes only the effort and needs no pair. A stronger judge over a smaller grader gives
+noticeably better notes, and the report always records which model judged.
 
 If the judge model itself has trouble, judging **stops** after three failures in a row
 (you get one warning) and the grading finishes normally. Your verdict results are still
@@ -293,11 +295,14 @@ the same to your students. (Three repeats also cost three times as much.)
 ```bash
 novedu-cli eval ./welcome.eval.yaml                                        # your quiz's model
 novedu-cli eval ./welcome.eval.yaml --llm-provider "Azure Foundry" --llm-model gpt-5-mini
+novedu-cli eval ./welcome.eval.yaml --llm-reasoning high                   # same model, more thinking
 ```
 
 Same rubric, same golden answers, a different backend — then compare the two reports.
-The two flags always go **together**. This affects only the run; it does not change
-your quiz or any code you handed out.
+The two model flags always go **together** and replace your quiz's whole `llm:` block,
+so its `reasoning` level is dropped unless `--llm-reasoning` restates it; that flag on
+its own keeps the quiz's own model and changes only the effort. This affects only the
+run; it does not change your quiz or any code you handed out.
 
 ### A whole folder at once
 
