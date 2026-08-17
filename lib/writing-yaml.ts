@@ -1,5 +1,11 @@
 import { parse as parseYamlText } from "yaml";
-import { DEFAULT_PROVIDER, type LlmProvider, parseLenientProvider } from "./llm/provider";
+import {
+  DEFAULT_PROVIDER,
+  type LlmProvider,
+  parseLenientProvider,
+  parseLenientReasoningLevel,
+  type ReasoningLevel,
+} from "./llm/provider";
 import type { FragmentBlock } from "./prompt-fragments";
 import { readFragmentBlock } from "./prompt-fragments/block";
 import type { WritingPublic } from "./writing-types";
@@ -34,6 +40,11 @@ export interface Writing {
   model: string;
   /** The LLM provider serving `model` (`llm.provider`, default SCCH). SERVER-ONLY. */
   provider: LlmProvider;
+  /**
+   * Optional reasoning effort for `model` (`llm.reasoning`). Absent ⇒ no
+   * `reasoning_effort` is sent and the model's own default applies. SERVER-ONLY.
+   */
+  reasoning?: ReasoningLevel;
   /**
    * The teacher-provided system prompt for the feedback chat. SERVER-ONLY. `loadWriting`
    * prepends the assembled document-level fragment block ahead of it; `parseWriting`
@@ -105,6 +116,18 @@ export function parseWriting(content: string): WritingParseResult {
     };
   }
 
+  // Absent ⇒ no reasoning effort is sent; present-but-invalid is rejected so an
+  // activity never silently runs at the model's default effort.
+  const reasoning =
+    llm?.reasoning === undefined ? undefined : parseLenientReasoningLevel(llm.reasoning);
+  if (llm?.reasoning !== undefined && !reasoning) {
+    return {
+      ok: false,
+      message:
+        'This writing activity uses an unsupported llm.reasoning (use "minimal", "low", "medium" or "high").',
+    };
+  }
+
   const instructions = asString(root.instructions);
   if (!instructions) {
     return { ok: false, message: "This writing activity has no instructions for the assistant." };
@@ -120,6 +143,7 @@ export function parseWriting(content: string): WritingParseResult {
       anonymous: asBool(root.anonymous, false),
       model,
       provider,
+      reasoning,
       instructions,
       // Carried through for `loadWriting` to resolve + prepend to `instructions`.
       fragmentBlock: readFragmentBlock(root),

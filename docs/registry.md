@@ -92,7 +92,7 @@ activities:
 | `url` | ” | absolute `http(s)` URL |
 | `start` / `end` | no | ISO 8601 **with an explicit offset or `Z`** (the rule `POST /api/codes` enforces), **whole seconds** (see below); `end` must be after `start` |
 | `note` | no | ≤ 200 chars, trimmed like the server trims it, passed as the code's note at mint time; no behavioral effect |
-| `llm` | no | `{provider, model}`, both required when present (the API's both-or-nothing rule); `provider` is `SCCH` or `Azure Foundry` |
+| `llm` | no | `{provider, model, reasoning?}` — provider and model both required when present (the API's both-or-nothing rule); `provider` is `SCCH` or `Azure Foundry`; `reasoning` an optional `minimal`/`low`/`medium`/`high` (docs/ai-models.md) |
 
 Resolved URLs are normalized with `URL.href` — the same form
 `validateCodeRequest` stores in `file_url` — so matching compares identical
@@ -181,7 +181,8 @@ same bearer plumbing as the other `codes` commands.
    serves every group; the API's `mine` default already scopes it to the caller).
 3. **Select one code per key**, then per entry, in registry order:
    - **Match** = a code whose normalized `fileUrl`, `module`, `validFrom`,
-     `validUntil` and `llm` pair all equal the entry's. Timestamps compare as
+     `validUntil` and `llm` (provider, model AND reasoning level — a differing
+     level mints a new code) all equal the entry's. Timestamps compare as
      **instants** (epoch), not strings, so `+02:00` and `Z` spellings of the same
      moment match; an absent bound matches only `null`. **`note` is excluded** —
      it is a label for the teacher, not part of the code's behavior, so editing

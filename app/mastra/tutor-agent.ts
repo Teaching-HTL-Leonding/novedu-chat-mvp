@@ -2,10 +2,15 @@ import { Agent } from "@mastra/core/agent";
 import type { RequestContext } from "@mastra/core/request-context";
 import { Memory } from "@mastra/memory";
 import { providerUnavailableReason } from "@/lib/llm/availability";
-import { resolveLanguageModel } from "@/lib/llm/model";
-import { type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
+import {
+  type LlmProvider,
+  parseLenientProvider,
+  parseLenientReasoningLevel,
+  type ReasoningLevel,
+} from "@/lib/llm/provider";
 import { defaultFetcher } from "@/lib/prompt-fragments";
 import { loadAndBuildTutorPrompt } from "@/lib/tutors";
+import { modelEntry } from "./model-entry";
 import { selectTutorTools } from "./tutor-tools";
 
 // A single agent that is configured entirely by a tutor-definition YAML. The
@@ -17,15 +22,20 @@ import { selectTutorTools } from "./tutor-tools";
 // RequestContext keys the tutor module's buildRequestContext sets
 // (lib/code-modules/tutor.ts). The override pair is the code's per-code LLM
 // override (docs/ai-models.md): set together or not at all, it replaces the
-// tutor YAML's `llm.provider`/`llm.model` below.
+// tutor YAML's `llm.provider`/`llm.model` below. The reasoning key is the
+// pair's OPTIONAL third member — present only when the code's override carries
+// a level.
 export const TUTOR_URL = "tutor-url";
 export const TUTOR_PROVIDER_OVERRIDE = "tutor-provider-override";
 export const TUTOR_MODEL_OVERRIDE = "tutor-model-override";
+export const TUTOR_REASONING_OVERRIDE = "tutor-reasoning-override";
 
 interface LoadedTutor {
   prompt: string;
   model: string;
   provider: LlmProvider;
+  /** Reasoning effort to drive the model at; absent = the model's own default. */
+  reasoning?: ReasoningLevel;
   /** The YAML's validated `tools:` opt-in (docs/tutor-tools.md), [] by default. */
   tools: string[];
 }
@@ -61,13 +71,16 @@ function loadTutor(requestContext: RequestContext): Promise<LoadedTutor> {
       const override = llmOverride(requestContext);
       const provider = override?.provider ?? result.provider;
       const model = override?.model ?? result.model;
+      // WHOLESALE: an override replaces the YAML's whole `llm:` block, so a
+      // code overriding only the pair also drops the YAML's reasoning level.
+      const reasoning = override ? override.reasoning : result.reasoning;
       // The authoring gate blocks saving such a file, but externally hosted YAML
       // (or an env change) can still name a provider this server cannot serve —
       // fail with a clear reason via this loader's established throw channel.
       // Checked on the EFFECTIVE provider, so an override is gated too.
       const unavailable = providerUnavailableReason(provider);
       if (unavailable) throw new Error(unavailable);
-      return { prompt: result.prompt, model, provider, tools: result.tools };
+      return { prompt: result.prompt, model, provider, reasoning, tools: result.tools };
     },
   );
 
@@ -89,7 +102,7 @@ function tutorUrl(requestContext: RequestContext): string {
 // serving the YAML's (or the default) provider against the teacher's intent.
 function llmOverride(
   requestContext: RequestContext,
-): { provider: LlmProvider; model: string } | undefined {
+): { provider: LlmProvider; model: string; reasoning?: ReasoningLevel } | undefined {
   const rawProvider = requestContext.get(TUTOR_PROVIDER_OVERRIDE);
   const rawModel = requestContext.get(TUTOR_MODEL_OVERRIDE);
   if (rawProvider === undefined && rawModel === undefined) return undefined;
@@ -97,7 +110,16 @@ function llmOverride(
   if (!provider || typeof rawModel !== "string" || rawModel === "") {
     throw new Error("This code's LLM override is invalid. Ask the teacher to re-save the code.");
   }
-  return { provider, model: rawModel };
+  // The reasoning level is optional: an ABSENT key simply means no effort is
+  // pinned. A PRESENT one that isn't a known level is the same wiring bug as an
+  // invalid pair, so it fails the same way.
+  const rawReasoning = requestContext.get(TUTOR_REASONING_OVERRIDE);
+  const reasoning =
+    rawReasoning === undefined ? undefined : parseLenientReasoningLevel(rawReasoning);
+  if (rawReasoning !== undefined && !reasoning) {
+    throw new Error("This code's LLM override is invalid. Ask the teacher to re-save the code.");
+  }
+  return { provider, model: rawModel, ...(reasoning ? { reasoning } : {}) };
 }
 
 export const tutorAgent = new Agent({
@@ -108,7 +130,7 @@ export const tutorAgent = new Agent({
   instructions: async ({ requestContext }) => (await loadTutor(requestContext)).prompt,
   model: async ({ requestContext }) => {
     const loaded = await loadTutor(requestContext);
-    return resolveLanguageModel(loaded.provider, loaded.model);
+    return modelEntry(loaded.provider, loaded.model, loaded.reasoning);
   },
   // The YAML's opt-in tool selection (top-level `tools:`, docs/tutor-tools.md) —
   // an empty map for the (default) tool-less tutor. The platform never mentions

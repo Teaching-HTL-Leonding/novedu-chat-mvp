@@ -10,7 +10,13 @@ import { codes, users } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
-import { type LlmProvider, parseLenientProvider } from "@/lib/llm/provider";
+import {
+  type LlmProvider,
+  parseLenientProvider,
+  parseLenientReasoningLevel,
+  REASONING_LEVELS,
+  type ReasoningLevel,
+} from "@/lib/llm/provider";
 
 // Persistence for codes in the `novedu_codes` SQL table: every code a teacher
 // creates stores its `module`, the activity YAML URL (`file_url`), the
@@ -50,26 +56,33 @@ export const MAX_LLM_MODEL_LENGTH = 256;
 
 /**
  * A code's per-code LLM override: replaces the activity YAML's
- * `llm.provider`/`llm.model` for every request served under the code.
- * BOTH-OR-NOTHING — the pair exists as a whole or not at all (`null`); model ids
- * are provider-specific, so a lone half is meaningless and never stored.
+ * `llm.provider`/`llm.model`/`llm.reasoning` for every request served under the
+ * code. The PAIR is both-or-nothing — it exists as a whole or not at all
+ * (`null`); model ids are provider-specific, so a lone half is meaningless and
+ * never stored. `reasoning` is an OPTIONAL third member: it requires the pair,
+ * but the pair does not require it — an override without one means no
+ * reasoning effort at all, even when the activity YAML declares one (the
+ * override replaces the whole `llm:` block, see `effectiveLlm`).
  */
 export interface CodeLlmOverride {
   provider: LlmProvider;
   model: string;
+  reasoning?: ReasoningLevel;
 }
 
 /**
- * The provider+model a request under `entry` must be served with: the code's
- * override pair when set, the activity YAML's `llm:` values otherwise. The one
- * definition of the precedence — every consumption site (the module
+ * The provider+model (+ optional reasoning effort) a request under `entry` must
+ * be served with: the code's override when set, the activity YAML's `llm:`
+ * values otherwise. WHOLESALE — an override never merges with the YAML, so a
+ * code overriding provider+model alone also drops the YAML's reasoning level.
+ * The one definition of the precedence — every consumption site (the module
  * buildRequestContexts, the quiz grader, the tutor agent, the coding proxy)
  * goes through it.
  */
 export function effectiveLlm(
   entry: Pick<CodeEntry, "llm">,
-  activityLlm: { provider: LlmProvider; model: string },
-): { provider: LlmProvider; model: string } {
+  activityLlm: { provider: LlmProvider; model: string; reasoning?: ReasoningLevel },
+): { provider: LlmProvider; model: string; reasoning?: ReasoningLevel } {
   return entry.llm ?? activityLlm;
 }
 
@@ -113,6 +126,8 @@ export function validateCodeRequest(input: {
   note: unknown;
   llmProvider: unknown;
   llmModel: unknown;
+  /** Optional third member of the override — only meaningful with the pair. */
+  llmReasoning: unknown;
 }): CodeRequestValidation {
   let url: URL;
   try {
@@ -159,6 +174,17 @@ export function validateCodeRequest(input: {
         "The LLM override needs both a provider and a model — fill both fields or leave both blank.",
     };
   }
+  // The reasoning level is the override's OPTIONAL third member: blank means "no
+  // reasoning effort", and a level on its own is meaningless — it only ever
+  // applies to an overriding pair.
+  const reasoningText = (typeof input.llmReasoning === "string" ? input.llmReasoning : "").trim();
+  if (reasoningText && !providerText) {
+    return {
+      ok: false,
+      message:
+        "The LLM reasoning level needs a provider and a model override — fill both fields or leave the level blank.",
+    };
+  }
   let llm: CodeLlmOverride | null = null;
   if (providerText) {
     const provider = parseLenientProvider(providerText);
@@ -174,7 +200,14 @@ export function validateCodeRequest(input: {
         message: `The LLM override model must be at most ${MAX_LLM_MODEL_LENGTH} characters.`,
       };
     }
-    llm = { provider, model: modelText };
+    const reasoning = reasoningText ? parseLenientReasoningLevel(reasoningText) : undefined;
+    if (reasoningText && !reasoning) {
+      return {
+        ok: false,
+        message: `The LLM reasoning level must be one of ${REASONING_LEVELS.join(", ")}.`,
+      };
+    }
+    llm = { provider, model: modelText, ...(reasoning ? { reasoning } : {}) };
   }
 
   return { ok: true, payload: { fileUrl: url.href, validFrom, validUntil, note, llm } };
@@ -211,7 +244,7 @@ export interface CodeEntry {
   /**
    * The code's per-code LLM override, or `null` for "use the activity YAML's
    * `llm:` block". Editable on /codes/edit (NOT frozen like `anonymous`). Apply
-   * it via `effectiveLlm` — never read the pair's halves directly.
+   * it via `effectiveLlm` — never read its members directly.
    */
   llm: CodeLlmOverride | null;
   createdAt: Date;
@@ -238,18 +271,25 @@ function toEntry(row: typeof codes.$inferSelect): CodeEntry | null {
     console.error(`code-store: code ${row.code} has unknown module ${JSON.stringify(row.module)}`);
     return null;
   }
-  const { llmProvider, llmModel, ...rest } = row;
-  return { ...rest, module: row.module, llm: toLlmOverride(row.code, llmProvider, llmModel) };
+  const { llmProvider, llmModel, llmReasoning, ...rest } = row;
+  return {
+    ...rest,
+    module: row.module,
+    llm: toLlmOverride(row.code, llmProvider, llmModel, llmReasoning),
+  };
 }
 
-// Combines the two override columns into the both-or-nothing pair. Only the
-// validated create/edit actions write them, so a lone half or an unknown
-// provider is a corrupt row — logged, then treated as NO override so the code
-// keeps working on the activity YAML's own `llm:` values.
+// Combines the three override columns into the both-or-nothing pair plus its
+// optional reasoning level. Only the validated create/edit actions write them, so
+// a lone half or an unknown provider is a corrupt row — logged, then treated as
+// NO override so the code keeps working on the activity YAML's own `llm:`
+// values. An unknown stored REASONING is the milder corruption: the pair is
+// still meaningful on its own, so it survives and only the level is dropped.
 function toLlmOverride(
   code: string,
   provider: string | null,
   model: string | null,
+  reasoning: string | null,
 ): CodeLlmOverride | null {
   if (provider === null && model === null) return null;
   const parsed = provider === null ? undefined : parseLenientProvider(provider);
@@ -259,7 +299,13 @@ function toLlmOverride(
     );
     return null;
   }
-  return { provider: parsed, model };
+  const level = reasoning === null ? undefined : parseLenientReasoningLevel(reasoning);
+  if (reasoning !== null && !level) {
+    console.error(
+      `code-store: code ${code} has an invalid LLM reasoning level ${JSON.stringify(reasoning)}; ignoring it`,
+    );
+  }
+  return { provider: parsed, model, ...(level ? { reasoning: level } : {}) };
 }
 
 export type CreateCodeResult = { stored: true; code: string } | { stored: false };
@@ -296,7 +342,7 @@ export async function createCode(
     origin?: string;
     /** The activity YAML's `anonymous` flag, captured now and frozen on the row. */
     anonymous: boolean;
-    /** The per-code LLM override pair, or `null` for none. */
+    /** The per-code LLM override (pair + optional reasoning), or `null` for none. */
     llm: CodeLlmOverride | null;
   },
 ): Promise<CreateCodeResult> {
@@ -317,6 +363,7 @@ export async function createCode(
           anonymous: data.anonymous,
           llmProvider: data.llm?.provider ?? null,
           llmModel: data.llm?.model ?? null,
+          llmReasoning: data.llm?.reasoning ?? null,
           createdAt: new Date(),
         });
       return { stored: true, code: candidate };
@@ -516,7 +563,7 @@ export type UpdateCodeResult = { ok: true } | { ok: false; reason: "not-found" |
 
 /**
  * Updates the editable fields of a code: the availability window, the note, and
- * the LLM override pair (set or cleared as a whole). The file URL is
+ * the LLM override (set or cleared as a whole, its reasoning level included). The file URL is
  * INTENTIONALLY not updatable here — and neither is the frozen `anonymous` flag
  * (which is tied to that URL): editing them would break the documented
  * "anonymous frozen at create time" invariant. `not-found` if no row matches
@@ -541,6 +588,7 @@ export async function updateCode(
         note: data.note,
         llmProvider: data.llm?.provider ?? null,
         llmModel: data.llm?.model ?? null,
+        llmReasoning: data.llm?.reasoning ?? null,
       })
       .where(eq(codes.code, code));
     const ra = (updated as { rowsAffected?: unknown }).rowsAffected;

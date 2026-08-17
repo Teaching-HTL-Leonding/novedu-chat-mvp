@@ -15,7 +15,7 @@
 // The reused `llm` sub-schema carries `.meta({ id })` so it becomes a named `$def`.
 
 import { z } from "zod";
-import { providerSchema } from "@/lib/llm/provider";
+import { providerSchema, reasoningLevelSchema } from "@/lib/llm/provider";
 import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
 
 export const CodingYamlSchema = z.strictObject({
@@ -34,7 +34,8 @@ export const CodingYamlSchema = z.strictObject({
     .meta({ description: "Optional label shown to the student on the /<code> connection page." }),
   // The pinned model that answers. SERVER-ONLY — the proxy pins it and ignores
   // whatever model the coding agent sends; required. `provider` selects which LLM
-  // endpoint serves it (default SCCH).
+  // endpoint serves it (default SCCH), and `reasoning` optionally pins a reasoning
+  // model's effort level (absent ⇒ the parameter is not sent).
   llm: z
     .strictObject({
       model: z.string().min(1).meta({
@@ -42,6 +43,7 @@ export const CodingYamlSchema = z.strictObject({
           "The model that answers. SERVER-ONLY and PINNED: the proxy always uses this model and ignores whatever model the coding agent sends.",
       }),
       provider: providerSchema,
+      reasoning: reasoningLevelSchema,
     })
     .meta({ id: "llm", description: "The pinned model and provider that answer coding requests." }),
   // Optional document-level prompt-fragment libraries (the tutor `prompt` shape

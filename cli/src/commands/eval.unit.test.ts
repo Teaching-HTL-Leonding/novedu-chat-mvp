@@ -319,6 +319,60 @@ describe("eval — the LLM override", () => {
       overrides: { provider: "SCCH", model: "test-model" },
     });
   });
+
+  // The quiz fixture declares no `llm.reasoning`, so a run without the flag must send a
+  // body with NO `reasoning` key at all — that is what keeps this CLI working against a
+  // server whose eval routes never heard of the field.
+  it("omits reasoning from every body when nothing asks for a level", async () => {
+    await run(okEval, "--json", "--server", "http://x");
+
+    for (const call of [...gradeCalls(), ...judgeCalls()]) {
+      const body = JSON.parse(call[1].body as string);
+      expect("reasoning" in body.llm).toBe(false);
+    }
+    const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(payload.files[0].result.llm.reasoning).toBeUndefined();
+    // Nothing was overridden, so the report must not claim a comparison run.
+    expect(payload.files[0].result.llm.overrides).toBeUndefined();
+  });
+
+  it("--llm-reasoning alone keeps the activity's pair and overrides only the effort", async () => {
+    await run(okEval, "--llm-reasoning", "high", "--json", "--server", "http://x");
+
+    for (const call of gradeCalls()) {
+      expect(JSON.parse(call[1].body as string).llm).toEqual({
+        provider: "SCCH",
+        model: "test-model",
+        reasoning: "high",
+      });
+    }
+    // The judge follows the EFFECTIVE grading spec, level included.
+    for (const call of judgeCalls()) {
+      expect(JSON.parse(call[1].body as string).llm).toEqual({
+        provider: "SCCH",
+        model: "test-model",
+        reasoning: "high",
+      });
+    }
+    const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(payload.files[0].result.llm).toMatchObject({
+      provider: "SCCH",
+      model: "test-model",
+      reasoning: "high",
+      // The run did NOT grade what the file asked for, so it is recorded as an override.
+      overrides: { provider: "SCCH", model: "test-model" },
+    });
+  });
+
+  it("rejects an unknown reasoning level before any request", async () => {
+    await run(okEval, "--llm-reasoning", "turbo", "--server", "http://x");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(String(error.mock.calls[0]?.[0])).message).toContain(
+      'Unknown --llm-reasoning "turbo"',
+    );
+  });
 });
 
 describe("eval — the feedback judge", () => {
@@ -437,6 +491,57 @@ describe("eval — the feedback judge", () => {
     expect(process.exitCode).toBe(1);
     expect(JSON.parse(String(error.mock.calls[0]?.[0])).message).toContain(
       'Unknown --judge-llm-provider "OpenAI"',
+    );
+  });
+
+  it("--judge-llm-reasoning overrides only the judge's effort, leaving grading alone", async () => {
+    await run(okEval, "--judge-llm-reasoning", "high", "--json", "--server", "http://x");
+
+    for (const call of judgeCalls()) {
+      expect(JSON.parse(call[1].body as string).llm).toEqual({
+        provider: "SCCH",
+        model: "test-model",
+        reasoning: "high",
+      });
+    }
+    // Overriding the judge never changes who grades — nor at what effort.
+    for (const call of gradeCalls()) {
+      const body = JSON.parse(call[1].body as string);
+      expect(body.llm).toEqual({ provider: "SCCH", model: "test-model" });
+    }
+    const payload = JSON.parse(String(log.mock.calls[0]?.[0]));
+    expect(payload.files[0].result.llm.judge).toEqual({
+      provider: "SCCH",
+      model: "test-model",
+      reasoning: "high",
+      overridden: true,
+    });
+  });
+
+  it("rejects an unknown judge reasoning level before any request", async () => {
+    await run(okEval, "--judge-llm-reasoning", "turbo", "--server", "http://x");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(String(error.mock.calls[0]?.[0])).message).toContain(
+      'Unknown --judge-llm-reasoning "turbo"',
+    );
+  });
+
+  it("rejects --judge-llm-reasoning combined with --no-judge-feedback", async () => {
+    await run(
+      okEval,
+      "--no-judge-feedback",
+      "--judge-llm-reasoning",
+      "high",
+      "--server",
+      "http://x",
+    );
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(String(error.mock.calls[0]?.[0])).toContain(
+      "cannot be combined with --no-judge-feedback",
     );
   });
 

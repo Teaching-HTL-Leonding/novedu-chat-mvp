@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { CodeModule } from "@/lib/code-modules/types";
-import { LLM_PROVIDERS } from "@/lib/llm/provider";
+import { LLM_PROVIDERS, REASONING_LEVELS } from "@/lib/llm/provider";
 
 // The zod source of truth for the ACTIVITY REGISTRY format (docs/registry.md): the
 // hand-written YAML file in a publication's own repo that lists every novedu activity
@@ -71,6 +71,15 @@ const providerField = z.enum(LLM_PROVIDERS, {
   error: 'must be "SCCH" or "Azure Foundry"',
 });
 
+// The override's optional third member. An enum (not the shared `reasoningLevelSchema`,
+// which is already `.optional()` and carries the activity YAML's prose) for the same
+// reason `providerField` exists: an unknown level would produce an entry that can never
+// match a stored code and then fails at mint time. No default — absent means the level is
+// simply not sent, exactly as everywhere else.
+const reasoningField = z.enum(REASONING_LEVELS, {
+  error: `must be one of ${REASONING_LEVELS.join(", ")}`,
+});
+
 /**
  * One registry entry. Unknown extra properties are ACCEPTED and ignored so authors can
  * annotate freely and a newer registry keeps working with an older CLI — which is why
@@ -113,11 +122,15 @@ export const RegistryEntrySchema = z
           description:
             "Model id (for Azure Foundry, the deployment name). Required when `llm` is present.",
         }),
+        reasoning: reasoningField.optional().meta({
+          description:
+            "Optional reasoning effort for reasoning models, applied on top of the provider/model pair. Omit to let the model decide.",
+        }),
       })
       .optional()
       .meta({
         description:
-          "Per-code LLM override replacing the activity YAML's own `llm:`. Provider and model must be given together.",
+          "Per-code LLM override replacing the activity YAML's own `llm:`. Provider and model must be given together; `reasoning` is optional on top of them.",
       }),
   })
   .refine(

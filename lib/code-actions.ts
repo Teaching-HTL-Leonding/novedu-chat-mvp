@@ -50,6 +50,7 @@ export async function createCodeAction(
     note: formData.get("note"),
     llmProvider: formData.get("llmProvider"),
     llmModel: formData.get("llmModel"),
+    llmReasoning: formData.get("llmReasoning"),
   });
   if (!result.ok) {
     return result.reason === "validation"
@@ -138,6 +139,7 @@ export async function updateCodeAction(
     note: formData.get("note"),
     llmProvider: formData.get("llmProvider"),
     llmModel: formData.get("llmModel"),
+    llmReasoning: formData.get("llmReasoning"),
   });
   if (!validation.ok) return { status: "error", message: validation.message };
 

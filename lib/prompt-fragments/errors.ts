@@ -179,6 +179,13 @@ export type BuildResult =
        * stays import-free) — update both together.
        */
       provider: "SCCH" | "Azure Foundry";
+      /**
+       * Optional reasoning effort for `model` (tutor `llm.reasoning`); absent ⇒
+       * no `reasoning_effort` is sent. Mirrors `ReasoningLevel` in
+       * `lib/llm/provider.ts` (kept inline so this module stays import-free) —
+       * update both together.
+       */
+      reasoning?: "minimal" | "low" | "medium" | "high";
       /** Whether students may attach images in the chat (tutor `llm.imageInput`, default true). */
       imageInput: boolean;
       /**

@@ -14,7 +14,9 @@ import {
   type JudgeFn,
   type JudgeResult,
   type RespondResult,
+  resolveEvalSpec,
   runEval,
+  sameEvalSpec,
   summarizeBatch,
 } from "./eval-run";
 
@@ -1278,5 +1280,49 @@ describe("mixed batches", () => {
     expect(batch.totals).toMatchObject({ files: 3, invalid: 1, cases: 2, feedbackFlagged: 2 });
     // The invalid file is what fails the gate — the two flags never do.
     expect(batch.passed).toBe(false);
+  });
+});
+
+// The run's llm precedence — two INDEPENDENT axes (docs/cli-eval.md): the pair flag
+// replaces provider+model wholesale (dropping the file's effort with them), the level
+// flag replaces only the effort. Pure, so the whole matrix is one table.
+describe("resolveEvalSpec", () => {
+  const plain = { provider: "SCCH", model: "gemma-4" };
+  const withLevel = { provider: "SCCH", model: "gemma-4", reasoning: "low" } as const;
+  const pair = { provider: "Azure Foundry", model: "gpt-5.6-terra" };
+
+  it("applies the file's own spec when neither flag is given", () => {
+    expect(resolveEvalSpec(withLevel, undefined, undefined)).toEqual(withLevel);
+    expect(resolveEvalSpec(plain, undefined, undefined)).toEqual(plain);
+  });
+
+  it("overrides ONLY the effort when just the level flag is given", () => {
+    expect(resolveEvalSpec(withLevel, undefined, "high")).toEqual({
+      provider: "SCCH",
+      model: "gemma-4",
+      reasoning: "high",
+    });
+    // The file declares no level at all: the flag adds one without touching the pair.
+    expect(resolveEvalSpec(plain, undefined, "minimal")).toEqual({
+      provider: "SCCH",
+      model: "gemma-4",
+      reasoning: "minimal",
+    });
+  });
+
+  it("DROPS the file's level when the pair is replaced without one", () => {
+    const resolved = resolveEvalSpec(withLevel, pair, undefined);
+    expect(resolved).toEqual(pair);
+    expect("reasoning" in resolved).toBe(false);
+  });
+
+  it("applies pair and level together when both flags are given", () => {
+    expect(resolveEvalSpec(withLevel, pair, "high")).toEqual({ ...pair, reasoning: "high" });
+  });
+
+  it("compares specs on all three parts", () => {
+    expect(sameEvalSpec(plain, { ...plain })).toBe(true);
+    expect(sameEvalSpec(plain, withLevel)).toBe(false);
+    expect(sameEvalSpec(withLevel, { ...withLevel, reasoning: "high" })).toBe(false);
   });
 });

@@ -4,7 +4,7 @@ description: Write sample answers with the marks they should get, run them throu
 sidebar:
   order: 6
 audience: teacher
-keywords: [eval, golden answers, grading, test the grader, rubric, evaluation, false-correct, repeats, unstable, feedback, flagged feedback, quiz, report, tokens, cost]
+keywords: [eval, golden answers, grading, test the grader, rubric, evaluation, false-correct, repeats, unstable, feedback, flagged feedback, quiz, report, tokens, cost, reasoning]
 related:
   - 10-yaml-for-teachers/04-cli-validation
   - 40-ai-llms/01-novedu-cli
@@ -132,7 +132,7 @@ So after each grading, a second AI, the judge, reads that feedback and holds it 
 
 A flag never fails a run. It's a note about wording, and the fix is usually one sentence in the question's `evaluation` text or in your shared instructions ("when the mark is not `correct`, state the correct answer"), not a change to your golden answers.
 
-Judging is on by default and roughly doubles the number of AI calls, which is exactly what the run's size line tells you before it starts. Two flags control it:
+Judging is on by default and roughly doubles the number of AI calls, which is exactly what the run's size line tells you before it starts. Three flags control it:
 
 ```bash
 # Marks only: half the AI calls, good for a quick check
@@ -141,9 +141,12 @@ npx @novedu/cli eval ./sorting-quiz.eval.yaml --no-judge-feedback
 # Let a stronger model do the judging (recommended): both flags, always together
 npx @novedu/cli eval ./sorting-quiz.eval.yaml \
   --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra
+
+# Let the judge think harder: this one works on its own, no pair needed
+npx @novedu/cli eval ./sorting-quiz.eval.yaml --judge-llm-reasoning high
 ```
 
-Without the judge flags, the judge uses the same model as the grader. A stronger model as the judge gives noticeably better notes, because a small model judging its own work tends to flag things that aren't really problems. The report always records which model judged, so two runs are only comparable when that model is the same.
+Without any of the judge flags, the judge runs on the same model **and** the same thinking effort as the grader. A stronger model as the judge gives noticeably better notes, because a small model judging its own work tends to flag things that aren't really problems. The report always records which model judged and at which effort, so two runs are only comparable when both match.
 
 If the judge model itself keeps failing, judging stops after three failures in a row and you get one warning, while the grading finishes normally. Your marks are then still complete, and the report tells you which files went unchecked: anything the judge never looked at shows a dash in the Flagged column instead of a number, so "not checked" can't be mistaken for "all fine".
 
@@ -157,7 +160,7 @@ npx @novedu/cli eval ./sorting-quiz.eval.yaml --repeats 3
 
 Each answer is graded three times and the **majority** mark counts, so one odd run doesn't fail a case; asking for repeats never makes the check stricter. Answers whose runs disagreed are reported as **unstable**. That's information, not a failure, but it's information worth having: a criterion that decides the same answer differently on different runs will do the same to two students who wrote the same thing. Unstable answers are the ones whose `evaluation` wording deserves sharpening. Keep in mind that three repeats also cost three times as much.
 
-## Try a different AI model
+## Try a different AI model, or more thinking
 
 You can grade the same golden answers with a different model, without touching the quiz:
 
@@ -165,7 +168,22 @@ You can grade the same golden answers with a different model, without touching t
 npx @novedu/cli eval ./sorting-quiz.eval.yaml --llm-provider "Azure Foundry" --llm-model gpt-5-mini
 ```
 
-The two flags always go together. Run the eval once without them and once with, then compare the two reports: same criteria, same answers, different model. This changes only the run itself. Your quiz file keeps its own model, and any code you've already handed out is unaffected.
+The two model flags always go together. Run the eval once without them and once with, then compare the two reports: same criteria, same answers, different model.
+
+A third flag sets the thinking effort. On its own it keeps your quiz's own model and changes only how hard it thinks, which is the "same model, more thinking" comparison:
+
+```bash
+npx @novedu/cli eval ./sorting-quiz.eval.yaml --llm-reasoning high
+```
+
+There's one trap worth knowing. The model pair replaces your quiz's whole `llm:` block, so a run with the pair alone drops the thinking effort your quiz file sets. Add `--llm-reasoning` alongside the pair whenever you want to keep that effort:
+
+```bash
+npx @novedu/cli eval ./sorting-quiz.eval.yaml \
+  --llm-provider "Azure Foundry" --llm-model gpt-5.6-terra --llm-reasoning low
+```
+
+All of this changes only the run itself. Your quiz file keeps its own settings, and any code you've already handed out is unaffected.
 
 ## A whole folder at once
 

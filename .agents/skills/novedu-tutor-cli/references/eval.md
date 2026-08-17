@@ -3,7 +3,9 @@
 ```
 eval <evalPathOrUrl...> [--server <url>] [--concurrency <n>=4] [--repeats <n>=1]
                         [--llm-provider <p> --llm-model <m>]
+                        [--llm-reasoning <level>]
                         [--no-judge-feedback | --judge-llm-provider <p> --judge-llm-model <m>]
+                        [--judge-llm-reasoning <level>]
                         [--json] [--out <file>] [--report <file.md>]
 ```
 
@@ -177,7 +179,11 @@ question against a language rule. A case that no rule speaks to teaches nothing.
 - **`--judge-llm-provider` + `--judge-llm-model`** (both or neither) judge on a different
   model than the grader — the **recommended** setup, because a strong judge over a small
   grader flags real problems where the small grader judging itself mostly flags noise.
-  Without them the judge uses the effective grading pair. Combining them with
+  A judge pair replaces the judge's spec wholesale, dropping the reasoning level it would
+  otherwise have inherited.
+- **`--judge-llm-reasoning <level>`** sets the judge's reasoning effort and is
+  independent — no pair needed. Unflagged, the judge follows the **effective grading
+  spec**, its reasoning level included. Combining any of the three judge flags with
   `--no-judge-feedback` is a usage error.
 - **It never fails a run, for either kind.** Flags land in `totals.feedbackFlagged` (the
   JSON keeps that one name across kinds), in the report's Flagged column and in a
@@ -207,8 +213,14 @@ question against a language rule. A case that no rule speaks to teaches nothing.
   when they ask "what went wrong?".
 - **`--llm-provider` + `--llm-model`** (both or neither) grade with a different
   backend for comparison — run once without and once with, then diff the
-  reports. This is a per-RUN override; it never touches a code's stored LLM
-  override. It is independent of the judge pair.
+  reports. They replace the activity's `llm:` block WHOLESALE, so the file's
+  reasoning level is dropped unless `--llm-reasoning` restates it. This is a
+  per-RUN override; it never touches a code's stored LLM override. It is
+  independent of the judge flags.
+- **`--llm-reasoning <level>`** overrides only the reasoning effort: on its own it
+  keeps the file's provider/model ("same model, more thinking"). The JSON records
+  `llm.overrides` whenever the effective spec differs from the file's in ANY part, so
+  a level-only run still reads as a comparison run.
 - **`--concurrency`** defaults to 4; 6–8 is comfortable against your own dev
   server. Raise it before reaching for anything fancier on big batches.
 - **A large batch can run for a very long time** — hundreds of cases means hours,
@@ -261,7 +273,8 @@ npm run cli --silent -- eval "./part-1/**/*.eval.yaml"                       # q
 npm run cli --silent -- eval ./x.eval.yaml --repeats 3                       # stability check
 npm run cli --silent -- eval ./x.eval.yaml --no-judge-feedback               # verdicts only, half the calls
 npm run cli --silent -- eval ./x.eval.yaml \
-  --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra       # strong judge (recommended)
+  --judge-llm-provider "Azure Foundry" --judge-llm-model gpt-5.6-terra \
+  --judge-llm-reasoning high                                                 # strong judge (recommended)
 npm run cli --silent -- eval ./x.eval.yaml --json --out eval-report.json     # for CI / drilling in
 npm run cli --silent -- eval ./x.eval.yaml --report eval-report.md           # readable report
 ```

@@ -23,6 +23,24 @@ export const providerSchema = z.enum(LLM_PROVIDERS).default(DEFAULT_PROVIDER).me
     "The LLM provider serving the model. For Azure Foundry, model is the deployment name.",
 });
 
+// The reasoning-effort levels a reasoning model may be driven at, as a tuple, so
+// schemas that need an *enum* can be built from them without restating the names
+// (`lib/registry-schema.ts` is one such consumer). Provider-agnostic on purpose:
+// both providers speak the OpenAI `reasoning_effort` parameter, and a model that
+// rejects a level fails at runtime like a wrong model name.
+export const REASONING_LEVELS = ["minimal", "low", "medium", "high"] as const;
+
+export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
+
+// The `llm.reasoning` field of every activity YAML: OPTIONAL with no default —
+// absent means the parameter is not sent at all, so the model's own default
+// applies. The `.meta()` teacher prose is emitted into every generated activity
+// JSON Schema (all four `llm` blocks).
+export const reasoningLevelSchema = z.enum(REASONING_LEVELS).optional().meta({
+  description:
+    "Optional reasoning effort for reasoning models. Omit to let the model decide (the parameter is then not sent).",
+});
+
 // ai-sdk provider names, passed as `createOpenAI({ name })`. They are the METERING
 // contract: Mastra stamps `<name>.chat` as `attributes.provider` on every
 // MODEL_GENERATION span, and the usage exporter maps it back via
@@ -45,4 +63,15 @@ export function providerFromModelProviderId(id: string | undefined): LlmProvider
 // a Foundry-intended activity never silently runs against SCCH).
 export function parseLenientProvider(value: unknown): LlmProvider | undefined {
   return value === "SCCH" || value === "Azure Foundry" ? value : undefined;
+}
+
+// The `parseLenientProvider` counterpart for the reasoning level: a valid literal
+// passes through, anything else — including a non-string — is `undefined`. The
+// CALLER decides how to treat a missing value (no `reasoning_effort` is sent) vs.
+// a present-but-invalid one (reject, so an activity never silently runs at the
+// model's default effort).
+export function parseLenientReasoningLevel(value: unknown): ReasoningLevel | undefined {
+  return typeof value === "string" && (REASONING_LEVELS as readonly string[]).includes(value)
+    ? (value as ReasoningLevel)
+    : undefined;
 }

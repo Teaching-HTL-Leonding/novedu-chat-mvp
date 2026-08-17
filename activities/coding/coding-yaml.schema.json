@@ -67,6 +67,16 @@
             "SCCH",
             "Azure Foundry"
           ]
+        },
+        "reasoning": {
+          "description": "Optional reasoning effort for reasoning models. Omit to let the model decide (the parameter is then not sent).",
+          "type": "string",
+          "enum": [
+            "minimal",
+            "low",
+            "medium",
+            "high"
+          ]
         }
       },
       "required": [

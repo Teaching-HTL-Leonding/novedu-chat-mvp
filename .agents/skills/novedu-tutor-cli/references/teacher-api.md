@@ -8,7 +8,7 @@ structured validation detail names the exact problem.
 ```
 codes create --module <tutor|quiz|writing|coding> --file <url>
              [--start <iso>] [--end <iso>] [--note <text>]
-             [--llm-provider <p> --llm-model <m>]
+             [--llm-provider <p> --llm-model <m>] [--llm-reasoning <level>]
 codes list   [--search <q>] [--module <m>] [--all]
 
 files upload <name> [--kind <kind>] (--file <path> | reads stdin)
@@ -33,6 +33,9 @@ to students.
 - `--start`/`--end` must be ISO 8601 **with an explicit offset or `Z`**. A naive
   datetime is rejected.
 - `--llm-provider` / `--llm-model` is both-or-nothing.
+- `--llm-reasoning` (`minimal`, `low`, `medium`, `high`) is optional on top of that
+  pair and rejected without it. The override replaces the activity's WHOLE `llm:`
+  block, so omitting the level also drops the file's own.
 - For material kept in a repo, prefer `codes sync` over minting by hand — see
   [registry-sync.md](registry-sync.md).
 

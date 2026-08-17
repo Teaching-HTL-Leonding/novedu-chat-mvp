@@ -15,6 +15,7 @@ vi.mock("@/app/mastra/tutor-agent", () => ({
   TUTOR_URL: "tutor-url",
   TUTOR_PROVIDER_OVERRIDE: "tutor-provider-override",
   TUTOR_MODEL_OVERRIDE: "tutor-model-override",
+  TUTOR_REASONING_OVERRIDE: "tutor-reasoning-override",
 }));
 vi.mock("@mastra/core/request-context", () => ({
   RequestContext: class {
@@ -62,6 +63,21 @@ describe("tutorModule.runtime.buildRequestContext", () => {
       expect(ctx.get("tutor-url")).toBe(entry.fileUrl);
       expect(ctx.get("tutor-provider-override")).toBe("Azure Foundry");
       expect(ctx.get("tutor-model-override")).toBe("gpt-5.4-mini");
+      // The pair alone — no reasoning key, so the agent pins no effort.
+      expect(ctx.get("tutor-reasoning-override")).toBeUndefined();
+    }
+  });
+
+  it("carries the override's reasoning level when it has one", async () => {
+    const withOverride = {
+      ...entry,
+      llm: { provider: "Azure Foundry", model: "gpt-5.6-terra", reasoning: "low" },
+    } as CodeEntry;
+    const result = await tutorModule.runtime?.buildRequestContext(withOverride);
+    expect(result?.ok).toBe(true);
+    if (result?.ok) {
+      const ctx = result.context as unknown as { get(k: string): unknown };
+      expect(ctx.get("tutor-reasoning-override")).toBe("low");
     }
   });
 });

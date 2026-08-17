@@ -56,6 +56,7 @@ function input(overrides: Partial<Parameters<typeof createCodeForUser>[1]> = {})
     note: "My class",
     llmProvider: "",
     llmModel: "",
+    llmReasoning: "",
     ...overrides,
   };
 }

@@ -10,6 +10,9 @@ Cover:
 - The steps: open the create-code form, point it at the activity (its URL or an
   uploaded file), add a note for yourself, optionally set an availability window and a
   model override, then submit and get a short link.
+- The model override section: a provider and a model field, a reasoning select
+  ("Provider default" plus the four levels), and one-click presets that fill the whole
+  override at once — a preset for a reasoning model fills the level too.
 - What you get: a short random link to hand to the class.
 - What you set now versus later: the note, window, and override can be changed later;
   the activity file, the kind, and the anonymity setting are fixed when the code is
@@ -25,7 +28,10 @@ Get right:
 - You do not choose the code text; it is generated.
 - Anonymity comes from the activity and is frozen at creation; link to
   "Anonymous vs. per-user".
-- The model override is both-or-nothing; link to "Available AI models".
+- The model override's provider and model are both-or-nothing, and a reasoning level
+  only works alongside them; the override replaces the activity's whole `llm:` block,
+  so leaving the reasoning on "Provider default" also drops the level the activity
+  file sets. Link to "Available AI models".
 - Coding codes are shared differently; link to "Special case: coding codes".
 - Check the current source for whether codes are created in the app, the CLI, or both,
   and describe only what exists; do not assume a CLI create command.

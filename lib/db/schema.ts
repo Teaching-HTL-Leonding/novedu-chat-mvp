@@ -61,7 +61,9 @@ import {
 // both are NULL (the YAML's `llm:` block applies) or both are set — model ids
 // are provider-specific, so a lone half is meaningless and validation rejects
 // it. Editable on /codes/edit (unlike the frozen `anonymous`/`file_url`). Sized
-// like the usage tables' provider/model columns.
+// like the usage tables' provider/model columns. `llm_reasoning` is the pair's
+// OPTIONAL third member (the reasoning-effort level): it requires the pair but
+// the pair does not require it — NULL simply means no `reasoning_effort` is sent.
 export const codes = mssqlTable(
   "novedu_codes",
   {
@@ -80,6 +82,7 @@ export const codes = mssqlTable(
     // override. Set/cleared together, never singly.
     llmProvider: varchar("llm_provider", { length: 32 }),
     llmModel: nvarchar("llm_model", { length: 256 }),
+    llmReasoning: varchar("llm_reasoning", { length: 16 }),
     createdAt: datetime2("created_at").notNull(),
   },
   // The teacher's "Codes" page (and the stats pages) list by creator; the

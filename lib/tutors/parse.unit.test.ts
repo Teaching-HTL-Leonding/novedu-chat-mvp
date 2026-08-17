@@ -57,6 +57,24 @@ describe("validate — tutor", () => {
     tutor.llm.provider = "OpenAI";
     expect(validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR").ok).toBe(false);
   });
+
+  it("leaves llm.reasoning unset, accepts the four levels, rejects junk", () => {
+    const parsed = parseYaml(TUTOR_YAML);
+    if (!parsed.ok) throw new Error("precondition");
+    const tutor = structuredClone(parsed.value) as { llm: Record<string, unknown> };
+
+    const absent = validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR");
+    expect(absent.ok && absent.data.llm.reasoning).toBeUndefined();
+
+    for (const level of ["minimal", "low", "medium", "high"]) {
+      tutor.llm.reasoning = level;
+      const pinned = validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR");
+      expect(pinned.ok && pinned.data.llm.reasoning).toBe(level);
+    }
+
+    tutor.llm.reasoning = "turbo";
+    expect(validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR").ok).toBe(false);
+  });
 });
 
 describe("validate — fragment file", () => {

@@ -40,6 +40,7 @@ interface CreateOptions {
   note?: string;
   llmProvider?: string;
   llmModel?: string;
+  llmReasoning?: string;
 }
 
 interface ListOptions {
@@ -202,10 +203,21 @@ export function registerCodes(program: Command): void {
       'LLM override provider ("SCCH" or "Azure Foundry"; needs --llm-model)',
     )
     .option("--llm-model <model>", "LLM override model id (needs --llm-provider)")
+    .option(
+      "--llm-reasoning <level>",
+      'LLM override reasoning effort ("minimal", "low", "medium" or "high"; needs the provider/model pair)',
+    )
     .option(...SERVER_OPTION)
     .action(async (options: CreateOptions) => {
       // --start/--end pass through verbatim; the API enforces the explicit-offset
-      // rule. The llm pair's both-or-nothing rule is also the server's call.
+      // rule. The llm pair's both-or-nothing rule — and the reasoning level's "only
+      // with a pair" rule, and the level's own spelling — are all the server's call:
+      // a lone flag still produces an `llm` object, so the rejection comes back as the
+      // server's own message instead of a second, drifting copy of it here.
+      const llmGiven =
+        options.llmProvider !== undefined ||
+        options.llmModel !== undefined ||
+        options.llmReasoning !== undefined;
       await runApiRequest({
         server: options.server,
         path: "/api/codes",
@@ -216,9 +228,17 @@ export function registerCodes(program: Command): void {
           ...(options.start === undefined ? {} : { validFrom: options.start }),
           ...(options.end === undefined ? {} : { validUntil: options.end }),
           ...(options.note === undefined ? {} : { note: options.note }),
-          ...(options.llmProvider === undefined && options.llmModel === undefined
-            ? {}
-            : { llm: { provider: options.llmProvider ?? "", model: options.llmModel ?? "" } }),
+          ...(llmGiven
+            ? {
+                llm: {
+                  provider: options.llmProvider ?? "",
+                  model: options.llmModel ?? "",
+                  ...(options.llmReasoning === undefined
+                    ? {}
+                    : { reasoning: options.llmReasoning }),
+                },
+              }
+            : {}),
         },
       });
     });

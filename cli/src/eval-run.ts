@@ -9,6 +9,7 @@ import {
   turnToMessage,
 } from "@/lib/eval-schema";
 import type { EvalCheckOk, QuizEvalCheckOk, TutorEvalCheckOk } from "@/lib/eval-validate";
+import type { ReasoningLevel } from "@/lib/llm/provider";
 import type { PromptKind } from "@/lib/prompt-dump";
 import {
   buildFeedbackJudgeSubject,
@@ -225,19 +226,62 @@ export interface EvalRunOptions {
   retry?: { attempts?: number; baseDelayMs?: number; sleep?: (ms: number) => Promise<void> };
 }
 
-/** Which LLM a run actually graded with, and whether that came from `--llm-*`. */
-export interface EvalRunLlm {
+/**
+ * ONE llm spec: the provider/model pair plus the OPTIONAL reasoning effort, absent when
+ * no level applies (the parameter is then not sent at all). The shape every seam closes
+ * over and every wire body carries — `reasoning` is omitted rather than sent as null, so
+ * a run without a level keeps working against a server that never heard of the field.
+ */
+export interface EvalLlmSpec {
   provider: string;
   model: string;
-  /** The quiz's own pair, kept alongside the effective one when overridden. */
-  overrides?: { provider: string; model: string };
+  reasoning?: ReasoningLevel;
+}
+
+/** Which LLM a run actually graded with, and whether that came from `--llm-*`. */
+export interface EvalRunLlm extends EvalLlmSpec {
   /**
-   * The pair the FEEDBACK JUDGE ran on, and whether it came from `--judge-llm-*` rather
-   * than defaulting to the effective grading pair. Absent when judging was off — a run
-   * that made no judge call must not advertise a judge model. Judge strictness varies by
-   * model, so two reports are only comparable when this matches.
+   * The activity's OWN spec, kept alongside the effective one whenever the run overrode
+   * anything about it — the pair (`--llm-provider/--llm-model`) or only the effort
+   * (`--llm-reasoning`). Its presence is what makes a report say "override".
    */
-  judge?: { provider: string; model: string; overridden: boolean };
+  overrides?: EvalLlmSpec;
+  /**
+   * The spec the FEEDBACK JUDGE ran on, and whether it came from `--judge-llm-*` rather
+   * than defaulting to the effective grading spec. Absent when judging was off — a run
+   * that made no judge call must not advertise a judge model. Judge strictness varies by
+   * model AND by effort, so two reports are only comparable when this matches.
+   */
+  judge?: EvalLlmSpec & { overridden: boolean };
+}
+
+/**
+ * The spec a run's calls are actually served with, out of the TARGET activity's own spec
+ * and the run's two override flags. TWO independent axes (docs/cli-eval.md):
+ *
+ * - the PAIR (`--llm-provider`/`--llm-model`) replaces provider+model **wholesale**, so a
+ *   pair given without a level DROPS the file's level — the same bundle semantics a
+ *   per-code LLM override has (`effectiveLlm`, docs/ai-models.md);
+ * - the LEVEL (`--llm-reasoning`) replaces only the effort, on top of whichever pair won,
+ *   which is what makes "the file's own model, at high effort" a one-flag run.
+ *
+ * The judge's flags reuse this with the EFFECTIVE grading spec as the activity, which is
+ * why "no judge flag" means "judge exactly like the model under test", level included.
+ */
+export function resolveEvalSpec(
+  activity: EvalLlmSpec,
+  pair: { provider: string; model: string } | undefined,
+  reasoning: ReasoningLevel | undefined,
+): EvalLlmSpec {
+  const base: EvalLlmSpec = pair ?? activity;
+  // Rebuilt from the pair rather than spread, so the level never survives by accident:
+  // `reasoning` must be exactly what this function decided.
+  return reasoning ? { provider: base.provider, model: base.model, reasoning } : base;
+}
+
+/** Do two specs describe the same call? Provider, model AND effort — all three matter. */
+export function sameEvalSpec(a: EvalLlmSpec, b: EvalLlmSpec): boolean {
+  return a.provider === b.provider && a.model === b.model && a.reasoning === b.reasoning;
 }
 
 export interface EvalRepeatRow {

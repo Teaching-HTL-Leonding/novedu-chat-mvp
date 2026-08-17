@@ -110,6 +110,53 @@ describe("codes create", () => {
     });
   });
 
+  it("sends the reasoning level alongside the pair", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({}, 201));
+    await run(
+      "create",
+      "--module",
+      "tutor",
+      "--file",
+      "https://x/t.yaml",
+      "--llm-provider",
+      "Azure Foundry",
+      "--llm-model",
+      "gpt-5.6-terra",
+      "--llm-reasoning",
+      "high",
+      "--server",
+      "http://localhost:1234",
+    );
+    expect(JSON.parse((fetchMock.mock.calls[0] as [URL, RequestInit])[1].body as string)).toEqual({
+      module: "tutor",
+      fileUrl: "https://x/t.yaml",
+      llm: { provider: "Azure Foundry", model: "gpt-5.6-terra", reasoning: "high" },
+    });
+  });
+
+  // The "reasoning needs a pair" rule is the SERVER's — a lone flag must still reach it,
+  // so the rejection is the server's own message rather than a second, drifting copy.
+  it("still sends an llm object for a lone --llm-reasoning, so the server rejects it", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: "nope" }, 400));
+    await run(
+      "create",
+      "--module",
+      "tutor",
+      "--file",
+      "https://x/t.yaml",
+      "--llm-reasoning",
+      "high",
+      "--server",
+      "http://localhost:1234",
+    );
+    expect(JSON.parse((fetchMock.mock.calls[0] as [URL, RequestInit])[1].body as string)).toEqual({
+      module: "tutor",
+      fileUrl: "https://x/t.yaml",
+      llm: { provider: "", model: "", reasoning: "high" },
+    });
+    expect(process.exitCode).toBe(1);
+  });
+
   it("prints the server's structured validation errors verbatim on stderr, exit 1", async () => {
     const body = { errors: [{ code: "TUTOR_SCHEMA_ERROR", message: "bad" }] };
     fetchMock.mockResolvedValue(jsonResponse(body, 400));

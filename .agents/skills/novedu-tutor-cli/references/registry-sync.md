@@ -44,7 +44,8 @@ npx @novedu/cli codes sync ddp-activities.yaml             # writes the lock fil
 ## What an agent must know before running it
 
 - **Re-running is the normal case, not a risk.** An entry that matches an
-  existing code of yours — same URL, module, window and LLM override; `note` is
+  existing code of yours — same URL, module, window and LLM override (provider,
+  model and reasoning level); `note` is
   NOT part of matching — reuses it. Run `--dry-run` first when unsure; it mints
   and writes nothing.
 - **Changing a window or an LLM override mints a NEW code.** The old one is

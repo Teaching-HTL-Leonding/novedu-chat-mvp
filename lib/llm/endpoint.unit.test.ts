@@ -64,6 +64,15 @@ describe("adaptBody", () => {
     expect(out).toEqual({ tools: [{ type: "function" }] });
   });
 
+  it("Foundry passes reasoning_effort through untouched (the proxy's pin must survive)", () => {
+    const out = resolveChatEndpoint("Azure Foundry").adaptBody({
+      max_tokens: 900,
+      temperature: 0.2,
+      reasoning_effort: "high",
+    });
+    expect(out).toEqual({ max_completion_tokens: 900, reasoning_effort: "high" });
+  });
+
   it("Foundry returns a dialect-clean body untouched", () => {
     const body = { messages: [], stream: true };
     expect(resolveChatEndpoint("Azure Foundry").adaptBody(body)).toBe(body);

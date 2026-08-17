@@ -43,6 +43,7 @@ import {
   EVAL_TUTOR_INSTRUCTIONS,
   EVAL_TUTOR_MODEL,
   EVAL_TUTOR_PROVIDER,
+  EVAL_TUTOR_REASONING,
   EVAL_TUTOR_TOOLS,
 } from "@/app/mastra/eval-agents";
 import { resetApiAuthForTests } from "@/lib/api-auth";
@@ -248,11 +249,21 @@ describe("POST /api/eval/respond generation", () => {
     expect(ctx.get(EVAL_TUTOR_INSTRUCTIONS)).toBe(VALID_BODY.system);
     expect(ctx.get(EVAL_TUTOR_MODEL)).toBe("test-model");
     expect(ctx.get(EVAL_TUTOR_PROVIDER)).toBe("SCCH");
+    // No level in the body ⇒ the key stays unset, so no `reasoning_effort` is sent.
+    expect(ctx.get(EVAL_TUTOR_REASONING)).toBeUndefined();
     expect(ctx.get(EVAL_TUTOR_TOOLS)).toEqual([]);
     // Generation tokens meter into the SAME buckets as the judgings that audit them.
     expect(ctx.get(USAGE_CODE)).toBe("cli-eval");
     expect(ctx.get(USAGE_MODULE)).toBe("eval");
     expect(ctx.get(USAGE_USER_ID)).toBe("teacher-oid-1");
+  });
+
+  it("passes a pinned reasoning level through as the agent's context key", async () => {
+    await postRequest(
+      { ...VALID_BODY, llm: { model: "test-model", reasoning: "minimal" } },
+      await mint(),
+    );
+    expect(requestContext().get(EVAL_TUTOR_REASONING)).toBe("minimal");
   });
 
   it("passes a valid catalog tool grant through to the agent", async () => {

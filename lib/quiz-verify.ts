@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 import { type CodeRejection, checkCode, effectiveLlm } from "@/lib/code-store";
-import type { LlmProvider } from "@/lib/llm/provider";
+import type { LlmProvider, ReasoningLevel } from "@/lib/llm/provider";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import type { Quiz, QuizQuestion } from "@/lib/quiz-yaml";
 
@@ -24,8 +24,11 @@ export type LoadedQuestion = {
   fileUrl: string;
   quiz: Quiz;
   question: QuizQuestion;
-  /** The provider+model to grade with: the code's LLM override or the quiz YAML's. */
-  llm: { provider: LlmProvider; model: string };
+  /**
+   * The provider+model (+ optional reasoning effort) to grade with: the code's
+   * LLM override or the quiz YAML's.
+   */
+  llm: { provider: LlmProvider; model: string; reasoning?: ReasoningLevel };
 };
 
 export const CODE_REJECTION_MESSAGES: Record<CodeRejection, string> = {

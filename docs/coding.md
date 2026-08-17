@@ -54,11 +54,12 @@ samples (the coding YAML under `activities/examples/`).
   proxy injects the prompt and pins the model; neither is sent to the browser (nor
   is the provider). The connection page deliberately advertises only a generic
   model id (the proxy ignores whatever model the client sends).
-- The pinned model + provider are the **effective** pair: the code's LLM override
-  (`novedu_codes.llm_provider`/`llm_model`, `docs/codes.md`) when set, the YAML's
-  `llm:` values otherwise — `effectiveLlm` drives `resolveChatEndpoint`, the model
-  pin, and the usage tap alike. The teacher detail's "Model (pinned)" shows the
-  effective model.
+- The pinned model + provider (+ optional reasoning level) are the **effective**
+  spec: the code's LLM override
+  (`novedu_codes.llm_provider`/`llm_model`/`llm_reasoning`, `docs/codes.md`) when
+  set, the YAML's `llm:` values otherwise — `effectiveLlm` drives
+  `resolveChatEndpoint`, the model pin, the `reasoning_effort` pin, and the usage
+  tap alike. The teacher detail's "Model (pinned)" shows the effective model.
 
 ## The coding YAML
 
@@ -138,7 +139,10 @@ instructions: |
 5. `buildUpstreamChatBody` (`lib/coding-proxy.ts`) **appends** the teacher's
    `instructions` to the **end** of the client's own system message (so the teacher
    has the final word; if the client sent no system message, a leading one carrying
-   only the teacher's prompt is added) and **pins** `model`; everything else
+   only the teacher's prompt is added) and **pins** `model` — plus
+   `reasoning_effort` when the effective spec carries a reasoning level
+   (docs/ai-models.md), overwriting a client-sent value; without one the client's
+   own `reasoning_effort` passes through untouched. Everything else
    (`messages`, `tools`, `tool_choice`, `stream`, …) passes through verbatim. The
    endpoint's `adaptBody` hook then adjusts the provider's parameter dialect (see
    above) — it never touches `stream`/`stream_options`, which carry the usage tap's

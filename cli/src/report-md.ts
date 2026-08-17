@@ -4,6 +4,7 @@ import {
   type EvalBatchFile,
   type EvalBatchResult,
   type EvalCaseResult,
+  type EvalLlmSpec,
   type EvalQuizCaseResult,
   type EvalRunLlm,
   type EvalRunResult,
@@ -83,12 +84,19 @@ function quote(text: string): string {
   return lines.map((line) => (line ? `> ${line}` : ">")).join("\n");
 }
 
+/**
+ * One spec: `SCCH / gemma-4`, and `Azure Foundry / gpt-5.6-terra (reasoning: high)` when
+ * an effort level applies. The level is part of a run's identity — two runs of one model
+ * at different efforts produce different behavior — so it must be readable off the report.
+ */
+function specText(spec: EvalLlmSpec): string {
+  return `${spec.provider} / ${spec.model}${spec.reasoning ? ` (reasoning: ${spec.reasoning})` : ""}`;
+}
+
 /** `SCCH / gemma-4`, or `SCCH / gemma-4 → Azure Foundry / gpt-5-mini (override)`. */
 function llmText(llm: EvalRunLlm): string {
-  const effective = `${llm.provider} / ${llm.model}`;
-  return llm.overrides
-    ? `${llm.overrides.provider} / ${llm.overrides.model} → ${effective} (override)`
-    : effective;
+  const effective = specText(llm);
+  return llm.overrides ? `${specText(llm.overrides)} → ${effective} (override)` : effective;
 }
 
 /**
@@ -99,8 +107,16 @@ function llmText(llm: EvalRunLlm): string {
 function judgeLlmText(llm: EvalRunLlm): string | undefined {
   const judge = llm.judge;
   if (!judge) return undefined;
-  if (judge.provider === llm.provider && judge.model === llm.model) return undefined;
-  return `${judge.provider} / ${judge.model}${judge.overridden ? " (override)" : ""}`;
+  // The EFFORT counts as a difference too: the same model judging at another level is a
+  // different judge for comparison purposes.
+  if (
+    judge.provider === llm.provider &&
+    judge.model === llm.model &&
+    judge.reasoning === llm.reasoning
+  ) {
+    return undefined;
+  }
+  return `${specText(judge)}${judge.overridden ? " (override)" : ""}`;
 }
 
 /** `15,420 / 12,300 / 2,810`, or an em dash when nothing was reported. */

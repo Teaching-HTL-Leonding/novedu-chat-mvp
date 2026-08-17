@@ -5,12 +5,13 @@ import {
   EVAL_TUTOR_INSTRUCTIONS,
   EVAL_TUTOR_MODEL,
   EVAL_TUTOR_PROVIDER,
+  EVAL_TUTOR_REASONING,
   EVAL_TUTOR_TOOLS,
 } from "@/app/mastra/eval-agents";
 import { ApiAuthError, requireBearerTeacher } from "@/lib/api-auth";
 import { readBoundedJson } from "@/lib/bounded-json";
 import { providerUnavailableReason } from "@/lib/llm/availability";
-import { DEFAULT_PROVIDER, parseLenientProvider } from "@/lib/llm/provider";
+import { DEFAULT_PROVIDER, parseLenientProvider, REASONING_LEVELS } from "@/lib/llm/provider";
 import { classifyUpstreamLlmError } from "@/lib/llm/upstream-error";
 import { recordError } from "@/lib/telemetry";
 import { TUTOR_TOOL_NAMES } from "@/lib/tutor-tools/names";
@@ -56,6 +57,9 @@ const RespondBodySchema = z.strictObject({
   llm: z.strictObject({
     provider: z.string().optional(),
     model: z.string().min(1).max(256),
+    // The tutor's optional reasoning effort, enum-checked here for the same reason as on
+    // the judge route: an unknown level is terminal, never worth a retry.
+    reasoning: z.enum(REASONING_LEVELS).optional(),
   }),
   system: z.string().min(1),
   // The tutor's `tools:` grant, as the catalog names the CLI read out of the prompt dump.
@@ -95,7 +99,7 @@ function toolCallNames(result: unknown): string[] {
 
 /**
  * Generates one tutor response. Body
- * `{ llm: { provider?, model }, system, tools, messages }` →
+ * `{ llm: { provider?, model, reasoning? }, system, tools, messages }` →
  * `200 { text, toolCalls, usage? }`, where `text` is the generated turn as plain text (no
  * structured output, hence no truncation-retry wrapper), `toolCalls` the names the
  * generation invoked (in call order, `[]` when none — ALWAYS present, so a CLI can tell a
@@ -125,7 +129,10 @@ export async function POST(request: Request): Promise<Response> {
     const parsed = RespondBodySchema.safeParse(read.value);
     if (!parsed.success) {
       return json(
-        { message: "Provide `llm: { provider?, model }`, `system`, `tools` and `messages`." },
+        {
+          message:
+            "Provide `llm: { provider?, model, reasoning? }`, `system`, `tools` and `messages`.",
+        },
         400,
       );
     }
@@ -159,6 +166,9 @@ export async function POST(request: Request): Promise<Response> {
     requestContext.set(EVAL_TUTOR_MODEL, body.llm.model);
     requestContext.set(EVAL_TUTOR_PROVIDER, provider);
     requestContext.set(EVAL_TUTOR_TOOLS, body.tools);
+    // Only when the caller pinned one: an unset key means no `reasoning_effort` is sent
+    // at all, which is what "let the model decide" means.
+    if (body.llm.reasoning) requestContext.set(EVAL_TUTOR_REASONING, body.llm.reasoning);
     // Generation tokens land in the SAME buckets as the judgings that audit them — one
     // eval run is one cost (docs/usage-metering.md).
     requestContext.set(USAGE_CODE, EVAL_USAGE_CODE);

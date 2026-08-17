@@ -24,9 +24,11 @@ remote fragment file still gets fetched.
 
 ## What you get back
 
-Every kind returns the envelope `{ kind, id, llm: { provider, model } }`. The
+Every kind returns the envelope `{ kind, id, llm: { provider, model, reasoning? } }`
+(`reasoning` only when the file sets a level). The
 `llm` block is the FILE's own — a code's per-code LLM override is **not**
-applied, so a prompt dump never reflects what a specific shared link is running.
+applied, so a prompt dump never reflects what a specific shared link is running;
+an override may add, change or drop the reasoning level too.
 
 - **quiz** adds `grading` and `discussion`.
   - `grading.questions[].system` — the full grading prompt per question — plus

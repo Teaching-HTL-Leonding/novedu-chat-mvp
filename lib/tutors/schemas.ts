@@ -15,7 +15,7 @@
 // default (applied in the module logic, NOT here) that does not change parsing.
 
 import { z } from "zod";
-import { providerSchema } from "@/lib/llm/provider";
+import { providerSchema, reasoningLevelSchema } from "@/lib/llm/provider";
 import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
 import { tutorToolNameSchema } from "@/lib/tutor-tools/names";
 
@@ -66,11 +66,14 @@ export const TutorSchema = z.strictObject({
   // Students may attach images in the chat by default; a tutor opts OUT with
   // `imageInput: false` (e.g. for models without vision support — the flag is
   // what gates the upload UI, nothing checks the model's actual modalities).
-  // `provider` selects which LLM endpoint serves `model` (default SCCH).
+  // `provider` selects which LLM endpoint serves `model` (default SCCH), and
+  // `reasoning` optionally pins a reasoning model's effort level (absent ⇒ the
+  // parameter is not sent, so the model's own default applies).
   llm: z
     .strictObject({
       model: z.string().meta({ description: "Model used for this tutor." }),
       provider: providerSchema,
+      reasoning: reasoningLevelSchema,
       imageInput: z.boolean().optional().meta({
         default: true,
         description:

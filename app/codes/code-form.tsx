@@ -17,6 +17,7 @@ import {
   unixSecondsToDatetimeLocal,
 } from "@/lib/datetime-local";
 import { LLM_OVERRIDE_PRESETS } from "@/lib/llm/presets";
+import { REASONING_LEVELS } from "@/lib/llm/provider";
 
 const INITIAL_STATE: CodeFormState = { status: "idle" };
 
@@ -40,6 +41,8 @@ export interface CodeFormProps {
   /** The stored LLM override pair (edit mode); both empty = no override. */
   initialLlmProvider?: string;
   initialLlmModel?: string;
+  /** The pair's optional reasoning level (edit mode); empty = the provider's default. */
+  initialLlmReasoning?: string;
   /** Edit mode only: the code being edited. */
   code?: string;
   /**
@@ -65,6 +68,7 @@ export function CodeForm({
   initialEndSeconds,
   initialLlmProvider = "",
   initialLlmModel = "",
+  initialLlmReasoning = "",
   code,
   resultSlot,
 }: CodeFormProps) {
@@ -83,6 +87,10 @@ export function CodeForm({
   // fields at once. Free text; the server action validates the provider.
   const [llmProvider, setLlmProvider] = useState(initialLlmProvider);
   const [llmModel, setLlmModel] = useState(initialLlmModel);
+  // The pair's optional reasoning level — controlled for the same reason (a
+  // preset fills or clears it along with the pair). "" means "provider default"
+  // (the parameter is then not sent at all).
+  const [llmReasoning, setLlmReasoning] = useState(initialLlmReasoning);
 
   // "+1h"/"+1d"/"+1w": extend the until time if set; otherwise start the window
   // length from the from time (or from now as a last resort).
@@ -170,9 +178,10 @@ export function CodeForm({
         </Field>
 
         {/* Optional per-code LLM override: replaces the activity YAML's llm
-            provider/model for this code only. Both-or-nothing — the server
-            action rejects a half-filled pair. Editable in BOTH modes (not
-            frozen like the module/file URL). */}
+            provider/model (and reasoning level) for this code only.
+            Both-or-nothing — the server action rejects a half-filled pair, and
+            a level without the pair. Editable in BOTH modes (not frozen like
+            the module/file URL). */}
         <div className="flex flex-col gap-1.5 self-stretch">
           <div className="flex flex-wrap gap-3.5 self-stretch">
             <Field className={ROW_FIELD_CLASSES}>
@@ -206,6 +215,24 @@ export function CodeForm({
                 disabled={pending}
               />
             </Field>
+            <Field className="grow-0 basis-52 self-stretch">
+              <FieldLabel htmlFor="code-llm-reasoning">Reasoning (optional)</FieldLabel>
+              <Select
+                id="code-llm-reasoning"
+                name="llmReasoning"
+                className="font-mono"
+                value={llmReasoning}
+                onChange={(event) => setLlmReasoning(event.target.value)}
+                disabled={pending}
+              >
+                <option value="">Provider default</option>
+                {REASONING_LEVELS.map((level) => (
+                  <option key={level} value={level}>
+                    {level}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             {LLM_OVERRIDE_PRESETS.map((preset) => (
@@ -216,6 +243,9 @@ export function CodeForm({
                 onClick={() => {
                   setLlmProvider(preset.provider);
                   setLlmModel(preset.model);
+                  // A preset fills the WHOLE override — a preset without a level
+                  // clears one the teacher had picked.
+                  setLlmReasoning(preset.reasoning ?? "");
                 }}
                 disabled={pending}
               >
@@ -228,8 +258,9 @@ export function CodeForm({
               onClick={() => {
                 setLlmProvider("");
                 setLlmModel("");
+                setLlmReasoning("");
               }}
-              disabled={pending || (!llmProvider && !llmModel)}
+              disabled={pending || (!llmProvider && !llmModel && !llmReasoning)}
               title="Use the activity's LLM settings"
               aria-label="Clear LLM override"
             >

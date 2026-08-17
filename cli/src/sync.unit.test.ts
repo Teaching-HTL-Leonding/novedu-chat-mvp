@@ -78,13 +78,49 @@ describe("matchEntry", () => {
 
   it("matches only an identical llm override pair", () => {
     const override = { provider: "SCCH", model: "m1" } as const;
+    const stored = { ...override, reasoning: null };
 
-    expect(matchEntry(entry({ llm: override }), [code({ llm: { ...override } })])).toHaveLength(1);
+    expect(matchEntry(entry({ llm: override }), [code({ llm: stored })])).toHaveLength(1);
     expect(
-      matchEntry(entry({ llm: override }), [code({ llm: { provider: "SCCH", model: "m2" } })]),
+      matchEntry(entry({ llm: override }), [
+        code({ llm: { provider: "SCCH", model: "m2", reasoning: null } }),
+      ]),
     ).toEqual([]);
     expect(matchEntry(entry({ llm: override }), [code()])).toEqual([]);
-    expect(matchEntry(entry(), [code({ llm: { ...override } })])).toEqual([]);
+    expect(matchEntry(entry(), [code({ llm: stored })])).toEqual([]);
+  });
+
+  // A code minted at another reasoning effort serves DIFFERENT behavior, so reusing it
+  // would silently run the class at an effort the registry no longer asks for. Sync never
+  // edits a code, so the only correct answer is "no match" — the entry mints a new one.
+  it("treats a differing reasoning level as a different override", () => {
+    const pair = { provider: "SCCH", model: "m1" } as const;
+
+    expect(
+      matchEntry(entry({ llm: { ...pair, reasoning: "high" } }), [
+        code({ llm: { ...pair, reasoning: "high" } }),
+      ]),
+    ).toHaveLength(1);
+    expect(
+      matchEntry(entry({ llm: { ...pair, reasoning: "high" } }), [
+        code({ llm: { ...pair, reasoning: "low" } }),
+      ]),
+    ).toEqual([]);
+    // An entry without a level never matches a code minted with one, and vice versa —
+    // "no reasoning effort" is a real, different configuration.
+    expect(
+      matchEntry(entry({ llm: pair }), [code({ llm: { ...pair, reasoning: "low" } })]),
+    ).toEqual([]);
+    expect(
+      matchEntry(entry({ llm: { ...pair, reasoning: "low" } }), [
+        code({ llm: { ...pair, reasoning: null } }),
+      ]),
+    ).toEqual([]);
+    // The pre-reasoning world: an entry with no level still matches the codes minted
+    // before the field existed (the server answers them without `reasoning`).
+    expect(
+      matchEntry(entry({ llm: pair }), [code({ llm: { ...pair, reasoning: null } })]),
+    ).toHaveLength(1);
   });
 
   it("returns several matches newest first", () => {
@@ -183,8 +219,37 @@ describe("parseServerCodes", () => {
     ]);
 
     expect(parsed).toHaveLength(1);
-    expect(parsed[0]?.llm).toEqual({ provider: "SCCH", model: "m1" });
+    // A server that never heard of the reasoning level reads as "no level", not as junk.
+    expect(parsed[0]?.llm).toEqual({ provider: "SCCH", model: "m1", reasoning: null });
     expect(parsed[0]?.validUntil).toBe("2026-12-31T23:00:00.000Z");
+  });
+
+  it("reads the override's reasoning level, defensively", () => {
+    const withLevel = parseServerCodes([
+      {
+        code: "aaaaaaaaaa",
+        module: "quiz",
+        fileUrl: URL_A,
+        llm: { provider: "Azure Foundry", model: "gpt-5.6-terra", reasoning: "high" },
+      },
+    ]);
+    expect(withLevel[0]?.llm).toEqual({
+      provider: "Azure Foundry",
+      model: "gpt-5.6-terra",
+      reasoning: "high",
+    });
+
+    // Anything that is not a string is "no level" — never a value the matcher could
+    // accidentally compare equal to an entry's.
+    const junk = parseServerCodes([
+      {
+        code: "bbbbbbbbbb",
+        module: "quiz",
+        fileUrl: URL_A,
+        llm: { provider: "SCCH", model: "m1", reasoning: 3 },
+      },
+    ]);
+    expect(junk[0]?.llm?.reasoning).toBeNull();
   });
 
   it("answers an unexpected payload with an empty list", () => {
@@ -209,6 +274,18 @@ describe("mintBody", () => {
       validFrom: "2026-09-01T00:00:00+02:00",
       note: "3A",
       llm: { provider: "SCCH", model: "m1" },
+    });
+  });
+
+  it("carries the override's reasoning level into the mint body", () => {
+    expect(
+      mintBody(
+        entry({ llm: { provider: "Azure Foundry", model: "gpt-5.6-terra", reasoning: "low" } }),
+      ),
+    ).toEqual({
+      module: "quiz",
+      fileUrl: URL_A,
+      llm: { provider: "Azure Foundry", model: "gpt-5.6-terra", reasoning: "low" },
     });
   });
 });

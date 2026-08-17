@@ -14,7 +14,7 @@
 // The reused `llm` sub-schema carries `.meta({ id })` so it becomes a named `$def`.
 
 import { z } from "zod";
-import { providerSchema } from "@/lib/llm/provider";
+import { providerSchema, reasoningLevelSchema } from "@/lib/llm/provider";
 import { FragmentFileRefSchema, TextFileRefSchema } from "@/lib/prompt-fragments";
 
 export const WritingYamlSchema = z.strictObject({
@@ -42,11 +42,14 @@ export const WritingYamlSchema = z.strictObject({
     description:
       "Writing DIVERGES: it defaults to false (attributed), because review and the Save feature need to know whose text it is. Set to true for ephemeral, unattributed writing — which also disables saving.",
   }),
-  // `provider` selects which LLM endpoint serves `model` (default SCCH).
+  // `provider` selects which LLM endpoint serves `model` (default SCCH), and
+  // `reasoning` optionally pins a reasoning model's effort level (absent ⇒ the
+  // parameter is not sent).
   llm: z
     .strictObject({
       model: z.string().min(1).meta({ description: "The model that drives the feedback chat." }),
       provider: providerSchema,
+      reasoning: reasoningLevelSchema,
     })
     .meta({ id: "llm", description: "The model and provider that back the writing coach." }),
   // Optional document-level prompt-fragment libraries (the tutor `prompt` shape

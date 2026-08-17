@@ -85,7 +85,8 @@ npx @novedu/cli prompts ./sorting-quiz.yaml --kind quiz --json \
   re-implementation), so what you see is what the model gets: fragments resolved,
   and — for a compound quiz — every `quiz_files` include fetched, each imported
   question carrying its source quiz's preamble.
-- Every dump carries `{ kind, id, llm: { provider, model } }`. A **quiz** adds
+- Every dump carries `{ kind, id, llm: { provider, model, reasoning? } }` (the
+  reasoning level only when the file sets one). A **quiz** adds
   `grading` (a `system` prompt per question, the user-message templates and the
   grader's JSON-Schema response contract) and `discussion` (the chat's `system`
   prompt, the three seed-message templates and the verdict wording). A **coding**
@@ -148,6 +149,9 @@ npx @novedu/cli eval ./sorting-quiz.eval.yaml --repeats 3
 # How would this rubric do on another model? (both flags, always together)
 npx @novedu/cli eval ./sorting-quiz.eval.yaml \
   --llm-provider "Azure Foundry" --llm-model gpt-5-mini
+
+# Same model, more thinking: the level alone keeps the activity's provider/model
+npx @novedu/cli eval ./sorting-quiz.eval.yaml --llm-reasoning high
 
 # A strong judge over the quiz's own grader — the recommended pairing
 npx @novedu/cli eval ./sorting-quiz.eval.yaml \
@@ -225,12 +229,20 @@ npx @novedu/cli eval ./loops-tutor.eval.yaml --report loops.md
   only when some case required a tool, so no line means "not checked"), a **"Missing tool
   calls"** section in the Markdown report, and `totals.toolsFlagged` plus each repeat's
   `toolCalls` / `missingTools` in the JSON.
-- **Choosing the judge.** By default the judge runs on the same model as the grader.
-  `--judge-llm-provider` + `--judge-llm-model` (both or neither) point it at another one,
-  which is the **recommended** setup: a strong judge over a smaller grader finds real
-  problems, while a small model judging itself mostly produces noise. `--no-judge-feedback`
-  turns judging off and halves the LLM calls; combining the two is rejected as
-  contradictory. Because judging roughly doubles the cost, the run's scope line says so
+- **Choosing what runs.** `--llm-provider` + `--llm-model` (both or neither) replace the
+  activity's **whole** `llm:` block for the run — its reasoning level included, so the
+  file's level is dropped unless `--llm-reasoning <level>` restates it.
+  `--llm-reasoning` on its own changes only the effort and keeps the file's
+  provider/model — the "same model, more thinking" comparison run.
+- **Choosing the judge.** By default the judge runs on the same model **and effort** as
+  the grader. `--judge-llm-provider` + `--judge-llm-model` (both or neither) point it at
+  another one — replacing the whole spec, exactly like the grading flags — which is the
+  **recommended** setup: a strong judge over a smaller grader finds real
+  problems, while a small model judging itself mostly produces noise.
+  `--judge-llm-reasoning` sets the judge's effort on its own, no pair needed.
+  `--no-judge-feedback` turns judging off and halves the LLM calls; combining it with any
+  of the judge flags is rejected as contradictory. Because judging roughly doubles the
+  cost, the run's scope line says so
   up front: `27 case(s) × 3 repeat(s) = 81 grading + 81 judge call(s)`.
 - **If the judge itself fails**, the run **degrades instead of aborting**: after three
   consecutive judge failures it stops judging (one warning on stderr) and finishes the
@@ -255,7 +267,7 @@ npx @novedu/cli eval ./loops-tutor.eval.yaml --report loops.md
   run localises the problem for the cost of a single grading call.
 - **Caveat**: a green run certifies **the file you ran it on**, not the app-hosted
   copy a live code serves — upload it (`files upload`) afterwards. An override run
-  certifies the override pair, not the quiz's configured `llm`.
+  certifies the override, not the quiz's configured `llm`.
 
 ## Authentication
 
@@ -300,7 +312,7 @@ authoritative — the CLI sends your input as-is and relays the server's answer.
 ```
 codes create  --module <tutor|quiz|writing|coding> --file <url>
               [--start <iso>] [--end <iso>] [--note <text>]
-              [--llm-provider <p> --llm-model <m>]
+              [--llm-provider <p> --llm-model <m>] [--llm-reasoning <level>]
 codes list    [--search <q>] [--module <m>] [--all]
 codes sync    <registry-file> [--lock <path>] [--dry-run] [--json]
 files upload  <name> [--kind <tutor|fragment|quiz|writing|coding>]
@@ -318,7 +330,10 @@ images list   [--search <q>] [--all]
   server-side before the code is stored, and the response includes the
   shareable `url`. `--start`/`--end` must be ISO 8601 **with an explicit
   offset or `Z`** (e.g. `2026-07-07T08:00:00Z`); the
-  `--llm-provider`/`--llm-model` override pair is both-or-nothing.
+  `--llm-provider`/`--llm-model` override pair is both-or-nothing, and
+  `--llm-reasoning <level>` (`minimal`, `low`, `medium` or `high`) rides on top of
+  the pair — it is rejected without it. The override replaces the activity's whole
+  `llm:` block, so leaving the level out also drops the file's.
 - `codes sync <registry-file>` mints codes for a whole **course** at once — see
   [Many activities at once](#many-activities-at-once-codes-sync) below.
 - `files upload <name>` is an **upsert**: creating a new file requires
@@ -416,11 +431,13 @@ activity-codes:
 - **Groups decide the module:** `quizzes`, `tutors`, `writing`, `coding`. Each
   entry gives either `file` (relative to `base-url`, which must end in `/`) or
   an absolute `url`, plus any of `start`/`end` (ISO 8601 **with an offset or
-  `Z`**, whole seconds), `note`, and an `llm: {provider, model}` override.
+  `Z`**, whole seconds), `note`, and an `llm: {provider, model, reasoning?}`
+  override.
 - **Keys are yours and must be unique across all groups** — lowercase letters,
   digits and hyphens. Your material references the key; the lock file maps it to
   the code.
-- **Re-runs are safe.** An entry whose activity, window and model override match
+- **Re-runs are safe.** An entry whose activity, window and LLM override
+  (provider, model and reasoning level) match
   an existing code of yours **reuses** that code; only entries without a match
   are minted. So `codes sync` after every edit is the normal workflow, and the
   first run against already-minted codes should report all-reused.

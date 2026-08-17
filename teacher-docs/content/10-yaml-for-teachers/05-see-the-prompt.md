@@ -43,6 +43,14 @@ You get a short summary: what the file is, which AI model it uses, and how long 
   Run again with --json for the full prompt text.
 ```
 
+When the file also sets a thinking-effort level, the same line names it:
+
+```
+  provider: Azure Foundry   model: gpt-5.6-terra   reasoning: low
+```
+
+These are the settings of the **file** you pointed at. A code that overrides the AI settings when you share the activity is not taken into account, because the command describes a file, not a share link.
+
 Add `--json` for the prompts themselves, in full:
 
 ```bash

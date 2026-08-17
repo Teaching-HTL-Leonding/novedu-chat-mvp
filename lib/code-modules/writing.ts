@@ -1,7 +1,12 @@
 import { RequestContext } from "@mastra/core/request-context";
 import { WritingSaversList } from "@/app/[code]/_writing/writing-review";
 import { ConversationStats } from "@/app/codes/[code]/conversation-stats";
-import { WRITING_INSTRUCTIONS, WRITING_MODEL, WRITING_PROVIDER } from "@/app/mastra/writing-agents";
+import {
+  WRITING_INSTRUCTIONS,
+  WRITING_MODEL,
+  WRITING_PROVIDER,
+  WRITING_REASONING,
+} from "@/app/mastra/writing-agents";
 import { effectiveLlm } from "@/lib/code-store";
 import { providerUnavailableReason } from "@/lib/llm/availability";
 import { loadWriting } from "@/lib/writing-fetch";
@@ -36,6 +41,8 @@ export const writingModule: CodeModuleDef = {
       context.set(WRITING_INSTRUCTIONS, loaded.writing.instructions);
       context.set(WRITING_MODEL, llm.model);
       context.set(WRITING_PROVIDER, llm.provider);
+      // Only when the effective llm carries one — an absent key pins no effort.
+      if (llm.reasoning) context.set(WRITING_REASONING, llm.reasoning);
       return { ok: true, context };
     },
   },

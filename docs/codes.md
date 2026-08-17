@@ -31,7 +31,7 @@ A **code** is a `[a-z0-9-]` string (1–32 chars; `generateCode()` mints 10 rand
 | `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
 | `origin` | **documentation-only**: where the code was created (DEV vs PROD rows). Lookups never read it — a code created on localhost works in production, since all environments share the database |
 | `anonymous` | the activity YAML's `anonymous` flag (default is module-specific — tutor/quiz `true`, writing `false`, coding always `true`), **frozen at create time** — a later YAML edit does NOT update it. Governs whether the stats page shows per-student data |
-| `llm_provider` / `llm_model` | the code's optional **LLM override pair**: when set, they replace the activity YAML's `llm.provider`/`llm.model` for every request served under this code. **Both-or-nothing** — either both NULL (the YAML's `llm:` block applies) or both set; model ids are provider-specific, so validation rejects a lone half. Surfaced as `CodeEntry.llm` and applied via `effectiveLlm` (`lib/code-store.ts`); a corrupt stored pair is logged and read as no override. Editable on `/codes/edit` (NOT frozen) |
+| `llm_provider` / `llm_model` / `llm_reasoning` | the code's optional **LLM override**: when set, it replaces the activity YAML's whole `llm:` block for every request served under this code. The pair is **both-or-nothing** — either both NULL (the YAML's `llm:` block applies) or both set; model ids are provider-specific, so validation rejects a lone half. `llm_reasoning` is the optional third member (a `REASONING_LEVELS` literal, docs/ai-models.md): it requires the pair, and an override WITHOUT one drops the YAML's level too (wholesale). Surfaced as `CodeEntry.llm` and applied via `effectiveLlm` (`lib/code-store.ts`); a corrupt stored pair is logged and read as no override, a corrupt stored reasoning is logged and dropped while the pair survives. Editable on `/codes/edit` (NOT frozen) |
 | `created_at` | creation time |
 
 Indexes: PK on `code`; `created_by` (the teacher list); `module` (the
@@ -178,11 +178,12 @@ see `docs/tutor-tools.md`. Tool grants live in the YAML only; the code row and
 the runtime route know nothing about them, and the per-code LLM override never
 affects them.
 
-Every consumption of the activity's `llm.provider`/`llm.model` goes through
+Every consumption of the activity's `llm:` block goes through
 `effectiveLlm(entry, activityLlm)` (`lib/code-store.ts`): the code's LLM override
-pair wins wholesale when set. The five sites: the tutor agent (the descriptor
-puts the pair on the RequestContext as `tutor-provider-override`/
-`tutor-model-override`; `app/mastra/tutor-agent.ts` applies it), the quiz
+wins wholesale when set (its optional reasoning level included). The five sites:
+the tutor agent (the descriptor puts it on the RequestContext as
+`tutor-provider-override`/`tutor-model-override`/`tutor-reasoning-override`;
+`app/mastra/tutor-agent.ts` applies it), the quiz
 discussion + writing `buildRequestContext`s, the quiz grader (`submitAnswer`),
 and the coding proxy. Each gates `providerUnavailableReason` on the EFFECTIVE
 provider. Usage metering needs no extra wiring — the exporter reads the actually
@@ -236,14 +237,19 @@ semantics: the web form's `createCodeAction` (`lib/code-actions.ts`,
 `requireTeacherUserId` + FormData + redirect) and the bearer
 `POST /api/codes` (`requireBearerTeacher` + JSON — `docs/api.md`).
 
-The **LLM override** section is two free-text fields (provider + model) plus
+The **LLM override** section is two free-text fields (provider + model) plus a
+**reasoning** select ("Provider default" + the four `REASONING_LEVELS`) and
 preset buttons (`LLM_OVERRIDE_PRESETS`, `lib/llm/presets.ts` — the built-in
-SCCH/Gemma-4 and Azure-Foundry/gpt-5.4-mini fills; a Clear button empties both).
-Left blank, the code serves the activity YAML's `llm:` values. Filled, the pair
-replaces provider AND model for every request under the code (both-or-nothing:
-the server rejects a half-filled pair or an unknown provider, and gates the
-override's provider through `providerUnavailableReason` at save time so a
-Foundry override cannot be stored on an SCCH-only server). The override swaps
+SCCH/Gemma-4, Azure-Foundry/gpt-5.4-mini, Azure-Foundry/gpt-5.6-terra (which
+also fills reasoning `low`) and SCCH/Qwen-3.8-27B fills; a Clear button empties
+all three).
+Left blank, the code serves the activity YAML's `llm:` values. Filled, the
+override replaces the whole `llm:` block for every request under the code (the
+pair is both-or-nothing and a reasoning level requires it: the server rejects a
+half-filled pair, an unknown provider, an unknown level, or a level without the
+pair, and gates the override's provider through `providerUnavailableReason` at
+save time so a Foundry override cannot be stored on an SCCH-only server). The
+override swaps
 ONLY the LLM — the system prompt, `anonymous`, and everything else still come
 from the YAML (a tutor YAML's `llm.imageInput` still gates the attachment UI, so
 pick a vision-capable override model for a vision tutor). **A storage failure is a
@@ -263,8 +269,8 @@ for it.
 
 **Editing** (`/codes/edit/[code]`, the SAME `CodeForm` in `mode="edit"` →
 `updateCodeAction` → `updateCode`) changes only the **note**, the
-**availability window**, and the **LLM override pair** (set or cleared as a
-whole, same validation + availability gate as create). The module and the file
+**availability window**, and the **LLM override** (set or cleared as a
+whole, reasoning level included; same validation + availability gate as create). The module and the file
 URL are shown **read-only** and
 are never submitted, so the frozen `anonymous` flag (which the file implies) stays
 valid and no YAML re-validation is needed.

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { buildUpstreamChatBody } from "@/lib/coding-proxy";
 import { loadCodingFrom } from "@/lib/coding-resolve";
 import type { FileKind } from "@/lib/file-name";
-import type { LlmProvider } from "@/lib/llm/provider";
+import type { LlmProvider, ReasoningLevel } from "@/lib/llm/provider";
 import {
   error,
   type Fetcher,
@@ -61,6 +61,13 @@ export const PROMPT_KINDS: readonly PromptKind[] = ["tutor", "quiz", "writing", 
 export interface PromptDumpLlm {
   provider: LlmProvider;
   model: string;
+  /**
+   * The activity's own `llm.reasoning`, when it pins one — ABSENT otherwise, because an
+   * absent level means no `reasoning_effort` is sent at all. Like `provider`/`model` this
+   * is the FILE's value; a code's override (which may add, change or drop the level) is
+   * out of scope for the same reason.
+   */
+  reasoning?: ReasoningLevel;
 }
 
 /** One question's grading surface. */
@@ -179,7 +186,11 @@ const tutorDumper: PromptDumper = {
       dump: {
         kind: "tutor",
         id: result.id,
-        llm: { provider: result.provider, model: result.model },
+        llm: {
+          provider: result.provider,
+          model: result.model,
+          ...(result.reasoning ? { reasoning: result.reasoning } : {}),
+        },
         system: result.prompt,
         tools: result.tools,
       },
@@ -200,7 +211,11 @@ const quizDumper: PromptDumper = {
       dump: {
         kind: "quiz",
         id: quiz.id,
-        llm: { provider: quiz.provider, model: quiz.model },
+        llm: {
+          provider: quiz.provider,
+          model: quiz.model,
+          ...(quiz.reasoning ? { reasoning: quiz.reasoning } : {}),
+        },
         grading: {
           userMessageTemplate: QUIZ_ANSWER_MESSAGE_TEMPLATE,
           userMessagePhotosOnly: QUIZ_ANSWER_PHOTOS_ONLY_MESSAGE,
@@ -243,7 +258,11 @@ const writingDumper: PromptDumper = {
       dump: {
         kind: "writing",
         id: writing.id,
-        llm: { provider: writing.provider, model: writing.model },
+        llm: {
+          provider: writing.provider,
+          model: writing.model,
+          ...(writing.reasoning ? { reasoning: writing.reasoning } : {}),
+        },
         system: writing.instructions,
       },
     };
@@ -271,7 +290,11 @@ const codingDumper: PromptDumper = {
       dump: {
         kind: "coding",
         id: coding.id,
-        llm: { provider: coding.provider, model: coding.model },
+        llm: {
+          provider: coding.provider,
+          model: coding.model,
+          ...(coding.reasoning ? { reasoning: coding.reasoning } : {}),
+        },
         system: coding.instructions,
         upstreamSystemMessage: typeof system?.content === "string" ? system.content : "",
       },

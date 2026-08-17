@@ -116,11 +116,13 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   and has no `mine` — `docs/filtered-lists.md`. Bare JSON
   array, newest first, of
   `{ code, url, module, note, fileUrl, anonymous, validFrom, validUntil, llm, createdBy, createdAt }`
-  (`url` the shareable link, `llm` the override pair or `null`).
+  (`url` the shareable link, `llm` the override
+  `{ provider, model, reasoning? }` or `null`).
 - **`POST /api/codes`** (same file, teacher-only) — mints a code through the
   SAME pipeline as the web form (`createCodeForUser`,
   `lib/code-service.ts`). JSON body
-  `{ module, fileUrl, validFrom?, validUntil?, note?, llm?: { provider, model } }`;
+  `{ module, fileUrl, validFrom?, validUntil?, note?, llm?: { provider, model, reasoning? } }`
+  (`reasoning` a `REASONING_LEVELS` literal, only valid with the pair — docs/ai-models.md);
   the window bounds must be ISO 8601 **with an explicit offset or `Z`** — a
   naive datetime is rejected with 400 (it would otherwise silently be
   interpreted in the server's timezone). `201` + the same code object shape.
@@ -203,8 +205,9 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   `docs/reports.md`).
 - **`POST /api/eval/grade`** (`app/api/eval/grade/route.ts`, teacher-only) — grades
   ONE golden answer for `novedu-cli eval` (`docs/cli-eval.md`). Body
-  `{ llm: { provider?, model }, system, answer }` (`provider` defaults to SCCH; an
-  unknown one is `400`, never silently defaulted); `200` with
+  `{ llm: { provider?, model, reasoning? }, system, answer }` (`provider` defaults
+  to SCCH; an unknown provider or reasoning level is `400`, never silently
+  defaulted/dropped); `200` with
   `{ result: "correct" | "partial" | "incorrect", feedback, usage? }`, the OPTIONAL
   `usage: { input, cachedInput, output }` carrying this call's tokens when the model
   reported any (`input` includes the cached part; the field is omitted entirely when
@@ -235,7 +238,8 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   under the `cli-eval` pseudo-code + `eval` module (`docs/usage-metering.md`).
 - **`POST /api/eval/judge`** (`app/api/eval/judge/route.ts`, teacher-only) — audits ONE
   grader **feedback** text for `novedu-cli eval`'s feedback judge (`docs/cli-eval.md`).
-  Body `{ llm: { provider?, model }, system, subject, criteria }`, where `system` is the
+  Body `{ llm: { provider?, model, reasoning? }, system, subject, criteria }`, where
+  `system` is the
   judge prompt, `subject` the assembled `(grading prompt, answer, verdict, feedback)`
   block, and `criteria` **1–8** names matching `/^[a-z_]{1,40}$/`; `200` with
   `{ issues: [{ criterion, note }], usage? }`, an **empty `issues` array meaning the
@@ -255,7 +259,7 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   the same `cli-eval` pseudo-code + `eval` module as the gradings it audits.
 - **`POST /api/eval/respond`** (`app/api/eval/respond/route.ts`, teacher-only) — generates
   ONE tutor turn for `novedu-cli eval`'s **tutor** kind (`docs/cli-eval.md`). Body
-  `{ llm: { provider?, model }, system, tools, messages }`, where `system` is the tutor's
+  `{ llm: { provider?, model, reasoning? }, system, tools, messages }`, where `system` is the tutor's
   assembled system prompt, `tools` the catalog names of its `tools:` grant (`[]` for a
   tool-less tutor) and `messages` the scripted conversation as
   `[{ role: "user" | "assistant", text }]` — **1–200 turns**, each non-empty, the teacher's

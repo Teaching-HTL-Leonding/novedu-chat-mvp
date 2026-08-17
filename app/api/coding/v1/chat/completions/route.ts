@@ -140,8 +140,9 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   // 3. Load the teacher's coding YAML (system prompt + pinned model). The code's
-  // LLM override pair, when set, replaces the YAML's provider/model — the pinned
-  // model and the upstream endpoint below both follow the EFFECTIVE pair.
+  // LLM override, when set, replaces the YAML's provider/model/reasoning — the
+  // pinned model, the pinned reasoning effort and the upstream endpoint below all
+  // follow the EFFECTIVE values.
   const loaded = await loadCoding(entry.fileUrl);
   if (!loaded.ok) {
     return errorResponse(loaded.message, 502, "server_error", null);
@@ -175,6 +176,7 @@ export async function POST(req: Request): Promise<Response> {
     buildUpstreamChatBody(parsed.value, {
       instructions: loaded.coding.instructions,
       model: llm.model,
+      reasoning: llm.reasoning,
     }),
   );
 

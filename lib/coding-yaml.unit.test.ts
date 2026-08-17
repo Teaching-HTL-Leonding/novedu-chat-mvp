@@ -49,6 +49,19 @@ describe("parseCoding", () => {
     if (!result.ok) expect(result.message).toContain("llm.provider");
   });
 
+  it("leaves a missing llm.reasoning undefined and carries an explicit level", () => {
+    const absent = parseCoding("llm:\n  model: m\ninstructions: Help.\n");
+    expect(absent.ok && absent.coding.reasoning).toBeUndefined();
+    const pinned = parseCoding("llm:\n  model: m\n  reasoning: high\ninstructions: Help.\n");
+    expect(pinned.ok && pinned.coding.reasoning).toBe("high");
+  });
+
+  it("rejects an unsupported llm.reasoning, naming the four levels", () => {
+    const result = parseCoding("llm:\n  model: m\n  reasoning: turbo\ninstructions: Help.\n");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.message).toMatch(/minimal.*low.*medium.*high/);
+  });
+
   it.each([
     ["invalid YAML", ":::not yaml::: ["],
     ["missing model", "instructions: Help.\n"],

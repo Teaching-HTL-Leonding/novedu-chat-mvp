@@ -69,6 +69,12 @@ export default async function CodeStatsPage({
           <p className="mb-5 text-foreground/70 text-sm">
             LLM override: <code className="text-[0.85em]">{entry.llm.provider}</code> ·{" "}
             <code className="text-[0.85em]">{entry.llm.model}</code>
+            {entry.llm.reasoning ? (
+              <>
+                {" · reasoning "}
+                <code className="text-[0.85em]">{entry.llm.reasoning}</code>
+              </>
+            ) : null}
           </p>
         ) : null}
 

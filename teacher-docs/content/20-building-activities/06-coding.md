@@ -40,14 +40,14 @@ instructions: |
 - **`id`** (required): a short machine name for the activity.
 - **`name`** (optional): a human-readable label for you.
 - **`title`** (optional): the heading students see on the connection page when they open the activity's code link.
-- **`llm.model`** (required): the model that answers. You can also add `llm.provider` to run on Azure instead of the school's server; the same `llm:` block works here as in every other activity.
+- **`llm.model`** (required): the model that answers. You can also add `llm.provider` to run on Azure instead of the school's server, and `llm.reasoning` to set how hard the model thinks before it answers; the same `llm:` block works here as in every other activity.
 - **`instructions`** (required): the assistant's rules, written by you.
 
 The first comment line is an editor hint: with a YAML-aware editor such as VS Code with the Red Hat YAML extension, it turns on validation and autocompletion while you type.
 
 ## The model is yours to pin
 
-The `llm.model` you write is final. A student's coding tool always sends some model name of its own, but Novedu ignores it and answers with the model you chose. Students never need to know which model runs, and they cannot switch to another one. When you later create a code for the activity, you can override the provider and model for that one code without editing the file.
+The `llm.model` you write is final. A student's coding tool always sends some model name of its own, but Novedu ignores it and answers with the model you chose. Students never need to know which model runs, and they cannot switch to another one. A `reasoning` level is pinned in the same way: it replaces whatever thinking effort the student's tool asks for, and if you set none, the tool's own request goes through. When you later create a code for the activity, you can override these settings for that one code without editing the file.
 
 ## Instructions shape the assistant
 
