@@ -104,15 +104,35 @@ export async function acquireSilent(
   }
 }
 
+/**
+ * How the system browser is launched per platform. Exported for tests.
+ *
+ * Windows goes through `cmd /c start`, and cmd RE-PARSES the command line it
+ * receives: an unquoted URL is cut at the first `&`, so Entra only ever saw
+ * `authorize?client_id=…` and answered AADSTS900144 ("the request body must
+ * contain the following parameter: 'scope'"). Node quotes an argument only
+ * when it contains whitespace, so the URL is quoted here explicitly and the
+ * command line handed over verbatim. The empty `""` is `start`'s window title
+ * — without it, `start` would take the quoted URL as the title.
+ */
+export function browserCommand(
+  url: string,
+  platform: NodeJS.Platform = process.platform,
+): { command: string; args: string[]; verbatim: boolean } {
+  if (platform === "darwin") return { command: "open", args: [url], verbatim: false };
+  if (platform === "win32")
+    return { command: "cmd", args: ["/c", "start", '""', `"${url}"`], verbatim: true };
+  return { command: "xdg-open", args: [url], verbatim: false };
+}
+
 function defaultOpenBrowser(url: string): void {
-  const [command, args] =
-    process.platform === "darwin"
-      ? ["open", [url]]
-      : process.platform === "win32"
-        ? ["cmd", ["/c", "start", "", url]]
-        : ["xdg-open", [url]];
+  const { command, args, verbatim } = browserCommand(url);
   try {
-    spawn(command as string, args as string[], { stdio: "ignore", detached: true }).unref();
+    spawn(command, args, {
+      stdio: "ignore",
+      detached: true,
+      windowsVerbatimArguments: verbatim,
+    }).unref();
   } catch {
     // The sign-in URL was already surfaced via onUrl — opening is best-effort.
   }

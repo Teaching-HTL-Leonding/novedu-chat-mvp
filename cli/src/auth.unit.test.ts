@@ -8,6 +8,7 @@ import {
   acquireByDeviceCode,
   acquireInteractive,
   acquireSilent,
+  browserCommand,
   buildCachePlugin,
   buildPca,
   displayName,
@@ -267,5 +268,38 @@ describe("displayName", () => {
     expect(displayName({ account: null } as unknown as AuthenticationResult)).toBe(
       "(unknown account)",
     );
+  });
+});
+
+describe("browserCommand", () => {
+  // A realistic authorize URL: every parameter after the first sits behind an
+  // `&`, which cmd treats as a command separator unless the URL is quoted.
+  const AUTH_URL =
+    "https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize?client_id=abc&scope=api%3A%2F%2Fabc%2Fcli.access&redirect_uri=http%3A%2F%2Flocalhost%3A1234";
+
+  it("passes the URL untouched to the POSIX openers", () => {
+    expect(browserCommand(AUTH_URL, "darwin")).toEqual({
+      command: "open",
+      args: [AUTH_URL],
+      verbatim: false,
+    });
+    expect(browserCommand(AUTH_URL, "linux")).toEqual({
+      command: "xdg-open",
+      args: [AUTH_URL],
+      verbatim: false,
+    });
+  });
+
+  it("quotes the URL for cmd on Windows so `&` cannot truncate it", () => {
+    const { command, args, verbatim } = browserCommand(AUTH_URL, "win32");
+    expect(command).toBe("cmd");
+    // Verbatim: Node must not re-quote, so the quotes have to be ours.
+    expect(verbatim).toBe(true);
+    expect(args).toEqual(["/c", "start", '""', `"${AUTH_URL}"`]);
+    // The command line cmd actually parses keeps the whole query string in one
+    // quoted token — an unquoted URL would lose `scope` (AADSTS900144).
+    const commandLine = args.join(" ");
+    expect(commandLine).toContain(`"${AUTH_URL}"`);
+    expect(commandLine.split("&")[0]).toBe(`/c start "" "${AUTH_URL.split("&")[0]}`);
   });
 });
