@@ -100,7 +100,7 @@ instructions: Give feedback.
     expect(pinned.ok && pinned.writing.reasoning).toBe("high");
   });
 
-  it("rejects an unsupported llm.reasoning, naming the four levels", () => {
+  it("rejects an unsupported llm.reasoning, naming the levels", () => {
     const result = parseWriting(`
 llm:
   model: m
@@ -108,7 +108,7 @@ llm:
 instructions: Give feedback.
 `);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.message).toMatch(/minimal.*low.*medium.*high/);
+    if (!result.ok) expect(result.message).toMatch(/minimal.*low.*medium.*high.*xhigh/);
   });
 
   it("honours an explicit anonymous: true", () => {

@@ -58,7 +58,7 @@ describe("validate — tutor", () => {
     expect(validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR").ok).toBe(false);
   });
 
-  it("leaves llm.reasoning unset, accepts the four levels, rejects junk", () => {
+  it("leaves llm.reasoning unset, accepts every level, rejects junk", () => {
     const parsed = parseYaml(TUTOR_YAML);
     if (!parsed.ok) throw new Error("precondition");
     const tutor = structuredClone(parsed.value) as { llm: Record<string, unknown> };
@@ -66,7 +66,7 @@ describe("validate — tutor", () => {
     const absent = validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR");
     expect(absent.ok && absent.data.llm.reasoning).toBeUndefined();
 
-    for (const level of ["minimal", "low", "medium", "high"]) {
+    for (const level of ["none", "minimal", "low", "medium", "high", "xhigh"]) {
       tutor.llm.reasoning = level;
       const pinned = validate(tutor, TutorSchema, "TUTOR_SCHEMA_ERROR");
       expect(pinned.ok && pinned.data.llm.reasoning).toBe(level);

@@ -65,7 +65,7 @@ The example is the real registry shape used by the Creative Coding book, a TypeS
 
 - `start` and `end` set the availability window, written as a full date and time with a time zone offset, for example `2026-09-01T00:00:00+02:00`, or `Z` for UTC. These are the same window rules the create form uses.
 - `note` is your own label for the code, up to 200 characters. Only teachers see it.
-- `llm` sets a model override for this one code, with `provider` and `model` always given together and an optional `reasoning` level (`minimal`, `low`, `medium`, or `high`) on top of them:
+- `llm` sets a model override for this one code, with `provider` and `model` always given together and an optional `reasoning` level (`none`, `minimal`, `low`, `medium`, `high`, or `xhigh`) on top of them:
 
   ```yaml
   llm:

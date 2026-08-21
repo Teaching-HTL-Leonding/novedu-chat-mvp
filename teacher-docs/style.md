@@ -21,3 +21,7 @@ the teacher, not the reviewer.
 - Prefer real examples from `activities/examples/` over invented YAML.
 - Prefer "activity" and "code" as the two core nouns; introduce module names
   (tutor, quiz, writing, coding) as *kinds of activity*.
+- SCCH is the school's **Austrian LLM hosting partner**, a company the school buys
+  hosting from, not hardware the school runs. Expand it that way the first time a
+  chapter needs it, then use "SCCH" or "the school's hosting partner". Never write
+  "the school's own server", "self-hosted", or "in-house".

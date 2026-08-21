@@ -331,7 +331,8 @@ images list   [--search <q>] [--all]
   shareable `url`. `--start`/`--end` must be ISO 8601 **with an explicit
   offset or `Z`** (e.g. `2026-07-07T08:00:00Z`); the
   `--llm-provider`/`--llm-model` override pair is both-or-nothing, and
-  `--llm-reasoning <level>` (`minimal`, `low`, `medium` or `high`) rides on top of
+  `--llm-reasoning <level>` (`none`, `minimal`, `low`, `medium`, `high` or
+  `xhigh`) rides on top of
   the pair — it is rejected without it. The override replaces the activity's whole
   `llm:` block, so leaving the level out also drops the file's.
 - `codes sync <registry-file>` mints codes for a whole **course** at once — see

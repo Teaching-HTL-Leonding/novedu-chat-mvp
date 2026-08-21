@@ -67,12 +67,15 @@ npx @novedu/cli validate ./activities/examples/sorting-algorithms/sorting-visual
 ```
 
 Every module's `llm:` block takes the same three fields: a required `model`, an
-optional `provider` (`SCCH` when omitted — the school's self-hosted server;
-`Azure Foundry` serves the activity from an Azure OpenAI deployment, with `model`
-naming the deployment) and an optional `reasoning` effort (`minimal`, `low`,
-`medium` or `high`; omitted, the model's own default applies). See each guide's
-`llm.provider` section. Validating a file that sets `llm.provider` requires
-`@novedu/cli` ≥ 0.6.0 — older releases bundle strict schemas that reject the key.
+optional `provider` (`SCCH` when omitted — the school's Austrian LLM hosting
+partner; `Azure Foundry` serves the activity from an Azure OpenAI deployment,
+with `model` naming the deployment) and an optional `reasoning` effort (`none`,
+`minimal`, `low`, `medium`, `high` or `xhigh`; omitted, the model's own default
+applies, and `none` switches thinking off). Which of those levels a model
+accepts, and whether the rest change anything at all, varies per model. See each
+guide's `llm.provider` and `llm.reasoning` sections. Validating a file that sets
+`llm.provider` requires `@novedu/cli` ≥ 0.6.0 — older releases bundle strict
+schemas that reject the key.
 
 The `llm:` block is the activity's **default**: when a teacher mints a code for
 it, the code's create/edit form can **override the whole block per code**

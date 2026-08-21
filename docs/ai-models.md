@@ -94,14 +94,52 @@ changes.
 
 Reasoning models (e.g. Foundry's gpt-5.6 deployments) accept an OpenAI
 `reasoning_effort` parameter. The app models it as an optional `llm.reasoning`
-field — one of `minimal`/`low`/`medium`/`high` (`REASONING_LEVELS`,
+field — one of `none`/`minimal`/`low`/`medium`/`high`/`xhigh` (`REASONING_LEVELS`,
 `lib/llm/provider.ts`) — in every activity YAML and as the optional third member
 of the per-code override (above). Absent means the parameter is **not sent**, so
 the model's own default applies. The value is provider-AGNOSTIC: it is sent to
 SCCH too (both providers speak the OpenAI dialect), and a model that rejects a
-level fails at runtime exactly like a wrong model name. SCCH additionally serves
-some models as separate reasoning-ON/OFF ids — that stays a `model` choice, not a
-`reasoning` one.
+level fails at runtime exactly like a wrong model name. The tuple is the UNION of
+the vocabularies our models speak, not a set every model accepts. Nothing narrows
+it per model — `model` is free text with no discovery — so the upstream call is
+the only validator, and the code form offers every level whatever the model.
+
+Measured on one prompt against all four house models (SCCH at `temperature: 0`,
+comparing the `reasoning_content` hash; Foundry by `reasoning_tokens`). Read the
+SHAPE of each column, not the absolute numbers — those are prompt-specific:
+
+| level | SCCH Qwen 3.8 27B | SCCH Gemma 4 31B | Foundry gpt-5.6-terra | Foundry gpt-5.4-mini |
+|---|---|---|---|---|
+| omitted | = `xhigh` (its default) | thinks, = every level below | thinks (107 rt) | no thinking (0 rt) |
+| `none` | no thinking | **no thinking** | no thinking | no thinking |
+| `minimal` | **400** | identical | **400** | no thinking (0 rt) |
+| `low` | 1 255 chars | identical | 98 rt | 183 rt |
+| `medium` | 1 845 chars | identical | 114 rt | 207 rt |
+| `high` | **400** | identical | 118 rt | 259 rt |
+| `xhigh` | 2 973 chars | identical | 120 rt | 365 rt |
+| `max` | **400** | identical | not probed | not probed |
+
+Three distinct behaviours, none of which the app can know in advance:
+
+- **A real effort ladder** — Qwen 3.8 and both gpt-5.x deployments spend
+  monotonically more thinking as the level rises (Qwen's `xhigh` is ~2.4× `low`).
+- **A boolean** — Gemma 4 acts on `none` alone; every other level returned the
+  BYTE-IDENTICAL trace, so picking `high` over `low` there buys nothing.
+- **A hard 400** — Qwen rejects the OpenAI-only names (`"Supported types are
+  xhigh (default), medium, and low"`) and `max`; gpt-5.6-terra rejects `minimal`
+  while gpt-5.4-mini accepts it. So `minimal` is DEPLOYMENT-specific even inside
+  one provider — the reason validation cannot move server-side.
+
+`max` stays out of `REASONING_LEVELS`: Qwen 400s on it and no house model needs
+it.
+
+`none` is NOT the same as omitting the field. It SENDS `reasoning_effort:
+"none"`, turning a thinking model off; an absent level sends no parameter at all
+and leaves the model's own default in place. Only the first is a way to make a
+thinking model answer straight away. (SCCH additionally serves some models as
+separate reasoning-ON/OFF ids — e.g. `Qwen/Qwen3.8-27B-FP8 - Reasoning OFF`, a
+second route to the same thing — that stays a `model` choice, not a `reasoning`
+one.)
 
 How the level reaches the wire, per path:
 

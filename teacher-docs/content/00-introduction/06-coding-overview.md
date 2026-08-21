@@ -59,7 +59,7 @@ instructions: |
     sorting function on request.
 ```
 
-You also pick the model that answers, and where it runs (the school's own server or Azure, a provider choice you can adjust per code).
+You also pick the model that answers, and where it runs (the school's Austrian LLM hosting partner or Azure, a provider choice you can adjust per code).
 
 Coding activities are always anonymous: you see overall usage of a code, not what an individual student asked.
 
