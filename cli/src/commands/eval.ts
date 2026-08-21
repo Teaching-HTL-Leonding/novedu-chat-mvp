@@ -723,7 +723,7 @@ export function registerEval(program: Command): void {
     )
     .option(
       "--llm-reasoning <level>",
-      'run at this reasoning effort ("minimal", "low", "medium" or "high"); on its own it keeps the activity\'s model',
+      `run at this reasoning effort (${REASONING_LEVELS.join(", ")}); on its own it keeps the activity's model`,
     )
     .option(
       "--no-judge-feedback",
@@ -739,7 +739,7 @@ export function registerEval(program: Command): void {
     )
     .option(
       "--judge-llm-reasoning <level>",
-      'judge at this reasoning effort ("minimal", "low", "medium" or "high"); on its own it keeps the judge\'s model',
+      `judge at this reasoning effort (${REASONING_LEVELS.join(", ")}); on its own it keeps the judge's model`,
     )
     .option("--json", "print the machine-readable batch report on stdout")
     .option("--out <file>", "additionally write the machine-readable batch report to a file")

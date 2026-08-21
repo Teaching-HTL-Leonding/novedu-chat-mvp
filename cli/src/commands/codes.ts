@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import type { Command } from "commander";
+import { REASONING_LEVELS } from "@/lib/llm/provider";
 import { failJson, performApiRequest, printJson, runApiRequest } from "../api";
 import { defaultLockPath, loadRegistry } from "../registry";
 import {
@@ -205,7 +206,7 @@ export function registerCodes(program: Command): void {
     .option("--llm-model <model>", "LLM override model id (needs --llm-provider)")
     .option(
       "--llm-reasoning <level>",
-      'LLM override reasoning effort ("minimal", "low", "medium" or "high"; needs the provider/model pair)',
+      `LLM override reasoning effort (${REASONING_LEVELS.join(", ")}; needs the provider/model pair)`,
     )
     .option(...SERVER_OPTION)
     .action(async (options: CreateOptions) => {

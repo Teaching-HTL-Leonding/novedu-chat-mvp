@@ -56,10 +56,10 @@ describe("parseCoding", () => {
     expect(pinned.ok && pinned.coding.reasoning).toBe("high");
   });
 
-  it("rejects an unsupported llm.reasoning, naming the four levels", () => {
+  it("rejects an unsupported llm.reasoning, naming the levels", () => {
     const result = parseCoding("llm:\n  model: m\n  reasoning: turbo\ninstructions: Help.\n");
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.message).toMatch(/minimal.*low.*medium.*high/);
+    if (!result.ok) expect(result.message).toMatch(/minimal.*low.*medium.*high.*xhigh/);
   });
 
   it.each([

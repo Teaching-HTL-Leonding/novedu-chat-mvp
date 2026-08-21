@@ -11,8 +11,11 @@ Cover:
   uploaded file), add a note for yourself, optionally set an availability window and a
   model override, then submit and get a short link.
 - The model override section: a provider and a model field, a reasoning select
-  ("Provider default" plus the four levels), and one-click presets that fill the whole
-  override at once — a preset for a reasoning model fills the level too.
+  ("Provider default" plus every thinking-effort level the app offers), and one-click
+  presets that fill the whole override at once, where a preset for a reasoning model
+  fills the level too. Do not hard-code how many levels there are; read the current
+  list from the source. Note that not every model accepts every level and that some
+  models ignore the difference, and send the teacher to "Available AI models" for it.
 - What you get: a short random link to hand to the class.
 - What you set now versus later: the note, window, and override can be changed later;
   the activity file, the kind, and the anonymity setting are fixed when the code is
@@ -32,6 +35,11 @@ Get right:
   only works alongside them; the override replaces the activity's whole `llm:` block,
   so leaving the reasoning on "Provider default" also drops the level the activity
   file sets. Link to "Available AI models".
+- Pointing a code at an Azure model is a spending decision: SCCH, the school's Austrian
+  LLM hosting partner, carries no usage-based cost, Azure models are paid per use, and a high
+  thinking effort multiplies what a lesson costs there. Say it in one or two sentences
+  and leave the detail to "Available AI models". No prices or rates, there are none in
+  the sources.
 - Coding codes are shared differently; link to "Special case: coding codes".
 - Check the current source for whether codes are created in the app, the CLI, or both,
   and describe only what exists; do not assume a CLI create command.

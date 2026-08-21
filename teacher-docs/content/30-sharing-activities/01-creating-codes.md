@@ -45,10 +45,12 @@ Novedu checks the activity file before storing anything. If the file has errors,
 The override section has three fields and a row of buttons:
 
 - **LLM provider override** and **LLM model override**, two free-text fields. They always go together: fill in both, or leave both blank.
-- **Reasoning (optional)**, a dropdown that starts on **Provider default** and offers the four thinking-effort levels `minimal`, `low`, `medium`, and `high`. A level only works alongside a provider and a model; on its own it is rejected.
+- **Reasoning (optional)**, a dropdown that starts on **Provider default** and offers the thinking-effort levels `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. A level only works alongside a provider and a model; on its own it is rejected. Not every model accepts every level, and some ignore the difference between them, so the chapter on choosing an AI model is worth reading before you set one.
 - **Preset buttons** that fill the whole override in one click, one per common combination. A preset for a reasoning model sets its level too, a preset for a plain model puts the dropdown back on **Provider default**. **Clear** empties all three fields, so the code uses the activity's own settings again.
 
 The override replaces the activity file's whole `llm:` block for this code. If the activity file sets a reasoning level and you leave the dropdown on **Provider default**, the code runs without one. Repeat the level in the override whenever you want to keep it. The chapter on choosing an AI model explains the settings themselves.
+
+One thing to keep in mind when you override: SCCH, the school's Austrian LLM hosting partner, doesn't bill per use, but the Azure models are paid per use, and a high thinking effort multiplies what a lesson costs there. Pointing a code at Azure is a spending decision as well as a quality one.
 
 ## What you get
 
@@ -85,4 +87,4 @@ npx @novedu/cli codes create --module quiz \
   --start 2026-07-07T08:00:00Z --end 2026-07-07T10:00:00Z
 ```
 
-`--start` and `--end` take ISO 8601 times with an explicit offset (the `Z` above means UTC) and may be left out for an open-ended code. `--llm-provider` and `--llm-model` set the model override, always together, and `--llm-reasoning` adds a thinking-effort level (`minimal`, `low`, `medium`, or `high`) on top of that pair; without the pair it is rejected, and left out it drops whatever level the activity file sets. `novedu-cli codes list` shows your codes.
+`--start` and `--end` take ISO 8601 times with an explicit offset (the `Z` above means UTC) and may be left out for an open-ended code. `--llm-provider` and `--llm-model` set the model override, always together, and `--llm-reasoning` adds a thinking-effort level (`none`, `minimal`, `low`, `medium`, `high`, or `xhigh`) on top of that pair; without the pair it is rejected, and left out it drops whatever level the activity file sets. `novedu-cli codes list` shows your codes.

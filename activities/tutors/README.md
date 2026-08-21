@@ -248,7 +248,7 @@ anonymous: false
 
 ### `llm.provider`
 
-Optional, default `SCCH` (the school's self-hosted server). Set
+Optional, default `SCCH` (the school's Austrian LLM hosting partner). Set
 `provider: Azure Foundry` to serve the tutor from an Azure OpenAI deployment
 instead — then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`)
 rather than an SCCH model id.
@@ -267,10 +267,18 @@ llm:
 ### `llm.reasoning`
 
 Optional, no default. How much **thinking effort** the model spends before it
-answers — `minimal`, `low`, `medium` or `high`. Omitted, the model decides for
-itself. Only reasoning-capable models act on it (e.g. a `gpt-5.6` deployment); a
-model that does not know the setting fails at runtime, just like a wrong model
-name.
+answers — `none`, `minimal`, `low`, `medium`, `high` or `xhigh`. Omitted, the
+model decides for
+itself. Not every level works on every model, and the models disagree in
+both directions. SCCH's Qwen 3.8 takes `none`, `low`, `medium` and `xhigh` (its
+default) and answers `minimal` or `high` with an error; the levels really do
+change how long it thinks. SCCH's Gemma 4 accepts every level but acts on `none`
+alone — `low` and `xhigh` give it the identical answer, so the choice buys
+nothing there. Azure Foundry's gpt-5.x deployments have a real ladder too, but
+which names they take varies per deployment. A model that does not know the
+level you picked fails when a student uses the activity, just like a wrong model
+name does. `none` turns thinking OFF, which is not the same as leaving the field
+out: left out, the model keeps its own default.
 
 ```yaml
 llm:

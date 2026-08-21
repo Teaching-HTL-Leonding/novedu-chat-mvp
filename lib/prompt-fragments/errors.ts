@@ -185,7 +185,7 @@ export type BuildResult =
        * `lib/llm/provider.ts` (kept inline so this module stays import-free) —
        * update both together.
        */
-      reasoning?: "minimal" | "low" | "medium" | "high";
+      reasoning?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
       /** Whether students may attach images in the chat (tutor `llm.imageInput`, default true). */
       imageInput: boolean;
       /**

@@ -147,10 +147,12 @@
               "description": "Optional reasoning effort for reasoning models, applied on top of the provider/model pair. Omit to let the model decide.",
               "type": "string",
               "enum": [
+                "none",
                 "minimal",
                 "low",
                 "medium",
-                "high"
+                "high",
+                "xhigh"
               ]
             }
           },

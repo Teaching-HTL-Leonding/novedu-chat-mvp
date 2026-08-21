@@ -238,7 +238,9 @@ semantics: the web form's `createCodeAction` (`lib/code-actions.ts`,
 `POST /api/codes` (`requireBearerTeacher` + JSON — `docs/api.md`).
 
 The **LLM override** section is two free-text fields (provider + model) plus a
-**reasoning** select ("Provider default" + the four `REASONING_LEVELS`) and
+**reasoning** select ("Provider default" — no level sent — + the
+`REASONING_LEVELS`, of which `none` explicitly sends `reasoning_effort: "none"`)
+and
 preset buttons (`LLM_OVERRIDE_PRESETS`, `lib/llm/presets.ts` — the built-in
 SCCH/Gemma-4, Azure-Foundry/gpt-5.4-mini, Azure-Foundry/gpt-5.6-terra (which
 also fills reasoning `low`) and SCCH/Qwen-3.8-27B fills; a Clear button empties

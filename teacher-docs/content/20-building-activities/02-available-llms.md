@@ -4,9 +4,10 @@ description: Set the model, the provider, and the thinking effort in an activity
 sidebar:
   order: 2
 audience: teacher
-keywords: [AI model, LLM, provider, SCCH, Azure Foundry, llm block, model override, reasoning, thinking effort]
+keywords: [AI model, LLM, provider, SCCH, Azure Foundry, llm block, model override, reasoning, thinking effort, cost]
 related:
   - 30-sharing-activities/01-creating-codes
+  - 30-sharing-activities/02-viewing-usage
   - 10-yaml-for-teachers/04-cli-validation
 generated: true
 ---
@@ -29,7 +30,7 @@ That's the whole block in most activities, taken from the sorting-algorithms sam
 
 The provider decides where the AI runs. There are two choices:
 
-- **SCCH** (the school's self-hosted AI server): the default. If you leave out `provider`, your activity runs here. Here `model` is a raw model id, like the one in the sample above.
+- **SCCH**, the school's Austrian LLM hosting partner: the default. If you leave out `provider`, your activity runs there. On SCCH, `model` is a raw model id, like the one in the sample above.
 - **Azure Foundry**: runs the activity on an Azure deployment your school has set up. With this provider, `model` names the Azure deployment, not a raw model id.
 
 An activity that runs on Azure looks like this:
@@ -40,7 +41,19 @@ llm:
   provider: Azure Foundry
 ```
 
-Azure Foundry is optional. Not every school connects one; if yours hasn't, all activities simply run on the school's self-hosted server, and Novedu shows a readable error if you try to save an activity or a code that asks for Azure Foundry.
+Azure Foundry is optional. Not every school connects one; if yours hasn't, all activities simply run at SCCH, the school's Austrian LLM hosting partner, and Novedu shows a readable error if you try to save an activity or a code that asks for Azure Foundry.
+
+## What each provider costs
+
+Activities that run at SCCH, the school's Austrian LLM hosting partner, don't cost anything per use. The school's contract with the partner covers them, so a class of 30 students chatting for a full lesson doesn't add anything to a bill. That's why SCCH is the default, and why it's the right home for everyday classroom work.
+
+Azure Foundry is paid per use. Every student message, every answer the model writes, and every bit of thinking it does on the way there is charged to your school's Azure account. A single busy lesson on an Azure model can cost real money, and a model set to think hard can cost several times what the same lesson costs at a lower effort.
+
+So treat the gpt models on Azure as the exception rather than the habit:
+
+- Run everyday activities at the school's hosting partner.
+- Reach for Azure when an activity genuinely needs it, for example a subject where the partner's models keep getting things wrong.
+- On Azure, set the thinking effort deliberately and start low. Watch what an activity actually uses on the code's usage page before you hand it to a big class.
 
 ## How hard the model thinks
 
@@ -53,11 +66,25 @@ llm:
   reasoning: low
 ```
 
-The four levels are `minimal`, `low`, `medium`, and `high`. More effort means the model writes more thinking before its answer, which counts towards the activity's usage, so `low` is a good starting point for a classroom activity and a higher level is worth trying when the AI keeps getting a tricky subject wrong.
+The levels, in rising order of effort, are `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. More effort means the model writes more thinking before its answer, which makes students wait longer, counts towards the activity's usage, and costs more on a paid Azure model. A low level is a good starting point for a classroom activity, and a higher one is worth trying when the AI keeps getting a tricky subject wrong.
 
 Leave `reasoning` out and the model decides for itself. There is no level Novedu fills in behind your back: the setting is simply not sent, and the model uses its own default.
 
-Only reasoning-capable models act on the setting. A model that doesn't know it fails when a student starts working, in the same way a wrong model name does, so test the activity once after adding the field. On the school's self-hosted server some models come as two separate entries instead, one with reasoning on and one with it off; there you pick the behaviour by choosing the model name, not by setting `reasoning`.
+`none` is the one level that isn't just "think less". It switches thinking off completely, so the model answers straight away. Leaving the field out and setting `none` are two different things: left out, a thinking model keeps thinking at its own default; set to `none`, it stops. If a model feels slow for a simple task, `none` is what makes it quick.
+
+## The same level means different things to different models
+
+What a reasoning level actually does depends on the model you picked, and there are three behaviours you'll meet.
+
+**Some models have a real range.** Qwen 3.8, one of the models at the school's Austrian LLM hosting partner SCCH, thinks steadily longer as you go from `low` to `medium` to `xhigh`, and at `xhigh` it writes roughly two and a half times the thinking it writes at `low`. The gpt-5.x deployments on Azure work the same way. On these models the level is a genuine dial, and on a paid Azure model it's also a cost dial.
+
+**Some models only have an on/off switch.** Gemma 4 at the school's hosting partner accepts every level, but only `none` changes anything. Asking it for `high` instead of `low` gives you the identical answer, so the useful choice there is thinking on or thinking off, nothing in between.
+
+**Some models refuse a level outright.** Qwen 3.8 accepts only `none`, `low`, `medium`, and `xhigh`, and answers with an error if you ask for `minimal` or `high`. On Azure it varies per deployment: one gpt deployment refuses `minimal` while another is happy with it. A refused level doesn't show up when you save the file. It fails when a student starts working, in the same way a wrong model name does.
+
+You can't tell from the app which of the three groups a model belongs to, so try the activity once yourself after you set a level. Send a question that needs real thought, check that an answer comes back at all, and see whether a higher level makes the answers better before you leave it there.
+
+At the school's hosting partner some models come as two separate entries instead, one with reasoning on and one with it off. There you pick the behaviour by choosing the model name, and you can leave `reasoning` out entirely.
 
 ## Which model names can I use?
 
@@ -72,7 +99,7 @@ If you validate your YAML with the Novedu CLI, use version 0.6.0 or newer when t
 
 ## Override the model per code, without editing the YAML
 
-The `llm:` block is only the activity's default. When you create or edit a code (the short link you hand to a class), the form lets you override it for that one code. The YAML file stays untouched, so the same activity can run once on the school's server and once on Azure, just by creating two codes.
+The `llm:` block is only the activity's default. When you create or edit a code (the short link you hand to a class), the form lets you override it for that one code. The YAML file stays untouched, so the same activity can run once at the school's hosting partner and once on Azure, just by creating two codes.
 
 A few things to know about the override:
 

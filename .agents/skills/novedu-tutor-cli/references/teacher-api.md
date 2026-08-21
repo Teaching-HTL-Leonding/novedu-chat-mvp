@@ -33,7 +33,7 @@ to students.
 - `--start`/`--end` must be ISO 8601 **with an explicit offset or `Z`**. A naive
   datetime is rejected.
 - `--llm-provider` / `--llm-model` is both-or-nothing.
-- `--llm-reasoning` (`minimal`, `low`, `medium`, `high`) is optional on top of that
+- `--llm-reasoning` (`none`, `minimal`, `low`, `medium`, `high`, `xhigh`) is optional on top of that
   pair and rejected without it. The override replaces the activity's WHOLE `llm:`
   block, so omitting the level also drops the file's own.
 - For material kept in a repo, prefer `codes sync` over minting by hand — see

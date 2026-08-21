@@ -96,13 +96,15 @@
           ]
         },
         "reasoning": {
-          "description": "Optional reasoning effort for reasoning models. Omit to let the model decide (the parameter is then not sent).",
+          "description": "Optional reasoning effort for reasoning models. Not every model accepts every level. Omit to let the model decide (the parameter is then not sent); \"none\" instead turns a reasoning model off.",
           "type": "string",
           "enum": [
+            "none",
             "minimal",
             "low",
             "medium",
-            "high"
+            "high",
+            "xhigh"
           ]
         },
         "imageInput": {

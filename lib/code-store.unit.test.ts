@@ -340,7 +340,7 @@ describe("validateCodeRequest", () => {
     });
   });
 
-  it("rejects an unknown reasoning level, naming the four levels", () => {
+  it("rejects an unknown reasoning level, naming the levels", () => {
     const result = validateCodeRequest({
       ...valid,
       llmProvider: "SCCH",
@@ -349,7 +349,7 @@ describe("validateCodeRequest", () => {
     });
     expect(result).toMatchObject({
       ok: false,
-      message: expect.stringMatching(/minimal.*low.*medium.*high/),
+      message: expect.stringMatching(/minimal.*low.*medium.*high.*xhigh/),
     });
   });
 });

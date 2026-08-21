@@ -28,7 +28,20 @@ export const providerSchema = z.enum(LLM_PROVIDERS).default(DEFAULT_PROVIDER).me
 // (`lib/registry-schema.ts` is one such consumer). Provider-agnostic on purpose:
 // both providers speak the OpenAI `reasoning_effort` parameter, and a model that
 // rejects a level fails at runtime like a wrong model name.
-export const REASONING_LEVELS = ["minimal", "low", "medium", "high"] as const;
+//
+// The tuple is the UNION of the vocabularies our models speak, NOT a set every
+// model accepts, and the models disagree in both directions (measured against
+// SCCH, `docs/ai-models.md`): Qwen 3.8 takes `none`/`low`/`medium`/`xhigh` and
+// answers `minimal`/`high`/`max` with a 400, while Gemma 4 takes every level but
+// acts on only `none` — the rest are byte-identical to each other. Nothing here
+// can narrow it per model (`model` is free text with no discovery), so the
+// upstream call is the only validator. Order is the code form's select order
+// (ascending effort).
+//
+// `"none"` is NOT the same as omitting the field: it SENDS `reasoning_effort:
+// "none"` and so turns a reasoning model off, where an absent level sends no
+// parameter and leaves the model's own default in place.
+export const REASONING_LEVELS = ["none", "minimal", "low", "medium", "high", "xhigh"] as const;
 
 export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 
@@ -38,7 +51,7 @@ export type ReasoningLevel = (typeof REASONING_LEVELS)[number];
 // JSON Schema (all four `llm` blocks).
 export const reasoningLevelSchema = z.enum(REASONING_LEVELS).optional().meta({
   description:
-    "Optional reasoning effort for reasoning models. Omit to let the model decide (the parameter is then not sent).",
+    'Optional reasoning effort for reasoning models. Not every model accepts every level. Omit to let the model decide (the parameter is then not sent); "none" instead turns a reasoning model off.',
 });
 
 // ai-sdk provider names, passed as `createOpenAI({ name })`. They are the METERING

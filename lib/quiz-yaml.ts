@@ -5,6 +5,7 @@ import {
   type LlmProvider,
   parseLenientProvider,
   parseLenientReasoningLevel,
+  REASONING_LEVELS,
   type ReasoningLevel,
 } from "./llm/provider";
 import type { FragmentBlock } from "./prompt-fragments";
@@ -210,8 +211,7 @@ export function parseQuiz(content: string): QuizParseResult {
   if (llm?.reasoning !== undefined && !reasoning) {
     return {
       ok: false,
-      message:
-        'This quiz uses an unsupported llm.reasoning (use "minimal", "low", "medium" or "high").',
+      message: `This quiz uses an unsupported llm.reasoning (one of ${REASONING_LEVELS.join(", ")}).`,
     };
   }
 

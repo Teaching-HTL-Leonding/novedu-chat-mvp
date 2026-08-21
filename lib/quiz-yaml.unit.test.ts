@@ -89,7 +89,7 @@ questions:
     expect(pinned.ok && pinned.quiz.reasoning).toBe("high");
   });
 
-  it("rejects an unsupported llm.reasoning, naming the four levels", () => {
+  it("rejects an unsupported llm.reasoning, naming the levels", () => {
     const result = parseQuiz(`
 llm:
   model: m
@@ -100,7 +100,7 @@ questions:
     evaluation: E
 `);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.message).toMatch(/minimal.*low.*medium.*high/);
+    if (!result.ok) expect(result.message).toMatch(/minimal.*low.*medium.*high.*xhigh/);
   });
 
   it.each([
