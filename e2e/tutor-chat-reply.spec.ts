@@ -1,6 +1,7 @@
 import { loadEnvConfig } from "@next/env";
 import { expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
+import { sendAndExpectReply } from "./chat.utils";
 import { LIVE_TOOLS_TUTOR_URL, LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 
 // A REAL end-to-end chat, run once per LLM PROVIDER: open a tutor code, send
@@ -16,11 +17,8 @@ import { LIVE_TOOLS_TUTOR_URL, LIVE_TUTOR_URL, mintTutorCode } from "./code.util
 //   /files/new (the quiz.spec pattern). Skipped when AZURE_FOUNDRY_ENDPOINT is
 //   not set. The other module specs stay SCCH-only by design.
 //
-// CopilotKit v2 testids used here (discovered from the rendered chat):
-//   - composer textarea: copilot-chat-textarea
-//   - send button:       copilot-send-button (Enter does NOT submit)
-//   - chat root:         copilot-chat (has data-copilot-running while streaming)
-//   - messages:          copilot-user-message / copilot-assistant-message
+// The send-and-await-reply sequence itself is shared with the other module chat
+// specs — `sendAndExpectReply` in e2e/chat.utils.ts.
 
 // Read the dev server's .env the way Next does, so the Foundry skip mirrors
 // exactly what the server sees.
@@ -42,31 +40,6 @@ prompt:
   tutor_instructions: |
     You are a friendly tutor. Answer briefly.
 `;
-
-// Fill "Hi!" into the composer and assert a non-empty assistant reply streams in.
-async function sendAndExpectReply(page: Page): Promise<void> {
-  // Wait for the chat to initialize (the composer appears).
-  const composer = page.getByTestId("copilot-chat-textarea");
-  await expect(composer).toBeVisible({ timeout: 30_000 });
-
-  // Send "Hi!" — fill the textarea and click the send button (Enter won't submit).
-  await composer.fill("Hi!");
-  await page.getByTestId("copilot-send-button").click();
-
-  // The user's message is echoed into the transcript.
-  await expect(page.getByTestId("copilot-user-message")).toContainText("Hi!");
-
-  // The tutor must stream back an answer. Content is irrelevant — assert only that
-  // an assistant message appears and ends up with non-empty text.
-  const assistant = page.getByTestId("copilot-assistant-message");
-  await expect(assistant).toBeVisible({ timeout: 60_000 });
-  await expect
-    .poll(async () => (await assistant.innerText()).trim().length, { timeout: 60_000 })
-    .toBeGreaterThan(0);
-
-  // And no runtime-sync / agent error surfaced.
-  await expect(page.getByText(/not found after runtime sync/i)).toHaveCount(0);
-}
 
 async function setEditorContent(page: Page, text: string): Promise<void> {
   const content = page.locator(".cm-content");

@@ -6,6 +6,7 @@ import { expect, type Page, test } from "@playwright/test";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "../lib/azure-credential";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
+import { sendAndExpectReply } from "./chat.utils";
 import { deleteUserName, mintCode, setUserName, VALID_WRITING_URL } from "./code.utils";
 
 // End-to-end coverage for the Writing module: a `novedu_codes` row with
@@ -184,14 +185,10 @@ test("writing round-trip: write → chat reply → save → teacher reads the sa
   await setCodeMirrorContent(page, DRAFT);
 
   // 2. Ask the coach anything; assert only that SOME assistant answer comes back.
-  const composer = page.getByTestId("copilot-chat-textarea");
-  await expect(composer).toBeVisible({ timeout: 30_000 });
-  await composer.fill("Can you give me brief feedback on my story so far?");
-  await page.getByTestId("copilot-send-button").click();
-  // The agent may emit an intermediate tool-status message, so assert the LAST one.
-  const assistant = page.getByTestId("copilot-assistant-message").last();
-  await expect(assistant).toBeVisible({ timeout: 60_000 });
-  await expect(assistant).toContainText(/\w/, { timeout: 90_000 });
+  await sendAndExpectReply(page, {
+    message: "Can you give me brief feedback on my story so far?",
+    timeout: 90_000,
+  });
 
   // 3. Save — this is what makes the text retrievable in the teacher review.
   await page.getByRole("button", { name: "Save" }).click();

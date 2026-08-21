@@ -106,6 +106,34 @@ test("wires the shared markdown renderer for assistant messages", async () => {
   );
 });
 
+test("overrides the cursor slot with a readable 'Generating…' note", async () => {
+  chatSpy.mockClear();
+  await render(
+    <ModuleChat
+      agentId={AGENT_ID}
+      threadId={THREAD_ID}
+      headers={RUNTIME_HEADERS}
+      providerKey={PROVIDER_KEY}
+      className="chat"
+    />,
+  );
+
+  // Students never receive reasoning (the runtime strips it — docs/chat.md), so
+  // CopilotKit's cursor is what they see for the whole run; it must read as a
+  // note, not a bare pulsing dot, and its wording must stay true for the whole
+  // run on any model. The slot is global to every ModuleChat consumer, so it is
+  // asserted here once.
+  const Cursor = chatSpy.mock.lastCall?.[0].messageView?.cursor;
+  expect(Cursor).toBeTypeOf("function");
+
+  const screen = await render(<Cursor />);
+  await expect.element(screen.getByTestId("chat-generating-note")).toHaveTextContent("Generating");
+  // Muted + small, so it never competes with the answer.
+  expect(screen.getByTestId("chat-generating-note").element().className).toContain(
+    "text-muted-foreground",
+  );
+});
+
 test("renders children inside the provider, before the chat", async () => {
   const screen = await render(
     <ModuleChat

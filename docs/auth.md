@@ -138,3 +138,28 @@ mode (`lib/student-mode-actions.ts`); exiting is ungated (the visible "Student
 mode" pill in the status bar carries the Exit control). Kept out of auth.ts
 because proxy.ts imports auth.ts into the proxy runtime, where `cookies()` is
 unavailable.
+
+The family, all in `lib/student-mode.ts`:
+
+| Export | Use |
+| --- | --- |
+| `teacherViewForSession(session)` | THE rule ("real teacher AND not simulating") → the triple, for a session the caller ALREADY has |
+| `effectiveTeacherForSession(session)` | the rule's boolean half, same session-taking form |
+| `getTeacherView()` | the `{ realTeacher, studentMode, effectiveTeacher }` triple — calls `auth()` itself |
+| `isEffectiveTeacher()` | boolean shorthand over `getTeacherView()` |
+| `requireEffectiveTeacher()` | the throwing gate for teacher-only server work |
+| `requireTeacherUserId()` | `requireEffectiveTeacher()` + the session `oid`, as a discriminated result |
+| `isStudentMode()` | the raw cookie read |
+
+Every other export **delegates to `teacherViewForSession`**, so the rule has
+exactly one definition, and that function is the only student-mode-aware reader
+of the raw `session.user.isTeacher` claim (`requireTeacher()` in `auth.ts` reads
+it for the bearer channel, which has no student mode — `docs/api.md`). Reach for
+a session-taking form only on a hot path that already called `auth()` and would
+otherwise decode the session JWT twice — today that is the chat runtime route,
+which gates reasoning display on it (`docs/chat.md`); both take `Session | null`
+and treat `null` as a non-teacher.
+
+The cookie NAME lives in `lib/student-mode-constants.ts` (re-exported from
+`lib/student-mode.ts`), an import-free module so the Playwright specs — which set
+the cookie directly and cannot load `next/headers` — spell it from one source.

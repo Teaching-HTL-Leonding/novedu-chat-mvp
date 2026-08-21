@@ -2,7 +2,7 @@
 
 import { CopilotChat, CopilotKitProvider } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -14,6 +14,27 @@ import { MarkdownRenderer } from "./markdown-renderer";
 // the base chat container — so each module supplies only what is unique to it.
 // The backend seam (the /api/copilotkit route + the module runtime) is separate
 // and unchanged; see docs/chat.md and docs/codes.md.
+
+// The "generation in progress" indicator, replacing CopilotKit's default pulsing
+// dot with a readable note. It shows for the WHOLE run whenever the last message
+// is not a reasoning message — which, for a student, is always: the runtime
+// strips every reasoning event before it reaches the browser
+// (app/api/copilotkit/reasoning-runner.ts). A teacher on a thinking model sees
+// the reasoning block while the thinking streams and this note the rest of the
+// run. The wording must therefore stay true for the ENTIRE run and for every
+// model: the slot is global to every ModuleChat consumer (tutor, writing, quiz
+// discussion) and every provider, including ones that never think at all.
+function GenerationCursor({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      data-testid="chat-generating-note"
+      className={cn("ml-1 text-muted-foreground text-sm", className)}
+      {...props}
+    >
+      Generating…
+    </div>
+  );
+}
 
 export type ModuleChatProps = {
   /** The module runtime's agentId — must match the registered agent. */
@@ -80,7 +101,10 @@ export function ModuleChat({
           agentId={agentId}
           labels={labels}
           chatView={chatView}
-          messageView={{ assistantMessage: { markdownRenderer: MarkdownRenderer } }}
+          messageView={{
+            assistantMessage: { markdownRenderer: MarkdownRenderer },
+            cursor: GenerationCursor,
+          }}
           attachments={attachments}
         />
       </div>

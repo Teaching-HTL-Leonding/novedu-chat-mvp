@@ -8,6 +8,7 @@ import {
   parseLenientReasoningLevel,
 } from "@/lib/llm/provider";
 import { modelEntry } from "./model-entry";
+import { reasoningStrippingProcessor } from "./reasoning-processor";
 
 // Two agents that back the Quizzes feature. Both are configured ENTIRELY per
 // request from values the caller places on the `RequestContext` (the quiz's
@@ -92,4 +93,7 @@ export const quizDiscussionAgent = new Agent({
       semanticRecall: false,
     },
   }),
+  // Reasoning is a live-only artefact: this drops it after the response has
+  // streamed and before memory persists the turn (app/mastra/reasoning-processor.ts).
+  outputProcessors: [reasoningStrippingProcessor],
 });

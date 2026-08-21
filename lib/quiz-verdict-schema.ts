@@ -13,7 +13,9 @@ import { z } from "zod";
 //
 // The self-hosted vLLM endpoint honors OpenAI-compatible `response_format: json_schema`
 // (verified against gemma-4 at design time), which is exactly what Mastra emits for
-// `structuredOutput` — so no `jsonPromptInjection` fallback is needed. Kept terse; the
+// `structuredOutput` — so no `jsonPromptInjection` fallback is needed, provided the SCCH
+// provider keeps `supportsStructuredOutputs: true` (docs/ai-models.md), without which the
+// schema never reaches the wire. Kept terse; the
 // student sees the mapped wording from `verdictLabel`, never these raw values.
 export const QUIZ_VERDICT_SCHEMA = z.object({
   result: z.enum(["correct", "partial", "incorrect"]),

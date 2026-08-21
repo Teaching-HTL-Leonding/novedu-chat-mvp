@@ -9,6 +9,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const loadAndBuildTutorPrompt = vi.hoisted(() => vi.fn());
 const resolveLanguageModel = vi.hoisted(() => vi.fn());
+// The providerOptions KEY is @ai-sdk package trivia owned by lib/llm/model.ts (and
+// asserted there); a sentinel keeps these tests about which LEVEL won.
+const reasoningOptionsKey = vi.hoisted(() => vi.fn(() => "provider-key"));
 
 // Capture the Agent config instead of building a real Mastra agent.
 vi.mock("@mastra/core/agent", () => ({
@@ -25,7 +28,7 @@ vi.mock("@/lib/prompt-fragments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/prompt-fragments")>()),
   defaultFetcher: {},
 }));
-vi.mock("@/lib/llm/model", () => ({ resolveLanguageModel }));
+vi.mock("@/lib/llm/model", () => ({ resolveLanguageModel, reasoningOptionsKey }));
 
 import {
   TUTOR_MODEL_OVERRIDE,
@@ -46,6 +49,19 @@ const tools = config.tools as Resolver<Record<string, { execute: unknown }>>;
 
 // A fresh per-request context object (the real one is a RequestContext; the agent
 // only calls get(), and uses the OBJECT IDENTITY as the WeakMap build-cache key).
+/**
+ * The reasoning level that reached `modelEntry`, read back off the entry WITHOUT
+ * naming the providerOptions key — which key each provider needs, and that the
+ * level lands under it, are `modelEntry`'s own contract
+ * (app/mastra/model-entry.unit.test.ts). Here only "which level won" matters.
+ */
+function reasoningLevel(entries: ModelEntry[]): unknown {
+  const options = Object.values(entries[0]?.providerOptions ?? {})[0] as
+    | { reasoningEffort?: unknown }
+    | undefined;
+  return options?.reasoningEffort;
+}
+
 function requestContext(values: Record<string, unknown>) {
   const m = new Map(Object.entries(values));
   return { get: (key: string) => m.get(key) };
@@ -88,9 +104,7 @@ describe("tutorAgent per-request resolution", () => {
       tools: [],
     });
     const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
-    await expect(model({ requestContext: ctx })).resolves.toEqual([
-      { model: "resolved-model", providerOptions: { openai: { reasoningEffort: "medium" } } },
-    ]);
+    expect(reasoningLevel(await model({ requestContext: ctx }))).toBe("medium");
   });
 
   it("applies the override's reasoning level over the YAML's", async () => {
@@ -108,9 +122,7 @@ describe("tutorAgent per-request resolution", () => {
       [TUTOR_MODEL_OVERRIDE]: "override-model",
       [TUTOR_REASONING_OVERRIDE]: "high",
     });
-    await expect(model({ requestContext: ctx })).resolves.toEqual([
-      { model: "resolved-model", providerOptions: { openai: { reasoningEffort: "high" } } },
-    ]);
+    expect(reasoningLevel(await model({ requestContext: ctx }))).toBe("high");
     expect(resolveLanguageModel).toHaveBeenCalledWith("SCCH", "override-model");
   });
 

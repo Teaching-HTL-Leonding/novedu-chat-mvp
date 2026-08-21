@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { STUDENT_MODE_COOKIE } from "../lib/student-mode-constants";
 import { STORAGE_STATE, TEACHER_STORAGE_STATE } from "./auth.constants";
 
 // "Student mode": a teacher temporarily experiences the app as a student. While
@@ -51,7 +52,9 @@ test("a student gains nothing by setting the student-mode cookie", async ({ brow
   // STUDENT state plus a hand-set cookie and confirm no teacher surface opens
   // and no pill appears (the pill is teacher-only chrome).
   const context = await browser.newContext({ storageState: STORAGE_STATE });
-  await context.addCookies([{ name: "student-mode", value: "1", domain: "localhost", path: "/" }]);
+  await context.addCookies([
+    { name: STUDENT_MODE_COOKIE, value: "1", domain: "localhost", path: "/" },
+  ]);
   const page = await context.newPage();
 
   await page.goto("/");

@@ -60,9 +60,14 @@ learns which provider answered.
   **provider names** (`"scch"` / `"azure-foundry"`) with
   `providerFromModelProviderId` — the metering contract (below).
 - `lib/llm/model.ts` — **the agent path**: `resolveLanguageModel(provider, model)`
-  returns an ai-sdk chat model (`scchProvider.chat(model)` or the lazily-built
-  Foundry `createOpenAI(...).chat(model)`). Imports `app/mastra/scch.ts`, so only
-  agent modules may import it — never the coding route.
+  returns an ai-sdk chat model — `scchProvider.chatModel(model)` (the
+  `@ai-sdk/openai-compatible` spelling) or the lazily-built Foundry
+  `createOpenAI(...).chat(model)` (the `@ai-sdk/openai` spelling); both pin Chat
+  Completions. The two packages are deliberate — see "Two ai-sdk packages" below.
+  Same file, same reason: `reasoningOptionsKey(provider)` — the `providerOptions`
+  key that package reads per-request options under (a pure lookup, no
+  connectivity). Imports `app/mastra/scch.ts`, so only agent modules may import
+  it — never the coding route.
 - `lib/llm/endpoint.ts` — **the raw path** (the coding proxy):
   `resolveChatEndpoint(provider)` → `{ url, authHeader(): Promise<string>, adaptBody(body) }`.
   Deliberately side-effect-free: it imports only the two `*-endpoint` modules, not
@@ -87,8 +92,81 @@ learns which provider answered.
   `{ terminal, message, telemetry }`. See "Reporting an upstream failure" below.
 
 Adding a provider = one branch in each of the three functions above + a name
-constant/mapping in `provider.ts` + the schema enum literal (+ docs). Nothing else
-changes.
+constant/mapping in `provider.ts` + the schema enum literal (+ docs) + its
+provider-options key in `reasoningOptionsKey` (`lib/llm/model.ts`, below).
+Nothing else changes.
+
+## Two ai-sdk packages — and why
+
+The agent path builds its two providers from two different packages, and the split
+is load-bearing:
+
+| | SCCH | Azure Foundry |
+|---|---|---|
+| Package | `@ai-sdk/openai-compatible` (`createOpenAICompatible`, `app/mastra/scch.ts`) | `@ai-sdk/openai` (`createOpenAI`, `lib/llm/model.ts`) |
+| Chat model | `.chatModel(id)` | `.chat(id)` |
+| `providerOptions` key (`reasoningOptionsKey`) | the **instance name**, `"scch"` | the fixed `"openai"` |
+| Reasoning text | `reasoning_content` → ai-sdk reasoning parts | dropped (gpt-5.x emits none on Chat Completions anyway) |
+| Structured output | opt-in `supportsStructuredOutputs: true` | always on |
+
+**Why SCCH is not on `@ai-sdk/openai`.** SCCH's vLLM models stream their thinking
+as `delta.reasoning_content` **before** `delta.content` (one transition chunk
+carries both), and put it in `message.reasoning_content` when not streaming. The
+`@ai-sdk/openai` chat-completions parser silently **drops** that field, so the
+thinking text never reached the browser. `@ai-sdk/openai-compatible` maps
+`delta.reasoning_content ?? delta.reasoning` onto `reasoning-start` /
+`reasoning-delta` / `reasoning-end` chunks (and the non-streaming field onto a
+`{type: "reasoning"}` content part), which is what the rest of the pipeline —
+Mastra's reasoning chunks, `@ag-ui/mastra`'s `REASONING_*` events, CopilotKit's
+reasoning message — consumes (`docs/chat.md`).
+
+**The version-line trap.** `@ai-sdk/openai-compatible` is **pinned exactly** in
+`package.json` (`2.0.69`). The `2.x` line is the one built on `@ai-sdk/provider`
+v3 — the ai-sdk v6 generation this app runs. npm's `latest` dist-tag on that
+package is `3.x` (provider v4) and must NOT be installed here; a caret range
+alone is not protection enough for a dependency whose major line tracks a
+different SDK generation.
+
+**`includeUsage: true` is mandatory.** `@ai-sdk/openai-compatible` sends
+`stream_options.include_usage` only when the provider is built with
+`includeUsage: true`. Without it a
+streaming call reports no token usage, and the metering exporter reads that off
+the Mastra span — so omitting it would silently zero out `usage_by_code`
+(`docs/usage-metering.md`).
+
+**`supportsStructuredOutputs: true` is mandatory.** The self-hosted vLLM honors
+OpenAI-compatible `response_format: json_schema`, but `@ai-sdk/openai-compatible`
+defaults the flag to `false` and then **drops the schema**: it warns
+("JSON response format schema is only supported with structuredOutputs") and sends a
+bare `{type: "json_object"}`. Everything that grades or judges via `structuredOutput`
+— the quiz grader (`lib/quiz-actions.ts`, `lib/quiz-verdict-schema.ts`) and the
+teacher-only `POST /api/eval/grade` / `POST /api/eval/judge` — would then get free-form
+JSON back and fail to parse, so the schema-less fallback is a silent quality
+regression, not a hard error. Reasoning is unaffected: `reasoning_content` still maps
+to reasoning parts alongside a `json_schema` request, streaming and not. Both flags
+are guarded in `app/mastra/scch.unit.test.ts`.
+
+**Outgoing history carries no `reasoning_content`.** The same package that maps the
+INCOMING `reasoning_content` also replays it OUTWARD: converting the history for the
+next request, it re-attaches a previous turn's thinking to the assistant messages.
+`app/mastra/scch.ts` strips that field back off with the provider's
+`transformRequestBody` hook (applied on both the generate and the stream path).
+The Chat Completions dialect requires no such replay, and gemma mis-frames it: on the turn after a tool call it answers into
+`reasoning_content` and leaves `content` empty, so the student sees a blank reply with
+the real answer hidden in the collapsed thinking block. The strip is
+**unconditional** — `model` is free text here, so a per-model branch has nothing
+reliable to key on, and no house model needs its own scratchpad read back to it.
+Received reasoning is untouched; only the request body changes. Guarded in
+`app/mastra/scch.unit.test.ts` (construction options) and
+`app/mastra/scch.wire.unit.test.ts` (the body the real package actually POSTs).
+This strip is about the CURRENT turn's tool-call loop, where the reasoning is
+still in memory; what Mastra SAVES carries no reasoning either, via a separate
+output processor (`docs/chat.md`).
+
+**Not the raw path.** This is the AGENT path only. The coding proxy
+(`lib/coding-proxy.ts`, `lib/llm/endpoint.ts`) talks to the same endpoints with
+no ai-sdk at all and is unaffected: it passes the upstream body through, so a
+client asking for reasoning already gets `reasoning_content` verbatim.
 
 ## The reasoning level
 
@@ -145,11 +223,19 @@ How the level reaches the wire, per path:
 
 - **Agent path**: every agent's `model:` resolver returns `modelEntry(provider,
   model, reasoning)` (`app/mastra/model-entry.ts`) — the `ModelWithRetries[]`
-  array form carrying `providerOptions: { openai: { reasoningEffort } }`. The
+  array form carrying `providerOptions: { <key>: { reasoningEffort } }`. The
   array form is REQUIRED: a bare-model return drops `providerOptions`, and
   Mastra's `modelSettings.reasoning` is a no-op on ai-sdk v3, so neither is an
-  alternative. The `"openai"` key is fixed by `@ai-sdk/openai` regardless of the
-  instance name, so one shape serves both providers.
+  alternative. The `<key>` is PER PACKAGE, not per wire dialect (above): SCCH's
+  `@ai-sdk/openai-compatible` reads its options under the ai-sdk **instance name**
+  (`"scch"`, the same constant behind the `scch.chat` metering id), Foundry's
+  `@ai-sdk/openai` under the fixed `"openai"` whatever the instance is called.
+  `reasoningOptionsKey` (`lib/llm/model.ts`, beside `resolveLanguageModel`) holds
+  that as a `Record<LlmProvider, string>` — exhaustive by type, so a new provider
+  cannot be added without naming its key. A wrong key is silent: the option is
+  simply never parsed and `reasoning_effort` never reaches the wire, so the keys
+  are asserted in `lib/llm/model.unit.test.ts` and the placement — the level filed
+  under whatever key the lookup names — in `app/mastra/model-entry.unit.test.ts`.
 - **Raw path** (the coding proxy): `buildUpstreamChatBody` (`lib/coding-proxy.ts`)
   pins `reasoning_effort` exactly like it pins `model` — the effective level
   OVERWRITES a client-sent value; with no level configured the client's own
@@ -228,14 +314,18 @@ the activity YAML like `model`: server-read, live, never client-trusted.
 
 ## Metering contract — provider names on spans
 
-Both `createOpenAI` instances are **named** (`scch` / `azure-foundry`), so Mastra
+Both provider instances are **named** (`scch` / `azure-foundry`), so Mastra
 stamps `attributes.provider = "<name>.chat"` and `attributes.model` (= the YAML's
-`llm.model`) on every MODEL_GENERATION span. The usage exporter reads those
+`llm.model`) on every MODEL_GENERATION span. Both packages build that id the same
+way (`` `${name}.chat` ``), which is why moving SCCH from `createOpenAI` to
+`createOpenAICompatible` left metering untouched — `lib/llm/model.unit.test.ts`
+guards the `scch.chat` id. The usage exporter reads those
 attributes and maps the name back to the app-level label via
 `providerFromModelProviderId` — that is how `novedu_usage_by_code` learns its
 `provider`/`model` columns (docs/usage-metering.md) with zero per-module wiring.
 **Renaming a provider silently breaks that attribution** — the names are constants
-in `lib/llm/provider.ts` for exactly this reason. The coding proxy (no Mastra)
+in `lib/llm/provider.ts` for exactly this reason (and, for SCCH, the name doubles
+as the `providerOptions` key above). The coding proxy (no Mastra)
 passes `loaded.coding.provider`/`model` into `recordLlmUsage` directly.
 
 ## Health
@@ -249,7 +339,10 @@ endpoint reachability (a model listing), testids `health-foundry` /
 
 - **Hermetic** (`lib/llm/*.unit.test.ts`, CI): the provider schema/mapping, the
   Foundry URL normalization, `resolveChatEndpoint` shapes with a mocked token,
-  and `resolveLanguageModel` model ids/provider names (`createOpenAI` does no I/O).
+  and `resolveLanguageModel` model ids/provider names plus the per-provider
+  `reasoningOptionsKey` (building a provider does no I/O).
+  `app/mastra/model-entry.unit.test.ts` covers the rest of the reasoning seam: the
+  array form, the omitted-level case, and where the level is filed.
 - **Live** (`@live-llm`, local only — CI has no Managed Identity and no SCCH
   network): `e2e/tutor-chat-reply.spec.ts` runs the same smoke once per provider
   (the Foundry leg authors an app-hosted tutor and skips without

@@ -129,7 +129,17 @@ the real `novedu_files` table), and the **database auth-matrix**
 (`e2e/db-auth.live.spec.ts`, below) — also run **in CI** against a container (next
 section). The **`@live-llm`** ones — the text round-trip, the vision round-trip,
 the health probe, the coding-agent round-trip, the eval feedback-judge probes — stay
-**local** (the SCCH endpoint is geo-blocked to Austria).
+**local** (the SCCH endpoint is geo-blocked to Austria), as does the
+**reasoning-visibility** set (`e2e/reasoning-visibility.spec.ts`): it reads the
+raw `/api/copilotkit` SSE bodies to prove an effective teacher receives
+`REASONING_*` frames while a teacher in view-as-student mode and a real student
+receive **zero**,
+which only a real reasoning model can produce. Because that spec cannot run in
+CI, the property's actual CI guard is the hermetic set: the runner (including the
+`AgentRunner` method-list guard), the route's runner choice, and the persistence
+processor — `app/api/copilotkit/reasoning-runner.unit.test.ts`,
+`app/api/copilotkit/[[...slug]]/route.unit.test.ts`,
+`app/mastra/reasoning-processor.unit.test.ts` — see `docs/chat.md`.
 
 The shared list **multi-delete** layer's pure interaction (checkboxes, select-all,
 the confirm/spinner/clear flow over a mocked action) is a fast **component** test —

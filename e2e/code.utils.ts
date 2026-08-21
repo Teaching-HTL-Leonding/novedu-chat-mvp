@@ -85,8 +85,12 @@ export async function mintCode(
     endOffset?: number | null;
     note?: string;
     anonymous?: boolean;
-    /** Per-code LLM override pair (both-or-nothing) — omitted = NULL columns. */
-    llm?: { provider: string; model: string };
+    /**
+     * Per-code LLM override pair (both-or-nothing) — omitted = NULL columns.
+     * `reasoning` is the pair's optional third field (the `reasoning_effort`
+     * level); omitted leaves the model's own default in place.
+     */
+    llm?: { provider: string; model: string; reasoning?: string };
   } = {},
 ): Promise<string> {
   const pool = await getPool();
@@ -114,9 +118,10 @@ export async function mintCode(
     .input("anonymous", sql.Bit, options.anonymous === false ? 0 : 1)
     .input("llmProvider", sql.VarChar(32), options.llm?.provider ?? null)
     .input("llmModel", sql.NVarChar(256), options.llm?.model ?? null)
+    .input("llmReasoning", sql.VarChar(16), options.llm?.reasoning ?? null)
     .query(
-      `INSERT INTO novedu_codes (code, module, created_by, file_url, valid_from, valid_until, note, origin, anonymous, llm_provider, llm_model, created_at)
-       VALUES (@code, @module, @createdBy, @fileUrl, @validFrom, @validUntil, @note, 'e2e', @anonymous, @llmProvider, @llmModel, SYSUTCDATETIME())`,
+      `INSERT INTO novedu_codes (code, module, created_by, file_url, valid_from, valid_until, note, origin, anonymous, llm_provider, llm_model, llm_reasoning, created_at)
+       VALUES (@code, @module, @createdBy, @fileUrl, @validFrom, @validUntil, @note, 'e2e', @anonymous, @llmProvider, @llmModel, @llmReasoning, SYSUTCDATETIME())`,
     );
 
   return code;

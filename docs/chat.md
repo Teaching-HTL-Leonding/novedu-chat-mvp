@@ -185,6 +185,123 @@ sanitized path the writing lightbox and teacher review rely on for untrusted
 student Markdown (`docs/writing.md`). It runs with **no `rehype-raw`**; keep it
 that way.
 
+## Reasoning display (teacher-only)
+
+A thinking model's chain of thought shows up in the live chat as its own message,
+above the answer it belongs to — **for effective teachers only**. A student never
+receives it: it is not hidden with CSS, it is **never written to their stream**,
+so there is nothing to find in devtools either.
+
+### The path
+
+The model streams `reasoning_content`, `@ai-sdk/openai-compatible` turns it into
+ai-sdk reasoning parts (SCCH only — `docs/ai-models.md`), Mastra emits
+`reasoning-start`/`-delta`/`-end` chunks, `@ag-ui/mastra` maps those to AG-UI
+`REASONING_*` events, the `/api/copilotkit` runtime passes them through
+type-agnostically, and `@ag-ui/client` assembles a message with
+**`role: "reasoning"`**. CopilotKit's message view renders such a message through
+its `messageView.reasoningMessage` slot; we leave that slot unset, so the default
+`CopilotChatReasoningMessage` paints it: a collapsible block labelled "Thinking…"
+while it streams and "Thought for Ns" once done, auto-expanded during streaming
+and auto-collapsed after, re-openable by click.
+
+The default already renders the thinking text **smaller and muted**
+(`text-sm text-muted-foreground`) against the assistant answer's full-size `prose`
+— the visual distinction we want — so there is deliberately no `reasoningMessage`
+override and no CSS of our own. The consequence of leaving it default: reasoning
+content renders through **CopilotKit's own Streamdown**, not our
+`MarkdownRenderer`, so KaTeX math inside a chain of thought is not typeset. That
+is accepted: the thinking block is a peek behind the curtain, not the answer.
+Reasoning is shown but never replayed to the model — the next request's history
+carries no `reasoning_content` (`docs/ai-models.md`).
+
+### The gate (server-side, fail-closed)
+
+The decision is made **once per request in the runtime route** and enforced in
+the runtime, not in React:
+
+- **`app/api/copilotkit/reasoning-runner.ts`** — `ReasoningStrippingRunner`, an
+  `AgentRunner` decorator around the library's own `InMemoryAgentRunner`. AG-UI's
+  abstract `AgentRunner` has exactly four methods; `run` (the live turn) and
+  `connect` (the replay/reconnect stream) are the **only two paths into the SSE
+  writer**, so both are `filter`ed (rxjs) against the `EventType` enum's whole
+  reasoning family — the five `REASONING_*` events `@ag-ui/mastra` actually
+  emits, plus `REASONING_MESSAGE_CHUNK` / `REASONING_ENCRYPTED_VALUE` and the
+  deprecated `THINKING_*` aliases. `isRunning` / `stop` delegate untouched.
+  Dropping each START…END group **symmetrically** keeps the browser's
+  `verifyEvents` validator happy, and the filter sits downstream of the runtime's
+  own verifier, so it cannot trip server-side validation either. It lives beside
+  the route (not in `lib/`) to stay clear of the CLI-bundled closure
+  (`docs/cli-prompts.md`). A future CopilotKit that adds a fifth event-producing
+  method would bypass the filter, so the method list is **guarded by a test**:
+  `reasoning-runner.unit.test.ts` reads the four abstract methods off the
+  installed `AgentRunner`'s type declaration and fails the build when they change
+  (the abstract methods erase at runtime, so the declaration is the contract).
+- **`app/api/copilotkit/[[...slug]]/route.ts`** — past the existing gates it
+  computes `effectiveTeacherForSession(session)` (concurrently with the
+  thread-ownership check and the `RequestContext` build, since it needs only the
+  session already in hand) and passes `runner: showReasoning ? new
+  InMemoryAgentRunner() : new ReasoningStrippingRunner()`. A teacher gets the
+  library's own runner — the very one the filter wraps — so their stream is the
+  unmodified library behaviour. This is the route's only role-dependent branch
+  and it changes **nothing** about access — the `checkCode` + `x-thread-token`
+  model is identical for every caller (`docs/codes.md`).
+- **Fail-closed.** The default is stripping. Only a *proven* effective teacher
+  gets reasoning; any error in the check leaves the stripping runner in place.
+- **View-as-student sees a student's stream.** The gate is
+  `effectiveTeacherForSession` (`lib/student-mode.ts`, `docs/auth.md`) — real
+  teacher **and** not simulating — never the raw `session.user.isTeacher` claim.
+  A teacher in student mode gets no reasoning; that is the point of the mode.
+
+### Reasoning is never persisted
+
+Reasoning is a **live-only** artefact: worth watching while the answer forms,
+never part of the record. `app/mastra/reasoning-processor.ts` exports the shared
+`reasoningStrippingProcessor`, wired into the `outputProcessors` of every agent
+that has `memory:` configured (tutor, quiz discussion, writing). Its
+`processOutputResult` drops the `reasoning` parts — and the flattened
+`content.reasoning` string — from the messages about to be saved.
+
+Mastra runs output processors **after** the response has streamed and **before**
+the memory processors persist it (`[Your outputProcessors] → [Memory
+Processors]`), so this reaches storage ONLY: a teacher's live stream was written
+chunk by chunk while the model was talking and is untouched. The hook that would
+alter the live stream, `processOutputStream`, is deliberately not implemented.
+
+So a reload, a transcript, an export or a raw SQL read can never surface a
+scratchpad — for anyone. The CURRENT turn's reasoning still exists in memory
+while the agentic loop runs, which is why the outgoing request body is scrubbed
+separately (`stripAssistantReasoning`, `app/mastra/scch.ts` —
+`docs/ai-models.md`).
+
+### The generation note
+
+CopilotKit suppresses its loading cursor while a reasoning message is the last
+message (`showCursor = isRunning && lastMessage?.role !== "reasoning"`), so with
+reasoning stripped the cursor renders for the entire run. `ModuleChat` overrides
+the `messageView.cursor` slot with a small muted note — **"Generating…"**
+(`GenerationCursor`, `text-sm text-muted-foreground`, testid
+`chat-generating-note`) — instead of the library's pulsing dot.
+
+That slot is **global**: it shows during *all* generation for *every* consumer
+(tutor, writing, quiz discussion) and every provider, including models that
+produce no reasoning at all, and for a teacher for the part of the run that is
+not the thinking block. So the wording has to hold for a whole run on any model —
+it describes the run, not a phase of it.
+
+### Two things that follow from where this sits
+
+- **Foundry emits none.** gpt-5.x returns no reasoning *text* on the Chat
+  Completions surface (only reasoning *tokens* in usage), so a Foundry activity
+  shows no thinking block however `llm.reasoning` is set — for teachers either.
+  An SCCH activity run with `reasoning: none` (or a "… - Reasoning OFF" model id)
+  likewise shows none.
+- **The read-only transcript shows none.** Nothing is stored to show:
+  `mastra_messages` carries no reasoning at all (below). `toAguiMessage`
+  (`lib/conversation-collapse.ts`) additionally rebuilds each stored row from its
+  **`text`** parts only — the teacher reads the conversation, not the model's
+  scratchpad.
+
 ## Backend seam
 
 Out of scope for this chapter. The `/api/copilotkit` route, the per-module

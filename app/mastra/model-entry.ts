@@ -1,5 +1,5 @@
 import type { ModelWithRetries } from "@mastra/core/agent";
-import { resolveLanguageModel } from "@/lib/llm/model";
+import { reasoningOptionsKey, resolveLanguageModel } from "@/lib/llm/model";
 import type { LlmProvider, ReasoningLevel } from "@/lib/llm/provider";
 
 // What EVERY agent's `model:` resolver in this folder returns. The single home of
@@ -10,11 +10,10 @@ import type { LlmProvider, ReasoningLevel } from "@/lib/llm/provider";
 // bare-model path drops them). So a resolver that may pin a reasoning effort must
 // return the array form, even for the single-model case we always have here.
 //
-// The provider-options key is literally `"openai"` for BOTH of our providers: the
-// @ai-sdk/openai package reads its options under that FIXED key regardless of the
-// `createOpenAI({ name })` instance name (`scch` / `azure-foundry`), then maps
-// `reasoningEffort` onto the wire parameter `reasoning_effort`. An absent level
-// emits NO providerOptions at all, so the model's own default applies.
+// WHERE the level goes is the ai-sdk package's business, so the key comes from
+// `reasoningOptionsKey` next to `resolveLanguageModel` (lib/llm/model.ts). An
+// absent level emits NO providerOptions at all, so the model's own default
+// applies.
 export function modelEntry(
   provider: LlmProvider,
   model: string,
@@ -23,7 +22,13 @@ export function modelEntry(
   return [
     {
       model: resolveLanguageModel(provider, model),
-      ...(reasoning ? { providerOptions: { openai: { reasoningEffort: reasoning } } } : {}),
+      ...(reasoning
+        ? {
+            providerOptions: {
+              [reasoningOptionsKey(provider)]: { reasoningEffort: reasoning },
+            },
+          }
+        : {}),
     },
   ];
 }

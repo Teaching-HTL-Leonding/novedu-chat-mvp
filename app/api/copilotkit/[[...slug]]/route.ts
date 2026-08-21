@@ -1,11 +1,13 @@
 import { MastraAgent } from "@ag-ui/mastra";
-import { CopilotRuntime, createCopilotEndpoint } from "@copilotkit/runtime/v2";
+import { CopilotRuntime, createCopilotEndpoint, InMemoryAgentRunner } from "@copilotkit/runtime/v2";
 import { after } from "next/server";
+import { ReasoningStrippingRunner } from "@/app/api/copilotkit/reasoning-runner";
 import { mastra } from "@/app/mastra";
 import { auth } from "@/auth";
 import { codeModules } from "@/lib/code-modules/registry";
 import { type CodeRejection, checkCode } from "@/lib/code-store";
 import { RUNTIME_CODE_HEADER, RUNTIME_THREAD_TOKEN_HEADER } from "@/lib/runtime-headers";
+import { effectiveTeacherForSession } from "@/lib/student-mode";
 import { getThreadTokenSecret, verifyThreadToken } from "@/lib/thread-token";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
 import { recordUserMessage } from "@/lib/usage-store";
@@ -177,6 +179,12 @@ async function resolveThreadOwnership(
 // capabilities) with no chat data, gated by AUTHENTICATION ALONE — the teacher's
 // read-only conversation viewer needs it without a code.
 //
+// Past those gates the route makes ONE role-dependent choice — the only one it
+// has: which AgentRunner feeds the SSE writer, so that a thinking model's
+// REASONING_* events reach effective TEACHERS only (fail-closed; docs/chat.md).
+// It changes nothing about access: the code + thread-token model above is
+// identical for every caller.
+//
 // THREAT MODEL for check 3 and the endpoint allowlist: the threadId arrives in
 // the client-controlled run body, and Mastra does NOT bind threads to a
 // resource (@ag-ui/mastra fetches threads by id alone and silently rebinds
@@ -243,13 +251,20 @@ async function handler(req: Request): Promise<Response> {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
-  // These two are independent — the thread-ownership check (token verify + body
-  // peek) and building the per-request context (the quiz module fetches its YAML
-  // here, the tutor module does no I/O). Run them concurrently; an ownership
-  // failure still takes precedence over a context-build failure.
-  const [ownership, built] = await Promise.all([
+  // These three are independent — the thread-ownership check (token verify + body
+  // peek), building the per-request context (the quiz module fetches its YAML
+  // here, the tutor module does no I/O), and the reasoning gate (which only needs
+  // the session already in hand). Run them concurrently; an ownership failure
+  // still takes precedence over a context-build failure.
+  //
+  // REASONING is TEACHER-ONLY (docs/chat.md): a thinking model's chain of thought
+  // must never be WRITTEN to a student's stream, so the runner that feeds the SSE
+  // writer is chosen here rather than hidden client-side. FAILS CLOSED — any
+  // error from the teacher check leaves the stripping runner in place.
+  const [ownership, built, showReasoning] = await Promise.all([
     resolveThreadOwnership(req, runtimeRequest, code, userId),
     def.runtime.buildRequestContext(entry),
+    effectiveTeacherForSession(session).catch(() => false),
   ]);
   if (!ownership.ok) return ownership.response;
   if (!built.ok) {
@@ -270,6 +285,9 @@ async function handler(req: Request): Promise<Response> {
       resourceId: code,
       requestContext: built.context,
     }),
+    // A teacher gets the library's own runner — the very one the stripping runner
+    // wraps — so their stream is the unmodified behaviour, reasoning included.
+    runner: showReasoning ? new InMemoryAgentRunner() : new ReasoningStrippingRunner(),
   });
 
   // createCopilotEndpoint returns a Hono app whose `.fetch` is a standard

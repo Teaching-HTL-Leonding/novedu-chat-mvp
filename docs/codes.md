@@ -190,6 +190,16 @@ provider. Usage metering needs no extra wiring — the exporter reads the actual
 resolved provider/model off the MODEL_GENERATION span (`docs/ai-models.md`), and
 the coding proxy meters the effective pair explicitly.
 
+Past those checks the route makes its **one role-dependent choice**: which
+CopilotKit `AgentRunner` feeds the SSE writer. An effective teacher gets the
+library's own `InMemoryAgentRunner`; everyone else gets `ReasoningStrippingRunner`
+(`app/api/copilotkit/reasoning-runner.ts`), which drops every AG-UI `REASONING_*`
+frame from both `run` and `connect`, so a thinking model's chain of thought is
+never written to a student's stream. It **fails closed** (stripping is the
+default; only a proven effective teacher opts out) and honours "view as student".
+This is a display gate only — it does not touch the code / thread-token access
+model above, which is identical for every caller. Full mechanics: `docs/chat.md`.
+
 The runtime route additionally enforces **thread ownership**: every
 thread-touching request (`agent/{id}/run`, `agent/{id}/connect`,
 `agent/{id}/stop/{threadId}`) must carry an `x-thread-token` whose HMAC-SHA256
