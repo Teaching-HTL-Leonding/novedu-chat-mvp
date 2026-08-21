@@ -1,4 +1,4 @@
-import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { SCCH_PROVIDER_NAME } from "@/lib/llm/provider";
 import { scchAuthHeader, scchModelsUrl } from "@/lib/scch-endpoint";
 
@@ -10,15 +10,83 @@ import { scchAuthHeader, scchModelsUrl } from "@/lib/scch-endpoint";
 const BASE_URL = process.env.SCCH_BASE_URL;
 const API_KEY = process.env.SCCH_API_KEY;
 
-// `.chat()` pins the Chat Completions API. The default `provider(id)` in
-// @ai-sdk/openai v2 targets the newer Responses API, which vLLM does not serve.
+// SCCH rides @ai-sdk/openai-compatible, NOT @ai-sdk/openai, and every option
+// below is load-bearing (docs/ai-models.md, "Two ai-sdk packages"):
+//
+//  - PACKAGE: only this package maps vLLM's `reasoning_content` (streaming
+//    `delta.reasoning_content`, non-streaming `message.reasoning_content`) onto
+//    ai-sdk reasoning parts — the shape Mastra's reasoning chunks,
+//    `@ag-ui/mastra`'s REASONING_* events and the chat's thinking block all
+//    consume (docs/chat.md). The @ai-sdk/openai chat parser drops the field.
+//  - VERSION: the `2.x` line is the one built on @ai-sdk/provider v3 (ai-sdk v6,
+//    what this app runs). npm's `latest` dist-tag on this package is `3.x`, for
+//    provider v4, and must NOT be installed — hence the exact pin in package.json.
+//  - `includeUsage: true` sends `stream_options.include_usage` on streaming
+//    calls; without it no usage numbers reach the Mastra span the metering
+//    exporter reads (docs/usage-metering.md).
+//  - `supportsStructuredOutputs: true`: vLLM honors OpenAI
+//    `response_format: json_schema`, but this package defaults the flag to false
+//    and then DROPS the schema, sending a bare `{type: "json_object"}` — which
+//    would silently degrade the quiz grader and the eval routes
+//    (lib/quiz-verdict-schema.ts).
+//  - `transformRequestBody` keeps `reasoning_content` off the OUTGOING history —
+//    see `stripAssistantReasoning` below.
+//
+// `.chatModel()` (via lib/llm/model.ts) pins the Chat Completions API; this
+// package serves nothing else, so vLLM's missing Responses API is a non-issue.
 // Exported so `lib/llm/model.ts` can resolve an activity's `llm.model` against
 // this self-hosted endpoint (the API key never leaves the server). The `name` is
-// the metering contract — see lib/llm/provider.ts.
-export const scchProvider = createOpenAI({
+// the metering contract — it yields the provider id `scch.chat` — see
+// lib/llm/provider.ts.
+
+/** True for an assistant history message carrying a `reasoning_content` field. */
+function carriesReasoning(message: unknown): boolean {
+  if (message === null || typeof message !== "object") return false;
+  const entry = message as Record<string, unknown>;
+  return entry.role === "assistant" && "reasoning_content" in entry;
+}
+
+/**
+ * Removes `reasoning_content` from the assistant messages of an OUTGOING request
+ * body (applied on both the generate and the stream path).
+ *
+ * The package re-attaches a previous turn's thinking when it converts the history
+ * for the next request. Chat Completions requires no such replay, and gemma
+ * mis-frames it: on the turn after a tool call it answers INTO `reasoning_content`
+ * and leaves `content` empty, so the student sees a blank reply with the real
+ * answer hidden in the collapsed thinking block. That tool-call loop is exactly
+ * where this bites — the current turn's reasoning is still in memory, upstream of
+ * anything Mastra persists (app/mastra/reasoning-processor.ts keeps it out of
+ * `mastra_messages`), so the request body is the only place to drop it.
+ *
+ * UNCONDITIONAL: `model` is free text (docs/ai-models.md), so a per-model branch
+ * has nothing reliable to key on, and no house model needs its own scratchpad read
+ * back to it. Reasoning RECEIVED is untouched — the thinking block still renders
+ * (docs/chat.md). Returns the body it was handed when nothing needs stripping.
+ */
+function stripAssistantReasoning(args: Record<string, unknown>): Record<string, unknown> {
+  const { messages } = args;
+  if (!Array.isArray(messages) || !messages.some(carriesReasoning)) return args;
+  return {
+    ...args,
+    messages: messages.map((message) => {
+      if (!carriesReasoning(message)) return message;
+      const { reasoning_content: _dropped, ...rest } = message as Record<string, unknown>;
+      return rest;
+    }),
+  };
+}
+
+export const scchProvider = createOpenAICompatible({
   name: SCCH_PROVIDER_NAME,
-  baseURL: BASE_URL,
+  // The env guard lives in `fetchModels` below (and in the health page): with
+  // SCCH_BASE_URL unset the empty base makes the first call throw an invalid-URL
+  // error instead of quietly resolving against some default host.
+  baseURL: BASE_URL ?? "",
   apiKey: API_KEY,
+  includeUsage: true,
+  supportsStructuredOutputs: true,
+  transformRequestBody: stripAssistantReasoning,
 });
 
 // The endpoint also hosts embedding / speech / audio models that can't drive a
@@ -62,6 +130,7 @@ async function fetchModels(): Promise<ScchModel[]> {
 }
 
 // Resolved once when the server module loads — fetching it also confirms the
-// endpoint is reachable. The tutor agent resolves a tutor's `llm.model` straight
-// through `scchProvider`; we no longer build one agent per model.
+// endpoint is reachable. It feeds the model dropdown only: an activity's
+// `llm.model` is resolved straight through `scchProvider`, so there is one
+// provider rather than one agent per model.
 export const scchModels: ScchModel[] = await fetchModels();

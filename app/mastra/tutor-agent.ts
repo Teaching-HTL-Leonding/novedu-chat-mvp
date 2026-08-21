@@ -11,6 +11,7 @@ import {
 import { defaultFetcher } from "@/lib/prompt-fragments";
 import { loadAndBuildTutorPrompt } from "@/lib/tutors";
 import { modelEntry } from "./model-entry";
+import { reasoningStrippingProcessor } from "./reasoning-processor";
 import { selectTutorTools } from "./tutor-tools";
 
 // A single agent that is configured entirely by a tutor-definition YAML. The
@@ -161,4 +162,7 @@ export const tutorAgent = new Agent({
       semanticRecall: false,
     },
   }),
+  // Reasoning is a live-only artefact: this drops it after the response has
+  // streamed and before memory persists the turn (app/mastra/reasoning-processor.ts).
+  outputProcessors: [reasoningStrippingProcessor],
 });

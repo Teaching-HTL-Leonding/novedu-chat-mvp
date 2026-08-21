@@ -23,6 +23,7 @@ The highest-cost rules to break. They always apply, regardless of subsystem; the
 - Exactly **two public, non-Entra API routes**: `GET /api/files/<name>` (raw YAML) and the coding `POST /api/coding/v1/chat/completions` (the code IS the bearer key — `docs/files.md`, `docs/coding.md`). The only other public surface is the static teacher guide under `/docs`, public by intent (`docs/teacher-docs.md`).
 - All other CLI/API routes are **Entra-bearer**: proxy-excluded per-path and gated **only** by `requireBearerUser`/`requireBearerTeacher` (`lib/api-auth.ts`) — token validated on every request, groups overage fails closed, **no student mode on this channel**; auth never enters the `lib/*-service.ts` pipelines. `docs/api.md` lists every route.
 - **LLM connectivity is server-only** behind `lib/llm/` — the provider branch exists ONLY in `resolveLanguageModel`, `resolveChatEndpoint`, and `providerUnavailableReason`; endpoints, keys, and Entra tokens never reach the browser. Foundry auth is passwordless Entra — never `DefaultAzureCredential`, never an API key. A code's **LLM override pair** is both-or-nothing via `effectiveLlm`, availability-gated on the effective provider (`docs/ai-models.md`).
+- A thinking model's **reasoning is teacher-only on the live chat**: the `/api/copilotkit` route picks `ReasoningStrippingRunner` unless `effectiveTeacherForSession()` proves an effective teacher, so `REASONING_*` frames are never written to a student's stream. **Fails closed**; view-as-student gets a student's stream (`docs/chat.md`).
 - Image bytes use passwordless **User-Delegation-SAS** — no app route ever serves bytes; SVG renders only via `<img src>` on the blob origin, never inline markup (`docs/images.md`).
 - Telemetry carries **no** message / prompt / PII content (`docs/telemetry.md`).
 - Usage metering writes two **independent** hourly buckets — `usage_by_code` (no user) and `usage_by_user` (no code). **Never** a `(user × code)` row; ids + counts only, never content (`docs/usage-metering.md`).
@@ -97,16 +98,19 @@ Read before touching: `app/api/coding/**`, `app/[code]/_coding/**`, `lib/coding-
 
 ### AI models & LLM providers → `docs/ai-models.md`
 
-Read before touching: `lib/llm/**`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`, the `llm:` block of any activity schema.
+Read before touching: `lib/llm/**`, `app/mastra/scch.ts`, `app/mastra/model-entry.ts`, `lib/scch-endpoint.ts`, the `llm:` block of any activity schema.
 
-- Adding a provider = one branch in each of the THREE functions (security block) + a name constant + the schema enum literal.
-- The `createOpenAI` names (`scch`/`azure-foundry`) are the metering contract — renaming breaks usage attribution.
+- Adding a provider = one branch in each of the THREE functions (security block) + a name constant + the schema enum literal + its `providerOptions` key in `reasoningOptionsKey` (beside `resolveLanguageModel` in `lib/llm/model.ts`).
+- The ai-sdk provider names (`scch`/`azure-foundry`) are the metering contract — renaming breaks usage attribution.
+- The agent path uses TWO ai-sdk packages: SCCH on `@ai-sdk/openai-compatible` (exact-pinned `2.x`, the ai-sdk-v6 line — it alone maps vLLM's `reasoning_content`, and needs `includeUsage: true` for metering), Foundry on `@ai-sdk/openai`. `providerOptions` keys differ accordingly.
 
 ### Chat (CopilotKit surface) → `docs/chat.md`
 
-Read before touching: `app/module-chat.tsx`, the per-module chat components, the transcript `conversation-view.tsx`, `lib/runtime-headers.ts`.
+Read before touching: `app/module-chat.tsx`, the per-module chat components, the transcript `conversation-view.tsx`, `lib/runtime-headers.ts`, `app/api/copilotkit/reasoning-runner.ts`, `app/mastra/reasoning-processor.ts`.
 
 - `ModuleChat` is the single live-chat primitive; the read-only `ConversationView` is NOT a `ModuleChat` — no agent ever runs there.
+- Reasoning is stripped server-side for non-teachers (security block). The runner delegates to a 4-method abstract `AgentRunner` — a guard test reads that method list off the installed package's type declaration, so **wrap any new method before a CopilotKit bump**. The global `messageView.cursor` note ("Generating…") shows for the whole run, for everyone.
+- Reasoning is **live-only**: `reasoningStrippingProcessor` (`app/mastra/reasoning-processor.ts`) is on the `outputProcessors` of every agent with `memory:`, so `mastra_messages` never stores a reasoning part. Adding a memory-backed agent means adding it there too.
 
 ### App-hosted YAML files → `docs/files.md`
 

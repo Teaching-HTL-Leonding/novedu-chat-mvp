@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
+import { sendAndExpectReply } from "./chat.utils";
 import { mintCode } from "./code.utils";
 
 // End-to-end coverage for the Quizzes feature, now reached as first-class CODES
@@ -104,17 +105,7 @@ test("author → code → answer → discuss", { tag: ["@live", "@live-llm"] }, 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible({ timeout: 30_000 });
 
-  const composer = page.getByTestId("copilot-chat-textarea");
-  await expect(composer).toBeVisible({ timeout: 30_000 });
-  await composer.fill("Why is that the capital?");
-  await page.getByTestId("copilot-send-button").click();
-
-  const assistant = page.getByTestId("copilot-assistant-message");
-  await expect(assistant).toBeVisible({ timeout: 60_000 });
-  await expect
-    .poll(async () => (await assistant.innerText()).trim().length, { timeout: 60_000 })
-    .toBeGreaterThan(0);
-  await expect(page.getByText(/not found after runtime sync/i)).toHaveCount(0);
+  await sendAndExpectReply(page, { message: "Why is that the capital?" });
 
   // 5. Clean up the quiz file (no automatic GC; the minted code lingers like the
   // other mint-and-leave specs — harmless and tidied with the CI container).

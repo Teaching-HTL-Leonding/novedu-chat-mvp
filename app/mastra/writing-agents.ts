@@ -8,6 +8,7 @@ import {
   parseLenientReasoningLevel,
 } from "@/lib/llm/provider";
 import { modelEntry } from "./model-entry";
+import { reasoningStrippingProcessor } from "./reasoning-processor";
 
 // The agent that backs the Writing feature's feedback chat. It is configured
 // ENTIRELY per request from values the caller places on the `RequestContext` (the
@@ -67,4 +68,7 @@ export const writingAgent = new Agent({
       semanticRecall: false,
     },
   }),
+  // Reasoning is a live-only artefact: this drops it after the response has
+  // streamed and before memory persists the turn (app/mastra/reasoning-processor.ts).
+  outputProcessors: [reasoningStrippingProcessor],
 });

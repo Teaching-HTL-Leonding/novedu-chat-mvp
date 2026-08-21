@@ -36,8 +36,15 @@ const getLocalAgents = vi.hoisted(() => vi.fn(() => []));
 const endpointFetch = vi.hoisted(() =>
   vi.fn(async (_req: Request) => new Response("{}", { status: 200 })),
 );
+const CopilotRuntime = vi.hoisted(() => vi.fn());
+// The student-mode cookie jar. `lib/student-mode.ts` stays REAL (it holds the
+// effective-teacher rule that gates reasoning display), so only its ONE I/O
+// seam — next/headers' cookies() — is stubbed, with the jar builder the rule's
+// own suite uses (tests/mocks/student-mode-cookies.ts).
+const cookies = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth }));
+vi.mock("@/auth", () => ({ auth, requireTeacher: vi.fn() }));
+vi.mock("next/headers", () => ({ cookies }));
 vi.mock("@/lib/code-store", () => ({ checkCode }));
 vi.mock("@/lib/user-chat-store", () => ({ recordUserChat }));
 vi.mock("@/lib/usage-store", () => ({ recordUserMessage }));
@@ -59,21 +66,30 @@ vi.mock("next/server", () => ({ after: vi.fn() }));
 // Stub everything past the gate so a passed request returns deterministically
 // without a real runtime, agent, or model.
 vi.mock("@ag-ui/mastra", () => ({ MastraAgent: { getLocalAgents } }));
+// `ReasoningStrippingRunner` stays REAL (it is the security-critical filter), so
+// the two runner classes it extends/wraps must exist on the stubbed module. The
+// stub `InMemoryAgentRunner` is also what the route hands a teacher, so the tests
+// below import it back and assert on its identity.
 vi.mock("@copilotkit/runtime/v2", () => ({
-  CopilotRuntime: vi.fn(),
+  CopilotRuntime,
   createCopilotEndpoint: () => ({ fetch: endpointFetch }),
+  AgentRunner: class {},
+  InMemoryAgentRunner: class {},
 }));
 
 // AUTH_SECRET must exist before the thread-token secret is first derived; the
 // thread-token module is REAL and memoizes it, so reset between tests.
 process.env.AUTH_SECRET = "test-secret-for-route-unit";
 
+import { InMemoryAgentRunner } from "@copilotkit/runtime/v2";
+import { ReasoningStrippingRunner } from "@/app/api/copilotkit/reasoning-runner";
 import {
   getThreadTokenSecret,
   resetThreadTokenSecretForTests,
   signThreadToken,
 } from "@/lib/thread-token";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
+import { studentModeCookies } from "@/tests/mocks/student-mode-cookies";
 import { GET, POST, trimToNewTurn } from "./route";
 
 const CODE = "a1b2c3d4e5";
@@ -123,6 +139,8 @@ beforeEach(() => {
   // Default: an authenticated student with a valid tutor-module code. Individual
   // tests override as needed.
   auth.mockResolvedValue({ user: { id: USER_ID } });
+  // No student-mode cookie by default.
+  cookies.mockResolvedValue(studentModeCookies(false));
   checkCode.mockResolvedValue({
     ok: true,
     entry: { module: "tutor", fileUrl: "https://example.com/t.yaml" },
@@ -251,6 +269,89 @@ describe("happy path past the gate (tutor module)", () => {
       runRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
     );
     expect(res.status).toBe(404);
+  });
+});
+
+// The route's ONE role-dependent branch: which AgentRunner feeds the SSE writer,
+// and therefore whether a thinking model's REASONING_* frames are ever written
+// to this caller's stream (docs/chat.md). These are the assertions that protect
+// the property in CI — the @live-llm e2e that proves it against a real model is
+// excluded from CI by design (docs/testing.md), so this suite is the real guard.
+//
+// `lib/student-mode.ts` is REAL here, so each case exercises the ACTUAL
+// effective-teacher rule, not a stub of it.
+describe("reasoning gate (teacher-only, fail-closed)", () => {
+  /** The `runner` option the route handed CopilotRuntime for the last request. */
+  function lastRunnerOption(): unknown {
+    const options = CopilotRuntime.mock.lastCall?.[0] as { runner?: unknown } | undefined;
+    expect(options).toBeDefined();
+    return options?.runner;
+  }
+
+  /** Drive one authorized run as `session` and report the runner it produced. */
+  async function runnerFor(session: unknown): Promise<unknown> {
+    auth.mockResolvedValue(session);
+    const threadId = crypto.randomUUID();
+    const res = await POST(runRequest({ threadId, token: token(threadId) }));
+    expect(res.status).toBe(200);
+    return lastRunnerOption();
+  }
+
+  it("strips reasoning for a plain student (no teacher claim)", async () => {
+    expect(await runnerFor({ user: { id: USER_ID } })).toBeInstanceOf(ReasoningStrippingRunner);
+  });
+
+  it("strips reasoning for a session whose teacher claim is explicitly false", async () => {
+    expect(await runnerFor({ user: { id: USER_ID, isTeacher: false } })).toBeInstanceOf(
+      ReasoningStrippingRunner,
+    );
+  });
+
+  it("lets an EFFECTIVE teacher through on the library's own runner (reasoning streams)", async () => {
+    // The plain InMemoryAgentRunner — the unmodified library stream, REASONING_*
+    // frames intact — and emphatically NOT the filter.
+    const runner = await runnerFor({ user: { id: USER_ID, isTeacher: true } });
+    expect(runner).toBeInstanceOf(InMemoryAgentRunner);
+    expect(runner).not.toBeInstanceOf(ReasoningStrippingRunner);
+  });
+
+  it("strips reasoning for a REAL teacher while student mode is active", async () => {
+    // THE security-critical case: "view as student" must show exactly what a
+    // student sees, so the raw isTeacher claim can never be the gate.
+    cookies.mockResolvedValue(studentModeCookies(true));
+    expect(await runnerFor({ user: { id: USER_ID, isTeacher: true } })).toBeInstanceOf(
+      ReasoningStrippingRunner,
+    );
+  });
+
+  it("ignores the student-mode cookie for a non-teacher (it only ever restricts)", async () => {
+    cookies.mockResolvedValue(studentModeCookies(true));
+    expect(await runnerFor({ user: { id: USER_ID } })).toBeInstanceOf(ReasoningStrippingRunner);
+  });
+
+  it("FAILS CLOSED: strips reasoning when the teacher check throws", async () => {
+    cookies.mockRejectedValue(new Error("cookies() blew up"));
+    expect(await runnerFor({ user: { id: USER_ID, isTeacher: true } })).toBeInstanceOf(
+      ReasoningStrippingRunner,
+    );
+  });
+
+  it("applies to the connect path as well as run (both feed the SSE writer)", async () => {
+    auth.mockResolvedValue({ user: { id: USER_ID } });
+    const threadId = crypto.randomUUID();
+    const res = await POST(
+      new Request(`${BASE}/agent/tutor/connect`, {
+        method: "POST",
+        headers: {
+          "x-code": CODE,
+          "content-type": "application/json",
+          "x-thread-token": token(threadId),
+        },
+        body: runBody(threadId),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(lastRunnerOption()).toBeInstanceOf(ReasoningStrippingRunner);
   });
 });
 

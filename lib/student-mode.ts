@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
+import type { Session } from "next-auth";
 import { auth, requireTeacher } from "@/auth";
+import { STUDENT_MODE_COOKIE } from "@/lib/student-mode-constants";
 
 // "Student mode": a teacher temporarily views the app as a student would see
 // it. While active, every teacher check treats the user as a non-teacher — the
@@ -14,7 +16,8 @@ import { auth, requireTeacher } from "@/auth";
 // Kept OUT of auth.ts on purpose: proxy.ts imports auth.ts into the Next proxy
 // runtime, where next/headers' cookies() is not available.
 
-export const STUDENT_MODE_COOKIE = "student-mode";
+// Re-exported so the rule and the cookie name stay one import for server callers.
+export { STUDENT_MODE_COOKIE };
 
 export async function isStudentMode(): Promise<boolean> {
   return (await cookies()).get(STUDENT_MODE_COOKIE)?.value === "1";
@@ -30,16 +33,37 @@ export interface TeacherView {
 }
 
 /**
+ * THE rule — "real teacher AND not simulating a student" — computed for a
+ * session the caller ALREADY has. Every other export in this file derives from
+ * it, so the rule has exactly one definition, and this is the only function that
+ * reads the raw `session.user.isTeacher` claim on the student-mode-aware path.
+ * (`auth.ts`'s `requireTeacher()` reads the claim too, for the channels that have
+ * no student mode at all — the CLI/API bearer routes; see `docs/api.md`.)
+ *
+ * Prefer this overload on a hot path that already called `auth()` (the chat
+ * runtime route, which gates reasoning display on it — `docs/chat.md`) so the
+ * session JWT is decoded once per request instead of twice. Everywhere else,
+ * prefer `getTeacherView()` / `isEffectiveTeacher()`.
+ */
+export async function teacherViewForSession(session: Session | null): Promise<TeacherView> {
+  const realTeacher = session?.user?.isTeacher ?? false;
+  const studentMode = realTeacher && (await isStudentMode());
+  return { realTeacher, studentMode, effectiveTeacher: realTeacher && !studentMode };
+}
+
+/** The rule's boolean half, for a session the caller already has. */
+export async function effectiveTeacherForSession(session: Session | null): Promise<boolean> {
+  return (await teacherViewForSession(session)).effectiveTeacher;
+}
+
+/**
  * THE single source of truth for "how teacher-ish is this user right now".
  * Everything that gates or displays teacher capabilities must derive from this
  * (or the isEffectiveTeacher/requireEffectiveTeacher shorthands below) — never
  * from `session.user.isTeacher` directly, which ignores student mode.
  */
 export async function getTeacherView(): Promise<TeacherView> {
-  const session = await auth();
-  const realTeacher = session?.user?.isTeacher ?? false;
-  const studentMode = realTeacher && (await isStudentMode());
-  return { realTeacher, studentMode, effectiveTeacher: realTeacher && !studentMode };
+  return teacherViewForSession(await auth());
 }
 
 /** Shorthand for gating teacher features. */
@@ -53,7 +77,7 @@ export async function isEffectiveTeacher(): Promise<boolean> {
  */
 export async function requireEffectiveTeacher() {
   const session = await requireTeacher();
-  if (await isStudentMode()) {
+  if ((await teacherViewForSession(session)).studentMode) {
     throw new Error("Forbidden: student mode is active.");
   }
   return session;
