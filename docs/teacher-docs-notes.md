@@ -1,6 +1,6 @@
 # Teacher-guide chapter notes
 
-Guardrails for editing the teacher guide in `teacher-docs/content/`. Each entry
+Guardrails for editing the teacher guide in `teacher-docs/src/content/docs/`. Each entry
 holds only what a chapter does **not** say plainly itself: facts that are easy to
 get wrong, things a chapter must not claim, and scope boundaries between
 chapters. Voice and audience rules live in `teacher-docs/style.md` and the

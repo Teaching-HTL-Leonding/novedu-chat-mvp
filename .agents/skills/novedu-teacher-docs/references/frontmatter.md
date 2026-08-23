@@ -1,6 +1,6 @@
 # Frontmatter contract
 
-Every chapter in `teacher-docs/content/` opens with YAML frontmatter that
+Every chapter in `teacher-docs/src/content/docs/` opens with YAML frontmatter that
 serves two needs at once: **rendering** (a title, a short description, an ordering
 hint, what any docs site or renderer wants) and **light categorization** (audience,
 keywords).

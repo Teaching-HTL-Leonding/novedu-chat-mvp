@@ -67,7 +67,7 @@ _Using Novedu together with AI assistants and agents: the CLI skill, and the gui
 | # | Chapter | Where to look (hints) |
 | --- | --- | --- |
 | 01 | The CLI and its AI skill | `cli/README.md` (intro), `.agents/skills/novedu-tutor-cli/SKILL.md`, `https://github.com/vercel-labs/skills#readme` |
-| 02 | The guide for AI agents (llms.txt) | `docs/teacher-docs.md` (the llms.txt surface), `teacher-docs-site/README.md`, `https://llmstxt.org` |
+| 02 | The guide for AI agents (llms.txt) | `docs/teacher-docs.md` (the llms.txt surface), `teacher-docs/README.md`, `https://llmstxt.org` |
 
 > Scope reminder for every chapter: the "Where to look" entries are engineer
 > references. Document only teacher-facing behavior, not how the app works inside

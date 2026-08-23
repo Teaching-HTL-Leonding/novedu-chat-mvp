@@ -59,7 +59,7 @@
   },
   "overrides": [
     {
-      "includes": ["teacher-docs-site/**/*.astro"],
+      "includes": ["teacher-docs/**/*.astro"],
       "linter": {
         "rules": {
           "correctness": {

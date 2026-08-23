@@ -1,8 +1,7 @@
 // Post-build guard: Starlight's docsLoader silently yields an empty collection
-// when the src/content/docs symlink is missing or broken, and an empty or
-// partial site would otherwise build green and ship to production /docs. This
-// script fails the `build` script loudly unless every corpus chapter made it
-// into dist/.
+// when src/content/docs is missing or unreadable, and an empty or partial site
+// would otherwise build green and ship to production /docs. This script fails
+// the `build` script loudly unless every corpus chapter made it into dist/.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,7 +48,7 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// 1. The corpus must be readable through the symlink.
+// 1. The corpus directory must be readable.
 let sections;
 try {
   if (!statSync(contentDir).isDirectory()) throw new Error("not a directory");
@@ -57,9 +56,7 @@ try {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name);
 } catch {
-  fail(
-    "src/content/docs is not readable — is the symlink intact? It must point at ../teacher-docs/content (on Windows, enable Developer Mode or `git config core.symlinks true` and re-checkout)",
-  );
+  fail("src/content/docs is not readable — the corpus directory is missing or unreadable");
 }
 
 // 2. Every corpus chapter <section>/<chapter>.md must have its page in dist/.
