@@ -10,13 +10,7 @@ related:
   - 20-building-activities/01-handling-yaml
   - 10-yaml-for-teachers/04-cli-validation
   - 40-ai-llms/01-novedu-cli
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/… and regenerate.
--->
 
 A picture often explains more than a paragraph: a diagram in a quiz question, a
 map, a chart students should interpret. You can host such images directly in

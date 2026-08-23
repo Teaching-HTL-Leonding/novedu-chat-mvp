@@ -20,11 +20,11 @@ export interface Chapter {
   id: string;
   title: string;
   description: string;
-  /** Raw corpus Markdown, banner comment stripped. */
+  /** Raw corpus Markdown, any leading HTML comment stripped. */
   body: string;
 }
 
-/** The generated-file banner every chapter opens with, plus any leading blank lines. */
+/** A leading HTML comment, if a chapter opens with one, plus any leading blank lines. */
 const LEADING_COMMENT = /^\s*<!--[\s\S]*?-->\s*/;
 
 /**

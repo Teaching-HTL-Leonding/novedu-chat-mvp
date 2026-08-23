@@ -12,13 +12,7 @@ related:
   - 40-ai-llms/01-novedu-cli
   - 10-yaml-for-teachers/04-cli-validation
   - 20-building-activities/01-handling-yaml
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/07-student-reports.prompt.md and regenerate.
--->
 
 Students can flag a notable AI answer to you: something brilliant, something wrong, or something that needs your attention right away. A report is one small action a student takes inside an activity, and every report lands in one place for you to review: the Reports page. Reports are a feedback channel, not only a complaint box, so it's worth telling a class they can flag great answers too.
 

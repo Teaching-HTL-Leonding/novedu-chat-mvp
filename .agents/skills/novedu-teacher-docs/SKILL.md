@@ -1,54 +1,53 @@
 ---
 name: novedu-teacher-docs
 description: >-
-  Generate and maintain Novedu's teacher-facing documentation, the "teacher
-  guide" / end-user docs under teacher-docs/, from the app's source code and the
-  engineer docs in docs/. Use this skill whenever the user wants to create,
-  regenerate, or update a teacher-docs chapter from its prompt; refresh the docs
-  after a feature change; or verify docs against their sources. Trigger it even when
-  the user does not name the skill, 
+  Maintain and update Novedu's teacher-facing documentation, the "teacher
+  guide" / end-user docs under teacher-docs/content/. Use this skill whenever the
+  user wants to patch a chapter after a feature change, write a new chapter, or
+  verify chapters against the code. Trigger it even when the user does not name
+  the skill,
   e.g. "update the teacher guide for photo answers", "the CLI login docs are
-  stale", "add a chapter about time-limiting a code", or "regenerate the quizzes
-  overview". Do NOT use it for engineer-facing docs (docs/**) or for authoring
+  stale", "add a chapter about time-limiting a code", or "refresh the quizzes
+  chapter". Do NOT use it for engineer-facing docs (docs/**) or for authoring
   activity YAML, that's the novedu-tutor-cli skill.
 ---
 
 # Authoring Novedu teacher docs
 
-Teacher docs are **generated from source**, not hand-written. The durable,
-human-owned artifact is the **chapter prompt**; the markdown in
-`teacher-docs/content/` is a **regenerable build artifact**. When something is
-wrong in a chapter, fix the prompt and regenerate, do not hand-edit the output.
+Teacher docs are **human-owned and hand-maintained**. The Markdown in
+`teacher-docs/content/` is the **source of truth**; this skill's job is to keep it
+correct, current, and in voice. When something is wrong in a chapter, edit the
+chapter.
 
 ## The model
 
-```
-doc = f(chapter-prompt, source code, engineer docs)
-```
+You work from three inputs.
 
-- **chapter prompt** (`teacher-docs/prompts/**/*.prompt.md`), human-owned IP: what
-  one chapter should cover, plus anything to watch out for. Its shape is the author's
-  choice and varies from topic to topic; this skill imposes no template and does not
-  help write prompts. Two things hold whatever the shape: keep prompts **durable**
-  (they should not pin source file paths, which rot when code moves), and treat the
-  prompt as the thing you edit when a chapter is wrong (not the generated output).
-- **sources**: the app's own code and the engineer docs in `docs/` and
-  `activities/**/README.md`. Ground truth. You **discover** the current, relevant
-  ones yourself (start from the areas the prompt hints at, follow renames) and state
-  as fact only what they support.
-- **content** (`teacher-docs/content/**/*.md`), generated. Every file carries a
-  "generated, edit the prompt" banner (see `references/frontmatter.md`).
+- **the current chapter** (`teacher-docs/content/**/*.md`): what the guide says
+  today. It is the baseline you patch, never a draft you throw away.
+- **the change**: the relevant **git diff** plus the **sources** it points at, the
+  app's own code and the engineer docs in `docs/` and `activities/**/README.md`.
+  Ground truth. You **discover** the current, relevant ones yourself (start from the
+  areas the chapter and its notes hint at, follow renames) and state as fact only
+  what they support.
+- **the chapter's entry in `docs/teacher-docs-notes.md`**: the engineer-side
+  guardrails for that chapter, who its reader is and what job they came to do, plus
+  the facts that are easy to get wrong. Its shape is the author's choice and varies
+  from topic to topic; this skill imposes no template. One thing holds whatever the
+  shape: keep notes **durable**, they should not pin source file paths, which rot
+  when code moves.
 
 ## Repo layout
 
 ```
 teacher-docs/
-  README.md            orientation + the "edit the prompt, not the output" policy
+  README.md            orientation for the corpus
   style.md             human-owned: voice, reading level, audience  → references/style-and-voice.md is the rulebook
   CHAPTERS.md          the chapter manifest = the information architecture
-  prompts/             human-owned IP: one *.prompt.md per chapter
-  content/             GENERATED markdown (do not hand-edit)
-  assets/              GENERATED / curated images (see screenshots note below)
+  content/             human-owned markdown, the source of truth
+  assets/              curated images (see screenshots note below)
+docs/
+  teacher-docs-notes.md  per-chapter guardrails: reader job + facts easy to get wrong
 ```
 
 The skill (`.agents/skills/novedu-teacher-docs/`) holds the reusable *how*; the
@@ -62,7 +61,7 @@ loudly on an undeclared section, so a missing declaration cannot ship silently.
 ## Where the sources live
 
 Durable, folder-level orientation for discovery, never pin exact file paths in a
-prompt; search these areas for the current files instead.
+notes entry; search these areas for the current files instead.
 
 - `activities/**/README.md`, the **teacher-facing authoring guides** (one per
   module). Usually the best, safest ground truth: already written for teachers.
@@ -74,17 +73,17 @@ prompt; search these areas for the current files instead.
 - app source (`app/`, `lib/`), last resort, when a guide doesn't cover a detail.
   Prefer the guides; source moves and renames (e.g. `lib/tutors` → `lib/prompt-fragments`).
 
-## Two modes
+## The normal mode: incremental patch
 
-A chapter is generated in one of two modes.
+Almost every job is a patch. The chapter exists and a code change may have affected
+it: work from the *current* chapter plus the relevant **git diff**, and make the
+smallest change that makes the chapter correct again. Do **not** rewrite from a
+blank page, that produces noisy, unreviewable diffs.
 
-- **Cold generate**: no output yet, or a deliberate rebuild. Read the prompt,
-  discover and read its sources, write the chapter from scratch, emit the
-  frontmatter + banner.
-- **Incremental patch**: the chapter exists and a code change may have affected it.
-  Do **not** rewrite from a blank page, that produces noisy, unreviewable diffs.
-  Feed the generator the *current* chapter plus the relevant **git diff**, and ask
-  for the smallest change that makes the chapter correct again.
+The other case is a **brand-new chapter**, when `CHAPTERS.md` calls for one that
+does not exist yet. Start from its row in `CHAPTERS.md`, write its entry in
+`docs/teacher-docs-notes.md` (reader job + facts easy to get wrong), discover and
+read the sources, then write the chapter.
 
 ## Keeping docs current
 
@@ -98,25 +97,26 @@ baseline for "what changed since this was last written".
 
 Run this for one chapter at a time.
 
-1. **Read the prompt** in `teacher-docs/prompts/`. It tells you what the chapter
-   should cover and anything to be careful about. Prompts vary in shape from topic to
-   topic, so take direction from what this one actually says rather than expecting
-   fixed sections or a source list.
+1. **Read the chapter's entry in `docs/teacher-docs-notes.md`**. It tells you who
+   the chapter's reader is and anything to be careful about. Entries vary in shape
+   from topic to topic, so take direction from what this one actually says rather
+   than expecting fixed sections or a source list. Writing a new chapter? Add its
+   entry first.
 2. **Discover and read the sources**: search the repo for the current,
-   relevant files (start from the prompt's hints and the areas in the layout below;
+   relevant files (start from the notes' hints and the areas in the layout below;
    follow renames). Read them in full, not from memory; assert as fact only what
    they support.
 3. **Keep it teacher-facing** (`references/scope.md`). Describe what a teacher does
    and sees, not how the app works inside. Not for secrecy (the code is open source),
    but because internals are off-topic and drift when code changes.
 4. **Draft** the chapter in the teacher voice (`references/style-and-voice.md`),
-   following the prompt's outline. Screenshots are placeholders + alt text for now
+   following the chapter's outline. Screenshots are placeholders + alt text for now
    (see below).
-5. **Sanity-check your claims** against what you read, especially the prompt's
+5. **Sanity-check your claims** against what you read, especially the notes entry's
    "facts that are easy to get wrong". Fix what doesn't check out; where you're
    unsure, flag it for the reviewer rather than stating it confidently. You don't
    need to prove every sentence, just don't assert things you have reason to doubt.
-6. **Emit frontmatter + banner** per `references/frontmatter.md`.
+6. **Emit frontmatter** per `references/frontmatter.md`.
 
 ## Language
 
@@ -126,4 +126,4 @@ Author in **English only** for now.
 
 - `references/style-and-voice.md`: the hard writing constraints (no em-dashes, no AI slang, self-contained sections) plus voice, word choice, and mechanics, adapted from the Microsoft Writing Style Guide for a small teacher handbook.
 - `references/scope.md`: stay at the teacher's level, describe behavior, not internals (read before writing).
-- `references/frontmatter.md`: the frontmatter contract and the generated banner.
+- `references/frontmatter.md`: the frontmatter contract.

@@ -9,13 +9,7 @@ related:
   - 20-building-activities/05-writing
   - 00-introduction/04-quizzes-overview
   - 30-sharing-activities/04-anonymous-vs-per-user
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/00-introduction/05-writing-overview.prompt.md and regenerate.
--->
 
 A writing activity puts a student's own text at the centre. The student writes in an editor on one side of the screen, and an AI writing coach sits on the other side, reads the draft, and gives feedback. The student does all the writing; the coach helps them make it better.
 

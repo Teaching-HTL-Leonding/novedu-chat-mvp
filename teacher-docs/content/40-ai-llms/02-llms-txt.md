@@ -7,13 +7,7 @@ audience: teacher
 keywords: [llms.txt, AI assistant, agent, Markdown, machine-readable docs, ChatGPT, Claude, Copilot]
 related:
   - 40-ai-llms/01-novedu-cli
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/40-ai-llms/02-llms-txt.prompt.md and regenerate.
--->
 
 You read this guide as web pages. An AI assistant reads it more easily in another form: plain Markdown, the simple text format that assistants handle well. Novedu publishes the guide in that form too, following the llms.txt convention, an industry-wide way for websites to offer their documentation to AI tools. When your assistant has read the guide, its answers about Novedu come from the same chapters you use, not from guesswork.
 

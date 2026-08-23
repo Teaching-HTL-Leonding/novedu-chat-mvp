@@ -209,6 +209,6 @@ Read before touching: `cli/package.json`, `.github/workflows/publish-cli.yml`, c
 
 Read before touching: `teacher-docs/**`, `teacher-docs-site/**`, `.agents/skills/novedu-teacher-docs/**`.
 
-- `teacher-docs/content/` is **generated** — edit the chapter prompt in `teacher-docs/prompts/` and regenerate via the `novedu-teacher-docs` skill, never the output.
+- `teacher-docs/content/` is the **human-owned source of truth** — edit chapters directly (by hand or via the `novedu-teacher-docs` skill); read the chapter's entry in `docs/teacher-docs-notes.md` before editing; keep chapters current by reasoning over the git diff with `teacher-docs/CHAPTERS.md` as the map.
 - The corpus is authoritative and site-agnostic; the site adapts to it, never modifies it, and ships publicly at `/docs` inside the web app — HTML pages plus the llms.txt surface (`llms.txt`, `llms-full.txt`, per-chapter `.md` twins).
 - A new corpus section directory must be declared in `teacher-docs/CHAPTERS.md` **and** `teacher-docs-site/src/lib/sections.ts` — the site build throws on an undeclared one.

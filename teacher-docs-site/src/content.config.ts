@@ -18,7 +18,6 @@ export const collections = {
         keywords: z.array(z.string()),
         // Optional per the corpus frontmatter contract ("omit if there are none").
         related: z.array(z.string()).default([]),
-        generated: z.boolean(),
       }),
     }),
   }),

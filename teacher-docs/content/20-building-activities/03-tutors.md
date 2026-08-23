@@ -11,13 +11,7 @@ related:
   - 20-building-activities/07-fragments
   - 20-building-activities/01-handling-yaml
   - 10-yaml-for-teachers/04-cli-validation
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/20-building-activities/03-tutors.prompt.md and regenerate.
--->
 
 A tutor is one YAML file. At its core it needs three things: an id, an AI model, and your instructions, the free-text guidance that makes the tutor behave the way you want. Everything else is optional polish. This chapter walks through the fields using the sorting-algorithms sample tutor, a real, validated file you can copy from.
 

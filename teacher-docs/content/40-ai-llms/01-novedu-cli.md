@@ -11,13 +11,7 @@ related:
   - 10-yaml-for-teachers/05-see-the-prompt
   - 10-yaml-for-teachers/06-testing-the-grader
   - 30-sharing-activities/01-creating-codes
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/40-ai-llms/01-novedu-cli.prompt.md and regenerate.
--->
 
 The Novedu CLI is a small companion tool for the app that you run from a terminal. It does two things for you. It checks the activity files you write, and it lets you do your teacher work without opening the website.
 

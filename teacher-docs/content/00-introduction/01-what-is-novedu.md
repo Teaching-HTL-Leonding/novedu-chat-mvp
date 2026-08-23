@@ -11,13 +11,7 @@ related:
   - 00-introduction/04-quizzes-overview
   - 00-introduction/05-writing-overview
   - 00-introduction/06-coding-overview
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/00-introduction/01-what-is-novedu.prompt.md and regenerate.
--->
 
 Novedu helps you create AI-supported learning experiences for your students. You decide the subject, the task, the teaching approach, and the boundaries. Students then use the experience you designed.
 

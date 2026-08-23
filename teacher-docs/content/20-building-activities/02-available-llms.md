@@ -9,13 +9,7 @@ related:
   - 30-sharing-activities/01-creating-codes
   - 30-sharing-activities/02-viewing-usage
   - 10-yaml-for-teachers/04-cli-validation
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/20-building-activities/02-available-llms.prompt.md and regenerate.
--->
 
 Every activity tells Novedu which AI model should run it. You set that in the `llm:` block of the activity's YAML file. The block has three fields: a required `model`, an optional `provider`, and an optional `reasoning` level.
 

@@ -49,7 +49,7 @@ run untrusted PR code.**
     (`workflow_call`) this job is skipped because `docker-publish.yml` does the real
     build+push.
 - **`docs.yml`** is the light teacher-guide gate for PRs `qa.yml` skips via its
-  `**.md` paths-ignore (corpus regenerations under `teacher-docs/`): site unit
+  `**.md` paths-ignore (docs-only changes under `teacher-docs/`): site unit
   tests, workspace typecheck, `docs:build`. It runs untrusted fork code like
   `qa.yml`, so the same rule applies: **no secrets, no env, `contents: read`** —
   and none are needed, the docs build touches no app code.

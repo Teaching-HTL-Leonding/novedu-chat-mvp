@@ -10,13 +10,7 @@ related:
   - 20-building-activities/03-tutors
   - 40-ai-llms/01-novedu-cli
   - 10-yaml-for-teachers/05-see-the-prompt
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/10-yaml-for-teachers/07-testing-a-tutor.prompt.md and regenerate.
--->
 
 You write rules into a tutor: never give the full solution, stay inside this chapter, answer in German. Those rules are easy to write, and easy for a model to quietly break. A tutor eval is how you find out whether your tutor actually follows them.
 

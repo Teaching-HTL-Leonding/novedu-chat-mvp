@@ -9,13 +9,7 @@ related:
   - 20-building-activities/04-quizzes
   - 00-introduction/03-tutors-overview
   - 30-sharing-activities/04-anonymous-vs-per-user
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/00-introduction/04-quizzes-overview.prompt.md and regenerate.
--->
 
 A quiz is an activity made of open-ended questions. There are deliberately no multiple-choice options: students answer in their own words, and the AI grades each answer against guidance you write. Every answer gets a verdict (correct, partially correct, or incorrect) plus written feedback the student sees straight away.
 

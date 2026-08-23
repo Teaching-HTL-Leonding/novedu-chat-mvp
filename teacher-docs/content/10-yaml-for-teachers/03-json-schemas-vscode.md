@@ -10,13 +10,7 @@ related:
   - 10-yaml-for-teachers/02-yaml-101
   - 10-yaml-for-teachers/04-cli-validation
   - 30-sharing-activities/08-activity-registry
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/10-yaml-for-teachers/03-json-schemas-vscode.prompt.md and regenerate.
--->
 
 Writing an activity file by hand is much easier when your editor knows which fields exist. A short one-time setup gives you suggestions as you type, warnings when something is wrong, and a short explanation of every field, all before you upload anything to Novedu.
 
