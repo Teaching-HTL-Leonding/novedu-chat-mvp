@@ -10,13 +10,7 @@ related:
   - 30-sharing-activities/02-viewing-usage
   - 30-sharing-activities/06-coding-special-case
   - 00-introduction/05-writing-overview
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/04-anonymous-vs-per-user.prompt.md and regenerate.
--->
 
 Every activity runs in one of two modes: anonymous, where the app never links work to a student, or per-user, where it records who did what. The mode decides what you can see afterwards, so it's worth choosing deliberately, especially for graded work.
 

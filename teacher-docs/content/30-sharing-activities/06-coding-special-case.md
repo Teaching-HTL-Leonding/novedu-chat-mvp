@@ -11,13 +11,7 @@ related:
   - 30-sharing-activities/02-viewing-usage
   - 20-building-activities/06-coding
   - 00-introduction/06-coding-overview
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/06-coding-special-case.prompt.md and regenerate.
--->
 
 Sharing a coding activity works differently from every other kind. A tutor, quiz, or writing code opens a page in Novedu where the student works. A coding code opens nothing to chat with: students work in their own coding tool on their own machine, and the code is the key that connects that tool to your activity.
 

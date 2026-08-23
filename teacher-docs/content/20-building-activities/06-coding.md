@@ -11,13 +11,7 @@ related:
   - 20-building-activities/07-fragments
   - 30-sharing-activities/06-coding-special-case
   - 10-yaml-for-teachers/04-cli-validation
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/20-building-activities/06-coding.prompt.md and regenerate.
--->
 
 A coding activity gives your class an AI coding assistant that behaves the way you decide. Students work in their own coding tool on their own machine; your YAML file only tells Novedu which model answers and what rules the assistant follows. It is the smallest activity file of all: an id, a model, and your instructions.
 

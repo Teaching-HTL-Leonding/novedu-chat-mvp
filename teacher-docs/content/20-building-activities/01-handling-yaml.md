@@ -10,13 +10,7 @@ related:
   - 40-ai-llms/01-novedu-cli
   - 30-sharing-activities/01-creating-codes
   - 20-building-activities/02-available-llms
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/20-building-activities/01-handling-yaml.prompt.md and regenerate.
--->
 
 You've written an activity in YAML. Before you can hand it to a class, Novedu has to be able to read it. Novedu doesn't store your activity inside a code; it reads the file from a public web address every time students use it. So the last authoring step is giving your file such an address.
 

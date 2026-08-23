@@ -12,13 +12,7 @@ related:
   - 30-sharing-activities/04-anonymous-vs-per-user
   - 30-sharing-activities/06-coding-special-case
   - 30-sharing-activities/07-student-reports
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/00-introduction/02-shareable-codes.prompt.md and regenerate.
--->
 
 When an activity is ready for your class, you hand it out as a code. A code is a short link that opens exactly one activity. You share the link (or just the code itself), students open it, and they see the experience you built.
 

@@ -9,13 +9,7 @@ related:
   - 30-sharing-activities/01-creating-codes
   - 30-sharing-activities/04-anonymous-vs-per-user
   - 30-sharing-activities/05-deleting-codes
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/02-viewing-usage.prompt.md and regenerate.
--->
 
 Novedu gives you two views on how your activities are being used: each code has its own statistics page, and a separate usage view sums up all AI use across the school. Both are visible to teachers only.
 

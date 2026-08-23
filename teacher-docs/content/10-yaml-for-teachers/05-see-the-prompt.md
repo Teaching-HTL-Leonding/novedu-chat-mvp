@@ -11,13 +11,7 @@ related:
   - 10-yaml-for-teachers/06-testing-the-grader
   - 20-building-activities/07-fragments
   - 20-building-activities/04-quizzes
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/10-yaml-for-teachers/05-see-the-prompt.prompt.md and regenerate.
--->
 
 Your activity file isn't quite what the AI reads. Novedu takes the instructions you wrote, puts every shared fragment and every text file you referenced in place, and hands the finished text to the model. The Novedu CLI's `prompts` command prints that finished text, so you can read exactly what the AI is told before a single student message arrives.
 

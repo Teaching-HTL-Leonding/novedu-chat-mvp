@@ -11,13 +11,7 @@ related:
   - 20-building-activities/07-fragments
   - 30-sharing-activities/04-anonymous-vs-per-user
   - 10-yaml-for-teachers/04-cli-validation
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/20-building-activities/05-writing.prompt.md and regenerate.
--->
 
 A writing activity gives each student a split screen: an editor on the left where they write, and an AI writing coach on the right that gives feedback on their draft. The coach can read the draft at any time, but it has no way to change it. It only advises; the student writes every sentence. When students are happy with their text, they press **Save**, and you can review one saved text per student later.
 

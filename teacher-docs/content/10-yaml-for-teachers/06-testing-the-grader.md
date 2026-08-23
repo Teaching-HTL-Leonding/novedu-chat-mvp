@@ -10,13 +10,7 @@ related:
   - 40-ai-llms/01-novedu-cli
   - 10-yaml-for-teachers/05-see-the-prompt
   - 20-building-activities/04-quizzes
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/10-yaml-for-teachers/06-testing-the-grader.prompt.md and regenerate.
--->
 
 Validation tells you your quiz file is well-formed. The prompt dump shows what the AI is told. This chapter closes the loop: it shows what the AI actually **does**. You write a handful of student answers yourself (a good one, a half one, a confidently wrong one), note the mark each should get, and the CLI's `eval` command grades them with the same grader your students meet. That's what "evaluation" means in practice, and it turns "the AI feels too lenient" into a number you can check again after every edit.
 

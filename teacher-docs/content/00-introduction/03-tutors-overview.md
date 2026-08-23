@@ -9,13 +9,7 @@ related:
   - 20-building-activities/03-tutors
   - 00-introduction/04-quizzes-overview
   - 30-sharing-activities/04-anonymous-vs-per-user
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/00-introduction/03-tutors-overview.prompt.md and regenerate.
--->
 
 A tutor is the simplest kind of activity in Novedu: a chat with an AI that follows your instructions, on a topic you choose. You decide what it teaches, how it talks to students, and where it draws the line. A well-written tutor explains ideas, asks guiding questions, and nudges students forward instead of doing the work for them.
 

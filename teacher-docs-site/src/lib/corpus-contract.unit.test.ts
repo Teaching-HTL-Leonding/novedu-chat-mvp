@@ -1,8 +1,8 @@
 /**
- * Contract test over the REAL teacher-docs corpus. It pins the invariants the
- * generated chapters must hold for the docs site to render them correctly —
- * so a regenerated chapter that violates the contract fails `npm test` / `qa`
- * instead of silently degrading on the site:
+ * Contract test over the REAL teacher-docs corpus. It pins the invariants every
+ * chapter must hold for the docs site to render it correctly — so an edited
+ * chapter that violates the contract fails `npm test` / `qa` instead of
+ * silently degrading on the site:
  *
  * - frontmatter carries the required fields; `related:` slugs resolve
  * - no body H1 (the page title renders from frontmatter)
@@ -64,7 +64,7 @@ describe("teacher-docs corpus contract", () => {
   it("every chapter carries the required frontmatter", () => {
     for (const chapter of chapters) {
       const fm = chapter.frontmatter;
-      for (const field of ["title", "description", "audience", "keywords", "generated"]) {
+      for (const field of ["title", "description", "audience", "keywords"]) {
         expect(fm[field], `${chapter.id}: frontmatter "${field}"`).toBeDefined();
       }
     }

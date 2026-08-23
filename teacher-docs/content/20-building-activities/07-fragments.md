@@ -12,13 +12,7 @@ related:
   - 20-building-activities/06-coding
   - 20-building-activities/01-handling-yaml
   - 10-yaml-for-teachers/04-cli-validation
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/20-building-activities/07-fragments.prompt.md and regenerate.
--->
 
 A fragment is a named piece of prompt (a teaching style, a safety policy, a language rule) that lives in a fragment library, a YAML file of its own. Write the rule once, place it in as many activities as you like, and fix it in one place when it needs a change. The chapter on building a tutor shows how to *use* fragments; this chapter shows how to *write* a library of your own, and how the same library serves every kind of activity. It also covers the simpler sibling of a fragment library: embedding a plain-text file (course material, a sample solution) straight into your instructions with a text-file marker.
 

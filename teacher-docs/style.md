@@ -12,7 +12,7 @@ in place, the first time it matters.
 
 ## Reviewer
 
-The current reviewer of generated docs is the app author (an engineer). Accuracy
+The current reviewer of the docs is the app author (an engineer). Accuracy
 review is therefore strong, but the **audience is still the teacher**: write for
 the teacher, not the reviewer.
 

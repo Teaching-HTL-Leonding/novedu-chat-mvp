@@ -12,13 +12,7 @@ related:
   - 30-sharing-activities/03-time-limitation
   - 30-sharing-activities/05-deleting-codes
   - 20-building-activities/02-available-llms
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/30-sharing-activities/08-activity-registry.prompt.md and regenerate.
--->
 
 With one or two activities, creating a code by hand is quick and there is nothing to organise. With twenty, it stops working. Every new quiz means the same ritual: check the file, build its address, create the code, copy the code, paste it into the chapter that links to it. Nothing in your material says which code belongs to which activity file, so a year later the only way to find out is to open each code in Novedu and compare addresses.
 

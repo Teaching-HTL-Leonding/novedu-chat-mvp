@@ -2,26 +2,16 @@
 name: novedu-tutor-cli
 description: >-
   Use `novedu-cli`, the Novedu chat app's command-line companion, for anything
-  touching Novedu activity YAML or the Novedu server. It validates any activity
-  file — tutor, fragment library, quiz, writing, coding, or eval — with the exact
-  pipeline the app enforces, dumps the exact LLM prompts an activity produces,
-  replays a quiz's golden answers through the real grader, checks a tutor's real
-  answers to scripted conversations against its own rules,
-  and, signed in as a teacher, mints activity codes, uploads app-hosted YAML and
-  images, and triages student reports. Trigger this skill whenever the user
-  wants to validate, lint or debug an activity YAML or a schema, template or
-  fragment error ("is this tutor valid?", "why won't my quiz load?"); see what
-  the model actually receives ("show me the grading prompt for question 3", "did
-  my safety fragment reach the tutor?"); measure or regression-test a grading
-  rubric or a tutor's behaviour ("run the eval", "is the grader too lenient?",
-  "did my rubric change break anything?", "does the tutor still refuse to hand
-  over the solution?"); authenticate ("log in to novedu", "who am I signed in
-  as?"); share or host material ("create a code for this quiz", "upload this
-  diagram"); mint codes for a whole repo of course material ("sync the activity
-  registry", "update the lock file"); or act on student feedback ("what have
-  students reported?"). Reach for the CLI even when the user never names it — it
-  is the source of truth for these rules, so prefer running it over reading YAML
-  by eye or re-deriving what the app accepts.
+  touching Novedu activity YAML or the Novedu server — it is the source of
+  truth for what the app accepts, so run it instead of reading YAML by eye or
+  re-deriving validation rules. Trigger it whenever the user wants to validate,
+  lint, or debug any activity file (tutor, fragment library, quiz, writing,
+  coding, or eval); dump the exact prompts the LLM receives; run evals or
+  regression-test a grading rubric or a tutor's behaviour; sign in to Novedu or
+  check who is signed in; mint or share activity codes; upload app-hosted YAML
+  or images; sync a course repo's activity registry and lock file; or triage
+  student reports. Reach for it even when the user never names the CLI. Do NOT
+  use it for teacher-docs chapters — that is the novedu-teacher-docs skill.
 ---
 
 # Working with `novedu-cli`

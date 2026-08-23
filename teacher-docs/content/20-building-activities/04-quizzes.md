@@ -12,13 +12,7 @@ related:
   - 10-yaml-for-teachers/04-cli-validation
   - 10-yaml-for-teachers/06-testing-the-grader
   - 30-sharing-activities/04-anonymous-vs-per-user
-generated: true
 ---
-
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/20-building-activities/04-quizzes.prompt.md and regenerate.
--->
 
 A quiz is an activity made of **open-ended questions**. There is deliberately no multiple choice: students answer in their own words, and the AI grades each answer against a grading guide you write. The student immediately sees a verdict (**correct**, **partial**, or **incorrect**) and written feedback, and can then open a short discussion chat about that question.
 

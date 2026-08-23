@@ -1,6 +1,6 @@
-# Frontmatter contract + generated banner
+# Frontmatter contract
 
-Every generated chapter in `teacher-docs/content/` opens with YAML frontmatter that
+Every chapter in `teacher-docs/content/` opens with YAML frontmatter that
 serves two needs at once: **rendering** (a title, a short description, an ordering
 hint, what any docs site or renderer wants) and **light categorization** (audience,
 keywords).
@@ -18,7 +18,6 @@ keywords: [photo answer, image, quiz, imageInput]
 related:
   - 20-building-activities/04-quizzes
   - 30-sharing-activities/03-time-limitation
-generated: true
 ---
 ```
 
@@ -42,32 +41,16 @@ Field notes:
   content-relative slugs (folder + file without number-stripping or extension, for
   example `10-yaml-for-teachers/01-why-yaml`). The renderer builds the navigation; the
   body carries no "where to go next" links. Optional; omit if there are none.
-- **generated**: always `true`. Marks the file as a build artifact.
 
 There is deliberately no `sources` or `verified_against` field: which files a chapter
 drew on, and when it was last checked, are not tracked in the doc. Staleness is
 handled by reasoning over git diffs (see the skill's *Keeping docs current*), and a
 chapter's git history is its own "last written" baseline.
 
-## The banner
-
-Immediately after the frontmatter, before the first body content:
-
-```markdown
-<!--
-  GENERATED FILE, do not edit by hand.
-  Edit the chapter prompt in teacher-docs/prompts/… and regenerate.
--->
-```
-
-This makes the build-artifact decision social: anyone opening the file sees that
-edits belong in the prompt. (An HTML comment is not shown when the markdown is
-rendered to a page.)
-
 ## Body structure
 
 The body carries **no `#` (h1) heading**: the page title renders from the
-frontmatter `title`, so a body `# Title` would show up twice. After the banner, go
-straight into the first body content (prose or a `##` section), separated by one
-blank line. Body headings start at `##`. (Lines beginning with `# ` inside a fenced
+frontmatter `title`, so a body `# Title` would show up twice. After the
+frontmatter, go straight into the first body content (prose or a `##` section),
+separated by one blank line. Body headings start at `##`. (Lines beginning with `# ` inside a fenced
 code block are code, not headings, and are fine.)
