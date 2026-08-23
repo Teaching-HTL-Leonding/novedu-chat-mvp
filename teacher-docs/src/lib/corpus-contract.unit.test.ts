@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 import { SECTIONS, sectionDir } from "./sections";
 
-const CONTENT_DIR = fileURLToPath(new URL("../../../teacher-docs/content", import.meta.url));
+const CONTENT_DIR = fileURLToPath(new URL("../content/docs", import.meta.url));
 
 interface Chapter {
   /** Content-relative slug: "30-sharing-activities/01-creating-codes". */

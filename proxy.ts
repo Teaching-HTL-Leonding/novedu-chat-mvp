@@ -29,7 +29,7 @@ export const config = {
   // bearer route gets its own explicit, path-bounded exclusion like these —
   // never a blanket prefix. (The bearer PUT /api/files/<name> and GET /api/files
   // ride the existing /api/files exclusion and self-gate the same way.)
-  // The /docs prefix is the teacher guide: a static export of teacher-docs-site,
+  // The /docs prefix is the teacher guide: a static export of teacher-docs,
   // copied into public/docs/ at image build and PUBLIC BY INTENT (docs for
   // everybody, no sign-in — see docs/teacher-docs.md). Path-bounded like the API
   // exclusions so a future /docs-something route does not ride it.

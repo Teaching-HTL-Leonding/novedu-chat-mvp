@@ -32,7 +32,7 @@ const nextConfig: NextConfig = {
     ];
   },
   // The teacher guide is a static Astro export in public/docs/ (built with
-  // base '/docs' — see teacher-docs-site/ and docs/teacher-docs.md). Next's
+  // base '/docs' — see teacher-docs/ and docs/teacher-docs.md). Next's
   // public/ serving is exact-path only, so these afterFiles rewrites supply the
   // directory-index resolution a static host would: they run only when no real
   // file matched, so /docs/_astro/*.css and friends are untouched, while

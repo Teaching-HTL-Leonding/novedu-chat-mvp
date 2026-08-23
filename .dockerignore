@@ -2,8 +2,8 @@
 .github
 node_modules
 **/node_modules
-teacher-docs-site/dist
-teacher-docs-site/.astro
+teacher-docs/dist
+teacher-docs/.astro
 public/docs
 .next
 out

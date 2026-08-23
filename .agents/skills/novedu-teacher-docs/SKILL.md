@@ -2,7 +2,7 @@
 name: novedu-teacher-docs
 description: >-
   Maintain and update Novedu's teacher-facing documentation, the "teacher
-  guide" / end-user docs under teacher-docs/content/. Use this skill whenever the
+  guide" / end-user docs under teacher-docs/src/content/docs/. Use this skill whenever the
   user wants to patch a chapter after a feature change, write a new chapter, or
   verify chapters against the code. Trigger it even when the user does not name
   the skill,
@@ -15,7 +15,7 @@ description: >-
 # Authoring Novedu teacher docs
 
 Teacher docs are **human-owned and hand-maintained**. The Markdown in
-`teacher-docs/content/` is the **source of truth**; this skill's job is to keep it
+`teacher-docs/src/content/docs/` is the **source of truth**; this skill's job is to keep it
 correct, current, and in voice. When something is wrong in a chapter, edit the
 chapter.
 
@@ -23,7 +23,7 @@ chapter.
 
 You work from three inputs.
 
-- **the current chapter** (`teacher-docs/content/**/*.md`): what the guide says
+- **the current chapter** (`teacher-docs/src/content/docs/**/*.md`): what the guide says
   today. It is the baseline you patch, never a draft you throw away.
 - **the change**: the relevant **git diff** plus the **sources** it points at, the
   app's own code and the engineer docs in `docs/` and `activities/**/README.md`.
@@ -44,8 +44,9 @@ teacher-docs/
   README.md            orientation for the corpus
   style.md             human-owned: voice, reading level, audience  → references/style-and-voice.md is the rulebook
   CHAPTERS.md          the chapter manifest = the information architecture
-  content/             human-owned markdown, the source of truth
+  src/content/docs/    human-owned markdown, the source of truth
   assets/              curated images (see screenshots note below)
+  src/ scripts/ astro.config.mjs   the Astro site that renders the corpus at /docs
 docs/
   teacher-docs-notes.md  per-chapter guardrails: reader job + facts easy to get wrong
 ```
@@ -53,9 +54,9 @@ docs/
 The skill (`.agents/skills/novedu-teacher-docs/`) holds the reusable *how*; the
 `teacher-docs/` folder holds the project-specific *what*.
 
-A **new section directory** under `content/` takes two declarations: a `## NN:`
-block in `teacher-docs/CHAPTERS.md` and a one-line entry in the docs site's
-section list (`teacher-docs-site/src/lib/sections.ts`). The site build fails
+A **new section directory** under `src/content/docs/` takes two declarations: a
+`## NN:` block in `teacher-docs/CHAPTERS.md` and a one-line entry in the docs
+site's section list (`teacher-docs/src/lib/sections.ts`). The site build fails
 loudly on an undeclared section, so a missing declaration cannot ship silently.
 
 ## Where the sources live

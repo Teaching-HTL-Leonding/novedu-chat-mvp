@@ -4,7 +4,7 @@
   "private": true,
   "workspaces": [
     "cli",
-    "teacher-docs-site"
+    "teacher-docs"
   ],
   "scripts": {
     "dev": "next dev",
@@ -14,7 +14,7 @@
     "format": "biome format --write .",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "typecheck": "tsc --noEmit && tsc -p cli --noEmit && npm run typecheck --workspace teacher-docs-site",
+    "typecheck": "tsc --noEmit && tsc -p cli --noEmit && npm run typecheck --workspace teacher-docs",
     "db:generate": "drizzle-kit generate",
     "generate:schemas": "tsx scripts/generate-activity-schemas.ts",
     "test": "vitest run",
@@ -29,10 +29,10 @@
     "cli": "tsx cli/src/main.ts",
     "cli:build": "npm --workspace @novedu/cli run build",
     "test:cli": "npm run cli:build && vitest run --config cli/vitest.config.mts",
-    "docs:dev": "npm run dev --workspace teacher-docs-site",
-    "docs:build": "npm run build --workspace teacher-docs-site",
-    "docs:preview": "npm run preview --workspace teacher-docs-site",
-    "docs:stage": "npm run docs:build && rm -rf public/docs && mkdir -p public && cp -r teacher-docs-site/dist public/docs",
+    "docs:dev": "npm run dev --workspace teacher-docs",
+    "docs:build": "npm run build --workspace teacher-docs",
+    "docs:preview": "npm run preview --workspace teacher-docs",
+    "docs:stage": "npm run docs:build && rm -rf public/docs && mkdir -p public && cp -r teacher-docs/dist public/docs",
     "qa": "npm run check && npm run typecheck && npm run test && npm run build && npm run docs:build",
     "qa:e2e": "npm run qa && npm run test:e2e"
   },
