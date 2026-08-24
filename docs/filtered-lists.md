@@ -466,3 +466,49 @@ disagree about the filter. (They can differ on `?size=`: `pageHref` re-emits it 
 when non-default, `sortHref` carries whatever the URL had. `parsePaging` clamps either
 way.) `ListFilterBar` keeps the sort across Apply the same
 way it keeps a non-default `size` — a hidden input; "Clear" drops both.
+
+## Remembering the last filter
+
+A teacher who filters `/codes`, opens a code and comes back should land on the list
+they left — so the browser remembers each list's last applied filter and the links
+BACK to a list start from it. This does **not** bend the one firm rule: the URL is
+still the only filter state the app reads, and the database still does the filtering.
+`localStorage` only ever supplies the **starting href of a link**.
+
+| Piece | Where | Role |
+| --- | --- | --- |
+| `components/list-filter-memory.ts` | shared, **no `"use client"`** (like `use-popover.ts`) | `listFilterKey`, `rememberListFilter`, `rememberedListHref` |
+| `RememberListFilter` | `components/remember-list-filter.tsx` (**client**) | the write: an effect, renders `null` |
+| `DataList` | `components/data-list.tsx` (**server**) | mounts it — the ONE write site |
+| `NavMenu` | `components/nav-menu.tsx` (**client**) | the burger's list items, resolved when the menu opens |
+| `BackLink` | `components/back-link.tsx` (**client**) | the "← Back to …" links, resolved in an effect after mount |
+
+One entry per list route (`novedu:list-filter:/codes`), holding the applied query
+string. Five things are load-bearing:
+
+- **`DataList` writes, guarded by its `url`.** So the write sites are exactly the four
+  routes that pass `pathname` + `params` (`/codes`, `/files`, `/images`, `/reports`);
+  an embedded list — the writing module's savers list, the per-code conversation
+  stats — has no route of its own and never writes. Nothing to wire per page.
+- **`page` is dropped** (`carryParams(params, ["page"])`), so a remembered list reopens
+  on page one. Everything else rides along, `sort` and a non-default `size` included.
+- **An empty query REMOVES the entry**, so "Clear" — a bare `router.push(pathname)` —
+  genuinely forgets rather than storing a blank.
+- **Only links are seeded, never a page.** A list page never reads the memory: a typed
+  or bookmarked `/codes` shows the plain list, and a shared URL means what it says.
+- **Every storage access degrades to "nothing remembered"** — it can throw on access
+  alone in some privacy modes, and navigation must never break over a filter.
+
+`rememberedListHref` is safe to call for any href: one that already carries a `?` or a
+`#` is returned untouched, and a path no list ever wrote simply misses. That is why
+`BackLink` applies it unconditionally even though `/codes/<code>` is among its hrefs.
+
+The two consumers resolve at different moments, for the same reason — the
+server-rendered markup must not depend on `localStorage`. The burger's panel does not
+exist until it opens, so `NavMenu` maps the hrefs in the click handler (always fresh,
+no hydration to manage); `BackLink` is rendered with the page, so it starts from the
+plain href and upgrades in an effect — which keeps the href real, so middle-click and
+"open in new tab" carry the filter too. Either way a click landing in the very first
+frame gets the plain list: a miss, never a wrong filter.
+
+`tests/component/list-filter-memory.browser.test.tsx` is the guard for both halves.
