@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { iconButtonVariants } from "@/components/ui/icon-button";
 import { MENU_ITEM, MENU_PANEL } from "@/components/ui/menu";
 import { cn } from "@/lib/utils";
+import { rememberedListHref } from "./list-filter-memory";
 import { usePopover } from "./use-popover";
 
 const BRAND = "HTBLA Leonding - Novedu";
@@ -64,6 +66,11 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
   const pathname = usePathname();
   const { open, setOpen, ref } = usePopover<HTMLDivElement>();
   const items = NAV_ITEMS.filter((item) => isTeacher || !item.teacherOnly);
+  // A list route the teacher left filtered is reopened with that filter — the
+  // whole point of the memory (`components/list-filter-memory.ts`). Resolved when
+  // the menu OPENS rather than on render: the panel does not exist until then, so
+  // the values can never be stale and there is no hydration mismatch to manage.
+  const [hrefs, setHrefs] = useState<Record<string, string>>({});
   // Heading lookup spans ALL items so a directly-opened URL still gets a title;
   // dynamic routes (the stats/conversation pages) fall back to a path-shape match.
   const heading =
@@ -83,7 +90,14 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
         aria-label="Open navigation menu"
         aria-haspopup="true"
         aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          if (!open) {
+            setHrefs(
+              Object.fromEntries(items.map((item) => [item.href, rememberedListHref(item.href)])),
+            );
+          }
+          setOpen((value) => !value);
+        }}
       >
         <span className="block h-0.5 w-full rounded-full bg-foreground" />
         <span className="block h-0.5 w-full rounded-full bg-foreground" />
@@ -98,12 +112,22 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
             {items.map((item) => (
               <li key={item.href}>
                 {item.href === "/docs" ? (
-                  <a href={item.href} className={MENU_ITEM} onClick={() => setOpen(false)}>
+                  // The guide is a static export outside Next's router, and it has
+                  // no navigation back into the app — so it gets its own tab and
+                  // the teacher returns by closing it.
+                  <a
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener"
+                    aria-label={`${item.label} (opens in a new tab)`}
+                    className={MENU_ITEM}
+                    onClick={() => setOpen(false)}
+                  >
                     {item.label}
                   </a>
                 ) : (
                   <Link
-                    href={item.href}
+                    href={hrefs[item.href] ?? item.href}
                     className={cn(
                       MENU_ITEM,
                       item.href === pathname && "bg-foreground/5 font-semibold",

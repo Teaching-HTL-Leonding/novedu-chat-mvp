@@ -1,8 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PageBody } from "@/components/page-main";
+import { RememberListFilter } from "@/components/remember-list-filter";
 import { buttonVariants } from "@/components/ui/button";
-import { lastPage, type PagedResult, type ParamRecord, pageHref } from "@/lib/db/paging";
+import {
+  carryParams,
+  lastPage,
+  type PagedResult,
+  type ParamRecord,
+  pageHref,
+} from "@/lib/db/paging";
 import { type Sort, type SortDirection, sortHref } from "@/lib/db/sorting";
 import { cn } from "@/lib/utils";
 
@@ -354,9 +361,19 @@ export function DataList<T, K extends string = string>({
   // unconditionally (a no-op in the default `w-full` column).
   // WARNING: a child added here WITHOUT these classes silently inflates the page
   // width of every wide list — a long hint or a wide filter bar would then decide
-  // the layout instead of the table.
+  // the layout instead of the table. (`RememberListFilter` is exempt: it renders
+  // null, so it contributes no box at all.)
   return (
     <PageBody wide={wide}>
+      {url ? (
+        // The filter memory writes only for a list with a route of its own, and
+        // never remembers the PAGE — a remembered list reopens on page one.
+        <RememberListFilter
+          pathname={url.pathname}
+          search={carryParams(url.params, ["page"]).toString()}
+        />
+      ) : null}
+
       {hint ? <p className="w-0 min-w-full text-foreground/70 text-sm">{hint}</p> : null}
 
       <div className="flex w-0 min-w-full flex-wrap items-center justify-between gap-3">
