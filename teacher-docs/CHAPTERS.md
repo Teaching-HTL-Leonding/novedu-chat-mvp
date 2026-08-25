@@ -57,7 +57,7 @@ _Turning an activity into a code and handing it to a class._
 | 03 | Time-limiting a code | `docs/codes.md` (window), `cli/README.md` (`--start`/`--end`) |
 | 04 | Anonymous vs. per-user | `docs/codes.md` (anonymity), `docs/writing.md` (writing default) |
 | 05 | Deleting a code | `docs/codes.md`, `docs/usage-metering.md` (behavior: deletion removes stats) |
-| 06 | Special case: coding codes | `docs/coding.md` (behavior), `activities/coding/README.md` |
+| 06 | Connecting a coding activity to an outside tool | `docs/coding.md` (behavior), `activities/coding/README.md` |
 | 07 | Student reports | `docs/reports.md` (behavior), `docs/codes.md` (anonymity) |
 | 08 | Many activities at once: the activity registry | `docs/registry.md` (format + sync semantics), `cli/README.md` (`codes sync`) |
 

@@ -19,7 +19,8 @@ describe("parseBearerKey", () => {
     expect(parseBearerKey("bearer   abc123")).toBe("abc123");
   });
 
-  it("returns the token VERBATIM — it does not strip an sk- prefix (the code IS the key)", () => {
+  it("returns the token VERBATIM — no prefix stripping, so an nvk- key is matched as stored", () => {
+    expect(parseBearerKey("Bearer nvk-abc123")).toBe("nvk-abc123");
     expect(parseBearerKey("Bearer sk-abc123")).toBe("sk-abc123");
     expect(parseBearerKey("Bearer sk-")).toBe("sk-");
   });

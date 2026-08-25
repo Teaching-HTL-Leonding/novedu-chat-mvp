@@ -86,6 +86,29 @@ prose carries everything an editor needs.
 
 - An orientation, not a full dashboard manual. Keep it short.
 
+## 30-sharing-activities/06-coding-special-case
+
+- Sharing a coding code is NOT special any more: it gets the same share link as
+  every other kind of activity. What is still special is what a student does
+  after opening it (sign in, then get a personal connection key) — do not revive
+  "the code is the key" framing.
+- A student's personal key is stable: the same key comes back on every visit,
+  from any device. It is never rotated or reissued on demand.
+- Closing a code's availability window disables every key issued for that code
+  at once. Reopening or extending the window brings the SAME keys back to life;
+  nobody has to reconnect their tool or get a new key. Only deleting the code
+  destroys the keys for good.
+- Key issuance (who requested a key, and when) is attributed to the requester.
+  The coding conversations that follow through that key are never stored and
+  never attributed to anyone; do not blur the two into "coding is per-user now".
+- The teacher's own key is behind a **button** on the code's page, and the
+  issued-keys list is a list of USERS, not only students — a teacher who presses
+  it appears in it. Never write that the page shows the teacher's key
+  automatically: opening a coding code's page records nothing.
+- The activity code string itself still grants nothing on its own: a bare code
+  pasted into a coding tool does not work, only a personal key does, and getting
+  one requires signing in.
+
 ## 30-sharing-activities/08-activity-registry
 
 - Do not describe matching as a lookup by name: the app knows nothing about the

@@ -125,9 +125,13 @@ Tables (details in `docs/codes.md`):
 | `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only when the activity opts out of anonymity) |
 | `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (entry-page shortcuts) |
 | `novedu_writing_submissions` | PK (`code`, `user_id`) | a student's saved writing text — one upserted row per student per code, non-anonymous codes only (details in `docs/writing.md`) |
+| `novedu_reports` | PK `id` | student-submitted reports on an AI interaction, always attributed to the reporter's oid even under an anonymous code (details in `docs/reports.md`) |
+| `novedu_coding_keys` | PK (`code`, `user_id`); unique index on `api_key` | the coding module's per-user API keys — one stable `nvk-…` key per student per coding code, the second sanctioned user↔code attribution (details in `docs/coding.md`) |
 | `novedu_users` | PK `user_id` | Entra `oid` → display name, upserted on sign-in; LEFT-JOINed by value to resolve a shown user id to a name (details in `docs/auth.md`) |
 | `novedu_files` | PK `id` (per-version); filtered UK `name WHERE valid_until IS NULL` | App-hosted YAML files, **temporal/append-only** (details in `docs/files.md`) |
 | `novedu_images` | PK `id` (per-version); filtered UK `name WHERE valid_until IS NULL` | App-hosted image metadata (bytes in Blob Storage), **temporal/append-only** (details in `docs/images.md`) |
+| `novedu_usage_by_code` | PK (`code`, `hour`) | per-hour token/tool/activity counts by code, no user (details in `docs/usage-metering.md`) |
+| `novedu_usage_by_user` | PK (`user_id`, `hour`) | per-hour token/tool/activity counts by user, no code (details in `docs/usage-metering.md`) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping |
 
 `novedu_files` and `novedu_images` are the repo's **temporal (append-only) tables**,
@@ -149,8 +153,11 @@ only delete path). The bulk delete (`deleteCodesAndData` in
    Mastra's OWN storage API (`getStore("memory").deleteThread`, which deletes a
    thread's messages and the thread in one transaction), so we never mutate the
    `mastra_*` schema by hand;
-2. the app-owned rows via Drizzle — `novedu_user_chats`, `novedu_recent_codes`,
-   then the `novedu_codes` row LAST (so a mid-way failure leaves the code
+2. the app-owned rows via Drizzle, all in **one transaction**: the selected codes'
+   `novedu_coding_keys` rows first (one batched statement for the whole selection —
+   the only path that ever deletes them), then per code `novedu_user_chats`,
+   `novedu_recent_codes`, `novedu_writing_submissions`, `novedu_reports`, and
+   finally the `novedu_codes` row LAST (so a mid-way failure leaves the code
    still listed and the operation safe to retry; it is idempotent).
 
 The READ side of stats — counts, per-conversation timings —

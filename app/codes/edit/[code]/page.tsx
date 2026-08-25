@@ -2,9 +2,9 @@ import { Notice } from "@/components/notice";
 import { Main } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { resolveAppOriginOr } from "@/lib/app-origin";
-import { renderCodeResult } from "@/lib/code-modules/registry";
 import { getCode } from "@/lib/code-store";
 import { CodeForm } from "../../code-form";
+import { ShareLinkResult } from "../../share-link-result";
 
 const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 
@@ -40,10 +40,9 @@ export default async function EditCodePage({ params }: { params: Promise<{ code:
 
   const origin = await resolveAppOriginOr("");
   const shareUrl = origin ? `${origin}/${entry.code}` : `/${entry.code}`;
-  // Per-module result body (the link-based modules show the share link; coding shows
-  // its little-coder config). Rendered server-side and handed to the client form as a
-  // slot, so the client never touches the server-only registry.
-  const resultSlot = await renderCodeResult(entry, { shareUrl, origin });
+  // Every module gets the same share-link result. Rendered server-side and handed
+  // to the client form as a slot, so the client never touches the server-only registry.
+  const resultSlot = ShareLinkResult({ shareUrl });
 
   return (
     <Main>

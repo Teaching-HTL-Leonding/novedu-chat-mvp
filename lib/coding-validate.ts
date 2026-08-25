@@ -9,8 +9,8 @@
 // `lib/coding-fetch` (DB-backed) or any server-only module. The lenient runtime
 // `parseCoding` (`lib/coding-yaml.ts`) is unchanged and separate.
 //
-// Coding is ALWAYS anonymous (the OpenAI-compatible API path carries no per-student
-// identity), so — unlike quiz/writing — this validator carries no anonymity flag;
+// Coding is ALWAYS anonymous (there are no in-app conversations to attribute), so
+// — unlike quiz/writing — this validator carries no anonymity flag;
 // the file-validator seam freezes `anonymous: true` onto the code row.
 
 import {

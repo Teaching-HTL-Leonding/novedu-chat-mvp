@@ -183,7 +183,7 @@ describe("fileValidators.coding", () => {
       warnings: ["w"],
       title: "T",
       description: null,
-      // Frozen regardless of the file — the API path carries no per-student identity.
+      // Frozen regardless of the file — no in-app conversations to attribute.
       anonymous: true,
     });
   });

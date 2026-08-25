@@ -50,7 +50,7 @@ One thing to keep in mind when you override: SCCH, the school's Austrian LLM hos
 
 Novedu generates the code text for you, a short random string; you can't choose your own. After creating it you land on the code's page, which shows the full link with a copy button. Share it however you reach your class: paste it into your learning platform, show it on the projector, or write it on the board. Students can also type just the code on the Novedu start page.
 
-A coding code is the one exception: instead of a share link, its page shows the connection settings students enter in their coding tool, because a coding activity is used from a coding assistant, not from a web page.
+For a coding activity, opening that same link is how a student picks up the personal key their coding tool needs; the chapter on connecting a coding activity covers that step.
 
 ## What you can change later, and what's fixed
 

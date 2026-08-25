@@ -34,9 +34,9 @@ If a student only has the code text, they can open the Novedu start page and typ
 
 While they're working, students can flag a notable AI answer to you with a small report button. Those reports land on your Reports page, and the student-reports chapter covers what you see and how to handle them.
 
-### Coding activities work differently
+### Coding activities work differently after that
 
-A coding activity's code is not meant to be opened as a web page. Students paste it into their coding tool instead, where it works as an access key that connects the tool to the instructions and AI model you chose. The chapter on coding codes explains how to hand one out.
+A coding code opens the same way, and students sign in the same way, but there is no chat waiting for them. Instead, the page hands them a personal key and the settings for connecting their own coding tool to the instructions and AI model you chose. The chapter on connecting a coding activity explains what students do with it.
 
 ## What a code carries
 

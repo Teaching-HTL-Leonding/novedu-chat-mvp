@@ -181,7 +181,7 @@ async function record(
 export interface LlmUsageInput {
   code: string;
   module: string;
-  /** Absent ⇒ only `usage_by_code` is metered (the coding-proxy path carries no oid). */
+  /** Absent ⇒ only `usage_by_code` is metered. */
   userId?: string;
   /** The LLM provider that served the generation (e.g. "SCCH"). `usage_by_code` only. */
   provider?: string;

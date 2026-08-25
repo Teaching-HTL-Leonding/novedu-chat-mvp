@@ -7,8 +7,9 @@ import { buildLittleCoderConfig } from "../lib/little-coder-config";
 // Drives the REAL pi coding agent (`@earendil-works/pi-coding-agent`, a pinned
 // devDependency — little-coder is a thin wrapper over it) against the coding
 // module's public OpenAI-compatible endpoint, exactly the way a student's tool
-// connects: a `models.json` with the code as the API key. Used only by the
-// @live-llm `coding-agent.spec.ts`.
+// connects: a `models.json` with a minted per-user API key (`nvk-…`, from
+// `novedu_coding_keys` via `mintCodingKey`). Used only by the @live-llm
+// `coding-agent.spec.ts`.
 //
 // Plain `node:child_process` + `node:fs` — Playwright's CJS test runner cannot
 // load ESM-only modules (the same constraint that keeps `code.utils.ts` on the
@@ -32,7 +33,7 @@ export interface PiAgentResult {
 
 /**
  * Runs pi once in `--print` mode against the coding endpoint, authenticated by
- * the minted code. A fresh temp directory serves as pi's config dir
+ * the minted per-user API key. A fresh temp directory serves as pi's config dir
  * (`PI_CODING_AGENT_DIR` — the user's real `~/.pi` is never touched or read)
  * holding only the generated `models.json`; the child's cwd is an empty
  * subdirectory so no repo `AGENTS.md`/`CLAUDE.md` is picked up. All discovery
@@ -40,7 +41,7 @@ export interface PiAgentResult {
  * disabled — this is a pure chat-completion smoke through the proxy.
  */
 export async function runPiAgent(options: {
-  code: string;
+  apiKey: string;
   prompt: string;
 }): Promise<PiAgentResult> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pi-e2e-"));
@@ -49,7 +50,7 @@ export async function runPiAgent(options: {
       path.join(tempDir, "models.json"),
       buildLittleCoderConfig({
         baseUrl: CODING_BASE_URL,
-        apiKey: options.code,
+        apiKey: options.apiKey,
         modelId: "coding",
         modelName: "Novedu coding",
       }),
@@ -123,11 +124,11 @@ export async function runPiAgent(options: {
  * returns empty content (the endpoint's `adaptBody` handles the Foundry
  * `max_tokens` rename).
  */
-export async function fetchServedModel(code: string): Promise<{ model: string; raw: string }> {
+export async function fetchServedModel(apiKey: string): Promise<{ model: string; raw: string }> {
   const res = await fetch(`${CODING_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${code}`,
+      authorization: `Bearer ${apiKey}`,
       "content-type": "application/json",
     },
     body: JSON.stringify({

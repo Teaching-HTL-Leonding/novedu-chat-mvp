@@ -15,7 +15,7 @@ export const USAGE_CODE = "usageCode";
 
 /**
  * The student's Entra `oid` (drives `usage_by_user`). Absent ⇒ only `usage_by_code`
- * is metered (the coding-proxy path, which carries no oid). Set for ALL codes incl.
+ * is metered. Set for ALL codes incl.
  * anonymous ones — it is only ever stored against an hour bucket, never linked to
  * the code, so the anonymity invariant is unchanged (docs/codes.md).
  */

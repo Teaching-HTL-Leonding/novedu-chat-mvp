@@ -128,8 +128,8 @@ const writingValidator: FileValidator = {
 
 // coding: a strict authoring gate exactly like quiz/writing (bad YAML, missing
 // field, no `llm.model`, no instructions → ok:false, BLOCKS the save). Coding is
-// ALWAYS anonymous — the OpenAI-compatible API path carries no per-student identity
-// — so the seam FREEZES `anonymous: true` regardless of the file (the schema has no
+// ALWAYS anonymous — there are no in-app conversations to attribute — so the seam
+// FREEZES `anonymous: true` regardless of the file (the schema has no
 // `anonymous` field to read). Coding carries no denormalized description. The
 // lenient runtime read the proxy needs lives in lib/coding-yaml.ts.
 const codingValidator: FileValidator = {
@@ -183,8 +183,8 @@ export async function readAnonymousFlag(
       const loaded = await loadWriting(fileUrl);
       if (loaded.ok) return { anonymous: loaded.writing.anonymous, definitive: true };
     } else if (kind === "coding") {
-      // Coding is ALWAYS anonymous (the API path carries no per-student identity),
-      // so this is definitive without reading the YAML.
+      // Coding is ALWAYS anonymous (no in-app conversations to attribute), so
+      // this is definitive without reading the YAML.
       return { anonymous: true, definitive: true };
     }
   } catch (error) {

@@ -31,6 +31,7 @@ Deleting a code removes the code and everything that was recorded under it:
 - The link stops working immediately. Students who open it see an unknown-code message, and the code disappears from their recent-codes shortcuts.
 - All conversations and quiz discussions under the code are deleted, including their transcripts.
 - Saved student texts from a writing activity are deleted.
+- For a coding activity, every personal key issued for the code is deleted, so any coding tool still using one stops working immediately.
 - The code's statistics page is gone, along with its interaction counts and per-student view.
 
 Review the code's statistics and read or copy anything you still need before you delete: there's no way to open a deleted code's conversations, saved texts, or statistics afterwards.

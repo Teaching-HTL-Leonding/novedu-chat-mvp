@@ -83,9 +83,13 @@ export default async function CodePage({ params }: { params: Promise<{ code: str
         <RenderWriting entry={entry} code={code} threadId={threadId} threadToken={threadToken} />
       );
     case "coding":
-      // No thread: the coding module has no in-app chat — this page only shows how
-      // to connect an external OpenAI-compatible coding agent to /api/coding/v1.
-      return <RenderCoding entry={entry} code={code} />;
+      // No thread: the coding module has no in-app chat — this page mints (or
+      // re-displays) the student's personal API key and shows how to connect an
+      // external OpenAI-compatible coding agent to /api/coding/v1. No student-mode
+      // logic here: `userId` is always the real session oid, which is exactly the
+      // design's view-as-student behavior (a teacher testing this page mints a key
+      // under their own oid, never a fabricated student row).
+      return <RenderCoding entry={entry} code={code} userId={userId} />;
     default: {
       const exhaustive: never = entry.module;
       return exhaustive;

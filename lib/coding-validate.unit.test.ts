@@ -4,8 +4,8 @@ import { checkCodingValue, loadAndCheckCoding } from "@/lib/coding-validate";
 import type { Fetcher } from "@/lib/prompt-fragments";
 
 // The coding AUTHORING validator: the strict schema gate. Pure, no network — a
-// fixture Fetcher returns YAML text in-process. Coding is ALWAYS anonymous (the API
-// path carries no per-student identity), so the validator carries no anonymity flag.
+// fixture Fetcher returns YAML text in-process. Coding is ALWAYS anonymous (its
+// conversations are never stored), so the validator carries no anonymity flag.
 
 const URL_ = "https://example.com/coding.yaml";
 const fetcherFor =

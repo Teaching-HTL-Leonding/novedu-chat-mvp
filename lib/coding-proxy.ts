@@ -18,11 +18,12 @@ export function openaiError(
 }
 
 /**
- * Extracts the code (bearer key) from an Authorization header value. Accepts
- * "Bearer <token>" (case-insensitive scheme) and returns the token VERBATIM — the
- * code IS the key, so nothing is stripped (a code may legitimately start with any
- * `[a-z0-9-]` sequence, including "sk-"). Returns null when absent or empty.
- * Validity of the code itself is left to `checkCode`.
+ * Extracts the API key from an Authorization header value. Accepts
+ * "Bearer <token>" (case-insensitive scheme) and returns the token VERBATIM —
+ * nothing is stripped, so the key's own `nvk-` prefix (and any other leading
+ * sequence a client may send, e.g. "sk-") survives intact and is matched as
+ * stored. Returns null when absent or empty. Whether the token is a real key is
+ * left to `lookupCodingKey`.
  */
 export function parseBearerKey(headerValue: string | null): string | null {
   if (!headerValue) return null;

@@ -20,7 +20,7 @@ The highest-cost rules to break. They always apply, regardless of subsystem; the
 - Student access to any activity = **`checkCode()`** on the stored `novedu_codes` row + the **stateless-HMAC `x-thread-token`** over `(code, userId, threadId)`, both re-verified on **every** server touch. No signed links (`docs/codes.md`).
 - The activity YAML's `anonymous` default is module-specific: tutor/quiz `true`, **writing `false`**, coding always anonymous (`docs/writing.md`).
 - The quiz grader **`quizEvaluator`**, the eval judge **`evalJudge`** and the eval tutor **`evalTutor`** are **never web-reachable by students** (the runtime route 404s every agent id but the code module's own). Besides `submitAnswer`, their only callers are the teacher-only `POST /api/eval/grade` / `POST /api/eval/judge` / `POST /api/eval/respond`, which supply their system prompts client-side — the server-only quiz `evaluation` prompts never leave the server (`docs/codes.md`, `docs/cli-eval.md`).
-- Exactly **two public, non-Entra API routes**: `GET /api/files/<name>` (raw YAML) and the coding `POST /api/coding/v1/chat/completions` (the code IS the bearer key — `docs/files.md`, `docs/coding.md`). The only other public surface is the static teacher guide under `/docs`, public by intent (`docs/teacher-docs.md`).
+- Exactly **two public, non-Entra API routes**: `GET /api/files/<name>` (raw YAML) and the coding `POST /api/coding/v1/chat/completions`, authenticated by a per-user API key from `novedu_coding_keys` (key row + code row re-verified every request — `docs/files.md`, `docs/coding.md`). The only other public surface is the static teacher guide under `/docs`, public by intent (`docs/teacher-docs.md`).
 - All other CLI/API routes are **Entra-bearer**: proxy-excluded per-path and gated **only** by `requireBearerUser`/`requireBearerTeacher` (`lib/api-auth.ts`) — token validated on every request, groups overage fails closed, **no student mode on this channel**; auth never enters the `lib/*-service.ts` pipelines. `docs/api.md` lists every route.
 - **LLM connectivity is server-only** behind `lib/llm/` — the provider branch exists ONLY in `resolveLanguageModel`, `resolveChatEndpoint`, and `providerUnavailableReason`; endpoints, keys, and Entra tokens never reach the browser. Foundry auth is passwordless Entra — never `DefaultAzureCredential`, never an API key. A code's **LLM override pair** is both-or-nothing via `effectiveLlm`, availability-gated on the effective provider (`docs/ai-models.md`).
 - A thinking model's **reasoning is teacher-only on the live chat**: the `/api/copilotkit` route picks `ReasoningStrippingRunner` unless `effectiveTeacherForSession()` proves an effective teacher, so `REASONING_*` frames are never written to a student's stream. **Fails closed**; view-as-student gets a student's stream (`docs/chat.md`).
@@ -60,7 +60,7 @@ Read before touching: `app/[code]/**`, `app/codes/**`, `app/api/copilotkit/**`, 
 - `checkCode()` gates THREE sites that must stay in sync: the `/[code]` dispatcher, the CopilotKit route, and the public coding route.
 - Fixed layering: **FileKind** → validator (`lib/file-validators.ts`) → **CodeModule** descriptor; adding a module touches only the documented seams.
 - Editing a code changes only note + window + the LLM override pair — never the module, `file_url`, or the frozen `anonymous`.
-- `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities. The ONE sanctioned exception: `novedu_reports` stores the reporter's oid even on anonymous codes, behind an explicit on-form notice (`docs/reports.md`).
+- `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities. TWO sanctioned exceptions: `novedu_reports` stores the reporter's oid even on anonymous codes behind an explicit on-form notice (`docs/reports.md`), and `novedu_coding_keys` stores the requester's oid behind an explicit on-page notice (`docs/coding.md`).
 
 ### Reports → `docs/reports.md`
 
@@ -92,9 +92,10 @@ Read before touching: `lib/writing-*.ts`, `app/[code]/_writing/**`, `app/codes/[
 
 ### Coding → `docs/coding.md`
 
-Read before touching: `app/api/coding/**`, `app/[code]/_coding/**`, `lib/coding-*.ts`, `lib/llm/endpoint.ts`, the `api/coding` matcher in `proxy.ts`.
+Read before touching: `app/api/coding/**`, `app/[code]/_coding/**`, `lib/coding-*.ts` (incl. the key store `lib/coding-key-store.ts`), `lib/llm/endpoint.ts`, the `api/coding` matcher in `proxy.ts`.
 
 - No in-app chat, no Mastra — a thin pass-through proxy. `lib/llm/endpoint.ts` stays side-effect-free and must NOT import `app/mastra/scch.ts` or the fragment core.
+- Auth is a per-user API key resolved in the route beside `checkCode`: `lookupCodingKey` (`lib/coding-key-store.ts`) maps the bearer to its `(code, userId)` pair, then `checkCode` re-verifies the code itself — both stored rows, re-checked on every request.
 
 ### AI models & LLM providers → `docs/ai-models.md`
 

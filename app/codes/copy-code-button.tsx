@@ -1,34 +1,15 @@
 "use client";
 
 import { CopyIconButton } from "@/components/copy-icon-button";
-import type { CodeModule } from "@/lib/code-modules/types";
-import { CODING_MODEL_ID, codingBaseUrl, DEFAULT_CODING_MODEL_NAME } from "@/lib/coding-connection";
-import { buildLittleCoderConfig } from "@/lib/little-coder-config";
 
-// The per-row copy affordance on the /codes list. What it copies depends on the
-// module: a `coding` code is an API key (not a web link), so it copies the
-// ready-to-paste little-coder config (`models.json`) — the same artifact the
-// connection block shows; every other module copies the `/<code>` share link. Both
-// values are built in the browser from window.location.origin (via the getter form),
-// so they always match wherever the teacher is currently working.
-export function CopyCodeButton({ code, module }: { code: string; module: CodeModule }) {
-  if (module === "coding") {
-    return (
-      <CopyIconButton
-        text={() =>
-          buildLittleCoderConfig({
-            baseUrl: codingBaseUrl(window.location.origin),
-            apiKey: code,
-            modelId: CODING_MODEL_ID,
-            modelName: DEFAULT_CODING_MODEL_NAME,
-          })
-        }
-        label="Copy little-coder config"
-        promptLabel="Copy the little-coder config:"
-      />
-    );
-  }
-
+// The per-row copy affordance on the /codes list: every module's code is a regular
+// activity URL now (coding included — a student visits it, signs in, and mints
+// their own personal API key), so every row copies the `/<code>` share link. Built
+// in the browser from window.location.origin (via the getter form), so it always
+// matches wherever the teacher is currently working. This "use client" wrapper is
+// the boundary that lets the closure read window.location — the list page itself
+// is a server component, which cannot pass a function prop across the boundary.
+export function CopyCodeButton({ code }: { code: string }) {
   return (
     <CopyIconButton
       text={() => `${window.location.origin}/${code}`}

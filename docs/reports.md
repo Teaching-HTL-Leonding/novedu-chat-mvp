@@ -24,14 +24,16 @@ and this conversation/answer will be shared with your teacher." — so a student
 ever files a report knowing their identity travels with it. It is created **only**
 by that explicit action, never implicitly.
 
-This is the **one sanctioned exception** to the "`novedu_user_chats` is the only
-user↔chat link" invariant (`AGENTS.md`, `docs/codes.md`, `docs/auth.md`). The
-discipline that keeps it honest: the store surfaces **only the reporter's own**
-identity. It LEFT-JOINs `novedu_users` (for the reporter's display name) and
-`novedu_codes` (for the note/creator), but **never joins `novedu_user_chats`** or
-any path that would reveal a *different* student behind a reported thread — the
-anonymity promise for everyone but the reporter stays intact. `getCodeStats`'
-anonymity zeroing is untouched.
+This is one of **two sanctioned exceptions** to the "`novedu_user_chats` is the
+only user↔chat link" invariant (`AGENTS.md`, `docs/codes.md`, `docs/auth.md`) —
+the sibling is `novedu_coding_keys`, where requesting a coding activity's personal
+API key stores the requester's oid behind an explicit on-page notice
+(`docs/coding.md`). The discipline that keeps reports honest: the store surfaces
+**only the reporter's own** identity. It LEFT-JOINs `novedu_users` (for the
+reporter's display name) and `novedu_codes` (for the note/creator), but **never
+joins `novedu_user_chats`** or any path that would reveal a *different* student
+behind a reported thread — the anonymity promise for everyone but the reporter
+stays intact. `getCodeStats`' anonymity zeroing is untouched.
 
 ## Data model — `novedu_reports`
 

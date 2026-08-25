@@ -1,6 +1,5 @@
 import type { RequestContext } from "@mastra/core/request-context";
 import type { ReactNode } from "react";
-import { ShareLinkResult } from "@/app/codes/share-link-result";
 import type { CodeModule } from "@/lib/code-modules/types";
 import type { CodeEntry } from "@/lib/code-store";
 import type { FileKind } from "@/lib/file-name";
@@ -14,23 +13,22 @@ import { writingModule } from "./writing";
 // Layer 3 of the codes architecture: the registry of shareable activities. Each
 // descriptor references a `fileKind` (which Layer-2 validator to reuse — never
 // redefining validation) and supplies only what is genuinely activity-specific: the
-// runtime agent + RequestContext, the teacher's per-code detail body (`renderDetail`,
-// on /codes/[code]), and — only when it differs from the default — the create/edit
-// screen's result body (`renderResult`). Create-time validation is NOT per-descriptor:
-// it is DERIVED from `fileKind` by `validateCodeFile`. The result body defaults to the
-// share link (`renderCodeResult` → `ShareLinkResult`); only `coding` overrides it.
-// STUDENT rendering is NOT a registry seam — it is a thin `switch` in
-// app/[code]/page.tsx that delegates to each module's own server component.
-// Descriptors keep React/JSX out of this server-only registry by calling server
-// components as plain functions (returning ReactNode), never as JSX.
+// runtime agent + RequestContext and the teacher's per-code detail body
+// (`renderDetail`, on /codes/[code]). Create-time validation is NOT per-descriptor:
+// it is DERIVED from `fileKind` by `validateCodeFile`. Every module's create/edit
+// screen shows the same `ShareLinkResult` (the `/<code>` share link) — there is no
+// per-module override. STUDENT rendering is NOT a registry seam — it is a thin
+// `switch` in app/[code]/page.tsx that delegates to each module's own server
+// component. Descriptors keep React/JSX out of this server-only registry by calling
+// server components as plain functions (returning ReactNode), never as JSX.
 //
 // Adding a module touches a small, fixed set of seams: a descriptor file + one
 // line in this registry, a client label (lib/code-modules/types.ts), a student
 // render case (the thin switch in app/[code]/page.tsx), a teacher `renderDetail`,
 // and — for a NEW file kind — that kind's validator + anonymous-read in the
 // FileKind layer (lib/file-validators.ts). Create validation and the share-link result
-// come for free from `fileKind`/the default. The GENERIC flow never changes: the
-// code store, the runtime route, and attribution all dispatch by `module`/
+// come for free from `fileKind`/the shared default. The GENERIC flow never changes:
+// the code store, the runtime route, and attribution all dispatch by `module`/
 // `fileKind` and stay untouched. A pure library kind (e.g. `fragment`) adds only a
 // Layer-2 validator and no entry here — the asymmetry the `fragment` kind proves.
 //
@@ -76,18 +74,6 @@ export interface CodeModuleDef {
     entry: CodeEntry,
     searchParams: { [key: string]: string | string[] | undefined },
   ): Promise<ReactNode>;
-  /**
-   * OPTIONAL override of the create/edit screen's result body. Omit it to get the
-   * default `ShareLinkResult` (the `/<code>` share link with a copy button — what the
-   * link-based modules tutor/quiz/writing all use). Only `coding` overrides, to show
-   * the little-coder connection config instead (a coding code is an API key, not a web
-   * link). Dispatched + defaulted by `renderCodeResult`. A server component called as a
-   * plain function (returning ReactNode), so no JSX lives in this registry.
-   */
-  renderResult?(
-    entry: CodeEntry,
-    ctx: { shareUrl: string; origin: string },
-  ): ReactNode | Promise<ReactNode>;
 }
 
 export const codeModules: Record<CodeModule, CodeModuleDef> = {
@@ -109,21 +95,4 @@ export function validateCodeFile(
   fetcher: Fetcher,
 ): Promise<FileValidationResult> {
   return fileValidators[codeModules[module].fileKind].validate(fileUrl, fetcher);
-}
-
-/**
- * Renders a module's create/edit-screen result body, applying the default. The
- * link-based modules (tutor/quiz/writing) get `ShareLinkResult` (the `/<code>` share
- * link); `coding` is the lone override (its little-coder connection config). Called
- * server-side and handed to the client `CodeForm` as a slot, so the client never
- * touches this server-only registry.
- */
-export function renderCodeResult(
-  entry: CodeEntry,
-  ctx: { shareUrl: string; origin: string },
-): ReactNode | Promise<ReactNode> {
-  const def = codeModules[entry.module];
-  return def.renderResult
-    ? def.renderResult(entry, ctx)
-    : ShareLinkResult({ shareUrl: ctx.shareUrl });
 }

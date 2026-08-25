@@ -70,7 +70,14 @@ import {
   getConversationMessages,
   getInteractionCounts,
 } from "@/lib/code-stats-store";
-import { codes, recentCodes, reports, userChats, writingSubmissions } from "@/lib/db/schema";
+import {
+  codes,
+  codingKeys,
+  recentCodes,
+  reports,
+  userChats,
+  writingSubmissions,
+} from "@/lib/db/schema";
 
 // Convenience: the stored v2 message envelope, JSON-stringified into a row.
 function row(id: string, role: string, content: unknown): Record<string, unknown> {
@@ -315,8 +322,9 @@ describe("getConversationMessages collapses replays end to end", () => {
 });
 
 // Bulk delete (the list's "Delete Selected", the only way to delete a code):
-// conversations per code (Mastra), then ALL the app rows in ONE transaction. These
-// pin the batch contract — per-code row ordering, the all-or-nothing rollback, the
+// conversations per code (Mastra), then ALL the app rows in ONE transaction — the
+// selection's coding API keys batched first, then each code's own rows. These pin
+// the batch contract — the row ordering, the all-or-nothing rollback, the
 // Mastra-failure-but-rows-still-attempted paths (storage unavailable AND listThreads
 // throwing), and the empty short-circuit.
 describe("deleteCodesAndData", () => {
@@ -326,8 +334,10 @@ describe("deleteCodesAndData", () => {
     expect(result).toEqual({ ok: true, deleted: 2 });
     // One thread listed+deleted per code (the fake lists the same set each time).
     expect(mastra.state.deletedThreadIds).toEqual(["th1", "th1"]);
-    // The same delete-safe order, repeated once per code, all in one transaction.
+    // All in one transaction: the selection's coding keys in ONE batched
+    // statement, then the same delete-safe order repeated once per code.
     expect(fake.state.deletedTables).toEqual([
+      codingKeys,
       userChats,
       recentCodes,
       writingSubmissions,
@@ -354,6 +364,7 @@ describe("deleteCodesAndData", () => {
     const result = await deleteCodesAndData(["aaaaaaaaaa", "bbbbbbbbbb"]);
     expect(result).toEqual({ ok: false, deleted: 2 });
     expect(fake.state.deletedTables).toEqual([
+      codingKeys,
       userChats,
       recentCodes,
       writingSubmissions,
@@ -373,6 +384,7 @@ describe("deleteCodesAndData", () => {
     expect(result).toEqual({ ok: false, deleted: 1 });
     expect(mastra.state.deletedThreadIds).toEqual([]);
     expect(fake.state.deletedTables).toEqual([
+      codingKeys,
       userChats,
       recentCodes,
       writingSubmissions,
