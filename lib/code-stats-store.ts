@@ -1,6 +1,7 @@
 import type { Message } from "@ag-ui/core";
 import { eq, sql } from "drizzle-orm";
 import { mastra } from "@/app/mastra";
+import { deleteCodingKeysForCodes } from "@/lib/coding-key-store";
 import { collapseReplayedRuns, toAguiMessage } from "@/lib/conversation-collapse";
 import { type DbExecutor, getDb } from "@/lib/db";
 import {
@@ -296,8 +297,9 @@ async function deleteCodeConversations(code: string): Promise<boolean> {
  * module's saved texts), and reports (student-submitted reports, which have NO FK
  * to the code and so must be dropped explicitly) first, then the code row LAST
  * (while it exists the code still appears in the list, so a mid-way failure is
- * safe to retry). `deleteCodesAndData` loops it inside one transaction. Throws on
- * a DB error (rolling the batch back).
+ * safe to retry). The coding module's key rows are NOT here — `deleteCodesAndData`
+ * drops them for the whole batch in one statement before this loop. Throws on a
+ * DB error (rolling the batch back).
  */
 async function deleteCodeRows(executor: DbExecutor, code: string): Promise<void> {
   await executor.delete(userChats).where(eq(userChats.code, code));
@@ -314,9 +316,12 @@ export type DeleteCodesResult = { ok: boolean; deleted: number };
  * teacher-initiated cleanup that replaced garbage collection. For each code, the
  * Mastra conversation deletes happen per code (separate pool — they can't join a
  * Drizzle transaction); all the app-owned ROW deletes then run in ONE Drizzle
- * transaction (all-or-nothing). `ok` is false if any Mastra step failed or the row
- * transaction rolled back; `deleted` is the number of codes whose rows were
- * processed (0 if the transaction rolled back). Never throws.
+ * transaction (all-or-nothing): the coding keys for the whole selection first (a
+ * single batched statement — this is the ONLY path that deletes them, so the
+ * codes' API keys die with their codes), then each code's remaining rows. `ok` is
+ * false if any Mastra step failed or the row transaction rolled back; `deleted` is
+ * the number of codes whose rows were processed (0 if the transaction rolled
+ * back). Never throws.
  */
 export async function deleteCodesAndData(codes: string[]): Promise<DeleteCodesResult> {
   if (codes.length === 0) return { ok: true, deleted: 0 };
@@ -330,6 +335,7 @@ export async function deleteCodesAndData(codes: string[]): Promise<DeleteCodesRe
   // 2. All app-owned rows in ONE transaction so the set commits or rolls back together.
   try {
     await getDb().transaction(async (tx) => {
+      await deleteCodingKeysForCodes(tx, codes);
       for (const code of codes) await deleteCodeRows(tx, code);
     });
   } catch (error) {

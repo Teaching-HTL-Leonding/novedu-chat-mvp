@@ -37,7 +37,7 @@ Each kind of activity has its own default:
 | Tutor | Anonymous | Chatting with a tutor is practice; students should feel free to ask anything. |
 | Quiz | Anonymous | Answers feed the aggregate statistics without naming anyone. |
 | Writing | Per-user | Reviewing a saved text needs an author, so writing records one by default. |
-| Coding | Always anonymous | Requests from a coding tool carry no student identity; there is no setting to change. |
+| Coding | Always anonymous | Requests from a coding tool carry no student identity; there is no setting to change. Picking up the connection key is the one exception, always recorded with the student's name. |
 
 ## Where you set it
 
@@ -49,7 +49,7 @@ The mode comes from the `anonymous` field in the activity's YAML file. Omit it t
 anonymous: false
 ```
 
-For a tutor or a quiz, `anonymous: false` switches the activity from its anonymous default to per-user. A coding activity has no `anonymous` field at all; adding one is rejected as an error.
+For a tutor or a quiz, `anonymous: false` switches the activity from its anonymous default to per-user. A coding activity has no `anonymous` field at all; adding one is rejected as an error. Coding keeps its own fixed exception regardless: a student's coding conversations stay anonymous, but picking up the connection key their tool needs is always recorded with their name, covered in the chapter on connecting a coding activity.
 
 ## The choice is frozen when you create a code
 

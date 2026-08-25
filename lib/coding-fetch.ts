@@ -31,16 +31,17 @@ export function loadCoding(url: string): Promise<LoadCodingResult> {
  * Derives `<CodingConnection>`'s props from a loaded activity, so the student page,
  * teacher detail, and create/edit result share one derivation (base URL + model-name
  * fallback). The real model + the teacher's prompt never appear here — only `title` (as
- * a display name), the code-as-key, and the generic model id reach the client.
+ * a display name), the caller's personal `nvk-…` key (minted via
+ * `getOrCreateCodingKey`), and the generic model id reach the client.
  */
 export function codingConnectionProps(
   loaded: LoadCodingResult,
   origin: string,
-  code: string,
+  apiKey: string,
 ): CodingConnectionProps {
   return {
     baseUrl: codingBaseUrl(origin),
-    apiKey: code,
+    apiKey,
     modelId: CODING_MODEL_ID,
     modelName: loaded.ok
       ? (loaded.coding.title ?? DEFAULT_CODING_MODEL_NAME)

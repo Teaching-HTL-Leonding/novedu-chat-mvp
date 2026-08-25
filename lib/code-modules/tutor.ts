@@ -33,5 +33,4 @@ export const tutorModule: CodeModuleDef = {
     },
   },
   renderDetail: (entry) => ConversationStats({ entry }),
-  // renderResult omitted — defaults to the share link (see `renderCodeResult`).
 };

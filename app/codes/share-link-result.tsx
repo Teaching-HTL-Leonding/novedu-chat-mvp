@@ -1,10 +1,11 @@
 import { CopyableLinkRow } from "./copyable-link-row";
 
-// The shared create/edit-screen result for the link-based modules (tutor, quiz,
-// writing): the shareable `/<code>` link with a copy button — the behavior the screen
-// has always had. Coding overrides this with its own connection config
-// (`CodingResult`). A server component called as a plain function from the module
-// registry's `renderResult`, so no JSX lives in the server-only registry.
+// The shared create/edit-screen result for every module: the shareable `/<code>`
+// link with a copy button. A coding code is a regular activity URL like the other
+// three modules, so it gets the identical result body — the student visits it,
+// signs in, and mints their personal API key (app/[code]/render-coding.tsx).
+// Called directly by the create/edit page as a plain function, so no JSX lives in
+// the server-only registry.
 export function ShareLinkResult({ shareUrl }: { shareUrl: string }) {
   return (
     <section className="flex flex-col gap-2 self-stretch rounded-xl border border-foreground/15 bg-foreground/5 px-4 py-3.5">

@@ -23,7 +23,7 @@ The **Codes** list shows a quick interaction count next to every code. Select th
 
 - **Tutor and quiz codes** show the number of conversations (for a quiz, discussions), and a table of each one with its first and last message time and how many messages the student wrote. Each row opens the full conversation as a read-only transcript.
 - **Writing codes** show who saved a text: each student's name, when they last saved, and how many feedback conversations they had. Opening a student takes you to their saved text and their conversations, with previous and next buttons to read through the whole class.
-- **Coding codes** show the connection details and configuration; there are no in-app conversations to list.
+- **Coding codes** show your instructions, the pinned model, a button that gets you your own connection details, and a list of everyone who has picked up a personal key for the code, with the time they did so; there are no in-app conversations to list.
 
 For a per-user code you also see how many distinct students took part, and each conversation carries the student's name.
 

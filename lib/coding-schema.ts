@@ -5,8 +5,8 @@
 // `llm.model`), distinct from the flattened `Coding` runtime interface in
 // `lib/coding-yaml.ts` — they are kept in sync by hand.
 //
-// A coding activity is ALWAYS anonymous (the OpenAI-compatible API path carries no
-// per-student identity), so — unlike tutor/quiz/writing — there is NO `anonymous`
+// A coding activity is ALWAYS anonymous (there are no in-app conversations to
+// attribute), so — unlike tutor/quiz/writing — there is NO `anonymous`
 // field: the strict object rejects it. There is likewise no student welcome-screen
 // `description` and no editor `placeholder` (those are for other modules).
 //

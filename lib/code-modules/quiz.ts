@@ -47,5 +47,4 @@ export const quizModule: CodeModuleDef = {
     },
   },
   renderDetail: (entry) => ConversationStats({ entry }),
-  // renderResult omitted — defaults to the share link (see `renderCodeResult`).
 };

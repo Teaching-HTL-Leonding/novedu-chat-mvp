@@ -25,6 +25,7 @@ a pure server concern later.
 | Store query | `lib/*-store.ts` | the actual SQL filter (see below) |
 | `DataList<T>` | `components/data-list.tsx` (**server**) | the full list page body: `PageBody` shell + toolbar + empty/no-match + the pagination seam around a `ListTable` |
 | `ListTable<T>` | `components/data-list.tsx` (**server**) | the bare column-driven table; owns ALL table chrome incl. the per-column `kind` recipes — embedded tables (the per-code `ConversationStats`) render through it directly |
+| `studentColumn<T>()` | `components/student-column.tsx` (**server-safe**) | the shared **Student** cell recipe — display name with the `oid` fallback + hover title, width-capped monospace — one entry in the `columns` of the per-code teacher lists (writing savers, coding issued keys), the same shape as `ownerColumn` |
 | `ListFilterBar` | `components/list-filter-bar.tsx` (**client**) | the only interactive bit: controls + **Apply** → push a new query string; exports `OwnerFilter` (the owner dropdown) and `FilterCheckbox` (the `/reports` "Only my codes" toggle) |
 | ui primitives | `components/ui/` (`Button`/`buttonVariants`, `Input`, `Badge`, `IconButton`) | the "New …" action, the search input, kind/status chips, row action buttons |
 

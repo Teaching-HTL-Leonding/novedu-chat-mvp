@@ -18,8 +18,8 @@ import { readFragmentBlock } from "./prompt-fragments/block";
 //
 // This is NOT the authoring gate: the strict authoring validation for coding YAMLs
 // lives in lib/coding-validate.ts (CodingYamlSchema) and is deliberately separate
-// from this lenient read. A coding activity is ALWAYS anonymous (the API path
-// carries no per-student identity), so there is no `anonymous` flag here.
+// from this lenient read. A coding activity is ALWAYS anonymous (there are no
+// in-app conversations to attribute), so there is no `anonymous` flag here.
 //
 // SERVER-SIDE: exposes the server-only `instructions` (the teacher's system prompt)
 // and `model`. Neither must ever reach the browser — the student connection page

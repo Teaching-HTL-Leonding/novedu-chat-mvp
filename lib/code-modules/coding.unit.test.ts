@@ -1,17 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The coding code-module (Layer 3): it has NO `runtime` (the module is reached only
-// through its own public OpenAI-compatible route, never the CopilotKit runtime);
-// renderDetail dispatches to CodingDetail; and renderResult OVERRIDES the registry
-// default to dispatch to CodingResult (the little-coder connection config, not a share
-// link). Both components are mocked as plain functions so this is hermetic. Create-time
-// validation is derived from fileKind by the registry, so it is not tested here.
+// through its own public OpenAI-compatible route, never the CopilotKit runtime), and
+// renderDetail dispatches to CodingDetail. Every module — coding included — now uses
+// the registry's shared `ShareLinkResult` create/edit result, so there is no
+// per-module override to test here. CodingDetail is mocked as a plain function so
+// this is hermetic. Create-time validation is derived from fileKind by the registry,
+// so it is not tested here.
 
 const codingDetail = vi.hoisted(() => vi.fn());
-const codingResult = vi.hoisted(() => vi.fn());
 
 vi.mock("@/app/[code]/_coding/coding-detail", () => ({ CodingDetail: codingDetail }));
-vi.mock("@/app/[code]/_coding/coding-result", () => ({ CodingResult: codingResult }));
 
 import { codingModule } from "@/lib/code-modules/coding";
 import type { CodeEntry } from "@/lib/code-store";
@@ -40,18 +39,5 @@ describe("codingModule.renderDetail", () => {
     const out = codingModule.renderDetail(entry, {});
     expect(codingDetail).toHaveBeenCalledWith({ entry });
     expect(out).toBe("<coding-detail/>");
-  });
-});
-
-describe("codingModule.renderResult (overrides the registry default)", () => {
-  it("renders CodingResult (little-coder config) with the entry + origin, not a share link", () => {
-    expect(codingModule.renderResult).toBeDefined();
-    codingResult.mockReturnValue("<coding-result/>");
-    const out = codingModule.renderResult?.(entry, {
-      shareUrl: "https://x/abc",
-      origin: "https://x",
-    });
-    expect(codingResult).toHaveBeenCalledWith({ entry, origin: "https://x" });
-    expect(out).toBe("<coding-result/>");
   });
 });

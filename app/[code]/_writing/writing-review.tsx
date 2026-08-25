@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DataList, type ListColumn } from "@/components/data-list";
 import { ListFilterBar } from "@/components/list-filter-bar";
+import { studentColumn } from "@/components/student-column";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { listSavers, type Saver } from "@/lib/writing-store";
@@ -15,9 +16,10 @@ import { LocalTime } from "../../local-time";
 // just to render the list, so it is shown on the student page instead.
 //
 // Each row shows the student's display name (resolved from `novedu_users` via
-// `listSavers`' LEFT JOIN), falling back to the raw Entra `oid` when no name has
-// been recorded yet; the oid is always the `title` so a teacher can still read it on
-// hover. The search box filters by name OR oid IN THE DATABASE.
+// `listSavers`' LEFT JOIN) through the shared `studentColumn`, falling back to the
+// raw Entra `oid` when no name has been recorded yet; the oid is always the `title`
+// so a teacher can still read it on hover. The search box filters by name OR oid IN
+// THE DATABASE.
 //
 // SERVER COMPONENT: reads the database via `listSavers`. The writing descriptor in
 // lib/code-modules/writing.ts calls this as a plain function so no JSX lives in
@@ -32,11 +34,7 @@ export async function WritingSaversList({ code, search }: { code: string; search
   const isFiltered = (search ?? "").trim() !== "";
 
   const columns: ListColumn<Saver>[] = [
-    {
-      header: "Student",
-      className: "max-w-96 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-xs",
-      render: (row) => <span title={row.userId}>{row.displayName ?? row.userId}</span>,
-    },
+    studentColumn<Saver>(),
     {
       header: "Saved",
       kind: "time",

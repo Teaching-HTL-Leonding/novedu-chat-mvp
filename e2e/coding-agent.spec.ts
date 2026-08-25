@@ -1,12 +1,19 @@
 import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
-import { LIVE_CODING_URL, mintCode } from "./code.utils";
+import {
+  deleteCode,
+  deleteCodingKeysByCode,
+  LIVE_CODING_URL,
+  mintCode,
+  mintCodingKey,
+} from "./code.utils";
 import { fetchServedModel, type PiAgentResult, runPiAgent } from "./pi-agent.utils";
 
 // A REAL external coding agent (pi, the engine under little-coder) talking to
 // the coding module's public OpenAI-compatible endpoint, once per LLM PROVIDER:
-// mint a coding code, point pi at the proxy with the code as the API key, and
-// assert a non-empty answer comes back. Then ask the endpoint which model
+// mint a coding code, mint a per-user API key for it (`novedu_coding_keys`,
+// exactly like a student's `/{code}` visit would), point pi at the proxy with
+// that key, and assert a non-empty answer comes back. Then ask the endpoint which model
 // actually served the completion (the upstream's own `model` field, piped back
 // unparsed) — so a silently failed per-code LLM override FAILS the test instead
 // of passing with the wrong upstream's reply. This is the only e2e coverage of
@@ -26,6 +33,25 @@ loadEnvConfig(process.cwd());
 
 // A full pi round-trip (fixture fetch + Next compile + the model) — give it room.
 test.setTimeout(120_000);
+
+// Best-effort cleanup: `deleteCode` drops only the code row, so the minted KEY
+// rows are removed explicitly (a raw code delete does NOT cascade to
+// `novedu_coding_keys` the way the app's own delete transaction does). Cleaned
+// even on a mid-test failure so no live credential leaks into the shared dev
+// database.
+let mintedCode: string | null = null;
+
+test.afterEach(async () => {
+  if (!mintedCode) return;
+  const code = mintedCode;
+  mintedCode = null;
+  try {
+    await deleteCodingKeysByCode(code);
+    await deleteCode(code);
+  } catch {
+    // best-effort
+  }
+});
 
 // On a failed run the report must show WHY (a 401 from a bad mint, a 403
 // window, a 502 fixture fetch, a provider error) — attach pi's full output.
@@ -50,14 +76,16 @@ test("pi gets a non-empty reply through the coding proxy", {
     file: LIVE_CODING_URL,
     note: "e2e pi agent (SCCH)",
   });
+  mintedCode = code;
+  const apiKey = await mintCodingKey({ code });
 
-  const result = await runPiAgent({ code, prompt: "Reply with exactly one word." });
+  const result = await runPiAgent({ apiKey, prompt: "Reply with exactly one word." });
   await attachPiOutput(result);
   expect(result.exitCode).toBe(0);
   expect(result.stdout.trim().length).toBeGreaterThan(0);
 
   // The upstream must be the fixture's pinned SCCH model, not some fallback.
-  const served = await fetchServedModel(code);
+  const served = await fetchServedModel(apiKey);
   await attachServedCompletion(served.raw);
   expect(served.model.toLowerCase()).toContain("gemma");
 });
@@ -80,15 +108,17 @@ test.describe("via Azure Foundry", () => {
       llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" },
       note: "e2e pi agent (Foundry)",
     });
+    mintedCode = code;
+    const apiKey = await mintCodingKey({ code });
 
-    const result = await runPiAgent({ code, prompt: "Reply with exactly one word." });
+    const result = await runPiAgent({ apiKey, prompt: "Reply with exactly one word." });
     await attachPiOutput(result);
     expect(result.exitCode).toBe(0);
     expect(result.stdout.trim().length).toBeGreaterThan(0);
 
     // If the override silently fell back to the YAML default this reports
     // `gemma…` — the test must fail loudly, not pass on the wrong upstream.
-    const served = await fetchServedModel(code);
+    const served = await fetchServedModel(apiKey);
     await attachServedCompletion(served.raw);
     expect(served.model.toLowerCase()).toContain("gpt-5.4-mini");
   });

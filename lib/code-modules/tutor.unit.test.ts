@@ -90,9 +90,3 @@ describe("tutorModule.renderDetail", () => {
     expect(out).toBe("<stats/>");
   });
 });
-
-describe("tutorModule result", () => {
-  it("uses the registry default (no renderResult override)", () => {
-    expect(tutorModule.renderResult).toBeUndefined();
-  });
-});

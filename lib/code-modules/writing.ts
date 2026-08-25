@@ -53,5 +53,4 @@ export const writingModule: CodeModuleDef = {
           code: entry.code,
           search: typeof searchParams.q === "string" ? searchParams.q : undefined,
         }),
-  // renderResult omitted — defaults to the share link (see `renderCodeResult`).
 };

@@ -4,7 +4,7 @@ description: Write a coding activity's YAML with an id, a pinned AI model, and i
 sidebar:
   order: 6
 audience: teacher
-keywords: [coding activity, coding assistant, instructions, model, little-coder, YAML, coding buddy, fragments, sample solution, text_files]
+keywords: [coding activity, coding assistant, instructions, model, little-coder, YAML, coding buddy, fragments, sample solution, text_files, personal key]
 related:
   - 00-introduction/06-coding-overview
   - 20-building-activities/02-available-llms
@@ -99,7 +99,7 @@ The file is inserted exactly as fetched, so your source code arrives unchanged. 
 
 Coding files deliberately leave out fields you may know from tutors, quizzes, and writing activities:
 
-- **No `anonymous` field.** Coding activities are always anonymous: requests carry no student identity, and nothing is recorded per student.
+- **No `anonymous` field.** A coding activity's requests carry no student identity: the assistant never knows or stores who asked what. The one thing recorded per student is that they picked up a personal connection key for the code, covered in the chapter on connecting a coding activity.
 - **No `placeholder` and no `description`.** There is no in-app chat window to show them in; students work in their own tool.
 
 Do not add any of the three. Validation rejects a coding file that contains them, so a leftover field from a copied tutor is caught before students are affected. You can check a file at any time with the Novedu CLI (`novedu-cli validate my-coding.yaml --kind coding`) or with the **Validate** button on the app's YAML Files page.
@@ -142,4 +142,4 @@ Copy this file, replace the project and the limits with your own, and you have a
 
 ## Students bring their own tool
 
-Unlike a tutor or a quiz, a coding activity has no chat inside Novedu. Students connect an external coding agent (for example little-coder) to the activity: the code you share doubles as their access key, and the code's link page shows them ready-to-copy connection settings. Creating the code and getting a class connected is its own topic, covered in the chapter on sharing coding activities.
+Unlike a tutor or a quiz, a coding activity has no chat inside Novedu. Students connect an external coding agent (for example little-coder) to the activity: opening the code's link, after signing in, gives each student a personal API key plus ready-to-copy connection settings for their tool. Creating the code and getting a class connected is its own topic, covered in the chapter on connecting a coding activity.

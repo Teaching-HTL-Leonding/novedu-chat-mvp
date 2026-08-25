@@ -1,6 +1,13 @@
 import { expect, type Page, test } from "@playwright/test";
+import { KEY_PATTERN } from "../lib/coding-key";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { mintCode, VALID_CODING_URL, VALID_QUIZ_URL } from "./code.utils";
+import {
+  deleteCode,
+  deleteCodingKeysByCode,
+  mintCode,
+  VALID_CODING_URL,
+  VALID_QUIZ_URL,
+} from "./code.utils";
 
 // Renders every module's teacher detail page (/codes/<code>) end-to-end through
 // the REAL server rendering pipeline. Component tests run without React Server
@@ -11,6 +18,25 @@ import { mintCode, VALID_CODING_URL, VALID_QUIZ_URL } from "./code.utils";
 // detail body's key content AND assert no such proxy artifact reaches the HTML.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
+
+// Best-effort cleanup of the row each test minted. Keys go first: the coding spec
+// presses "Get my API key", which stores the teacher's own personal key, and
+// `deleteCode` drops only the code row (a raw code delete does NOT cascade to
+// `novedu_coding_keys` the way the app's own delete transaction does), so a live
+// credential would otherwise stay behind in the shared dev database.
+let mintedCode: string | null = null;
+
+test.afterEach(async () => {
+  if (!mintedCode) return;
+  const code = mintedCode;
+  mintedCode = null;
+  try {
+    await deleteCodingKeysByCode(code);
+    await deleteCode(code);
+  } catch {
+    // best-effort
+  }
+});
 
 // A stringified RSC client-reference proxy starts a class attribute with the
 // proxy function's source; a thrown one mentions dotting into a client module.
@@ -24,6 +50,7 @@ async function expectNoRscArtifacts(page: Page): Promise<void> {
 test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () => {
   test("tutor: conversation stats render", async ({ page }) => {
     const code = await mintCode({ module: "tutor" });
+    mintedCode = code;
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText(code)).toBeVisible();
@@ -34,6 +61,7 @@ test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () =>
 
   test("quiz: discussion stats render", async ({ page }) => {
     const code = await mintCode({ module: "quiz", file: VALID_QUIZ_URL });
+    mintedCode = code;
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText(code)).toBeVisible();
@@ -44,6 +72,7 @@ test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () =>
 
   test("writing (attributed): savers list renders", async ({ page }) => {
     const code = await mintCode({ module: "writing", anonymous: false });
+    mintedCode = code;
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText(code)).toBeVisible();
@@ -53,17 +82,28 @@ test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () =>
     await expectNoRscArtifacts(page);
   });
 
-  test("coding: config + connection render, and the system-prompt panel is styled", async ({
+  test("coding: config renders, the key button mints, and the system-prompt panel is styled", async ({
     page,
   }) => {
     const code = await mintCode({ module: "coding", file: VALID_CODING_URL });
+    mintedCode = code;
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText("Model (pinned)")).toBeVisible();
     await expect(page.getByText("System prompt")).toBeVisible();
-    await expect(page.getByText("Connection details")).toBeVisible();
-    // The connection block lists the code as the API key.
-    await expect(page.getByText(code, { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Your connection details")).toBeVisible();
+    // The read-only issuance list renders; nobody has requested a key yet, because
+    // merely VIEWING the page mints nothing.
+    await expect(page.getByText("Issued keys")).toBeVisible();
+    await expect(page.getByText("No keys requested yet")).toBeVisible();
+    await expect(page.getByText(KEY_PATTERN)).toHaveCount(0);
+    await expectNoRscArtifacts(page);
+
+    // Minting is explicit: the button's server action stores the teacher's own
+    // personal key and the revalidated render shows the connection block — the
+    // key, never the code (a code is not an API key).
+    await page.getByRole("button", { name: "Get my API key" }).click();
+    await expect(page.getByText(KEY_PATTERN).first()).toBeVisible();
     await expectNoRscArtifacts(page);
 
     // The regression this spec exists for: the system-prompt <pre> must carry the

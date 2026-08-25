@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import { loadEnvConfig } from "@next/env";
 import sql from "mssql";
 import { buildMssqlConnectionConfig } from "../lib/azure-credential";
+import { generateCodingKey } from "../lib/coding-key";
 import { FIXTURES_BASE } from "./fixtures.constants";
 
 // Mints codes by writing rows DIRECTLY into the same database the dev server
@@ -202,6 +203,54 @@ export async function deleteReportsByCode(code: string): Promise<void> {
     .request()
     .input("code", sql.VarChar(32), code)
     .query(`DELETE FROM novedu_reports WHERE code = @code`);
+}
+
+// A dedicated fake requester id for minted coding keys, distinct from
+// E2E_CREATOR (which attributes the CODE to a fake teacher) — the key row's
+// `user_id` is a STUDENT/requester identity, so a separate recognizable
+// constant keeps both roles easy to tell apart in the table.
+const E2E_CODING_KEY_USER = "e2e-pi-agent";
+
+/**
+ * Mints a per-user coding API key by inserting directly into
+ * `novedu_coding_keys`, the same direct-INSERT approach as `mintCode` — so the
+ * @live-llm pi-agent spec can authenticate without driving the `/{code}`
+ * sign-in UI. The key value comes from the app's own `generateCodingKey`
+ * (lib/coding-key.ts — pure, so it loads here unlike the Drizzle store), so a
+ * minted key is byte-shaped exactly like `getOrCreateCodingKey`'s. The INSERT
+ * below must match lib/db/schema.ts's `codingKeys` table — keep them in sync.
+ */
+export async function mintCodingKey(options: { code: string; userId?: string }): Promise<string> {
+  const pool = await getPool();
+
+  const apiKey = generateCodingKey();
+
+  await pool
+    .request()
+    .input("code", sql.VarChar(32), options.code)
+    .input("userId", sql.NVarChar(64), options.userId ?? E2E_CODING_KEY_USER)
+    .input("apiKey", sql.VarChar(64), apiKey)
+    .query(
+      `INSERT INTO novedu_coding_keys (code, user_id, api_key, created_at)
+       VALUES (@code, @userId, @apiKey, SYSUTCDATETIME())`,
+    );
+
+  return apiKey;
+}
+
+/**
+ * Deletes every `novedu_coding_keys` row for a code — cleanup for keys minted
+ * via `mintCodingKey`, mirroring `deleteReportsByCode`: `deleteCode` drops only
+ * the `novedu_codes` row, so a raw code delete does NOT cascade to key rows the
+ * way the app's own bulk-delete transaction does
+ * (`deleteCodingKeysForCodes`/`deleteCodesAndData`).
+ */
+export async function deleteCodingKeysByCode(code: string): Promise<void> {
+  const pool = await getPool();
+  await pool
+    .request()
+    .input("code", sql.VarChar(32), code)
+    .query(`DELETE FROM novedu_coding_keys WHERE code = @code`);
 }
 
 /**

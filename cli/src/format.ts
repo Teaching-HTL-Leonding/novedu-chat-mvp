@@ -193,8 +193,8 @@ export function formatWritingResult(result: WritingCheckResult, source: string):
 
 /**
  * Renderer for a coding-activity check (`--kind coding`). Coding is ALWAYS anonymous
- * (the API path carries no per-student identity), so — unlike quiz/writing — that is
- * shown as a fixed note, not a per-file value.
+ * (there are no in-app conversations to attribute), so — unlike quiz/writing — that
+ * is shown as a fixed note, not a per-file value.
  */
 export function formatCodingResult(result: CodingCheckResult, source: string): string {
   if (!result.ok) return renderFailureAndWarnings(result, "coding activity", source);
@@ -202,7 +202,7 @@ export function formatCodingResult(result: CodingCheckResult, source: string): s
   const lines = [green(`✔ Valid coding activity`) + dim(` — ${source}`)];
   lines.push(`  id: ${result.codingId}`);
   lines.push(`  model: ${result.model}`);
-  lines.push(`  anonymous: true ${dim("(always — the API path carries no identity)")}`);
+  lines.push(`  anonymous: true ${dim("(always — no conversations are stored)")}`);
   if (result.warnings.length) {
     lines.push("");
     lines.push(yellow(`${result.warnings.length} warning(s):`));

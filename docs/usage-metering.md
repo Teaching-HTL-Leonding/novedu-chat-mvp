@@ -130,10 +130,13 @@ so it is metered separately: `buildUpstreamChatBody` sets
 `stream_options.include_usage: true` when the client streams (non-streamed responses
 already carry `usage`), and the route **tees** the upstream body — one branch to the
 client byte-for-byte, the other read in the background to extract the final `usage`
-(`extractCodingUsage`) and `recordLlmUsage({ module: "coding", provider, model })`
-(provider + pinned model straight from the loaded coding YAML — this path has no
-Mastra span to read them from). No `oid` on this path, so it never touches
-`usage_by_user`; the passthrough (streaming + client tools) is unchanged.
+(`extractCodingUsage`) and `recordLlmUsage({ code, module: "coding", userId,
+provider, model, … })`. The `userId` comes from resolving the caller's personal
+API key (`lookupCodingKey`, `lib/coding-key-store.ts` — `docs/coding.md`); provider
++ pinned model come straight from the loaded coding YAML (this path has no Mastra
+span to read them from). With `userId` present, this writes **both** buckets —
+`usage_by_code` (no user) and `usage_by_user` (no code) — exactly like the
+Mastra-backed modules; the passthrough (streaming + client tools) is unchanged.
 
 ## Cached input tokens
 

@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { FlagIcon } from "@/components/icons";
 import { Spinner } from "@/components/spinner";
+import { ATTRIBUTION_NOTICE } from "@/components/ui/attribution-notice";
 import { Button } from "@/components/ui/button";
 import { DialogShell } from "@/components/ui/dialog-shell";
 import { Field, FieldError, FieldLabel, FieldSuccess } from "@/components/ui/field";
@@ -144,7 +145,7 @@ export function ReportButton({ target, className }: { target: ReportTarget; clas
           ) : (
             <>
               {/* MANDATORY, visually prominent: reports waive anonymity. */}
-              <p className="rounded-lg border border-destructive/45 bg-destructive/10 px-3 py-2 font-medium text-sm">
+              <p className={ATTRIBUTION_NOTICE}>
                 Reports are not anonymous — your name and this {targetNoun} will be shared with your
                 teacher.
               </p>

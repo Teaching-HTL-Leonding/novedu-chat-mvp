@@ -1,10 +1,10 @@
 ---
-title: "Sharing a coding activity: the code is the key"
-description: A coding code is not a web page but an access key students paste into their coding tool; what to hand out, and why coding is always anonymous.
+title: "Connecting a coding activity to an outside tool"
+description: How a student picks up a personal API key for a coding code, the attribution notice that comes with it, and what you see as the teacher.
 sidebar:
   order: 6
 audience: teacher
-keywords: [coding, code, API key, connection, base URL, little-coder, models.json, anonymous]
+keywords: [coding, code, API key, personal key, connection, base URL, little-coder, models.json, attribution, issued keys]
 related:
   - 30-sharing-activities/01-creating-codes
   - 30-sharing-activities/04-anonymous-vs-per-user
@@ -13,28 +13,41 @@ related:
   - 00-introduction/06-coding-overview
 ---
 
-Sharing a coding activity works differently from every other kind. A tutor, quiz, or writing code opens a page in Novedu where the student works. A coding code opens nothing to chat with: students work in their own coding tool on their own machine, and the code is the key that connects that tool to your activity.
+You share a coding activity exactly like any other: create the code and hand its link to your class. What is different is what happens after a student opens that link. There is no chat inside Novedu to greet them; instead, they sign in and pick up a personal key for their own coding tool.
 
-## The code is a key, not a page
+## Sharing works like any other activity
 
-When a student opens a tutor code's link, a chat appears. When a student uses a coding code, nothing runs inside Novedu. Instead, the student pastes the code into an external coding assistant, for example [little-coder](https://github.com/itayinbarr/little-coder), where it acts as the API key. From then on, every question the assistant asks the AI travels through your activity: Novedu checks the code, adds your instructions, and answers with the model you chose.
+Creating a coding code follows the same steps as a tutor, quiz, or writing code: pick the activity file, add a note, set an availability window if you want one, and select **Create code**. The code's page then shows the same share link every other kind of activity gets. Send it to your class however you'd share any other link: your learning platform, the projector, or the board. Students can also type the code on the Novedu start page.
 
-Because the code works like a key, treat it like one: hand it only to the class it is meant for, and set an availability window if the activity should work only during your lessons. Outside the window the key simply stops answering, exactly as other codes stop opening.
+## What a student sees
 
-## What to give students
+Opening the link asks a student to sign in with their school account, the same as any other activity. Because a coding activity has no chat page, the page then shows connection details instead of a conversation:
 
-You create a coding code the same way as any other code. The difference comes right after: instead of a share link, Novedu shows connection details. The same details appear on the code's detail page whenever you need them again, and students who open the code's link with their school account see them too.
+- the server address (base URL),
+- a personal API key, theirs alone,
+- a model name,
+- for [little-coder](https://github.com/itayinbarr/little-coder), a ready-to-paste configuration file (`models.json`) and a run command.
 
-Give your class three things:
+Each detail has a copy button, so setting up the coding tool is copy, save, run. The key stays the same every time the student comes back, from any device, so they only need to set their tool up once.
 
-1. **Which tool to use.** For example little-coder; any coding assistant that speaks the common OpenAI-compatible protocol works.
-2. **The connection details** from the code's page: the server address (base URL), the code as the API key, and a model name. Each has a copy button, and for little-coder there is a ready-to-paste configuration file (`models.json`) plus a run command, so setup is copy, save, run.
-3. **The reassurance that the model is already set.** The model name in the settings is only a label for the tool. Novedu always answers with the model you pinned, whatever the student's tool asks for, so students never need to pick or know the real model.
+The page also carries a notice a student cannot miss: requesting this activity's API key is recorded with their name for you, and that their coding conversations are never stored. Opening the page and signing in is what asks for the key, so make sure your class knows that in advance, the same way they know that reporting a conversation is not anonymous.
 
-Your instructions travel the same way: they are applied to every answer on the server, students never see them, and they cannot switch them off, even if their tool sends its own instructions.
+## What you see as the teacher
 
-## Coding is always anonymous
+A coding code's own page (reached from the **Codes** list) shows your instructions and the pinned model, plus two things about connections:
 
-Coding activities record no student identity. There is no per-student list, no conversations to review, and no way to see who asked what; the code's detail page shows the pinned model, your instructions, and the connection details instead of chats. This is fixed: the coding activity file has no `anonymous` field to change.
+- **Your own connection details.** You can get a personal key for yourself, the same kind a student gets, so you can test the endpoint end to end before handing out the code. It is not handed to you automatically: the page offers a **Get my API key** button, and only pressing it creates the key. Once you have one, the page shows your connection details straight away on every later visit.
+- **Issued keys**, a read-only list of everyone who has requested a key for this code, with the time they requested it. There is no per-student conversation to open, because coding conversations are never stored; the list only tells you who is connected, not what they asked.
 
-What you do see is overall usage. The usage dashboard shows how much a coding code has been used in total (for example token counts over time), which tells you whether the class is working with the assistant without telling you anything about an individual student.
+Getting your own key is recorded exactly like a student's, so the button carries the same notice: your name goes into the **Issued keys** list below it. That is why the key is behind a button rather than automatic. Simply opening a coding code's page records nothing, so you can review your activities without appearing in your own class list.
+
+## Access control is the window, not the key
+
+There is no button to take a single key away. Access to a coding activity works the same way as any other code:
+
+- **The availability window.** The moment a code's window closes, every key issued for it stops working immediately, for every student, even ones who set their tool up days earlier. This makes a coding code a good fit for bounding AI help to your lesson time, or shutting it off for an exam. Reopen or extend the window and the same keys work again; nobody needs to reconnect their tool.
+- **Deleting the code.** Deleting a coding code deletes every key issued for it along with everything else recorded under it. There is nothing left to revoke one student at a time; deleting the code turns every one of its keys off at once.
+
+## The activity code itself opens nothing on its own
+
+The code string you share is not, by itself, an API key. A student who only has the code and has not signed in gets nowhere: pasting a bare code into a coding tool does not work, only a personal key does. This means a leaked code grants nothing on its own, someone would still need to sign in with a school account to turn it into a working key.

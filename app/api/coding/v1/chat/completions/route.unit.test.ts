@@ -5,17 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // HTTP-level integration test for the OpenAI-compatible coding endpoint. It drives
 // the real POST handler with `Request` objects (the HTTP contract at the route
 // boundary) and asserts OpenAI-shaped `Response`s. The I/O seams it does NOT own
-// are mocked: `checkCode` (the DB-backed code gate), `loadCoding` (the YAML read),
-// and the Foundry token/URL machinery. The upstream is mocked via global `fetch`,
-// so the test is hermetic and deterministic — it exercises bearer parsing, the
-// gate, the body transform + provider dialect adaptation forwarded upstream, and
-// the (streamed and non-streamed) response passthrough.
+// are mocked: `lookupCodingKey` (the per-user API-key resolution), `checkCode` (the
+// DB-backed code gate), `loadCoding` (the YAML read), `recordLlmUsage` (the metering
+// write) and the Foundry token/URL machinery. The upstream is mocked via global
+// `fetch`, so the test is hermetic and deterministic — it exercises bearer parsing,
+// the two-row gate, per-user metering, the body transform + provider dialect
+// adaptation forwarded upstream, and the (streamed and non-streamed) passthrough.
 //
 // The real end-to-end path against SCCH is covered separately by driving
 // little-coder against a dev server.
 
+const lookupCodingKey = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
 const loadCoding = vi.hoisted(() => vi.fn());
+const recordLlmUsage = vi.hoisted(() => vi.fn());
 const foundryBearerToken = vi.hoisted(() => vi.fn());
 
 // `effectiveLlm` stays REAL (pure precedence logic — the point of the override
@@ -24,7 +27,9 @@ vi.mock("@/lib/code-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/code-store")>()),
   checkCode,
 }));
+vi.mock("@/lib/coding-key-store", () => ({ lookupCodingKey }));
 vi.mock("@/lib/coding-fetch", () => ({ loadCoding }));
+vi.mock("@/lib/usage-store", () => ({ recordLlmUsage }));
 vi.mock("@/lib/llm/foundry-endpoint", () => ({
   foundryBearerToken,
   foundryChatCompletionsUrl: () => "https://res.openai.azure.com/openai/v1/chat/completions",
@@ -33,6 +38,9 @@ vi.mock("@/lib/llm/foundry-endpoint", () => ({
 import { POST } from "@/app/api/coding/v1/chat/completions/route";
 
 const CODE = "abc123code";
+const USER_ID = "user-oid-1";
+// A well-formed personal key: `nvk-` + 40 chars of [a-z0-9].
+const API_KEY = `nvk-${"k9".repeat(20)}`;
 const codingEntry = {
   code: CODE,
   module: "coding",
@@ -42,7 +50,11 @@ const codingEntry = {
 function post(body: unknown, headers: Record<string, string> = {}): Request {
   return new Request("http://localhost/api/coding/v1/chat/completions", {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${CODE}`, ...headers },
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${API_KEY}`,
+      ...headers,
+    },
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 }
@@ -55,7 +67,7 @@ function postStream(
 ): Request {
   return new Request("http://localhost/api/coding/v1/chat/completions", {
     method: "POST",
-    headers: { authorization: `Bearer ${CODE}`, ...headers },
+    headers: { authorization: `Bearer ${API_KEY}`, ...headers },
     body: stream,
     // @ts-expect-error duplex is required by Node/undici for a stream body, not typed in lib.dom.
     duplex: "half",
@@ -77,6 +89,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.SCCH_BASE_URL = "https://scch.example/v1";
   process.env.SCCH_API_KEY = "scch-secret";
+  lookupCodingKey.mockResolvedValue({ status: "found", code: CODE, userId: USER_ID });
   checkCode.mockResolvedValue({ ok: true, entry: codingEntry });
   loadCoding.mockResolvedValue({
     ok: true,
@@ -91,32 +104,78 @@ afterEach(() => {
 });
 
 describe("POST /api/coding/v1/chat/completions — auth gate", () => {
-  it("401s when the Authorization header is missing", async () => {
+  // The one opaque body every rejected key gets, whatever the flavor. Captured from
+  // the no-header case and compared byte-for-byte by the cases below: any divergence
+  // would be an oracle telling a caller which of the failures it hit.
+  async function missingAuthBody(): Promise<string> {
+    const res = await POST(post(chatBody(), { authorization: "" }));
+    expect(res.status).toBe(401);
+    return await res.text();
+  }
+
+  it("401s when the Authorization header is missing, before any lookup", async () => {
     const res = await POST(post(chatBody(), { authorization: "" }));
     expect(res.status).toBe(401);
     const json = await res.json();
     expect(json.error.code).toBe("invalid_api_key");
+    expect(lookupCodingKey).not.toHaveBeenCalled();
     expect(checkCode).not.toHaveBeenCalled();
   });
 
-  it("401s on an unknown code", async () => {
+  it("401s opaquely when an ACTIVITY CODE is sent as the bearer — a code is not a key", async () => {
+    // The hard cutover: the code string reaches the key store like any other bearer,
+    // finds nothing, and the code gate is never consulted.
+    lookupCodingKey.mockResolvedValue({ status: "miss" });
+    const res = await POST(post(chatBody(), { authorization: `Bearer ${CODE}` }));
+    expect(res.status).toBe(401);
+    expect(await res.text()).toBe(await missingAuthBody());
+    expect(lookupCodingKey).toHaveBeenCalledWith(CODE);
+    expect(checkCode).not.toHaveBeenCalled();
+  });
+
+  it("401s identically on a malformed key and on an unknown key", async () => {
+    const expected = await missingAuthBody();
+    lookupCodingKey.mockResolvedValue({ status: "miss" });
+
+    const malformed = await POST(post(chatBody(), { authorization: "Bearer nvk-nope" }));
+    expect(malformed.status).toBe(401);
+    expect(await malformed.text()).toBe(expected);
+
+    const unknown = await POST(post(chatBody()));
+    expect(unknown.status).toBe(401);
+    expect(await unknown.text()).toBe(expected);
+    expect(checkCode).not.toHaveBeenCalled();
+  });
+
+  it("passes the bearer token to the key lookup VERBATIM (no prefix stripping)", async () => {
+    lookupCodingKey.mockResolvedValue({ status: "miss" });
+    await POST(post(chatBody(), { authorization: `Bearer sk-${API_KEY}` }));
+    expect(lookupCodingKey).toHaveBeenCalledWith(`sk-${API_KEY}`);
+  });
+
+  it("401s identically when the key's code is gone", async () => {
+    const expected = await missingAuthBody();
     checkCode.mockResolvedValue({ ok: false, reason: "unknown-code" });
     const res = await POST(post(chatBody()));
     expect(res.status).toBe(401);
+    expect(await res.text()).toBe(expected);
+    expect(checkCode).toHaveBeenCalledWith(CODE);
   });
 
-  it("403s on an expired code", async () => {
+  it("401s identically when the key's code is for a different module", async () => {
+    const expected = await missingAuthBody();
+    checkCode.mockResolvedValue({ ok: true, entry: { ...codingEntry, module: "tutor" } });
+    const res = await POST(post(chatBody()));
+    expect(res.status).toBe(401);
+    expect(await res.text()).toBe(expected);
+  });
+
+  it("403s on an expired code — the window closes every key the code issued", async () => {
     checkCode.mockResolvedValue({ ok: false, reason: "expired" });
     const res = await POST(post(chatBody()));
     expect(res.status).toBe(403);
     const json = await res.json();
     expect(json.error.code).toBe("key_inactive");
-  });
-
-  it("401s when the code is for a different module", async () => {
-    checkCode.mockResolvedValue({ ok: true, entry: { ...codingEntry, module: "tutor" } });
-    const res = await POST(post(chatBody()));
-    expect(res.status).toBe(401);
   });
 
   it("503s when the code lookup fails", async () => {
@@ -125,15 +184,86 @@ describe("POST /api/coding/v1/chat/completions — auth gate", () => {
     expect(res.status).toBe(503);
   });
 
-  it("passes the bearer token to checkCode VERBATIM (no sk- stripping)", async () => {
+  it("503s identically when the KEY lookup fails — an outage is retryable, not a bad key", async () => {
+    checkCode.mockResolvedValue({ ok: false, reason: "lookup-failed" });
+    const codeOutage = await POST(post(chatBody()));
+    const expected = await codeOutage.text();
+
+    lookupCodingKey.mockResolvedValue({ status: "error" });
+    const res = await POST(post(chatBody()));
+    expect(res.status).toBe(503);
+    // The same body the code-lookup outage returns: the same failure, one query
+    // earlier, must not read as a permanent "invalid key".
+    expect(await res.text()).toBe(expected);
+    expect(checkCode).toHaveBeenCalledTimes(1);
+  });
+
+  it("never echoes the API key in an error body", async () => {
+    lookupCodingKey.mockResolvedValue({ status: "miss" });
+    const res = await POST(post(chatBody()));
+    expect(await res.text()).not.toContain(API_KEY);
+  });
+});
+
+describe("POST /api/coding/v1/chat/completions — usage metering", () => {
+  it("meters a non-streamed response against the code AND the key's user", async () => {
+    loadCoding.mockResolvedValue({
+      ok: true,
+      coding: { instructions: "TEACHER PROMPT", model: "gemma-pinned", provider: "SCCH" },
+    });
     fetchSpy.mockResolvedValue(
-      new Response(JSON.stringify({ ok: 1 }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
+      new Response(
+        JSON.stringify({
+          id: "cmpl-1",
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 20,
+            prompt_tokens_details: { cached_tokens: 30 },
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
     );
-    await POST(post(chatBody(), { authorization: `Bearer sk-${CODE}` }));
-    expect(checkCode).toHaveBeenCalledWith(`sk-${CODE}`);
+
+    const res = await POST(post(chatBody()));
+    await res.text();
+
+    // The tap runs off the response path, so wait for it rather than assuming order.
+    await vi.waitFor(() => expect(recordLlmUsage).toHaveBeenCalledTimes(1));
+    expect(recordLlmUsage).toHaveBeenCalledWith({
+      code: CODE,
+      module: "coding",
+      userId: USER_ID,
+      provider: "SCCH",
+      model: "gemma-pinned",
+      inputNew: 70,
+      inputCached: 30,
+      output: 20,
+      toolCalls: 0,
+    });
+  });
+
+  it("meters a streamed response against the code AND the key's user", async () => {
+    const sse = `data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: {"usage":{"prompt_tokens":5,"completion_tokens":7}}\n\ndata: [DONE]\n\n`;
+    fetchSpy.mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(sse));
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+
+    const res = await POST(post({ ...chatBody(), stream: true }));
+    expect(await res.text()).toBe(sse);
+
+    await vi.waitFor(() => expect(recordLlmUsage).toHaveBeenCalledTimes(1));
+    expect(recordLlmUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ code: CODE, module: "coding", userId: USER_ID, output: 7 }),
+    );
   });
 });
 

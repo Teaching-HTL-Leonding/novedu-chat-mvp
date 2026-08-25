@@ -4,7 +4,7 @@ description: What a coding activity is, how students connect their own coding to
 sidebar:
   order: 6
 audience: teacher
-keywords: [coding, coding assistant, coding agent, little-coder, programming, instructions, model, API key]
+keywords: [coding, coding assistant, coding agent, little-coder, programming, instructions, model, API key, personal key]
 related:
   - 20-building-activities/06-coding
   - 30-sharing-activities/06-coding-special-case
@@ -23,7 +23,7 @@ The effect: the student works in a normal programming setup, with files, a termi
 
 ## What students experience
 
-Students set up their coding tool once. Opening the code's link shows them the exact connection settings, ready to copy into their tool; the code itself acts as their access key. From then on they work as programmers do: they ask the assistant for help, let it explain, scaffold, or debug, and write their own code in between.
+Students set up their coding tool once. Opening the code's link asks them to sign in with their school account, then shows them the exact connection settings, ready to copy into their tool, built around a personal key that is theirs alone. From then on they work as programmers do: they ask the assistant for help, let it explain, scaffold, or debug, and write their own code in between.
 
 If your instructions say so, the assistant refuses to use concepts the class hasn't learned, keeps its code inside a beginner-friendly subset, or explains a bug instead of silently fixing it.
 
@@ -55,7 +55,7 @@ instructions: |
 
 You also pick the model that answers, and where it runs (the school's Austrian LLM hosting partner or Azure, a provider choice you can adjust per code).
 
-Coding activities are always anonymous: you see overall usage of a code, not what an individual student asked.
+Coding activities keep what a student asks the assistant anonymous: you see overall usage of a code, never an individual conversation. Picking up the connection key itself is the one thing recorded with a student's name, so you know who is connected.
 
 ## When coding is the right choice
 

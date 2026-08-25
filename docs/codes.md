@@ -114,24 +114,21 @@ shareable activities.
   - `renderDetail(entry, searchParams)` — **the** teacher detail body on
     `/codes/[code]`. Each module owns it entirely; there is no privileged "stats
     shell" a module overrides. tutor/quiz share the `ConversationStats` component by
-    calling it; writing renders its savers list; coding shows its config + connection
-    details. Descriptors call these server components as **plain functions**
-    (returning `ReactNode`), so no JSX lives in the server-only registry.
-  - `renderResult?(entry, { shareUrl, origin })` — **optional** override of the
-    create/edit screen's result body (server-rendered on `/codes/edit/[code]`, handed
-    to the client `CodeForm` as a slot), dispatched + defaulted by
-    `renderCodeResult(entry, ctx)`. Omitted, it defaults to **`ShareLinkResult`** (the
-    `/<code>` share link with a copy button — tutor/quiz/writing all use the default);
-    `coding` is the lone override, showing its little-coder connection config
-    (`CodingResult` → `CodingConnection`) — a coding code is an API key, not a web
-    link. Same plain-function pattern as `renderDetail`.
+    calling it; writing renders its savers list; coding shows its config, its own
+    connection block, and the issued-keys list. Descriptors call these server
+    components as **plain functions** (returning `ReactNode`), so no JSX lives in
+    the server-only registry.
+  - There is **no per-module result override** — every module's create/edit screen
+    shows the same **`ShareLinkResult`** (the `/<code>` share link with a copy
+    button), rendered directly by the `/codes/edit/[code]` page.
 - `tutor.ts`, `quiz.ts`, `writing.ts`, `coding.ts` are the descriptors. `writing` is
   the Markdown-writing-with-AI-feedback module (`docs/writing.md`): its `renderDetail`
   is the savers-first teacher review (saved text first, chat second), and its agent
   reads the student's live draft through the read-only `getCurrentText` frontend tool
   but has no tool to change it. `coding` is the OpenAI-compatible coding-endpoint
   module (`docs/coding.md`): it has **no `runtime`** and is reached only through its
-  own public `/api/coding/v1` route, with the code as the bearer API key.
+  own public `/api/coding/v1` route, authenticated by a per-user API key from
+  `novedu_coding_keys` — the code string itself opens nothing.
 
 Student **rendering** is also NOT a registry seam: it is a thin `switch (entry.module)`
 in `app/[code]/page.tsx` delegating to each module's own server component
@@ -140,8 +137,7 @@ body IS a registry seam — `renderDetail` above — but descriptors keep JSX ou
 calling components as plain functions.)
 
 **Adding a module** touches a small, fixed set of seams: a descriptor file (with its
-`renderDetail`, plus a `renderResult` only if it overrides the share-link default) + one
-`codeModules` line, a client label (`lib/code-modules/types.ts`),
+`renderDetail`) + one `codeModules` line, a client label (`lib/code-modules/types.ts`),
 a student render case (the thin `switch` in `app/[code]/page.tsx`) with its own render
 component + agent, and — for a **new file kind** — that kind's validator and
 `readAnonymousFlag` branch in the FileKind layer (`lib/file-validators.ts`). Create
@@ -266,9 +262,9 @@ ONLY the LLM — the system prompt, `anonymous`, and everything else still come
 from the YAML (a tutor YAML's `llm.imageInput` still gates the attachment UI, so
 pick a vision-capable override model for a vision tutor). **A storage failure is a
 hard error** — without a row there is nothing to hand out. On success the action
-**redirects to `/codes/edit/<code>`**, which shows the module's **result body** via
-`renderCodeResult`: the default `/<code>` share link (copy button) for
-tutor/quiz/writing, coding its little-coder connection config. The origin comes from `CODE_ORIGIN` (read
+**redirects to `/codes/edit/<code>`**, which renders `ShareLinkResult` directly —
+the standard `/<code>` share link (copy button), the same for every module including
+coding. The origin comes from `CODE_ORIGIN` (read
 first), then `TUTOR_CODE_ORIGIN` (fallback), then the request's forwarded/host headers
 (fine for dev); it is display-only.
 
@@ -332,10 +328,12 @@ novedu_reports.user_id      = Entra oid (the reporting student — see below)
 - **user → userchat → history**: filter `novedu_user_chats` by `user_id`, join
   `mastra_threads`/`mastra_messages` via `thread_id`.
 
-`novedu_user_chats` is the ONLY place tying users to chats — with **one
-sanctioned exception**, `novedu_reports`, where a student who files a report
+`novedu_user_chats` is the ONLY place tying users to chats — with **two
+sanctioned exceptions**: `novedu_reports`, where a student who files a report
 voluntarily waives anonymity (their oid is stored even under an anonymous code,
-behind an explicit on-form notice; `docs/reports.md`). It is
+behind an explicit on-form notice; `docs/reports.md`), and `novedu_coding_keys`,
+where requesting a coding activity's personal API key stores the requester's oid
+behind an explicit on-page notice (`docs/coding.md`). It is
 privacy-gated by the activity YAML's **`anonymous` flag, whose default is
 module-specific** (tutor/quiz default `true`; **writing defaults `false`** —
 `docs/writing.md`): when anonymous, nothing is written — chats cannot be attributed

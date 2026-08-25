@@ -1,6 +1,7 @@
 import { readBoundedJson } from "@/lib/bounded-json";
 import { checkCode, effectiveLlm } from "@/lib/code-store";
 import { loadCoding } from "@/lib/coding-fetch";
+import { lookupCodingKey } from "@/lib/coding-key-store";
 import {
   buildUpstreamChatBody,
   extractCodingUsage,
@@ -13,11 +14,13 @@ import { recordLlmUsage } from "@/lib/usage-store";
 
 // PUBLIC, NON-ENTRA route (excluded from the proxy.ts gate, like /api/files): the
 // OpenAI-compatible Chat Completions endpoint for the "coding" module. An external
-// coding agent (e.g. little-coder) points at `<origin>/api/coding/v1` and uses the
-// CODE as its Bearer API key.
+// coding agent (e.g. little-coder) points at `<origin>/api/coding/v1` and
+// authenticates with the student's PERSONAL `nvk-…` API key, issued for one
+// `(code, user)` pair and stored in `novedu_coding_keys`.
 //
-// This is a thin, gatekept pass-through: it re-checks the code (existence + window)
-// on EVERY request — the single security boundary, same as every module — loads the
+// This is a thin, gatekept pass-through: it resolves the key to its `(code, userId)`
+// and re-checks that code (existence + window) on EVERY request — two stored rows,
+// together the single security boundary, same as every module — loads the
 // teacher's coding YAML, folds the teacher's system prompt into the request (appended
 // to the end of the client's last system message so the teacher has the final word),
 // PINS the model, then forwards to the activity's provider endpoint (SCCH or Azure
@@ -39,14 +42,16 @@ const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_TAP_CHARS = 64 * 1024;
 
 // Reads the upstream response copy to completion (off the client path), extracts the
-// final token usage, and meters it against the CODE only (this path has no oid, so it
-// never touches usage_by_user), attributed to the activity's provider + pinned model.
+// final token usage, and meters it — like every other module — against BOTH buckets:
+// the CODE (with the activity's provider + pinned model) and the USER the API key was
+// issued to. The two rows stay independent; neither links a user to a code.
 // Best-effort: never throws into the request.
 async function tapCodingUsage(
   stream: ReadableStream<Uint8Array>,
   isStream: boolean,
   code: string,
   llm: { provider: string; model: string },
+  userId: string,
 ): Promise<void> {
   try {
     const reader = stream.getReader();
@@ -66,6 +71,7 @@ async function tapCodingUsage(
     await recordLlmUsage({
       code,
       module: "coding",
+      userId,
       provider: llm.provider,
       model: llm.model,
       inputNew: Math.max(0, usage.inputTokens - usage.cachedInputTokens),
@@ -87,20 +93,26 @@ function errorResponse(
   return Response.json(openaiError(message, type, code), { status });
 }
 
+// EVERY rejected key gets this one byte-identical body, whatever the flavor: no
+// bearer at all, a malformed one, an unknown one, a key whose code was deleted, or a
+// key for a non-coding code. A caller learns only "this does not open the endpoint" —
+// never whether a key exists or which activity it belongs to.
+function invalidApiKey(): Response {
+  return errorResponse(
+    "Invalid API key. Pass your personal API key as a Bearer token in the Authorization header.",
+    401,
+    "invalid_request_error",
+    "invalid_api_key",
+  );
+}
+
 // The bounded body read lives in `lib/bounded-json.ts` — shared verbatim with the
 // teacher-only `/api/eval/grade`, the other route that buffers a client-supplied body.
 
 export async function POST(req: Request): Promise<Response> {
-  // 1. The code is the Bearer key.
-  const code = parseBearerKey(req.headers.get("authorization"));
-  if (!code) {
-    return errorResponse(
-      "Missing API key. Pass the code as a Bearer token in the Authorization header.",
-      401,
-      "invalid_request_error",
-      "invalid_api_key",
-    );
-  }
+  // 1. The student's personal API key is the Bearer token.
+  const apiKey = parseBearerKey(req.headers.get("authorization"));
+  if (!apiKey) return invalidApiKey();
 
   // 1a. Fast-reject a body whose declared Content-Length already exceeds the cap,
   // before any DB work. This is only a shortcut for honest clients — a chunked body can
@@ -115,12 +127,22 @@ export async function POST(req: Request): Promise<Response> {
     );
   }
 
-  // 2. Re-check existence + availability window (the single boundary).
-  const verification = await checkCode(code);
+  // 2. Resolve the key to the `(code, user)` it was issued for, then re-check that
+  // code's existence + availability window — both stored rows, re-verified on every
+  // request, together the boundary. A closing window or a deleted code therefore
+  // kills all of the code's keys at once. Either lookup failing is a retryable 503,
+  // never the permanent-sounding 401 an actually rejected key gets.
+  const issued = await lookupCodingKey(apiKey);
+  if (issued.status === "error") {
+    return errorResponse("Service temporarily unavailable.", 503, "server_error", null);
+  }
+  if (issued.status === "miss") return invalidApiKey();
+
+  const verification = await checkCode(issued.code);
   if (!verification.ok) {
     switch (verification.reason) {
       case "unknown-code":
-        return errorResponse("Invalid API key.", 401, "invalid_request_error", "invalid_api_key");
+        return invalidApiKey();
       case "not-started":
       case "expired":
         return errorResponse(
@@ -134,10 +156,8 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
   const { entry } = verification;
-  // A non-coding code is not a valid key for this endpoint — don't disclose more.
-  if (entry.module !== "coding") {
-    return errorResponse("Invalid API key.", 401, "invalid_request_error", "invalid_api_key");
-  }
+  // A key for a non-coding code does not open this endpoint — don't disclose more.
+  if (entry.module !== "coding") return invalidApiKey();
 
   // 3. Load the teacher's coding YAML (system prompt + pinned model). The code's
   // LLM override, when set, replaces the YAML's provider/model/reasoning — the
@@ -220,11 +240,12 @@ export async function POST(req: Request): Promise<Response> {
 
   // 9. Meter token usage WITHOUT altering the passthrough: tee the body, forward one
   // branch to the client byte-for-byte, and read the other in the background to
-  // extract the final `usage`. Coding usage is per-CODE only (no oid on this path).
+  // extract the final `usage`. The key resolved the user, so coding usage lands in
+  // both hourly buckets, exactly like the Mastra-backed modules.
   if (upstream.body) {
     const [toClient, toTap] = upstream.body.tee();
     const isStream = (contentType ?? "").includes("text/event-stream");
-    void tapCodingUsage(toTap, isStream, entry.code, llm);
+    void tapCodingUsage(toTap, isStream, entry.code, llm, issued.userId);
     return new Response(toClient, { status: upstream.status, headers });
   }
   return new Response(upstream.body, { status: upstream.status, headers });

@@ -30,6 +30,13 @@ vi.mock("./render-writing", () => ({
     <div data-testid="render-writing">writing {code}</div>
   ),
 }));
+vi.mock("./render-coding", () => ({
+  RenderCoding: ({ code, userId }: { code: string; userId: string }) => (
+    <div data-testid="render-coding">
+      coding {code} {userId}
+    </div>
+  ),
+}));
 // after() schedules the recents mutation; run it inline so the call is observable.
 vi.mock("next/server", () => ({ after: (fn: () => void) => fn() }));
 
@@ -124,6 +131,17 @@ describe("module dispatch (valid code)", () => {
     const html = await renderPage();
     expect(html).toContain('data-testid="render-writing"');
     expect(html).toContain("writing a1b2c3d4e5");
+    expect(recordRecentCode).toHaveBeenCalledWith(USER_ID, CODE);
+  });
+
+  it("module=coding → records a recent and renders the coding module with the session userId", async () => {
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { module: "coding", fileUrl: "https://example.com/api/files/c" },
+    });
+    const html = await renderPage();
+    expect(html).toContain('data-testid="render-coding"');
+    expect(html).toContain(`coding ${CODE} ${USER_ID}`);
     expect(recordRecentCode).toHaveBeenCalledWith(USER_ID, CODE);
   });
 });

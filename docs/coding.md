@@ -9,8 +9,8 @@ that subsystem exposes (`docs/codes.md`) — the generic flow (code store, creat
 list, edit, bulk-delete, the availability window) is untouched. The always-on
 invariants are summarized in `AGENTS.md`; this file has the full mechanics.
 
-Read it before touching the coding libs (`lib/coding-*.ts`, `lib/llm/endpoint.ts`),
-the public route (`app/api/coding/**`), the student surface
+Read it before touching the coding libs (`lib/coding-*.ts`, `lib/coding-key-store.ts`,
+`lib/llm/endpoint.ts`), the public route (`app/api/coding/**`), the student surface
 (`app/[code]/render-coding.tsx`, `app/[code]/_coding/**`), the descriptor
 (`lib/code-modules/coding.ts`), the `api/coding` matcher in `proxy.ts`, or the
 samples (the coding YAML under `activities/examples/`).
@@ -18,9 +18,11 @@ samples (the coding YAML under `activities/examples/`).
 ## What it is, and what it is NOT
 
 - A teacher mints a `novedu_codes` row with `module: "coding"` pointing at a coding
-  YAML, exactly like any other code (`/codes/new`). **The code string IS the API
-  key.** The student configures a coding agent with three things — base URL, key,
-  model — and codes.
+  YAML, exactly like any other code (`/codes/new`), and shares the resulting `/<code>`
+  URL exactly like a tutor/quiz/writing code. **The code string is NOT the API key.**
+  A student visits `/<code>`, signs in, and leaves with a personal `nvk-…` key
+  (`lib/coding-key-store.ts`) — stable across visits — which they configure their
+  coding agent with alongside the base URL and a model ref.
 - Unlike tutor/quiz/writing it has **no in-app chat**: there is no CopilotKit
   runtime agent and no Mastra memory. The `/<code>` web page is just a **connection
   page** showing how to point a tool at the endpoint.
@@ -42,14 +44,65 @@ samples (the coding YAML under `activities/examples/`).
 - The endpoint is **public** (no Entra session — an external tool has none). It is
   excluded from the `proxy.ts` gate alongside `/api/files` (anchored `api/coding(?:/|$)`
   so the exclusion can't widen to a future `/api/coding-*` route), and is authenticated
-  by the **code as the bearer key**: `Authorization: Bearer <code>` (the code is the
-  verbatim key — no prefix is stripped). `checkCode()` re-verifies existence + the
-  availability window on **every** request — the same single boundary every module
-  shares, never a bare lookup. A non-`coding` code is rejected with the same opaque 401
-  as an unknown key.
-- It is **always anonymous**: the API path carries no `oid`, so there is no
-  attribution, no `novedu_user_chats` row, and no per-student review. `readAnonymousFlag("coding")` returns `{ anonymous: true, definitive: true }` and the
-  validator freezes `anonymous: true` onto the row.
+  by a **per-user API key** stored in `novedu_coding_keys`:
+  `Authorization: Bearer nvk-<40 lowercase a-z0-9 chars>`.
+- **Key format** (`lib/coding-key.ts`): `KEY_PATTERN` + `generateCodingKey` live in
+  their own PURE module (no database, no app imports), so the store, the proxy's
+  fast path and the e2e harness all build on the one definition.
+- **Key issuance** (`getOrCreateCodingKey`, `lib/coding-key-store.ts`): a student's
+  `/<code>` visit re-reads (or, on a first visit, mints) one **stable** key per
+  `(code, userId)` — SELECT first, so the dominant revisit path is a single read;
+  only a miss inserts, and a duplicate-key error there is resolved by re-reading
+  (a concurrent first visit won the race) so the whole thing stays idempotent. The
+  same key comes back every time, which is what lets the page simply re-display it.
+  The store's OTHER read, **`getStoredCodingKey`**, never inserts: it answers
+  `found` / `none` / `error` and is what the teacher detail page calls, so viewing
+  a code cannot attribute a key row to the viewer (the teacher's own mint is the
+  explicit button below). Both reads share one `(code, userId)` SELECT helper.
+- **Key resolution** (`lookupCodingKey`): the route maps the bearer to its
+  `(code, userId)` pair with one indexed SELECT (a malformed key — wrong prefix,
+  length, or alphabet — is a miss before any database round trip), then
+  re-runs **`checkCode(code)`** exactly as every other module: `401` unknown /
+  `403` outside window / `503` lookup failure; a non-`coding` module → `401`. Both
+  stored rows — the key row and the code row — are re-verified on **every**
+  request and together are the security boundary, so a closing window or a
+  deleted code kills all of that code's keys on the very next request.
+- **An outage is retryable, never a bad key**: `lookupCodingKey` reports a database
+  failure as its own `error` status (mirroring `checkCode`'s `lookup-failed`), so
+  both lookups answer the identical `503` body. Only a real miss earns the `401`.
+- **Opaque-401 uniformity**: every rejection flavor — no bearer, a malformed key,
+  an unknown key, a key whose code was deleted, a key for a non-coding code, even
+  a bare activity code sent as a bearer — gets the byte-identical `401` body. No
+  oracle distinguishes them; a leaked code string alone opens nothing without an
+  Entra sign-in.
+- **Attribution**: `novedu_coding_keys` is the **second sanctioned exception** to
+  "`novedu_user_chats` is the only user↔chat link" (alongside `novedu_reports`,
+  `docs/reports.md`) — key issuance always records the requesting user's oid,
+  disclosed by an explicit, visually prominent notice on **both** issuing surfaces:
+  the student connection page (`render-coding.tsx`) and, beside the teacher's own
+  "Get my API key" button, the detail page (`_coding/coding-detail.tsx`). Neither
+  surface stores an oid without the notice: a teacher who only reads the detail
+  page is never listed. Coding conversations themselves are still never stored —
+  there is no in-app chat to attribute, and `novedu_user_chats` stays untouched.
+  The `anonymous` flag stays frozen `true` and keeps its narrower meaning (no
+  conversation to attribute); `readAnonymousFlag("coding")` still returns
+  `{ anonymous: true, definitive: true }` and the validator still freezes
+  `anonymous: true` onto the row.
+- **Metering**: because the key resolves a real `userId`, the usage tap records
+  `recordLlmUsage({ code, module: "coding", userId, provider, model, … })`, which
+  writes **both** independent hourly buckets — `usage_by_code` (no user) and
+  `usage_by_user` (no code) — exactly like the Mastra-backed modules
+  (`docs/usage-metering.md`). Never a `(user × code)` row.
+- **Teacher visibility, read-only**: the teacher detail page lists who requested a
+  key for the code and when, via `listCodingKeys`. There is **no revocation** —
+  the availability window / code deletion is the only access control; a teacher
+  cannot invalidate one student's key without closing the whole code.
+- **Deletion**: the codes bulk delete drops a code's key rows inside its one
+  transaction (`deleteCodingKeysForCodes`, called by `deleteCodesAndData`). An
+  ACCEPTED race: a mint that started before that delete can commit after it,
+  leaving an attributed key row for a code that no longer exists. It is harmless
+  by construction — the proxy re-runs `checkCode` on every request, so the orphan
+  authenticates nothing — and nothing collects it; there is no GC.
 - The teacher's **system prompt and the real pinned model stay server-side** — the
   proxy injects the prompt and pins the model; neither is sent to the browser (nor
   is the provider). The connection page deliberately advertises only a generic
@@ -120,11 +173,14 @@ instructions: |
 
 `app/api/coding/v1/chat/completions/route.ts` (`POST`, `dynamic = "force-dynamic"`):
 
-1. `parseBearerKey` reads the code from `Authorization` (the verbatim token — nothing
-   stripped). An oversized body (`Content-Length` over `MAX_BODY_BYTES`, 2 MiB) is
-   rejected with `413` before any DB work.
-2. `checkCode(code)` → `401` unknown / `403` outside window / `503` lookup failure;
-   a non-`coding` module → `401`.
+1. `parseBearerKey` reads the personal API key from `Authorization` (the verbatim
+   token — nothing stripped). An oversized body (`Content-Length` over
+   `MAX_BODY_BYTES`, 2 MiB) is rejected with `413` before any DB work.
+2. `lookupCodingKey(apiKey)` (`lib/coding-key-store.ts`) resolves the key to its
+   `(code, userId)` pair — an unknown or malformed key gets the opaque `401`, a
+   database failure the same `503` as below. `checkCode(code)` then re-verifies the
+   code itself: `401` unknown / `403` outside window / `503` lookup failure; a
+   non-`coding` module → `401`.
 3. `loadCoding(entry.fileUrl)` (`lib/coding-fetch.ts`, via the shared
    `appHostedFetcher`) → `502` on failure.
 4. `resolveChatEndpoint(loaded.coding.provider)` resolves the upstream and **starts**
@@ -161,17 +217,49 @@ Errors use the OpenAI envelope `{ error: { message, type, code, param } }`
 The little-coder connection block (`_coding/coding-connection.tsx`: base URL
 (`<origin>/api/coding/v1`), the key, the model ref, a ready-to-paste `models.json`
 snippet, a run command — each with a copy button — plus a link to little-coder's
-*configuring models* docs) is **shared by all three coding surfaces** below. It
-receives only non-secret values; the system prompt + real model never reach it.
+*configuring models* docs) is **shared by both** rendering surfaces below,
+parameterized by whose personal key it is fed. It receives only non-secret
+values; the system prompt + real model never reach it.
 
-- **Student `/<code>`** (`render-coding.tsx`, Entra-gated web view): the connection
-  block under the activity title.
+- **Student `/<code>`** (`render-coding.tsx`, Entra-gated web view): calls
+  `getOrCreateCodingKey(code, userId)` and feeds the resulting personal key into
+  the connection block under the activity title, above an explicit **attribution
+  notice** ("Requesting this activity's API key is recorded with your name for
+  your teacher. Your coding conversations are not stored."). In view-as-student
+  mode the key is minted under the teacher's **real** oid — testing never
+  fabricates a student row.
 - **Teacher `/codes/[code]`** (`_coding/coding-detail.tsx`, the module's
-  `renderDetail`): the resolved config (pinned model + the server-only system prompt,
-  teacher-only) plus the connection block. There are no conversations to review.
-- **Create/edit `/codes/edit/[code]`** (`_coding/coding-result.tsx`, the module's
-  `renderResult`): the connection block **instead of** the share link the other
-  modules show — a coding code is an API key, not a web link.
+  `renderDetail`): the resolved config (pinned model + the server-only system
+  prompt, teacher-only), the teacher's **own** connection block, and the read-only
+  **issued-keys list**, an embedded `ListTable` rather than a full-page `DataList`.
+  There are no conversations to review.
+  - The key is **read, never minted, on view** (`getStoredCodingKey`): `found`
+    renders the same connection block a student gets; `none` renders a short
+    explanation, the shared `ATTRIBUTION_NOTICE` ("requesting a key records your
+    name in this activity's issued-keys list; coding conversations are not
+    stored") and a **"Get my API key"** button; `error` renders the shared
+    `KeyUnavailableNotice`, so the button is never offered on an unproven "you
+    have no key". The button is the only client component here
+    (`_coding/mint-key-button.tsx`), calling the `mintCodingKeyAction` server
+    action (`lib/coding-key-actions.ts`): `requireTeacherUserId()` gates it and
+    supplies the attributed oid, `getCode` must find a real row whose module is
+    `coding` (an unknown / deleted / non-coding code is refused WITHOUT touching
+    the key table — deliberately not `checkCode`, since the window gates USE of a
+    key, which the proxy re-verifies anyway, not whether a teacher may prepare one
+    for a code that has not opened yet), then `getOrCreateCodingKey` +
+    `revalidatePath`. The action returns **no key value**: the revalidated render
+    is the secret's one delivery path.
+  - The issued-keys list (`listCodingKeys`) uses the shared `studentColumn` under
+    the header **"User"** (writing's savers list keeps "Student" — here a teacher
+    who minted their own key legitimately appears): display name LEFT-JOINed from
+    `novedu_users`, raw `oid` fallback and hover title. "Requested" renders through
+    the shared `LocalTime` leaf — the viewer's own timezone, exactly like every
+    sibling teacher list (reports, writing savers, files, codes).
+- **Create/edit `/codes/edit/[code]`**: no per-module override exists — the page
+  renders the registry default `ShareLinkResult` directly, the identical `/<code>`
+  share link (copy button, window note) every other module gets. Course-material
+  tooling (QR codes, Quarto extensions) treats a coding activity URL exactly like
+  a tutor/quiz URL.
 
 ## Pointing little-coder at it
 
@@ -184,7 +272,7 @@ receives only non-secret values; the system prompt + real model never reach it.
     "novedu": {
       "api": "openai-completions",
       "baseUrl": "https://<host>/api/coding/v1",
-      "apiKey": "<the-code>",
+      "apiKey": "<your personal nvk-… key from the /<code> connection page>",
       "models": [{ "id": "coding", "name": "Novedu coding", "reasoning": false,
         "input": ["text"], "contextWindow": 32768, "maxTokens": 4096,
         "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 } }]
@@ -199,6 +287,15 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
 
 ## Testing
 
+- **`lib/coding-key.unit.test.ts`**: the key format alone — alphabet/length/prefix
+  and what `KEY_PATTERN` admits.
+- **`lib/coding-key-store.unit.test.ts`** (hermetic, fake-DB fluent mock): the
+  malformed-key fast path (no DB call), the miss/error split of `lookupCodingKey`,
+  the revisit read (one SELECT, no INSERT), the first-visit mint, a duplicate-key
+  INSERT resolving to the race winner's row, a duplicate with no matching row →
+  re-mint retry, the found/none/error split of `getStoredCodingKey` (and that it
+  never inserts), the `listCodingKeys` join shape/ordering, and the bulk delete.
+  Real concurrent get-or-create is a `@live-db` concern, out of scope here.
 - Hermetic unit tests: `parseCoding` (incl. the shipped sample) `lib/coding-yaml.unit.test.ts`;
   the strict authoring validator (schema errors, the always-anonymous mapping)
   `lib/coding-validate.unit.test.ts`; the pure proxy helpers (`buildUpstreamChatBody`,
@@ -206,18 +303,35 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   validator seam + the `readAnonymousFlag` branch (`lib/code-modules/coding.unit.test.ts`,
   `lib/file-validators.unit.test.ts`). The `@novedu/cli validate --kind coding` path is
   covered in `cli/src/commands/validate.unit.test.ts`.
+- **`app/[code]/render-coding.unit.test.tsx`**: the student page mints/re-displays the
+  personal key and renders the attribution notice; a `null` key (store failure)
+  falls back to the "temporarily unavailable" notice.
+- **`app/[code]/_coding/coding-detail.unit.test.tsx`**: the teacher's own
+  connection block across all three read states — key present, the button + its
+  attribution notice, the unavailable notice — asserting the render NEVER calls
+  `getOrCreateCodingKey`; plus the issued-keys list (the "User" header, join shape,
+  `oid` fallback, the `LocalTime` leaf).
+- **`lib/coding-key-actions.unit.test.ts`**: the mint action's shell — the teacher
+  gate (both failure reasons), an unknown / non-coding code refused without an
+  insert, the happy path's mint + `revalidatePath`, and that no key value is
+  returned.
 - HTTP-level **integration test** of the endpoint
   (`app/api/coding/v1/chat/completions/route.unit.test.ts`, node env): drives the
-  real `POST` with `Request`s and a mocked SCCH `fetch` — auth/window gating,
-  non-coding rejection, the forwarded body transform, OpenAI error shapes, and both
-  non-streamed JSON and streamed SSE passthrough.
+  real `POST` with `Request`s, a mocked key lookup, and a mocked SCCH `fetch` —
+  key/window gating (including the explicit **valid code sent as a bearer → the
+  same opaque 401** case), non-coding rejection, the forwarded body transform,
+  OpenAI error shapes, metering asserted **with** `userId`, and both non-streamed
+  JSON and streamed SSE passthrough.
 - The real end-to-end path is **`e2e/coding-agent.spec.ts`** (`@live-llm`, local
   only): drives the REAL `pi` coding agent (`@earendil-works/pi-coding-agent`, a
   pinned devDependency — little-coder's engine) through the endpoint once per
-  provider, and asserts model identity from the upstream's own `model` field
-  (the Foundry leg minting the per-code LLM override, so a silent fallback to
-  the YAML default fails the test). Chat smoke only (`--no-tools`); the harness
-  is `e2e/pi-agent.utils.ts`.
+  provider. The harness (`e2e/code.utils.ts`'s `mintCodingKey`) mints a code and a
+  matching per-user key row directly, its value from the app's own pure
+  `generateCodingKey`, and authenticates with it (an `afterEach` drops the key rows
+  with `deleteCodingKeysByCode` — a raw code delete does not cascade to them); the spec asserts model identity from the
+  upstream's own `model` field (the Foundry leg minting the per-code LLM override,
+  so a silent fallback to the YAML default fails the test). Chat smoke only
+  (`--no-tools`); the agent driver is `e2e/pi-agent.utils.ts`.
 
 ## Future work (deferred)
 
@@ -225,3 +339,15 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   SCCH models and honor the client's `model` when allowed, exposing the list.
 - **Per-key rate limiting** (`429`) to shield the SCCH GPU from a leaked key.
 - **Usage metrics** (request count / token usage) on the teacher detail page.
+- **Per-user quota enforcement** (e.g. bounded AI access during an exam) is out of
+  scope for now; the `novedu_coding_keys` row is the natural anchor for a future
+  consumed-tokens counter. Per-student-per-code numbers can't be reconstructed from
+  the existing usage tables (`usage_by_code` has no user, `usage_by_user` has no
+  code), so a limits project needs its own write path.
+- **Key revocation** — the teacher's issued-keys list is read-only today; access
+  control is only the code's availability window or deletion.
+- **Student CLI key retrieval** — a future bearer route (`requireBearerUser`)
+  could run `checkCode()` + the same `getOrCreateCodingKey`, so a CLI command
+  could fetch the connection data without the web page. `lib/coding-key-store.ts`
+  being the single issuance seam guarantees web and CLI would mint the identical
+  stable key.

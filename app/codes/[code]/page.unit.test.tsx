@@ -20,7 +20,12 @@ vi.mock("@/lib/code-store", () => ({ getCode }));
 // The registry is mocked entirely so the real descriptors (and their server-only
 // transitive imports) never load; every module shares one renderDetail spy.
 vi.mock("@/lib/code-modules/registry", () => ({
-  codeModules: { tutor: { renderDetail }, quiz: { renderDetail }, writing: { renderDetail } },
+  codeModules: {
+    tutor: { renderDetail },
+    quiz: { renderDetail },
+    writing: { renderDetail },
+    coding: { renderDetail },
+  },
 }));
 // next/link needs no router in these static renders — a plain anchor is enough.
 vi.mock("next/link", () => ({

@@ -224,9 +224,3 @@ describe("quizModule.renderDetail", () => {
     expect(out).toBe("<stats/>");
   });
 });
-
-describe("quizModule result", () => {
-  it("uses the registry default (no renderResult override)", () => {
-    expect(quizModule.renderResult).toBeUndefined();
-  });
-});

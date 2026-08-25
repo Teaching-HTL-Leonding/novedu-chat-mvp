@@ -196,9 +196,3 @@ describe("writingModule.renderDetail", () => {
     expect(out).toBe("<stats/>");
   });
 });
-
-describe("writingModule result", () => {
-  it("uses the registry default (no renderResult override)", () => {
-    expect(writingModule.renderResult).toBeUndefined();
-  });
-});

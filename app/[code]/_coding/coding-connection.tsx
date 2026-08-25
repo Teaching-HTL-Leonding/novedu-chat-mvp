@@ -9,14 +9,15 @@ import { CODE_PANEL } from "./code-panel";
 const FIELD_CODE = "wrap-anywhere text-sm";
 
 // Connection details for an OpenAI-compatible coding agent (e.g. little-coder):
-// the base URL, the code-as-API-key, the model id, a ready-to-paste
+// the base URL, the caller's personal API key, the model id, a ready-to-paste
 // little-coder `models.json` snippet, and a run command — each with a copy button.
-// Shared by the student page (render-coding) and the teacher detail (coding-detail).
+// Shared by the student page (render-coding) and the teacher detail (coding-detail),
+// each of which mints its own key via `getOrCreateCodingKey` before rendering this.
 //
-// Receives ONLY non-secret values: the code (which the student already holds), the
-// app origin, and a generic model id. The teacher's system prompt and the real SCCH
-// model never reach this client component — the proxy pins the model server-side and
-// ignores whatever the client sends.
+// Receives the personal `nvk-…` key as a plain prop (the caller already resolved it
+// server-side), the app origin, and a generic model id. The teacher's system prompt
+// and the real SCCH model never reach this client component — the proxy pins the
+// model server-side and ignores whatever the client sends.
 export function CodingConnection({
   baseUrl,
   apiKey,
@@ -39,7 +40,7 @@ export function CodingConnection({
         <a href="https://github.com/itayinbarr/little-coder" target="_blank" rel="noreferrer">
           little-coder
         </a>
-        . Point it at the endpoint below and use the code as the API key.
+        . Point it at the endpoint below and use your personal API key.
       </p>
 
       <dl className="flex flex-col gap-2">

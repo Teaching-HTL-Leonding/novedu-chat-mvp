@@ -320,11 +320,11 @@ savers) it falls back to the shared `ConversationStats`. Both are called as **pl
 functions**, so no JSX lives in the server-only `.ts` descriptor.
 
 - **Savers list** — `WritingSaversList` calls `listSavers(code, { search })` and
-  renders a filtered `DataList` (newest save first): a **Student** column showing the
-  display name (`listSavers` LEFT-JOINs `novedu_users`; the raw Entra `oid` is the
-  fallback and stays the hover `title` — see `docs/auth.md`) linking to the student's
-  page, a **Saved** time, and a **Conversations** count. A `ListFilterBar` search
-  filters by name OR oid in the DB. There is **no saved-text length column** — that
+  renders a filtered `DataList` (newest save first): the shared `studentColumn`
+  showing the display name (`listSavers` LEFT-JOINs `novedu_users`; the raw Entra
+  `oid` is the fallback and stays the hover `title` — see `docs/auth.md`), a
+  **Saved** time, a **Conversations** count, and a **View** link to the student's
+  page. A `ListFilterBar` search filters by name OR oid in the DB. There is **no saved-text length column** — that
   would load every essay body; length lives on the student page instead.
 - **Student page** — `/codes/[code]/s/[userId]`
   (`app/codes/[code]/s/[userId]/page.tsx`) is the reading view: it loads the code

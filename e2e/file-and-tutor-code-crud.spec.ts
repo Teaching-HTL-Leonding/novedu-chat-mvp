@@ -232,13 +232,13 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   createdCodeLabel = null;
 });
 
-// CODING CODE — the per-module result seam: creating a CODING code lands on the same
-// edit screen as any other, but its result body is the little-coder connection config
-// (`CodingResult` → `CodingConnection`), NOT the `/<code>` share link — a coding code
-// is an API key, not a web link. The URL must point at a VALID coding YAML: coding now
-// has a strict authoring gate, so a non-coding file (e.g. a tutor URL) would be rejected
-// with a CODING_SCHEMA_ERROR before the code is created.
-test("creating a coding code shows the little-coder config instead of the share link", {
+// CODING CODE — creating a CODING code lands on the same edit screen as any other
+// module and shows the same `/<code>` share-link result: a coding code is a regular
+// activity URL (the student visits it, signs in, and mints their personal API key).
+// The URL must point at a VALID coding YAML: coding has a strict authoring gate, so a
+// non-coding file (e.g. a tutor URL) would be rejected with a CODING_SCHEMA_ERROR
+// before the code is created.
+test("creating a coding code shows the share link like every other module", {
   tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   const note = `e2e coding ${Date.now()}`;
@@ -252,13 +252,13 @@ test("creating a coding code shows the little-coder config instead of the share 
   // Lands on the new code's edit screen.
   await expect(page).toHaveURL(/\/codes\/edit\/[a-z0-9]{10}$/, { timeout: 60_000 });
 
-  // The little-coder connection config is shown (base URL + models.json snippet)…
-  await expect(page.getByRole("button", { name: "Copy base URL" })).toBeVisible({
+  // The share-link box is shown, exactly like tutor/quiz/writing…
+  await expect(page.getByLabel("Share link", { exact: true })).toBeVisible({
     timeout: 30_000,
   });
-  await expect(page.getByRole("button", { name: "Copy models.json" })).toBeVisible();
-  // …and the share-link box is NOT (coding replaces it, per the user's "instead").
-  await expect(page.getByLabel("Share link", { exact: true })).toHaveCount(0);
+  // …and the little-coder connection config is NOT — that lives on the student page
+  // and the teacher detail page, keyed to the visitor's personal key.
+  await expect(page.getByRole("button", { name: "Copy models.json" })).toHaveCount(0);
 });
 
 // The shared multi-delete layer end-to-end: tick several rows and remove them all

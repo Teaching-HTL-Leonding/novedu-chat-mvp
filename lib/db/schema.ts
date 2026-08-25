@@ -28,6 +28,8 @@ import {
 //   novedu_user_chats.thread_id = mastra_threads.id = mastra_messages.thread_id
 //   novedu_reports.code = novedu_codes.code (report → code note/creator)
 //   novedu_reports.user_id = novedu_users.user_id (report → reporter name)
+//   novedu_coding_keys.code = novedu_codes.code (key → coding activity)
+//   novedu_coding_keys.user_id = novedu_users.user_id (key → requester name)
 //
 // so user → user-chat → chat-history joins work in plain SQL without FKs.
 
@@ -239,6 +241,57 @@ export const reports = mssqlTable(
     index("ix_novedu_reports_code").on(t.code),
     // … and filters open vs. resolved (open rows are the working set).
     index("ix_novedu_reports_resolved_at").on(t.resolvedAt),
+  ],
+);
+
+// Per-user API keys for the coding module: one stable key per `(code, user)`,
+// minted on the student's first visit to a coding activity (or, for a teacher
+// testing their own code, by the detail page's explicit "Get my API key" button)
+// and re-displayed on every later visit (any device). The key is what the PUBLIC
+// coding proxy
+// (`POST /api/coding/v1/chat/completions`) authenticates with, so it — like the
+// stored code row beside it — IS the security boundary: both rows are re-verified
+// on EVERY request, and a closed window or a deleted code kills all its keys on
+// the next one (docs/coding.md).
+//
+// SECOND user↔code link, sanctioned: `user_id` (the requesting user's Entra
+// `oid`) is ALWAYS stored, even though coding codes are frozen `anonymous: true`.
+// Alongside `novedu_reports` this is the second deliberate exception to the
+// "novedu_user_chats is the only user↔code link" invariant — issuance is a
+// deliberate action behind an explicit on-page attribution notice on BOTH issuing
+// surfaces, never implicit. Coding conversations themselves are NEVER stored (they happen in the
+// student's own tool and only pass through the proxy), and the usage tables keep
+// their own invariant: `usage_by_code` has no user, `usage_by_user` has no code.
+//
+// `api_key` is the secret, stored PLAINTEXT at the same trust level as
+// `novedu_codes.code`: `nvk-` + 40 random `[a-z0-9]` chars (36^40 — unguessable;
+// the prefix makes a leaked key recognizable as a Novedu coding key). It never
+// appears in logs, telemetry, or error messages. `created_at` is the UTC issuance
+// time the teacher's issued-keys list shows as "requested at".
+//
+// NO foreign keys (same rule as the other novedu_* tables) — key rows are dropped
+// explicitly when their code is deleted (lib/code-stats-store.ts); nothing else
+// deletes them (no revocation, no garbage collection).
+export const codingKeys = mssqlTable(
+  "novedu_coding_keys",
+  {
+    // The coding code this key belongs to (by value; widened to match novedu_codes.code).
+    code: varchar("code", { length: 32 }).notNull(),
+    // The requesting user's Entra `oid` — ALWAYS set (see the block above).
+    userId: nvarchar("user_id", { length: 64 }).notNull(),
+    // The bearer secret handed to the student's coding tool (see the block above).
+    apiKey: varchar("api_key", { length: 64 }).notNull(),
+    // UTC issuance timestamp — the teacher-visible "requested at".
+    createdAt: datetime2("created_at").notNull(),
+  },
+  (t) => [
+    // The PK enforces "one stable key per user per code" and doubles as the
+    // per-code lookup index (code prefix) for the teacher's issued-keys list.
+    primaryKey({ columns: [t.code, t.userId] }),
+    // The proxy's per-request resolution path: one indexed SELECT by key. Unique
+    // so two users can never share a key (a mint collision fails loudly and the
+    // store re-mints).
+    uniqueIndex("ux_novedu_coding_keys_api_key").on(t.apiKey),
   ],
 );
 
