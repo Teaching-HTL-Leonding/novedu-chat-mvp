@@ -1,13 +1,9 @@
 import { readBoundedJson } from "@/lib/bounded-json";
 import { checkCode, effectiveLlm } from "@/lib/code-store";
 import { loadCoding } from "@/lib/coding-fetch";
+import { errorResponse, invalidApiKey, serviceUnavailable } from "@/lib/coding-http";
 import { lookupCodingKey } from "@/lib/coding-key-store";
-import {
-  buildUpstreamChatBody,
-  extractCodingUsage,
-  openaiError,
-  parseBearerKey,
-} from "@/lib/coding-proxy";
+import { buildUpstreamChatBody, extractCodingUsage, parseBearerKey } from "@/lib/coding-proxy";
 import { type ChatEndpoint, resolveChatEndpoint } from "@/lib/llm/endpoint";
 import { recordError } from "@/lib/telemetry";
 import { recordLlmUsage } from "@/lib/usage-store";
@@ -84,28 +80,9 @@ async function tapCodingUsage(
   }
 }
 
-function errorResponse(
-  message: string,
-  status: number,
-  type = "invalid_request_error",
-  code: string | null = null,
-): Response {
-  return Response.json(openaiError(message, type, code), { status });
-}
-
-// EVERY rejected key gets this one byte-identical body, whatever the flavor: no
-// bearer at all, a malformed one, an unknown one, a key whose code was deleted, or a
-// key for a non-coding code. A caller learns only "this does not open the endpoint" —
-// never whether a key exists or which activity it belongs to.
-function invalidApiKey(): Response {
-  return errorResponse(
-    "Invalid API key. Pass your personal API key as a Bearer token in the Authorization header.",
-    401,
-    "invalid_request_error",
-    "invalid_api_key",
-  );
-}
-
+// The opaque 401 + the error envelope live in `lib/coding-http.ts`, shared with the
+// models route so the two public coding routes reject byte-identically.
+//
 // The bounded body read lives in `lib/bounded-json.ts` — shared verbatim with the
 // teacher-only `/api/eval/grade`, the other route that buffers a client-supplied body.
 
@@ -133,9 +110,7 @@ export async function POST(req: Request): Promise<Response> {
   // kills all of the code's keys at once. Either lookup failing is a retryable 503,
   // never the permanent-sounding 401 an actually rejected key gets.
   const issued = await lookupCodingKey(apiKey);
-  if (issued.status === "error") {
-    return errorResponse("Service temporarily unavailable.", 503, "server_error", null);
-  }
+  if (issued.status === "error") return serviceUnavailable();
   if (issued.status === "miss") return invalidApiKey();
 
   const verification = await checkCode(issued.code);
@@ -152,7 +127,7 @@ export async function POST(req: Request): Promise<Response> {
           "key_inactive",
         );
       default:
-        return errorResponse("Service temporarily unavailable.", 503, "server_error", null);
+        return serviceUnavailable();
     }
   }
   const { entry } = verification;
@@ -183,7 +158,7 @@ export async function POST(req: Request): Promise<Response> {
     authPromise.catch(() => {});
   } catch (error) {
     recordError(error, { route: "coding-proxy", stage: "config" });
-    return errorResponse("Service temporarily unavailable.", 500, "server_error", null);
+    return serviceUnavailable(500);
   }
 
   // 5. Read the client body under a hard byte cap, then build the upstream body and
@@ -206,7 +181,7 @@ export async function POST(req: Request): Promise<Response> {
     upstreamAuth = await authPromise;
   } catch (error) {
     recordError(error, { route: "coding-proxy", stage: "config" });
-    return errorResponse("Service temporarily unavailable.", 500, "server_error", null);
+    return serviceUnavailable(500);
   }
 
   // 7. Forward upstream. Pass the request's abort signal so a client disconnect cancels
