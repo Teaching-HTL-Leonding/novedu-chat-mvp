@@ -127,7 +127,7 @@ shareable activities.
   reads the student's live draft through the read-only `getCurrentText` frontend tool
   but has no tool to change it. `coding` is the OpenAI-compatible coding-endpoint
   module (`docs/coding.md`): it has **no `runtime`** and is reached only through its
-  own public `/api/coding/v1` route, authenticated by a per-user API key from
+  own public `/api/coding/v1` routes, authenticated by a per-user API key from
   `novedu_coding_keys` — the code string itself opens nothing.
 
 Student **rendering** is also NOT a registry seam: it is a thin `switch (entry.module)`

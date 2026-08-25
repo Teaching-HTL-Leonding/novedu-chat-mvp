@@ -11,12 +11,13 @@ export const config = {
   // build-identity probe (CD triage — see app/api/version/route.ts), the public
   // /api/files YAML-hosting endpoint (served without a session so the tutor-code
   // loader can fetch it — see app/api/files/[name]/route.ts), and static assets.
-  // The public /api/coding OpenAI-compatible coding endpoint is gated by the
-  // code-as-bearer-key (re-checked every request), not by an Entra session — an
-  // external coding agent has none — so it is excluded here too (see
-  // app/api/coding/v1/chat/completions/route.ts). It is anchored with a path
-  // boundary (`api/coding(?:/|$)`) so the exclusion cannot silently widen to a
-  // future, unrelated `/api/coding-*` route.
+  // The public /api/coding OpenAI-compatible coding routes (chat/completions and
+  // models) are gated by the per-user API key (key row + code row re-checked every
+  // request), not by an Entra session — an external coding agent has none — so they
+  // are excluded here too (see app/api/coding/v1/**/route.ts). The one entry is
+  // anchored with a path boundary (`api/coding(?:/|$)`) so the exclusion covers the
+  // routes under `/api/coding/` without silently widening to a future, unrelated
+  // `/api/coding-*` route.
   // The /api/me identity probe, the /api/codes list/create endpoints, the
   // /api/reports list/detail/resolve endpoints, the /api/eval eval endpoints —
   // grade, judge and respond, all bounded by the one `api/eval(?:/|$)` entry

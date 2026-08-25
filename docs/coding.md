@@ -10,7 +10,7 @@ list, edit, bulk-delete, the availability window) is untouched. The always-on
 invariants are summarized in `AGENTS.md`; this file has the full mechanics.
 
 Read it before touching the coding libs (`lib/coding-*.ts`, `lib/coding-key-store.ts`,
-`lib/llm/endpoint.ts`), the public route (`app/api/coding/**`), the student surface
+`lib/llm/endpoint.ts`), the public routes (`app/api/coding/**`), the student surface
 (`app/[code]/render-coding.tsx`, `app/[code]/_coding/**`), the descriptor
 (`lib/code-modules/coding.ts`), the `api/coding` matcher in `proxy.ts`, or the
 samples (the coding YAML under `activities/examples/`).
@@ -41,9 +41,11 @@ samples (the coding YAML under `activities/examples/`).
 
 ## Access & anonymity (the security model)
 
-- The endpoint is **public** (no Entra session — an external tool has none). It is
-  excluded from the `proxy.ts` gate alongside `/api/files` (anchored `api/coding(?:/|$)`
-  so the exclusion can't widen to a future `/api/coding-*` route), and is authenticated
+- The endpoint is **public** (no Entra session — an external tool has none): two
+  routes, `POST /api/coding/v1/chat/completions` and `GET /api/coding/v1/models`,
+  under one auth scheme. Both are excluded from the `proxy.ts` gate alongside
+  `/api/files` by the single anchored `api/coding(?:/|$)` entry (so the exclusion
+  can't widen to a future `/api/coding-*` route), and both are authenticated
   by a **per-user API key** stored in `novedu_coding_keys`:
   `Authorization: Bearer nvk-<40 lowercase a-z0-9 chars>`.
 - **Key format** (`lib/coding-key.ts`): `KEY_PATTERN` + `generateCodingKey` live in
@@ -210,7 +212,34 @@ instructions: |
    is piped back **unparsed**. Upstream error statuses/bodies pass through as-is.
 
 Errors use the OpenAI envelope `{ error: { message, type, code, param } }`
-(`openaiError`).
+(`openaiError`), built by the shared `errorResponse` / `invalidApiKey` /
+`serviceUnavailable` helpers in **`lib/coding-http.ts`** — the one home of the
+opaque 401 body, so both public coding routes reject byte-identically. They live
+outside `lib/coding-proxy.ts` because that module sits in the CLI-bundled
+prompt-dump closure (`docs/cli-prompts.md`), which has no use for `Response`s.
+
+## The models route
+
+`app/api/coding/v1/models/route.ts` (`GET`, `dynamic = "force-dynamic"`): the
+OpenAI-conventional models list, and the **sanctioned key-validity check** — the
+cheapest authenticated call on the endpoint, so an external tool holding a stored
+`nvk-…` key (e.g. a playground that remembers one) can prove the key still opens the
+activity without generating a completion.
+
+- Auth is **identical** to the completions route, step for step: `parseBearerKey`
+  → `lookupCodingKey` → `checkCode` → the `coding` module check, with the same
+  signals for the same states (opaque `401` / `403 key_inactive` / `503`). The
+  cheap call must never become an oracle the expensive one is not — a route test
+  compares both rejections byte-for-byte.
+- On success it answers only the **generic advertised id** (`CODING_MODEL_ID`,
+  `lib/coding-connection.ts` — the same constant the connection page shows), with
+  a fixed `created: 0` and `Cache-Control: no-store`:
+  `{ "object": "list", "data": [{ "id": "coding", "object": "model", "created": 0, "owned_by": "novedu" }] }`.
+- It touches **nothing else**: no YAML load, no `resolveChatEndpoint`, no token
+  acquisition, no upstream fetch, and no usage metering (nothing was generated).
+  The teacher's real model, the provider and the system prompt therefore cannot
+  leak through it. A future model allowlist would extend this list — the shape is
+  already the one such a list needs.
 
 ## Surfaces
 
@@ -322,6 +351,11 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   same opaque 401** case), non-coding rejection, the forwarded body transform,
   OpenAI error shapes, metering asserted **with** `userId`, and both non-streamed
   JSON and streamed SSE passthrough.
+- **`app/api/coding/v1/models/route.unit.test.ts`** (node env): the models route's
+  own gate, plus the two properties that define it — its rejections are compared
+  **against the completions route's own responses** (the same mocks, byte-for-byte
+  on the opaque 401 and the `key_inactive` 403), and a success calls no `fetch`, no
+  `loadCoding` and no `recordLlmUsage`.
 - The real end-to-end path is **`e2e/coding-agent.spec.ts`** (`@live-llm`, local
   only): drives the REAL `pi` coding agent (`@earendil-works/pi-coding-agent`, a
   pinned devDependency — little-coder's engine) through the endpoint once per
@@ -335,8 +369,9 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
 
 ## Future work (deferred)
 
-- **Model allowlist + `GET /api/coding/v1/models`**: let the teacher permit several
-  SCCH models and honor the client's `model` when allowed, exposing the list.
+- **Model allowlist**: let the teacher permit several SCCH models and honor the
+  client's `model` when allowed, widening the models route's list beyond the single
+  generic id.
 - **Per-key rate limiting** (`429`) to shield the SCCH GPU from a leaked key.
 - **Usage metrics** (request count / token usage) on the teacher detail page.
 - **Per-user quota enforcement** (e.g. bounded AI access during an exam) is out of
