@@ -167,7 +167,16 @@ Entra sign-in in front of it. The moving parts:
   `teacher-docs/package.json` so `npm ci` installs the workspace, and the
   `builder` stage runs `npm run docs:build` and copies `teacher-docs/dist` to
   `public/docs/` before `next build`. The standalone runner serves it as plain static files —
-  same origin, no second deployment.
+  same origin, no second deployment. The `builder` stage copies **both**
+  `node_modules` trees from `deps` — the root one *and*
+  `teacher-docs/node_modules`: npm cannot hoist a workspace dep whose root slot
+  is taken by an incompatible version, and the docs site has exactly one such
+  dep (`cookie@2`, shadowed at the root by express's `cookie@0.7.2` via
+  `@copilotkit/runtime`). Astro's static build resolves it from disk when it
+  imports the prerender entry back out of `dist/`, so the docs build fails in
+  the image without that second tree — and only there, since a local
+  `npm install` leaves the workspace tree in place. Always validate a change to
+  astro or that dependency with a real `docker build .`.
 - **`proxy.ts` excludes `docs(?:/|$)`** — the deliberate, path-bounded public
   exclusion (see the AGENTS.md security block and `docs/auth.md`).
 - **`next.config.ts` `rewrites.afterFiles`** supply directory-index resolution

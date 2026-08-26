@@ -25,7 +25,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@azure/msal-node": "^5.4.0",
+    "@azure/msal-node": "^5.6.0",
     "commander": "^15.0.0",
     "handlebars": "^4.7.9",
     "yaml": "^2.9.0",

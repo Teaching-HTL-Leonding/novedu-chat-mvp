@@ -13,12 +13,13 @@
     "typecheck": "astro check"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.9",
+    "@astrojs/check": "^0.9.10",
     "yaml": "^2.9.0"
   },
   "dependencies": {
-    "@astrojs/starlight": "^0.41.3",
-    "astro": "~7.0.7",
+    "@astrojs/starlight": "^0.41.9",
+    "astro": "~7.2.7",
+    "cookie": "^2.0.1",
     "sharp": "^0.35.3",
     "starlight-theme-rapide": "^0.5.2"
   }
