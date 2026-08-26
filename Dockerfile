@@ -25,6 +25,13 @@ ENV AZURE_CLIENT_ID=build-placeholder \
     TEACHER_GROUP_ID=build-placeholder \
     AUTH_SECRET=build-placeholder
 COPY --from=deps /app/node_modules ./node_modules
+# npm cannot hoist EVERY workspace dep to the root — a package whose root slot is
+# already taken by an incompatible version lands in the workspace's own
+# node_modules instead. The teacher-docs workspace has exactly one such dep
+# (cookie@2, shadowed at the root by express's cookie@0.7.2 via
+# @copilotkit/runtime), and astro's static build resolves it from disk at build
+# time, so the docs build dies without this tree. See docs/teacher-docs.md.
+COPY --from=deps /app/teacher-docs/node_modules ./teacher-docs/node_modules
 COPY . .
 # public/ is not git-tracked, so it is absent in CI checkouts; the runner stage
 # COPYs it unconditionally. The teacher guide (teacher-docs, an Astro

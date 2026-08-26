@@ -105,6 +105,14 @@ the tutor agent's memory need the database.
 - Migrations are applied **automatically at server startup**
   (`instrumentation.ts` → `lib/db/migrate.ts`), bookkept in
   `novedu_drizzle_migrations`. A failed migration aborts startup on purpose.
+- Startup then calls **`initMastraStorage()`** (`app/mastra/index.ts`) to create
+  Mastra's own `mastra_*` tables. `MSSQLStore` does that itself, but only on its
+  first use — the first agent run — and `lib/code-stats-store.ts` reads
+  `mastra_threads` / `mastra_messages` *directly*, so on a database where no
+  agent has run yet a teacher's code detail page would degrade to "Stats
+  temporarily unavailable". Doing it at boot keeps the contract simple: **once
+  startup finishes, every table this server reads exists.** Fails loud, same as
+  a migration failure.
   The Dockerfile copies `drizzle/` into the standalone image. (`instrumentation.ts`
   has a second, independent duty — bringing up telemetry *before* migrations and
   exporting the `onRequestError` hook; that is gated on its own connection string

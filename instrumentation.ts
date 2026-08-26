@@ -10,6 +10,10 @@ import type { Instrumentation } from "next";
 //   2. Apply pending Drizzle migrations to the app-owned `novedu_*` tables — the
 //      server must never run against an older schema than its code expects.
 //      Failures abort startup on purpose.
+//   3. Create Mastra's `mastra_*` tables (`initMastraStorage`). Mastra would do
+//      this itself, but only on the store's first use — and `lib/code-stats-store.ts`
+//      reads those tables directly, so on a database where no agent has run yet
+//      the teacher's stats panels would break first. Same fail-loud policy as (2).
 //
 // (There used to be a third duty here — hourly garbage collection of expired
 // tutor codes. It was removed: codes and their conversation data now live until
@@ -35,6 +39,9 @@ export async function register(): Promise<void> {
 
   const { runMigrations } = await import("@/lib/db/migrate");
   await runMigrations();
+
+  const { initMastraStorage } = await import("@/app/mastra");
+  await initMastraStorage();
 }
 
 // Next calls this for EVERY uncaught server error — route handlers, server

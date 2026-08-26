@@ -51,6 +51,20 @@ if (connectionString && !globalForStore.mastraStore) {
   logger.warn("MSSQL_CONNECTION_STRING not set — tutor chat will fail without storage");
 }
 
+// Create Mastra's own `mastra_*` tables. `MSSQLStore` auto-initializes them, but
+// only LAZILY — on the store's first use, i.e. the first agent run. That is too
+// late for us: `lib/code-stats-store.ts` reads `mastra_threads` / `mastra_messages`
+// directly (the by-value join model in docs/codes.md), so on a database where no
+// agent has run yet a teacher opening a code detail page hits "Invalid object
+// name" and the stats panel degrades to "Stats temporarily unavailable".
+// instrumentation.ts therefore calls this at startup, right after the Drizzle
+// migrations, so the boot contract stays "every table this server reads exists
+// once startup finishes". Failures propagate for the same reason migration
+// failures do.
+export async function initMastraStorage(): Promise<void> {
+  await globalForStore.mastraStore?.init();
+}
+
 export const mastra = new Mastra({
   // The `tutor` agent is configured per request from a tutor-definition YAML
   // (system prompt + model) and persists its conversation via the shared store.
