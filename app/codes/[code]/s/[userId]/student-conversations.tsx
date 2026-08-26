@@ -84,9 +84,9 @@ export function StudentConversations({
         ))}
       </ul>
 
-      {/* h-auto: the dialog hugs short transcripts; when the 85vh cap kicks in,
-          the shell's flex column makes the body (flex-1) scroll — no hardcoded
-          header-height math. */}
+      {/* size="fit": the dialog hugs short transcripts; when the 85vh cap kicks
+          in, the shell's flex column makes the body (flex-1) scroll — no
+          hardcoded header-height math. */}
       <DialogShell
         open={open}
         onClose={() => {
@@ -94,7 +94,8 @@ export function StudentConversations({
           setState({ status: "idle" });
         }}
         title="Conversation"
-        className="h-auto max-h-[85vh] w-[min(56rem,92vw)]"
+        size="fit"
+        className="w-[min(56rem,92vw)]"
       >
         <div className={DIALOG_BODY}>
           {state.status === "loading" ? (

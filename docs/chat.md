@@ -41,7 +41,7 @@ Modules supply the rest through props/slots:
 | `agentId` | `string` | the module runtime's agent id (must match the registered agent) |
 | `threadId` | `string` | the server-minted Mastra thread id (pinned in explicit mode) |
 | `headers` | `RuntimeHeaders` | the `x-code` + `x-thread-token` pair (below) |
-| `providerKey` | `string` | the provider remount boundary — code (tutor/writing) or threadId (quiz) |
+| `providerKey` | `string` | the provider remount boundary — code (writing), threadId (quiz), or `code:threadId` (tutor, whose "start over" moves the thread half) |
 | `className` | `string?` | optional height/padding deltas, cn-merged onto the built-in chat container |
 | `children` | `ReactNode?` | rendered INSIDE the provider, before the chat — frontend tools, feedback headers |
 | `labels` | passthrough | welcome-greeting override (tutor) |
@@ -110,14 +110,45 @@ Each consumer is a thin shell around `ModuleChat` that adds only its own DOM and
 slots; none of them re-implement message rendering, streaming, input, the
 provider, or the threadId decision.
 
-**Tutor** (`app/tutor-chat.tsx`) wraps `ModuleChat` (`agentId="tutor"`,
-`providerKey={code}`) in the tutor-specific shell: the dismissible
-**image-upload error notice**. It passes `labels` (the optional welcome greeting),
+**Tutor** (`app/tutor-chat.tsx`) wraps `ModuleChat` (`agentId="tutor"`, a
+`providerKey` of `code:threadId`) in the tutor-specific shell: the dismissible
+**image-upload error notice** and the toolbar row (**start over** + the shared
+`ReportButton`). It passes `labels` (the optional welcome greeting),
 a `chatView` from `useTutorWelcomeView(...)` (`app/_tutor/welcome-view.tsx` — the
 fragile welcome-screen override, pinned to a CopilotKit version in a comment next
 to itself), and, when the tutor's `llm.imageInput` is set, an `attachments` config
 (vision-capable model, 5 MB cap, `onUploadFailed` driving the notice). Tutor needs
 no height/padding delta, so it passes the base `.chat` class directly.
+
+It is also the only surface that **owns its thread after mount**. The server props
+merely seed a `thread` state (`{ threadId, threadToken }`); the runtime headers,
+the report target and the provider key are all derived from that state, so a
+restart moves them together.
+
+### "Start over" (tutor only)
+
+`app/_tutor/start-over-button.tsx` is an `IconButton` (`aria-label` + `title` —
+the app has no tooltip component) that opens a `DialogShell` confirmation, then
+calls **`startNewTutorThread`** (`lib/tutor-actions.ts`). That action re-runs the
+full gate — session `oid`, `checkCode`, `module === "tutor"` — and returns a fresh
+`(threadId, threadToken)` pair. `TutorChat` swaps it in, the `providerKey` changes,
+the provider remounts, and CopilotKit's in-browser message list is discarded.
+
+The round-trip is not optional: the ownership token is an HMAC over
+`(code, userId, threadId)` keyed off `AUTH_SECRET` (server-only), so the browser
+cannot mint one — and clearing the transcript client-side (`agent.setMessages([])`)
+would leave the **same** threadId, whose last 40 messages the tutor still recalls.
+It grants nothing new either: `app/[code]/page.tsx` already mints a fresh thread on
+every page load, so F5 always did this.
+
+Two consequences worth knowing:
+
+- the abandoned thread is **not deleted** — it stays in `mastra_messages`, the
+  teacher can still read it, and a report already filed against it still resolves;
+- a restart yields a second thread, so a student who chats before *and* after shows
+  as **two interactions** in the code's stats (`lib/code-stats-store.ts` counts
+  threads with ≥1 user message) and gets a second `novedu_user_chats` row on
+  non-anonymous codes. A restart with nothing sent stays invisible.
 
 **Writing** (`app/[code]/_writing/writing-chat.tsx`) wraps `ModuleChat`
 (`agentId="writing"`, `providerKey={code}`) with one child — the keystone,
@@ -336,8 +367,17 @@ module.
 - **`tests/component/tutor-chat.browser.test.tsx`** — mocks `ModuleChat` and covers
   only the tutor-unique cases: the props it hands `ModuleChat` (incl.
   `title`→`labels`, `imageInput`→`attachments` with `onUploadFailed`, a
-  `chatView`), the welcome-view composition, and the dismissible upload-error
-  notice.
+  `chatView`), the welcome-view composition, the dismissible upload-error
+  notice, and **start over** — nothing moves before the student confirms; a
+  confirmed restart moves `threadId` + `providerKey` + headers + the report target
+  together (proven by driving a real report through the mocked action) and clears
+  the upload notice; a failed one shows the reason and leaves the chat untouched.
+- **`lib/tutor-actions.unit.test.ts`** — `startNewTutorThread` with the session and
+  `checkCode` mocked but **`lib/thread-token` real**: the minted token verifies for
+  `(code, session user, new thread)` and for nothing else (another user, another
+  code), each call yields a different thread, and every rejection branch
+  (signed-out, the four `checkCode` reasons, a non-tutor module) returns its
+  message. The code is re-checked on every call.
 - **`tests/unit/runtime-headers.unit.test.ts`** — `buildRuntimeHeaders(code, token)`
   returns `{ "x-code": code, "x-thread-token": token }` exactly (a cheap guard on
   the header names the backend re-reads).

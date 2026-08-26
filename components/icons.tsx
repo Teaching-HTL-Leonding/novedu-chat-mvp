@@ -140,3 +140,11 @@ export const SquareIcon = (props: SVGProps<SVGSVGElement>) => (
     <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
   </Icon>
 );
+
+/** Counter-clockwise arrow — "Start over" (the tutor chat toolbar). */
+export const RotateCcwIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <polyline points="1 4 1 10 7 10" />
+    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+  </Icon>
+);

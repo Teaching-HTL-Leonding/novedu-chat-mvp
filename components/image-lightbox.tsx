@@ -23,10 +23,19 @@ export function ImageLightbox({
   const alt = image.alt ?? "";
 
   return (
-    // h-auto / w-auto: the dialog hugs the image; the caps keep it inside the
-    // viewport, and min-h-0 lets the image shrink within the flex column so
-    // the credit line stays visible below tall images.
-    <DialogShell open={open} onClose={onClose} className="h-auto max-h-[88vh] w-auto max-w-[92vw]">
+    // size="fit" / w-fit: the dialog hugs the image; the caps keep it inside
+    // the viewport (max-h-[88vh] widens the variant's 85vh cap — images want
+    // every pixel), and min-h-0 lets the image shrink within the flex column
+    // so the credit line stays visible below tall images. `w-fit`, NEVER
+    // `w-auto`: the UA zeroes a dialog's inline insets too, so an indefinite
+    // width stretches to the 92vw cap and a small image blows up inside a
+    // giant box — the inline-axis twin of the `h-auto` bug (see DialogShell).
+    <DialogShell
+      open={open}
+      onClose={onClose}
+      size="fit"
+      className="max-h-[88vh] w-fit max-w-[92vw]"
+    >
       {failed ? (
         <p className="px-10 py-8 text-foreground/55 text-sm">Image could not be loaded</p>
       ) : (
