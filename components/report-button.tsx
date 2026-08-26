@@ -137,7 +137,8 @@ export function ReportButton({ target, className }: { target: ReportTarget; clas
         open={open}
         onClose={close}
         title="Report to your teacher"
-        className="h-auto max-h-[85vh] w-[min(32rem,92vw)]"
+        size="fit"
+        className="w-[min(32rem,92vw)]"
       >
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
           {submitted ? (

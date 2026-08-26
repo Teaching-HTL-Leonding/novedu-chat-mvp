@@ -305,12 +305,21 @@ conversation data — see Lifecycle and `docs/filtered-lists.md`).
 ## Chats, memory & the join model
 
 The Mastra memory **`resourceId` is the code** (set in the runtime route), and
-`threadId` is a per-chat UUID generated **server-side per page load**, pinned into
+`threadId` is a per-chat UUID generated **server-side**, pinned into
 the CopilotKit client via CopilotChat's `threadId` prop (explicit mode — the shared
 `ModuleChat` primitive owns this frontend wiring; see `docs/chat.md` for why the
 prop, not the configuration provider) and proven back to the runtime by the
 `x-thread-token` ownership token (nothing is persisted client-side — a reload starts
-a fresh thread). Relationships across the
+a fresh thread).
+
+Three places mint a thread, all server-side and all re-verifying the code first:
+`app/[code]/page.tsx` on every page load (tutor + writing), `startDiscussion`
+(`lib/quiz-actions.ts`) when a student opens a discussion on a graded question, and
+`startNewTutorThread` (`lib/tutor-actions.ts`) behind the tutor chat's **start
+over** button. A minted thread is never *replaced* — the abandoned one stays in
+`mastra_messages` and remains readable by the teacher.
+
+Relationships across the
 Drizzle- and Mastra-owned tables are **by value — never foreign keys**
 (`docs/database.md`):
 

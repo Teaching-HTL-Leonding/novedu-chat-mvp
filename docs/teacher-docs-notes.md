@@ -21,6 +21,18 @@ prose carries everything an editor needs.
 - The **`00-introduction/**` chapters are concept level**: no YAML field names
   and no configuration steps, those belong to the later chapters.
 
+## 00-introduction/03-tutors-overview
+
+- "Start over" clears the student's conversation, it does not delete it. The
+  earlier conversation stays visible to the teacher under the code, and a report
+  already filed on it still reaches them. Never let the chapter imply the student
+  can erase anything.
+- A restart makes a SECOND conversation. A student who chats before and after
+  counts twice in the code's statistics, so the number of conversations is not the
+  number of students. A restart with nothing typed into it does not count at all.
+- Only the tutor chat has the button. Do not generalise it to quizzes or writing
+  activities.
+
 ## 10-yaml-for-teachers/06-testing-the-grader
 
 - Never state a rate, a per-answer time or a total for a whole-course run: speed

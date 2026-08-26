@@ -23,6 +23,8 @@ You can also offer clickable starter questions on the empty screen. A student pi
 
 From there it's a normal back-and-forth conversation. Students ask in their own words, the tutor answers within your rules, and they can dig deeper for as long as they need. Nobody is graded, and there is no fixed path through the material.
 
+Students can also start a tutor conversation over. A button above the chat clears what they've discussed and begins a fresh conversation, and it asks them to confirm first. It helps when a conversation has drifted off topic, or when a student wants to approach a question again from the beginning. The tutor won't remember anything from the earlier conversation, but you still see that conversation under the code, and a student who chats both before and after starting over counts as two conversations in your statistics.
+
 ## How you shape a tutor
 
 Everything the tutor does comes from instructions you write. Typical instructions cover:

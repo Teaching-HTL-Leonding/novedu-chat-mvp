@@ -73,6 +73,19 @@ credentials (Azure SQL / SCCH / Azure Blob Storage) must never run on a fork
   session cookies — see `docs/auth.md`).
 - A unit test that needs Web `fetch` types or to import a server route uses the
   per-file pragma `// @vitest-environment node` (still in the `unit` project).
+- The `component` project loads **no global CSS**: tests see the UA stylesheet
+  plus inline styles only, which is all a behavioral test needs. A test that
+  **measures layout** (sizes, positions, wrapping, overflow) must itself
+  `import "@/app/globals.css"` — without it the UA's own rules (e.g.
+  `dialog { height: fit-content }`) can satisfy geometry assertions vacuously.
+  This stays a per-file opt-in, not a `setupFiles` default: 20+ behavioral
+  files don't need it, and Tailwind only generates utilities used in
+  `app`/`components` — a class that appears only in a test compiles to
+  nothing, so harness geometry uses inline styles (`docs/styling.md`) and a
+  global import would not make test-side classes real anyway. Prove any new
+  layout assertion is non-vacuous: reintroduce the fault it guards and watch
+  it fail (see `tests/component/list-overflow.browser.test.tsx`,
+  `dialog-shell.browser.test.tsx`, `image-lightbox.browser.test.tsx`).
 
 ## Test fixtures
 

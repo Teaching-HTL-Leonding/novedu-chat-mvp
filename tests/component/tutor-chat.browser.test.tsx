@@ -42,7 +42,15 @@ vi.mock("@copilotkit/react-core/v2", () => {
 // server actions; mock them so the browser bundle doesn't pull next/cache.
 vi.mock("@/lib/report-actions", () => ({ submitChatReport: vi.fn(), submitQuizReport: vi.fn() }));
 
+// Same for the "start over" action — the real one is server-only (node:crypto,
+// the database). Its own contract is tested in lib/tutor-actions.unit.test.ts;
+// here it is a seam, so these tests assert what the SURFACE does with the thread
+// it gets back.
+const startNewTutorThread = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/tutor-actions", () => ({ startNewTutorThread }));
+
 import { TutorChat } from "@/app/tutor-chat";
+import { submitChatReport } from "@/lib/report-actions";
 
 const TUTOR_CODE = "a1b2c3d4e5";
 const THREAD_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
@@ -76,12 +84,13 @@ test("renders the shared chat primitive and nothing above it", async () => {
   expect(document.querySelector("details")).toBeNull();
 });
 
-test("hands ModuleChat the tutor agent, code-keyed provider, threadId and headers", async () => {
+test("hands ModuleChat the tutor agent, code+thread-keyed provider, threadId and headers", async () => {
   await renderTutorChat();
 
   expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({
     agentId: "tutor",
-    providerKey: TUTOR_CODE,
+    // Both halves: the code scopes the memory, the thread is the reset boundary.
+    providerKey: `${TUTOR_CODE}:${THREAD_ID}`,
     threadId: THREAD_ID,
     headers: RUNTIME_HEADERS,
   });
@@ -214,4 +223,116 @@ test("a failed upload shows a dismissible notice", async () => {
 
   await screen.getByRole("button", { name: "Dismiss" }).click();
   expect(screen.getByRole("alert").query()).toBeNull();
+});
+
+// "Start over" — the surface's one piece of owned state. The action is mocked
+// (above); what matters here is that a confirmed restart moves the thread, its
+// token, the provider key and the report target TOGETHER, and that nothing moves
+// before the student confirms or when the action fails.
+
+const NEW_THREAD = {
+  threadId: "9c858901-8a57-4791-81fe-4c455b099bc9",
+  threadToken: "cafebabe".repeat(8),
+};
+
+/** Opens the confirm dialog and clicks its "Start over" action. */
+async function confirmStartOver(screen: Awaited<ReturnType<typeof renderTutorChat>>) {
+  await screen.getByRole("button", { name: "Start over" }).click();
+  await screen.getByRole("dialog").getByRole("button", { name: "Start over" }).click();
+}
+
+test("the toolbar offers a labelled start-over control with a tooltip", async () => {
+  const screen = await renderTutorChat();
+
+  const button = screen.getByRole("button", { name: "Start over" });
+  await expect.element(button).toBeVisible();
+  // The icon is decorative; aria-label names the control and title is the tooltip.
+  await expect.element(button).toHaveAttribute("title", "Start over");
+});
+
+test("opening the confirmation changes nothing until the student confirms", async () => {
+  startNewTutorThread.mockResolvedValue({ ok: true, ...NEW_THREAD });
+  const screen = await renderTutorChat();
+
+  await screen.getByRole("button", { name: "Start over" }).click();
+
+  await expect.element(screen.getByRole("dialog")).toBeVisible();
+  expect(startNewTutorThread).not.toHaveBeenCalled();
+  expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({ threadId: THREAD_ID });
+});
+
+test("confirming swaps in the new thread, its token and the provider key", async () => {
+  startNewTutorThread.mockResolvedValue({ ok: true, ...NEW_THREAD });
+  const screen = await renderTutorChat();
+
+  await confirmStartOver(screen);
+
+  expect(startNewTutorThread).toHaveBeenCalledExactlyOnceWith({ code: TUTOR_CODE });
+  expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({
+    threadId: NEW_THREAD.threadId,
+    // The remount boundary — this is what discards the browser's message list.
+    providerKey: `${TUTOR_CODE}:${NEW_THREAD.threadId}`,
+    headers: { "x-code": TUTOR_CODE, "x-thread-token": NEW_THREAD.threadToken },
+  });
+});
+
+test("a report filed after a restart targets the NEW conversation", async () => {
+  startNewTutorThread.mockResolvedValue({ ok: true, ...NEW_THREAD });
+  vi.mocked(submitChatReport).mockResolvedValue({ ok: true });
+  const screen = await renderTutorChat();
+
+  await confirmStartOver(screen);
+
+  // Drive a real report through: the dialog's own contract lives in
+  // report-button.browser.test.tsx — what matters here is the target it carries,
+  // which must never be the abandoned thread.
+  await screen.getByRole("button", { name: "Report" }).click();
+  await screen.getByRole("button", { name: "Good" }).click();
+  await screen.getByRole("button", { name: "Send report" }).click();
+
+  expect(submitChatReport).toHaveBeenCalledWith(
+    expect.objectContaining({
+      code: TUTOR_CODE,
+      threadId: NEW_THREAD.threadId,
+      threadToken: NEW_THREAD.threadToken,
+    }),
+  );
+});
+
+test("a stale upload notice does not survive the restart", async () => {
+  startNewTutorThread.mockResolvedValue({ ok: true, ...NEW_THREAD });
+  const screen = await renderTutorChat({ imageInput: true });
+
+  moduleChatSpy.mock.lastCall?.[0].attachments.onUploadFailed({
+    reason: "file-too-large",
+    file: new File([], "homework.png"),
+    message: "File exceeds the 5 MB limit",
+  });
+  await expect.element(screen.getByRole("alert")).toBeVisible();
+
+  await confirmStartOver(screen);
+
+  expect(screen.getByRole("alert").query()).toBeNull();
+});
+
+test("a failed restart shows the reason and leaves the conversation untouched", async () => {
+  startNewTutorThread.mockResolvedValue({
+    ok: false,
+    message: "This activity's availability window has ended.",
+  });
+  const screen = await renderTutorChat();
+
+  await confirmStartOver(screen);
+
+  const dialog = screen.getByRole("dialog");
+  await expect.element(dialog).toBeVisible();
+  await expect
+    .element(dialog.getByText("This activity's availability window has ended."))
+    .toBeVisible();
+  // The student keeps the chat they had.
+  expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({
+    threadId: THREAD_ID,
+    providerKey: `${TUTOR_CODE}:${THREAD_ID}`,
+    headers: RUNTIME_HEADERS,
+  });
 });

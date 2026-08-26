@@ -88,12 +88,7 @@ export function ReportDetailButton({ report }: { report: ReportDetail }) {
       >
         <EyeIcon />
       </button>
-      <DialogShell
-        open={open}
-        onClose={() => setOpen(false)}
-        className="h-auto max-h-[85vh]"
-        title="Report details"
-      >
+      <DialogShell open={open} onClose={() => setOpen(false)} size="fit" title="Report details">
         <div className={DIALOG_BODY}>
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
             <FieldLabel>Reaction</FieldLabel>

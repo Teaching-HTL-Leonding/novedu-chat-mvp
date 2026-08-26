@@ -1,11 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ReportButton } from "@/components/report-button";
 import { Button } from "@/components/ui/button";
 import { IMAGE_ACCEPT, MAX_IMAGE_BYTES } from "@/lib/answer-images";
-import { RUNTIME_THREAD_TOKEN_HEADER, type RuntimeHeaders } from "@/lib/runtime-headers";
+import {
+  buildRuntimeHeaders,
+  RUNTIME_THREAD_TOKEN_HEADER,
+  type RuntimeHeaders,
+} from "@/lib/runtime-headers";
 import type { ExampleQuestion } from "@/lib/tutors";
+import { StartOverButton } from "./_tutor/start-over-button";
 import { useTutorWelcomeView } from "./_tutor/welcome-view";
 import { ModuleChat } from "./module-chat";
 
@@ -20,6 +25,12 @@ import { ModuleChat } from "./module-chat";
 //
 // The attachment limits are shared with the quiz module's photo answers
 // (lib/answer-images.ts) — see there for why 5 MB.
+//
+// The thread is the one piece of server state this surface OWNS after mount:
+// "start over" swaps in a freshly minted (threadId, threadToken) pair, so the
+// props below only SEED it. Everything that identifies the conversation — the
+// runtime headers, the report target, the provider remount key — is derived from
+// that state, never from the props, so a restart moves them all together.
 
 export function TutorChat({
   code,
@@ -30,13 +41,15 @@ export function TutorChat({
   description,
   exampleQuestions = [],
 }: {
-  /** The code the chat was opened with — keys the provider per code. */
+  /** The code the chat was opened with — half of the provider key. */
   code: string;
   /**
    * Server-generated Mastra thread id, signed into the `x-thread-token`
    * runtime header — the runtime rejects any other threadId for this session.
+   * The INITIAL thread only; "start over" replaces it (see below).
    */
   threadId: string;
+  /** Carries the initial thread's ownership token; re-derived after a restart. */
   runtimeHeaders: RuntimeHeaders;
   /** Tutor `llm.imageInput`: students may attach images (vision-capable model). */
   imageInput: boolean;
@@ -51,6 +64,19 @@ export function TutorChat({
   // Rejected uploads (too large, wrong type) call onUploadFailed and silently
   // drop the file — without this notice the student would never learn why.
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // The live conversation, seeded from the server render and replaced wholesale
+  // by "start over". Both halves move together — a token only ever proves the
+  // thread it was signed for.
+  const [thread, setThread] = useState({
+    threadId,
+    threadToken: runtimeHeaders[RUNTIME_THREAD_TOKEN_HEADER],
+  });
+  // Memoized so the provider sees a stable headers object between renders and
+  // a NEW one exactly when the thread changes.
+  const headers = useMemo(
+    () => buildRuntimeHeaders(code, thread.threadToken),
+    [code, thread.threadToken],
+  );
 
   return (
     <>
@@ -66,25 +92,37 @@ export function TutorChat({
         </div>
       ) : null}
 
-      {/* Report the conversation to the teacher. The thread-ownership token
-          travels in the runtime headers already handed to this surface — no prop
-          drilling — and the server action re-verifies it over (code, oid, threadId). */}
-      <div className="mx-5 mb-2 flex shrink-0 justify-end">
+      {/* The chat toolbar. "Start over" mints a fresh thread server-side and we
+          swap it in here; the report always targets the CURRENT conversation,
+          and its server action re-verifies the token over (code, oid, threadId). */}
+      <div className="mx-5 mb-2 flex shrink-0 items-center justify-end gap-2">
+        <StartOverButton
+          code={code}
+          onStarted={(next) => {
+            setThread(next);
+            // A banner about a file the previous conversation rejected must not
+            // outlive that conversation.
+            setUploadError(null);
+          }}
+        />
         <ReportButton
           target={{
             kind: "chat",
             code,
-            threadId,
-            threadToken: runtimeHeaders[RUNTIME_THREAD_TOKEN_HEADER],
+            threadId: thread.threadId,
+            threadToken: thread.threadToken,
           }}
         />
       </div>
 
       <ModuleChat
         agentId="tutor"
-        providerKey={code}
-        threadId={threadId}
-        headers={runtimeHeaders}
+        // Keyed by code AND thread: "start over" changes the thread half, which
+        // remounts the provider and discards the browser's message list — that
+        // remount IS the reset (see providerKey in app/module-chat.tsx).
+        providerKey={`${code}:${thread.threadId}`}
+        threadId={thread.threadId}
+        headers={headers}
         // Tutor needs no height/padding delta: ModuleChat's base container matches it.
         labels={title ? { welcomeMessageText: title } : undefined}
         chatView={chatView}

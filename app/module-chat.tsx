@@ -49,8 +49,9 @@ export type ModuleChatProps = {
   headers: RuntimeHeaders;
   /**
    * Remount boundary for the provider: changing it starts a fresh thread.
-   * Tutor/writing key by code (per-code memory scope); quiz keys by threadId
-   * (a new discussion per question).
+   * Writing keys by code (per-code memory scope); quiz keys by threadId (a new
+   * discussion per question); tutor keys by BOTH — the code scopes the memory
+   * and the thread half is what its student-facing "start over" moves.
    */
   providerKey: string;
   /**
