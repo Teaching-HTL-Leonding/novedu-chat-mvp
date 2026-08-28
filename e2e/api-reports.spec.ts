@@ -1,8 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
-import { importJWK, SignJWT } from "jose";
-import { API_AUTH_KID, API_AUTH_PRIVATE_JWK_PATH } from "./api-auth.constants";
+import { mintToken } from "./api-auth.utils";
 
 // The /api/reports bearer channel's ACCESS CONTROL over real HTTP: the
 // proxy-matcher exclusion (a bare, cookie-less request gets 401 from the route,
@@ -25,24 +22,6 @@ test.use({ storageState: { cookies: [], origins: [] } });
 // A syntactically valid UUID for the show route — the auth gate fires long
 // before the id is ever looked up, so its value is irrelevant here.
 const SOME_UUID = "00000000-0000-0000-0000-000000000000";
-
-async function mintNonTeacher(): Promise<string> {
-  loadEnvConfig(process.cwd());
-  const tenantId = process.env.AZURE_TENANT_ID;
-  const clientId = process.env.AZURE_CLIENT_ID;
-  if (!tenantId || !clientId) throw new Error("AZURE_TENANT_ID / AZURE_CLIENT_ID missing in env");
-
-  const privateJwk = JSON.parse(await readFile(API_AUTH_PRIVATE_JWK_PATH, "utf8"));
-  const key = await importJWK(privateJwk, "RS256");
-  const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ scp: "cli.access", oid: "e2e-api-oid", name: "E2E Api User", groups: [] })
-    .setProtectedHeader({ alg: "RS256", kid: API_AUTH_KID })
-    .setIssuer(`https://login.microsoftonline.com/${tenantId}/v2.0`)
-    .setAudience(clientId)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 300)
-    .sign(key);
-}
 
 test("bare GET /api/reports → 401 with WWW-Authenticate, not a sign-in redirect", async ({
   request,
@@ -72,7 +51,7 @@ test("bare POST /api/reports/resolve → 401 with WWW-Authenticate, not a sign-i
 });
 
 test("valid non-teacher token → 403 on all three /api/reports routes", async ({ request }) => {
-  const headers = { authorization: `Bearer ${await mintNonTeacher()}` };
+  const headers = { authorization: `Bearer ${await mintToken()}` };
 
   const list = await request.get("/api/reports", { headers });
   expect(list.status()).toBe(403);

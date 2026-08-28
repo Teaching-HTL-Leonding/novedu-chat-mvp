@@ -1,8 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
-import { importJWK, SignJWT } from "jose";
-import { API_AUTH_KID, API_AUTH_PRIVATE_JWK_PATH } from "./api-auth.constants";
+import { mintToken } from "./api-auth.utils";
 import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
 
 // @live-db lifecycle of the /api/reports bearer channel over real HTTP against
@@ -29,32 +26,6 @@ import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
 // Dev compilation of /[code] + the routes + DB round-trips; a report references a
 // zero-message thread, so no LLM latency is involved.
 test.setTimeout(120_000);
-
-async function mintTeacher(): Promise<string> {
-  loadEnvConfig(process.cwd());
-  const tenantId = process.env.AZURE_TENANT_ID;
-  const clientId = process.env.AZURE_CLIENT_ID;
-  const teacherGroup = process.env.TEACHER_GROUP_ID;
-  if (!tenantId || !clientId || !teacherGroup) {
-    throw new Error("AZURE_TENANT_ID / AZURE_CLIENT_ID / TEACHER_GROUP_ID missing in env");
-  }
-
-  const privateJwk = JSON.parse(await readFile(API_AUTH_PRIVATE_JWK_PATH, "utf8"));
-  const key = await importJWK(privateJwk, "RS256");
-  const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({
-    scp: "cli.access",
-    oid: "e2e-api-oid",
-    name: "E2E Api Teacher",
-    groups: [teacherGroup],
-  })
-    .setProtectedHeader({ alg: "RS256", kid: API_AUTH_KID })
-    .setIssuer(`https://login.microsoftonline.com/${tenantId}/v2.0`)
-    .setAudience(clientId)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 600)
-    .sign(key);
-}
 
 // Best-effort cleanup: deleteCode drops only the code row, so the report rows are
 // removed explicitly (a raw code delete does NOT cascade to reports the way the
@@ -101,7 +72,9 @@ test("file a chat report through the UI, then list → show → resolve it over 
   // ---------------------------------------------------------------------------
   // TEACHER — drive the bearer API over HTTP with a minted teacher token.
   // ---------------------------------------------------------------------------
-  const headers = { authorization: `Bearer ${await mintTeacher()}` };
+  const headers = {
+    authorization: `Bearer ${await mintToken({ teacher: true, name: "E2E Api Teacher", ttlSeconds: 600 })}`,
+  };
 
   // LIST: mine=0 (the code's creator is the e2e mint identity, not the teacher
   // token's oid), q=marker narrows the DB-side search to this run's row.

@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Fake drizzle handle: just enough of the fluent query API for the key store's
@@ -26,6 +26,11 @@ const fake = vi.hoisted(() => {
     // The ORDER BY terms of the most recent list query, so a test can pin the
     // newest-first ordering.
     order: [] as unknown[],
+    // The WHERE terms of the most recent SELECT. Captured because the predicate
+    // IS the authentication here: without it `lookupCodingKey` would answer with
+    // whichever key row happens to come back first, and a behavior-only test
+    // (seed one row, expect that row) could never tell the difference.
+    where: [] as unknown[],
     // The drizzle table objects passed to db.delete(), in call order.
     deletedTables: [] as unknown[],
   };
@@ -49,7 +54,13 @@ const fake = vi.hoisted(() => {
     };
   };
   const fromTail = () => {
-    const tail = { leftJoin: () => tail, where: () => queryTail() };
+    const tail = {
+      leftJoin: () => tail,
+      where: (...conditions: unknown[]) => {
+        state.where = conditions;
+        return queryTail();
+      },
+    };
     return tail;
   };
   const select = () => ({ from: () => fromTail() });
@@ -106,6 +117,7 @@ beforeEach(() => {
   fake.state.selectErrors = [];
   fake.state.selectCalls = 0;
   fake.state.order = [];
+  fake.state.where = [];
   fake.state.deletedTables = [];
 });
 
@@ -276,6 +288,21 @@ describe("lookupCodingKey", () => {
   it("misses on an unknown (but well-formed) key", async () => {
     fake.state.rows = [];
     await expect(lookupCodingKey(generateCodingKey())).resolves.toEqual({ status: "miss" });
+  });
+
+  // The predicate is the authentication: this lookup is what maps a bearer to
+  // the (code, userId) pair the coding routes then trust. Seeding one row and
+  // expecting it back cannot catch a dropped WHERE — the fake would hand the
+  // same row to a store that selected the whole table — so pin the term itself.
+  // Without it, dropping `.where(...)` returns the FIRST key row in the table,
+  // i.e. any other student's activity and identity (docs/coding.md).
+  it("looks the key up BY the key, not by whatever row comes back first", async () => {
+    const apiKey = generateCodingKey();
+    fake.state.rows = [{ code: "a1b2c3d4e5", userId: "oid-student-1" }];
+
+    await lookupCodingKey(apiKey);
+
+    expect(fake.state.where).toEqual([eq(codingKeys.apiKey, apiKey)]);
   });
 
   // The proxy's fast path: junk bearers — an activity code among them — never

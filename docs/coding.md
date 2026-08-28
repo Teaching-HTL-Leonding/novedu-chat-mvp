@@ -356,6 +356,13 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   **against the completions route's own responses** (the same mocks, byte-for-byte
   on the opaque 401 and the `key_inactive` 403), and a success calls no `fetch`, no
   `loadCoding` and no `recordLlmUsage`.
+- **`e2e/api-gate.spec.ts`** is the hermetic HTTP half, and the only coverage of
+  these routes that runs in CI: a bare request to BOTH public routes gets the
+  OpenAI-shaped 401 from the route itself rather than a redirect to the Microsoft
+  sign-in page (i.e. the `api/coding(?:/|$)` exclusion in `proxy.ts` is intact),
+  the two rejections are byte-identical so the cheap `models` check is no oracle,
+  and a non-Bearer scheme is refused like no key at all. All of it lands before
+  `lookupCodingKey` touches SQL, which is what keeps it hermetic.
 - The real end-to-end path is **`e2e/coding-agent.spec.ts`** (`@live-llm`, local
   only): drives the REAL `pi` coding agent (`@earendil-works/pi-coding-agent`, a
   pinned devDependency — little-coder's engine) through the endpoint once per

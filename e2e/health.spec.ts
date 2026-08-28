@@ -29,14 +29,6 @@ test.describe("as a student", () => {
 
     expect(res.status()).toBe(403);
   });
-
-  test("the nav menu hides the Health entry", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: "Open navigation menu" }).click();
-
-    await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Health" })).toHaveCount(0);
-  });
 });
 
 test.describe("as a teacher", () => {

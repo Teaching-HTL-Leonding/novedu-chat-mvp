@@ -786,6 +786,7 @@ dashboard, with NULL code metadata.
 | The Markdown report renderer, flagged + tutor sections included | `cli/src/report-md.unit.test.ts` |
 | The command (requests, kind inference, mixed batches, override pairs, globs) | `cli/src/commands/eval.unit.test.ts` |
 | The built binary against the fixtures grader + judge + tutor | `cli/test/eval.integration.test.ts` |
+| The proxy exclusion + teacher gate over real HTTP, in CI | `e2e/api-gate.spec.ts` |
 | **`@live-llm`** — does a REAL judge catch planted violations, per kind? | `e2e/eval-judge.live.spec.ts` |
 
 All but the last are hermetic — no LLM, no DB, no secrets. The fixtures server
@@ -806,6 +807,12 @@ The judge's degrade breaker is covered ONLY in `cli/src/eval-run.unit.test.ts`, 
 retry seams are in-process: tripping it through the built binary would mean exhausting
 real retry budgets (minutes of backoff) or shipping a test-only timing override in the
 CLI, and neither is worth an integration re-proof of unit-tested logic.
+
+The three eval routes' ACCESS CONTROL is the one part of this that needs neither a
+model nor a database: `e2e/api-gate.spec.ts` drives each of them over real HTTP with an
+empty cookie state, proving the `api/eval(?:/|$)` exclusion in `proxy.ts` still lets the
+route answer 401 itself instead of redirecting to sign-in, and that a valid non-teacher
+token gets 403. It runs in CI, which the `@live-llm` spec below never does.
 
 `e2e/eval-judge.live.spec.ts` is the ONE `@live` spec the feature earns (local-only,
 excluded from CI like every `@live-llm` spec): every other layer is plumbing that needs no

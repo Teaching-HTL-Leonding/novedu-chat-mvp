@@ -80,6 +80,11 @@ jobs:
 
       - run: npm run test:component
 
+      # The CLI's integration suite (cli/test/*): drives the built binary against
+      # the offline fixtures server, so it needs no secret and no infra. Its
+      # colocated unit tests already ride `test:unit`; this is the other half.
+      - run: npm run test:cli
+
       - run: npm run build
 
       # Teacher guide (Astro static export) — fails fast on schema violations and

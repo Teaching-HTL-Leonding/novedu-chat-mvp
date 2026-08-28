@@ -1,10 +1,12 @@
 import { expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 
-// End-to-end coverage for the YAML File hosting feature. The authorization gate
-// and the create-form validation behavior are hermetic (run in CI). The full
+// End-to-end coverage for the YAML File hosting feature: the create-form
+// validation behavior, which is hermetic (runs in CI). The full
 // create → list → update → delete cycle is `@live` and lives in
 // `file-and-tutor-code-crud.spec.ts` (which also covers the tutor-link CRUD).
+// The authorization gate — /files denied for a student, the nav entry hidden —
+// is asserted once for every teacher-only surface in `permissions.spec.ts`.
 
 // Replace the CodeMirror document with `text`. `insertText` inserts verbatim
 // (like a paste) so YAML indentation/newlines survive — unlike per-key typing,
@@ -16,23 +18,6 @@ async function setEditorContent(page: Page, text: string): Promise<void> {
   await page.keyboard.press("Delete");
   await page.keyboard.insertText(text);
 }
-
-test.describe("as a student", () => {
-  // Runs on the project-default (student) storage state.
-  test("the YAML Files page is denied", async ({ page }) => {
-    await page.goto("/files");
-
-    await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
-    await expect(page.getByRole("table")).toHaveCount(0);
-  });
-
-  test("the nav menu hides the YAML Files entry", async ({ page }) => {
-    await page.goto("/");
-    await page.getByRole("button", { name: "Open navigation menu" }).click();
-
-    await expect(page.getByRole("link", { name: "YAML Files" })).toHaveCount(0);
-  });
-});
 
 test.describe("as a teacher", () => {
   test.use({ storageState: TEACHER_STORAGE_STATE });
