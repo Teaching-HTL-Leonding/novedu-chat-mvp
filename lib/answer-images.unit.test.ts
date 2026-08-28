@@ -51,6 +51,14 @@ describe("validateAnswerImages", () => {
     ["a plain URL", "https://example.com/pic.png"],
     ["a non-base64 data URL", "data:image/png,rawpixels"],
     ["arbitrary text", "not an image at all"],
+    // Everything now arrives through `normalizeStudentImage`, which emits JPEG
+    // and passes through only already-fine JPEG/PNG. Any other container means
+    // the client skipped normalization — and the one thing we know about such
+    // bytes is that the model's own decoder may not read them.
+    ["a container the normalizer never emits", "data:image/webp;base64,AAAA"],
+    ["an animated GIF", "data:image/gif;base64,AAAA"],
+    ["an SVG, which is markup rather than pixels", "data:image/svg+xml;base64,AAAA"],
+    ["HEIC, which no server-side decoder here can open", "data:image/heic;base64,AAAA"],
   ])("rejects %s", (_label, value) => {
     const result = validateAnswerImages([value], true);
     expect(result).toEqual({ ok: false, message: "The submitted photos could not be read." });

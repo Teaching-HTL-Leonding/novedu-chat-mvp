@@ -111,11 +111,13 @@ Read before touching: `lib/llm/**`, `app/mastra/scch.ts`, `app/mastra/model-entr
 
 ### Chat (CopilotKit surface) → `docs/chat.md`
 
-Read before touching: `app/module-chat.tsx`, the per-module chat components, the transcript `conversation-view.tsx`, `lib/runtime-headers.ts`, `app/api/copilotkit/reasoning-runner.ts`, `app/mastra/reasoning-processor.ts`.
+Read before touching: `app/module-chat.tsx`, the per-module chat components, the transcript `conversation-view.tsx`, `lib/runtime-headers.ts`, `app/api/copilotkit/reasoning-runner.ts`, `app/api/copilotkit/run-error-runner.ts`, `app/mastra/reasoning-processor.ts`, `lib/image-normalize.ts`, `lib/image-report.ts`, `app/image-check/**`.
 
 - `ModuleChat` is the single live-chat primitive; the read-only `ConversationView` is NOT a `ModuleChat` — no agent ever runs there.
 - Reasoning is stripped server-side for non-teachers (security block). The runner delegates to a 4-method abstract `AgentRunner` — a guard test reads that method list off the installed package's type declaration, so **wrap any new method before a CopilotKit bump**. The global `messageView.cursor` note ("Generating…") shows for the whole run, for everyone.
 - Reasoning is **live-only**: `reasoningStrippingProcessor` (`app/mastra/reasoning-processor.ts`) is on the `outputProcessors` of every agent with `memory:`, so `mastra_messages` never stores a reasoning part. Adding a memory-backed agent means adding it there too.
+- EVERY student photo (tutor + quiz) goes through `normalizeStudentImage` in the browser before it is inlined. Two DIFFERENT limits: `MAX_RAW_IMAGE_BYTES` (30 MB) bounds what may be PICKED, `MAX_IMAGE_BYTES` (5 MB) what may be SENT — CopilotKit checks `maxSize` against the ORIGINAL file, so it carries the RAW one. Canvas code never enters `lib/answer-images.ts` (a `"use server"` module imports it).
+- A failed turn is in-band on an already-200 stream, so it is reported by the `RunErrorReportingRunner` decorator, which wraps BOTH runner variants; the `RUN_ERROR` message itself never reaches telemetry.
 
 ### App-hosted YAML files → `docs/files.md`
 

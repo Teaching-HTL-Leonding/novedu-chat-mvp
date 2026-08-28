@@ -2,6 +2,7 @@ import { MastraAgent } from "@ag-ui/mastra";
 import { CopilotRuntime, createCopilotEndpoint, InMemoryAgentRunner } from "@copilotkit/runtime/v2";
 import { after } from "next/server";
 import { ReasoningStrippingRunner } from "@/app/api/copilotkit/reasoning-runner";
+import { RunErrorReportingRunner } from "@/app/api/copilotkit/run-error-runner";
 import { mastra } from "@/app/mastra";
 import { auth } from "@/auth";
 import { codeModules } from "@/lib/code-modules/registry";
@@ -29,6 +30,26 @@ const THREAD_REJECTION_MESSAGE =
 // Belt-and-braces shape check before the HMAC; the page issues UUIDs but the
 // token (not this pattern) is what actually proves ownership.
 const THREAD_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
+
+// Ceiling on a run/connect body. The client caps what it SENDS (a normalized
+// photo is at most `MAX_IMAGE_BYTES`, lib/answer-images.ts), but the client is
+// never trusted and nothing on this path checked the size at all — the browser
+// is now allowed to PICK a file several times larger than it may send, so the
+// gap between the two is exactly where an unbounded POST would live. Sized to
+// hold a turn's text plus a few base64-inlined photos with room to spare
+// (base64 inflates by a third); anything past it is not a student typing.
+const MAX_RUN_BODY_BYTES = 24 * 1024 * 1024;
+
+/**
+ * `true` when the request DECLARES a body larger than we will ever process.
+ * Content-Length only — a cheap header check that rejects before the body is
+ * read or parsed. A chunked request without the header simply falls through:
+ * the point is to stop the obvious case early, not to be a byte-exact quota.
+ */
+function declaresOversizedBody(req: Request): boolean {
+  const declared = Number(req.headers.get("content-length"));
+  return Number.isFinite(declared) && declared > MAX_RUN_BODY_BYTES;
+}
 
 // CopilotKit/AG-UI re-sends the ENTIRE client-side conversation on every run,
 // and Mastra persists whatever messages it is handed (each with a fresh id) —
@@ -214,6 +235,14 @@ async function handler(req: Request): Promise<Response> {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Before the body is touched: a run carrying more than any real turn could.
+  if (declaresOversizedBody(req)) {
+    return Response.json(
+      { error: "This message is too large to send. Try again with fewer or smaller photos." },
+      { status: 413 },
+    );
+  }
+
   // INFO is runtime METADATA — the agent registry and AG-UI capabilities, with
   // NO chat data — gated by AUTHENTICATION ALONE. The teacher's read-only
   // conversation viewer pings `/info` on mount without any access header, so
@@ -287,7 +316,14 @@ async function handler(req: Request): Promise<Response> {
     }),
     // A teacher gets the library's own runner — the very one the stripping runner
     // wraps — so their stream is the unmodified behaviour, reasoning included.
-    runner: showReasoning ? new InMemoryAgentRunner() : new ReasoningStrippingRunner(),
+    // BOTH are wrapped for failure reporting: a turn that dies inside the agent
+    // does so in-band, on a stream this route has already answered 200 for, so
+    // this decorator is the only place it can be seen (app/api/copilotkit/
+    // run-error-runner.ts). It observes and never alters the stream.
+    runner: new RunErrorReportingRunner(
+      showReasoning ? new InMemoryAgentRunner() : new ReasoningStrippingRunner(),
+      entry.module,
+    ),
   });
 
   // createCopilotEndpoint returns a Hono app whose `.fetch` is a standard

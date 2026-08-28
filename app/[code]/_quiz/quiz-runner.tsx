@@ -2,11 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ContentImage } from "@/components/content-image";
+import { ImageErrorNotice } from "@/components/image-error-notice";
 import { ReportButton } from "@/components/report-button";
 import { Button } from "@/components/ui/button";
 import { DialogShell } from "@/components/ui/dialog-shell";
 import { FieldError } from "@/components/ui/field";
-import { IMAGE_ACCEPT, MAX_IMAGES_PER_ANSWER, readAnswerImage } from "@/lib/answer-images";
+import { MAX_IMAGES_PER_ANSWER } from "@/lib/answer-images";
+import {
+  IMAGE_ACCEPT_WITH_EXTENSIONS,
+  type ImageDiagnostics,
+  normalizeStudentImage,
+} from "@/lib/image-normalize";
 import { startDiscussion, submitAnswer } from "@/lib/quiz-actions";
 import { buildQuestionSequence } from "@/lib/quiz-sequence";
 import {
@@ -66,10 +72,16 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   // Photo answers (only offered when the current question's `imageInput` is
-  // true): validated client-side by the shared helper, sent as data URLs, and
-  // re-validated server-side. `imageError` is the dismissible upload notice.
+  // true): normalized client-side by the shared helper — decoded, straightened,
+  // resized, re-encoded (lib/image-normalize.ts) — sent as data URLs, and
+  // re-validated server-side. `imageError` is the dismissible upload notice; it
+  // carries the per-file diagnostics so a student can hand a teacher something
+  // more useful than "it did not work".
   const [images, setImages] = useState<{ name: string; dataUrl: string }[]>([]);
-  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<{
+    messages: string[];
+    diagnostics: ImageDiagnostics[];
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [grading, setGrading] = useState(false);
   const [verdict, setVerdict] = useState<{ result: QuizVerdict; feedback: string } | null>(null);
@@ -110,6 +122,7 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
   async function handleAddImages(files: FileList | null) {
     if (!files || files.length === 0) return;
     const errors: string[] = [];
+    const diagnostics: ImageDiagnostics[] = [];
     const accepted: { name: string; dataUrl: string }[] = [];
     let count = images.length;
     for (const file of Array.from(files)) {
@@ -117,16 +130,20 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
         errors.push(`${file.name}: at most ${MAX_IMAGES_PER_ANSWER} photos per answer.`);
         continue;
       }
-      const read = await readAnswerImage(file);
+      const read = await normalizeStudentImage(file);
+      diagnostics.push(read.diagnostics);
       if (read.ok) {
         accepted.push({ name: file.name, dataUrl: read.dataUrl });
         count += 1;
       } else {
-        errors.push(read.message);
+        errors.push(`${file.name}: ${read.message}`);
       }
     }
     if (accepted.length > 0) setImages((prev) => [...prev, ...accepted]);
-    setImageError(errors.length > 0 ? errors.join(" ") : null);
+    // Diagnostics for every picked file, not just the rejected ones: when a photo
+    // is accepted but the model still misreads it, what it was normalized TO is
+    // the interesting half.
+    setImageError(errors.length > 0 ? { messages: errors, diagnostics } : null);
   }
 
   async function handleSubmit(question: ResolvedQuizQuestion) {
@@ -227,15 +244,13 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
             placeholder="Type your answer…"
           />
           {imageError ? (
-            <div
-              className="mb-3 flex items-center gap-3 rounded-lg border border-destructive/45 bg-destructive/10 px-3 py-2 text-sm"
-              role="alert"
-            >
-              <span className="wrap-anywhere min-w-0 flex-1">{imageError}</span>
-              <Button variant="outline" size="sm" onClick={() => setImageError(null)}>
-                Dismiss
-              </Button>
-            </div>
+            <ImageErrorNotice
+              className="mb-3"
+              diagnostics={imageError.diagnostics}
+              messages={imageError.messages}
+              onDismiss={() => setImageError(null)}
+              origin="quiz photo answer"
+            />
           ) : null}
           {images.length > 0 ? (
             <AnswerThumbnails
@@ -264,7 +279,7 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept={IMAGE_ACCEPT}
+                  accept={IMAGE_ACCEPT_WITH_EXTENSIONS}
                   multiple
                   className="hidden"
                   onChange={(event) => {

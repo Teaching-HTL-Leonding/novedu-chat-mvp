@@ -110,7 +110,10 @@ llm:
 Photo answers are **off by default**. A few things to know:
 
 - The model must be **vision-capable** (able to look at images). That also applies to any per-code model override on such a quiz.
-- Students can attach up to three photos per answer, 5 MB each. An answer may even be photo-only, with no typed text.
+- Students can attach up to three photos per answer. An answer may even be photo-only, with no typed text.
+- Novedu prepares each photo in the student's browser before the model sees it. Photos that a phone stored sideways are straightened, and very large photos are made smaller. Students can simply use their phone camera: an ordinary phone photo is fine, even though the original file is far bigger than what gets sent.
+- Some phone photo formats, HEIC above all, cannot be opened by every browser. A student whose photo cannot be read gets a message naming the format and what to change on the phone, together with details they can copy and send to you.
+- If a photo still does not work, ask the student to open the photo check page at `/image-check` on the device that took it, and to send you the text shown there. The photo is examined on their own device and is never uploaded.
 - The quiz-level flag is the default for all questions; an `imageInput` on a single question overrides it in either direction.
 
 ## The follow-up discussion

@@ -2,6 +2,11 @@ import type { ComponentProps } from "react";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import type { ModuleChat as ModuleChatType } from "@/app/module-chat";
+import {
+  IMAGE_ACCEPT_WITH_EXTENSIONS,
+  MAX_NORMALIZED_EDGE,
+  MAX_RAW_IMAGE_BYTES,
+} from "@/lib/image-normalize";
 
 // TutorChat is re-expressed on top of the shared ModuleChat primitive, so this
 // suite mocks ModuleChat away and asserts only what is unique to the tutor: the
@@ -98,15 +103,86 @@ test("hands ModuleChat the tutor agent, code+thread-keyed provider, threadId and
   expect(moduleChatSpy.mock.lastCall?.[0].chatView).toBeTypeOf("function");
 });
 
-test("enables image attachments (images only, 5 MB cap) when the tutor opts in", async () => {
+test("enables image attachments with the RAW pick ceiling when the tutor opts in", async () => {
   await renderTutorChat({ imageInput: true });
 
-  expect(moduleChatSpy.mock.lastCall?.[0].attachments).toMatchObject({
+  const attachments = moduleChatSpy.mock.lastCall?.[0].attachments;
+  expect(attachments).toMatchObject({
     enabled: true,
-    accept: "image/*",
-    maxSize: 5 * 1024 * 1024,
+    // Dot-extensions alongside image/*: a file handed over with an EMPTY MIME
+    // type (the iOS Files app does this) is dropped by CopilotKit's accept check
+    // BEFORE onUpload runs, where the normalizer could have identified it by its
+    // bytes. The extensions are the only way those files get a chance.
+    accept: IMAGE_ACCEPT_WITH_EXTENSIONS,
+    // The RAW ceiling, NOT the 5 MB send cap: CopilotKit tests maxSize against
+    // the ORIGINAL file before onUpload runs, so an ordinary 24 MP phone photo
+    // has to get past it in order to be resized below the send cap.
+    maxSize: MAX_RAW_IMAGE_BYTES,
   });
-  expect(moduleChatSpy.mock.lastCall?.[0].attachments.onUploadFailed).toBeTypeOf("function");
+  expect(attachments.onUpload).toBeTypeOf("function");
+  expect(attachments.onUploadFailed).toBeTypeOf("function");
+});
+
+// The whole point of the onUpload hook: what leaves the browser is never the
+// file the student picked.
+test("normalizes a picked photo before it is attached", async () => {
+  await renderTutorChat({ imageInput: true });
+  const attachments = moduleChatSpy.mock.lastCall?.[0].attachments;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 2400;
+  canvas.height = 1200;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  ctx.fillStyle = "#3366cc";
+  ctx.fillRect(0, 0, 2400, 1200);
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.9),
+  );
+  if (!blob) throw new Error("toBlob failed");
+
+  const source = await attachments.onUpload(new File([blob], "photo.jpg", { type: "image/jpeg" }));
+  expect(source.type).toBe("data");
+  expect(source.mimeType).toBe("image/jpeg");
+  // A BARE base64 payload, not a data URL — CopilotKit carries the media type
+  // in its own field and builds the URL itself.
+  expect(source.value.startsWith("data:")).toBe(false);
+
+  const decoded = new Image();
+  await new Promise((resolve, reject) => {
+    decoded.onload = resolve;
+    decoded.onerror = reject;
+    decoded.src = `data:${source.mimeType};base64,${source.value}`;
+  });
+  expect(decoded.naturalWidth).toBe(MAX_NORMALIZED_EDGE);
+});
+
+// A rejection the student can act on, plus the copyable block that turns "it
+// didn't work" into something a teacher can actually read.
+test("a photo the browser cannot decode explains itself and offers copyable details", async () => {
+  const screen = await renderTutorChat({ imageInput: true });
+  const attachments = moduleChatSpy.mock.lastCall?.[0].attachments;
+
+  const header = [0, 0, 0, 0x18, ...[..."ftypheic"].map((c) => c.charCodeAt(0))];
+  const heic = new File([new Uint8Array([...header, ...new Array(64).fill(0)])], "IMG_0042.heic", {
+    type: "image/heic",
+  });
+
+  // onUpload must THROW so CopilotKit drops the placeholder chip; the reason
+  // then arrives through onUploadFailed, exactly as the library does it.
+  let thrown = "";
+  try {
+    await attachments.onUpload(heic);
+  } catch (error) {
+    thrown = (error as Error).message;
+  }
+  expect(thrown).toContain("HEIC");
+  attachments.onUploadFailed({ reason: "upload-failed", file: heic, message: thrown });
+
+  const notice = screen.getByRole("alert");
+  await expect.element(notice).toBeVisible();
+  await expect.element(notice).toHaveTextContent("HEIC");
+  await expect.element(screen.getByText("Details for your teacher")).toBeVisible();
 });
 
 test("passes no attachments config when the tutor does not opt in", async () => {
@@ -214,12 +290,14 @@ test("a failed upload shows a dismissible notice", async () => {
   attachments.onUploadFailed({
     reason: "file-too-large",
     file: new File([], "homework.png"),
-    message: "File exceeds the 5 MB limit",
+    message: "File exceeds the maximum size of 30.0 MB",
   });
 
   const notice = screen.getByRole("alert");
   await expect.element(notice).toBeVisible();
-  await expect.element(notice).toHaveTextContent("homework.png: File exceeds the 5 MB limit");
+  // OUR wording REPLACES the library's: its message names the raw pick ceiling,
+  // an implementation detail a student cannot act on.
+  await expect.element(notice).toHaveTextContent("homework.png: this photo is too large to send");
 
   await screen.getByRole("button", { name: "Dismiss" }).click();
   expect(screen.getByRole("alert").query()).toBeNull();

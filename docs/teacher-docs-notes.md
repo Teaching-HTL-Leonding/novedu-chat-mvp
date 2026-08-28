@@ -79,6 +79,14 @@ prose carries everything an editor needs.
 - `question_count` bounds one attempt only, in the student's browser: it is not a
   server-enforced exam limit, nothing stops a reload starting a fresh attempt, and
   a repeated question is simply graded again.
+- Do NOT state a per-photo size limit. There are two different ones (what a
+  student may pick, and what is sent after the browser prepares the photo), and
+  quoting either invites a teacher to tell students a phone photo is too big when
+  it is not. The count (three per answer) is the only number worth giving.
+- Photo preparation happens in the STUDENT's browser, so describe it as something
+  that just happens, never as a step anyone configures. HEIC is the one format
+  worth naming: it is an iPhone default and the only common case that can fail
+  outright.
 
 ## 20-building-activities/07-fragments
 
