@@ -1,9 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { ImageErrorNotice } from "@/components/image-error-notice";
 import { ReportButton } from "@/components/report-button";
-import { Button } from "@/components/ui/button";
-import { IMAGE_ACCEPT, MAX_IMAGE_BYTES } from "@/lib/answer-images";
+import {
+  IMAGE_ACCEPT_WITH_EXTENSIONS,
+  type ImageDiagnostics,
+  MAX_RAW_IMAGE_BYTES,
+  normalizeStudentImage,
+} from "@/lib/image-normalize";
 import {
   buildRuntimeHeaders,
   RUNTIME_THREAD_TOKEN_HEADER,
@@ -23,14 +28,25 @@ import { ModuleChat } from "./module-chat";
 // which travels along on every runtime request so the backend can re-check it.
 // The client is never trusted.
 //
-// The attachment limits are shared with the quiz module's photo answers
-// (lib/answer-images.ts) — see there for why 5 MB.
+// IMAGES: every picked photo goes through `normalizeStudentImage` before it is
+// inlined into a run — see lib/image-normalize.ts for why (GitHub #26). Note the
+// TWO different size limits: CopilotKit checks `maxSize` against the ORIGINAL
+// File, before `onUpload` ever runs, so it must be the ceiling on what a phone
+// may hand us (`MAX_RAW_IMAGE_BYTES`); `MAX_IMAGE_BYTES` bounds what we SEND and
+// is enforced inside the normalizer, on its output. Setting `maxSize` to the
+// send cap is the bug that rejects an ordinary 24 MP phone photo outright.
 //
 // The thread is the one piece of server state this surface OWNS after mount:
 // "start over" swaps in a freshly minted (threadId, threadToken) pair, so the
 // props below only SEED it. Everything that identifies the conversation — the
 // runtime headers, the report target, the provider remount key — is derived from
 // that state, never from the props, so a restart moves them all together.
+
+/** The accumulated upload notice: one sentence per rejected file, plus what we learned about each. */
+interface UploadFailures {
+  messages: string[];
+  diagnostics: ImageDiagnostics[];
+}
 
 export function TutorChat({
   code,
@@ -61,9 +77,13 @@ export function TutorChat({
   exampleQuestions?: ExampleQuestion[];
 }) {
   const chatView = useTutorWelcomeView({ description, exampleQuestions });
-  // Rejected uploads (too large, wrong type) call onUploadFailed and silently
-  // drop the file — without this notice the student would never learn why.
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  // Rejected uploads (undecodable, too large, wrong type) call onUploadFailed and
+  // silently drop the file — without this notice the student would never learn why.
+  const [uploadFailures, setUploadFailures] = useState<UploadFailures | null>(null);
+  // `onUpload` knows WHY a file was rejected but must throw for CopilotKit to
+  // drop the placeholder chip; `onUploadFailed` is where the reason surfaces.
+  // The diagnostics ride between them here, so state is written in exactly one place.
+  const pendingDiagnostics = useRef<ImageDiagnostics | null>(null);
   // The live conversation, seeded from the server render and replaced wholesale
   // by "start over". Both halves move together — a token only ever proves the
   // thread it was signed for.
@@ -78,18 +98,23 @@ export function TutorChat({
     [code, thread.threadToken],
   );
 
+  function addFailure(message: string, diagnostics: ImageDiagnostics | null) {
+    setUploadFailures((prev) => ({
+      messages: [...(prev?.messages ?? []), message],
+      diagnostics: [...(prev?.diagnostics ?? []), ...(diagnostics ? [diagnostics] : [])],
+    }));
+  }
+
   return (
     <>
-      {uploadError ? (
-        <div
-          className="mx-5 mb-2 flex shrink-0 items-center gap-3 rounded-lg border border-destructive/45 bg-destructive/10 px-3 py-2 text-sm"
-          role="alert"
-        >
-          <span className="wrap-anywhere min-w-0 flex-1">{uploadError}</span>
-          <Button variant="outline" size="sm" onClick={() => setUploadError(null)}>
-            Dismiss
-          </Button>
-        </div>
+      {uploadFailures ? (
+        <ImageErrorNotice
+          className="mx-5 mb-2 shrink-0"
+          diagnostics={uploadFailures.diagnostics}
+          messages={uploadFailures.messages}
+          onDismiss={() => setUploadFailures(null)}
+          origin="tutor chat"
+        />
       ) : null}
 
       {/* The chat toolbar. "Start over" mints a fresh thread server-side and we
@@ -102,7 +127,7 @@ export function TutorChat({
             setThread(next);
             // A banner about a file the previous conversation rejected must not
             // outlive that conversation.
-            setUploadError(null);
+            setUploadFailures(null);
           }}
         />
         <ReportButton
@@ -130,9 +155,37 @@ export function TutorChat({
           imageInput
             ? {
                 enabled: true,
-                accept: IMAGE_ACCEPT,
-                maxSize: MAX_IMAGE_BYTES,
-                onUploadFailed: ({ file, message }) => setUploadError(`${file.name}: ${message}`),
+                accept: IMAGE_ACCEPT_WITH_EXTENSIONS,
+                maxSize: MAX_RAW_IMAGE_BYTES,
+                onUpload: async (file) => {
+                  const result = await normalizeStudentImage(file);
+                  pendingDiagnostics.current = result.diagnostics;
+                  if (!result.ok) throw new Error(result.message);
+                  // CopilotKit wants the bare base64 payload, with the media type
+                  // beside it — not the data URL the normalizer hands back.
+                  return {
+                    type: "data",
+                    value: result.dataUrl.slice(result.dataUrl.indexOf(",") + 1),
+                    mimeType: result.mimeType,
+                  };
+                },
+                onUploadFailed: ({ reason, file, message }) => {
+                  // REPLACE the library's stock English wording rather than
+                  // appending to it: it names the raw ceiling, which is an
+                  // implementation detail the student cannot act on.
+                  const diagnostics = pendingDiagnostics.current;
+                  pendingDiagnostics.current = null;
+                  if (reason === "upload-failed") {
+                    addFailure(message, diagnostics);
+                  } else if (reason === "file-too-large") {
+                    addFailure(
+                      `${file.name}: this photo is too large to send. Take it again at a lower resolution, or pick a smaller copy.`,
+                      null,
+                    );
+                  } else {
+                    addFailure(`${file.name}: only photos can be attached.`, null);
+                  }
+                },
               }
             : undefined
         }

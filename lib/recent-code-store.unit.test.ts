@@ -1,3 +1,4 @@
+import { and, eq, notInArray } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Fake drizzle handle covering the recents store's query shapes:
@@ -11,6 +12,11 @@ const fake = vi.hoisted(() => {
     insertError: undefined as unknown,
     updates: 0,
     deletes: 0,
+    // The WHERE terms of each DELETE, in call order. Captured because a prune's
+    // predicate is the only thing standing between "drop the overflow" and
+    // "drop the whole table": counting the call proves a DELETE happened, never
+    // that it was scoped.
+    deleteWhere: [] as unknown[][],
   };
   // The query tail is a lazy thenable (NOT an eager promise): the rejected
   // promise only comes into existence when the store actually awaits it, so
@@ -44,8 +50,9 @@ const fake = vi.hoisted(() => {
       }),
     }),
     delete: () => ({
-      where: async () => {
+      where: async (...conditions: unknown[]) => {
         state.deletes += 1;
+        state.deleteWhere.push(conditions);
       },
     }),
   };
@@ -53,6 +60,8 @@ const fake = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
+
+import { recentCodes } from "@/lib/db/schema";
 
 import { listRecentCodes, recordRecentCode, removeRecentCode } from "@/lib/recent-code-store";
 
@@ -71,6 +80,7 @@ beforeEach(() => {
   fake.state.insertError = undefined;
   fake.state.updates = 0;
   fake.state.deletes = 0;
+  fake.state.deleteWhere = [];
 });
 
 describe("listRecentCodes", () => {
@@ -95,6 +105,29 @@ describe("recordRecentCode", () => {
     ]);
     expect(fake.state.deletes).toBe(1); // prune
     expect(fake.state.updates).toBe(0);
+  });
+
+  // The prune is a DELETE with no LIMIT: its entire safety is the predicate.
+  // Counting the call (above) passes just as happily when the WHERE is dropped
+  // or loses a term — which would delete every OTHER user's recents, or this
+  // user's whole list rather than only the overflow. So pin both terms.
+  it("scopes the prune to this user AND to the codes outside the survivor set", async () => {
+    const survivors = [{ code: CODE }, { code: "b2c3d4e5f6" }];
+    fake.state.rows = survivors;
+
+    await recordRecentCode(USER, CODE);
+
+    expect(fake.state.deleteWhere).toEqual([
+      [
+        and(
+          eq(recentCodes.userId, USER),
+          notInArray(
+            recentCodes.code,
+            survivors.map((row) => row.code),
+          ),
+        ),
+      ],
+    ]);
   });
 
   it("refreshes last_used when the entry already exists (duplicate key)", async () => {

@@ -100,6 +100,24 @@ test("Submit gates on text OR at least one photo", async () => {
   await expect.element(submit).toBeDisabled();
 });
 
+/**
+ * A REAL image, built here rather than faked: photos now go through
+ * `normalizeStudentImage`, which decodes every pick — a File of arbitrary bytes
+ * with an image MIME type is exactly what the normalizer is meant to reject.
+ */
+async function realPng(name: string): Promise<File> {
+  const canvas = document.createElement("canvas");
+  canvas.width = 24;
+  canvas.height = 24;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  ctx.fillStyle = "#3366cc";
+  ctx.fillRect(0, 0, 24, 24);
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  if (!blob) throw new Error("toBlob failed");
+  return new File([blob], name, { type: "image/png" });
+}
+
 test("an image-only answer submits the photo as a data URL", async () => {
   const screen = await render(<QuizRunner code={CODE} quiz={quizWith(true)} />);
   // The runner renders a "Preparing quiz…" placeholder until its mount effect
@@ -108,7 +126,7 @@ test("an image-only answer submits the photo as a data URL", async () => {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) throw new Error("file input not rendered");
 
-  attachFiles(input, new File(["fake-pixels"], "sketch.png", { type: "image/png" }));
+  attachFiles(input, await realPng("sketch.png"));
 
   // The accepted photo renders as a removable thumbnail and enables Submit.
   await expect.element(screen.getByAltText("sketch.png")).toBeVisible();
@@ -136,7 +154,7 @@ test("removing the only photo disables Submit again", async () => {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) throw new Error("file input not rendered");
 
-  attachFiles(input, new File(["fake-pixels"], "sketch.png", { type: "image/png" }));
+  attachFiles(input, await realPng("sketch.png"));
   await expect.element(screen.getByRole("button", { name: "Submit answer" })).toBeEnabled();
 
   await screen.getByRole("button", { name: "Remove photo sketch.png" }).click();
@@ -156,7 +174,9 @@ test("a rejected file shows a dismissible notice and does not enable Submit", as
 
   const notice = screen.getByRole("alert");
   await expect.element(notice).toBeVisible();
-  await expect.element(notice).toHaveTextContent("notes.txt: only image files can be added.");
+  // The message names what the bytes turned out to be, not merely that
+  // something failed — that specificity is the point of the sniffing step.
+  await expect.element(notice).toHaveTextContent("notes.txt: This file could not be opened");
   await expect.element(screen.getByRole("button", { name: "Submit answer" })).toBeDisabled();
 
   await screen.getByRole("button", { name: "Dismiss" }).click();

@@ -66,3 +66,72 @@ test("the tutor answers a question about an attached image", {
   // And no runtime-sync / agent error surfaced.
   await expect(page.getByText(/not found after runtime sync/i)).toHaveCount(0);
 });
+
+// The regression the red.png test above can never catch. GitHub #26 arrived as a
+// 24.5 MP phone photo — ~3 MB of JPEG, ~4 MB once base64-inlined into the run
+// body — and the vision path had never been exercised at that scale: the only
+// live image test sent a handful of bytes. Normalization is what keeps the wire
+// small, so this asserts the WHOLE chain at a realistic size: a multi-megapixel
+// pick is decoded, resized and re-encoded in the browser, and the model still
+// answers about the pixels.
+//
+// The photo is generated in the page rather than committed: a multi-megabyte
+// binary fixture is not worth carrying, and a canvas produces one deterministically.
+// @live: needs the SCCH model endpoint + Azure SQL — excluded in CI.
+test("a multi-megapixel photo survives the whole path to the model", {
+  tag: ["@live", "@live-llm"],
+}, async ({ page }) => {
+  test.setTimeout(180_000);
+  await openChat(page, VISION_TUTOR_URL);
+
+  // 2400x1800 of NOISY green. The noise is the point: a flat colour compresses to
+  // ~70 KB however many megapixels it has, which would make this a large-image
+  // test in name only. Low-amplitude per-pixel jitter around a strong green
+  // defeats the encoder and lands the file in the same few-megabyte range as a
+  // real phone photo, while leaving the dominant colour unmistakable.
+  const attachedBytes = await page.evaluate(async () => {
+    const width = 2400;
+    const height = 1800;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    const image = ctx.createImageData(width, height);
+    const pixels = image.data;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const jitter = (Math.random() - 0.5) * 50;
+      pixels[i] = 40 + jitter;
+      pixels[i + 1] = 170 + jitter;
+      pixels[i + 2] = 60 + jitter;
+      pixels[i + 3] = 255;
+    }
+    ctx.putImageData(image, 0, 0);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.92),
+    );
+    if (!blob) throw new Error("toBlob failed");
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([blob], "photo.jpg", { type: "image/jpeg" }));
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!input) throw new Error("file input not rendered");
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return blob.size;
+  });
+  // Guard the guard: a fixture that quietly came out small would prove nothing.
+  // (A solid-colour field of the same dimensions compresses to ~70 KB — hence
+  // the noise above.)
+  expect(attachedBytes).toBeGreaterThan(1_000_000);
+
+  await expect(page.getByRole("button", { name: "Remove attachment" })).toHaveCount(1);
+  const composer = page.getByTestId("copilot-chat-textarea");
+  await composer.fill("What is the dominant color of the attached image? Answer with one word.");
+  await page.getByTestId("copilot-send-button").click();
+
+  const assistant = page.getByTestId("copilot-assistant-message").first();
+  await expect(assistant).toBeVisible({ timeout: 90_000 });
+  await expect
+    .poll(async () => (await assistant.innerText()).trim(), { timeout: 90_000 })
+    .toMatch(/green|grün|gruen/i);
+});

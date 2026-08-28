@@ -9,7 +9,10 @@ mechanics. Read it before touching `app/module-chat.tsx`, the consumers
 (`app/tutor-chat.tsx`, `app/_tutor/welcome-view.tsx`,
 `app/[code]/_writing/writing-chat.tsx`, `app/[code]/_quiz/quiz-discussion.tsx`),
 the read-only transcript (`app/codes/[code]/c/[threadId]/conversation-view.tsx`),
-or the runtime-header helper (`lib/runtime-headers.ts`).
+the runtime-header helper (`lib/runtime-headers.ts`), the student-photo pipeline
+(`lib/image-normalize.ts`, `lib/image-report.ts`,
+`components/image-error-notice.tsx`, `app/image-check/**`), or the failure-
+reporting runner (`app/api/copilotkit/run-error-runner.ts`).
 
 This is the **frontend** seam only. The backend — the `/api/copilotkit` route and
 the per-module `CodeModuleRuntime` — lives in `docs/codes.md` and is untouched by
@@ -46,7 +49,7 @@ Modules supply the rest through props/slots:
 | `children` | `ReactNode?` | rendered INSIDE the provider, before the chat — frontend tools, feedback headers |
 | `labels` | passthrough | welcome-greeting override (tutor) |
 | `chatView` | passthrough | welcome-screen view override (tutor) |
-| `attachments` | passthrough | image-upload config (tutor, vision-capable model) |
+| `attachments` | passthrough | image-upload config (tutor, vision-capable model — normalized, below) |
 
 `children` render **inside** the provider and **before** the chat container, so a
 slot that needs the CopilotKit React context — the writing tool registrar, the
@@ -117,7 +120,8 @@ provider, or the threadId decision.
 a `chatView` from `useTutorWelcomeView(...)` (`app/_tutor/welcome-view.tsx` — the
 fragile welcome-screen override, pinned to a CopilotKit version in a comment next
 to itself), and, when the tutor's `llm.imageInput` is set, an `attachments` config
-(vision-capable model, 5 MB cap, `onUploadFailed` driving the notice). Tutor needs
+(vision-capable model, `onUpload` running the normalizer below, `onUploadFailed`
+driving the notice). Tutor needs
 no height/padding delta, so it passes the base `.chat` class directly.
 
 It is also the only surface that **owns its thread after mount**. The server props
@@ -272,7 +276,9 @@ the runtime, not in React:
   computes `effectiveTeacherForSession(session)` (concurrently with the
   thread-ownership check and the `RequestContext` build, since it needs only the
   session already in hand) and passes `runner: showReasoning ? new
-  InMemoryAgentRunner() : new ReasoningStrippingRunner()`. A teacher gets the
+  InMemoryAgentRunner() : new ReasoningStrippingRunner()`, wrapped in the
+  `RunErrorReportingRunner` below (which observes and alters nothing, so the
+  reasoning decision is still the one that reaches the writer). A teacher gets the
   library's own runner — the very one the filter wraps — so their stream is the
   unmodified library behaviour. This is the route's only role-dependent branch
   and it changes **nothing** about access — the `checkCode` + `x-thread-token`
@@ -333,6 +339,109 @@ it describes the run, not a phase of it.
   **`text`** parts only — the teacher reads the conversation, not the model's
   scratchpad.
 
+## Student photos (`lib/image-normalize.ts`)
+
+Every photo a student picks — in the tutor chat and in the quiz's photo answers
+alike — is **decoded, straightened, bounded and re-encoded in the browser**
+before it is base64-inlined into a run. `normalizeStudentImage` is the one entry
+point; `lib/answer-images.ts` keeps the constants and the server-authoritative
+`validateAnswerImages` and stays free of DOM code, because `lib/quiz-actions.ts`
+(`"use server"`) imports it.
+
+Three things a phone hands over that the pipeline could not previously survive
+(GitHub #26):
+
+- **Resolution.** 24.5 MP (5712×4284, the iPhone default) is ~3 MB of JPEG and
+  ~4 MB of base64 in the run body — and the image is REPLAYED from Mastra memory
+  on every following turn of the thread. Capped at `MAX_NORMALIZED_EDGE` (2000 px
+  on the longest edge), a real photo lands under 1 MB; the cap is about payload,
+  not legibility, since a vision tower resizes to its own fixed budget anyway.
+- **EXIF `Orientation`.** Every browser applies it when decoding — verified
+  identical in Chromium, Firefox and WebKit, including that `imageOrientation:
+  "none"` is ignored — but a server-side decoder (PIL, inside a vLLM server) does
+  not. A photo the student saw upright could reach the model rotated 90°, which
+  destroys OCR of a textbook page. Re-encoding bakes the rotation into the pixels
+  and drops the tag.
+- **HEIC.** An iPhone photo-library pick through `accept` is transcoded to JPEG
+  by Safari; a pick through the Files app is not, and stock Pillow cannot open
+  HEIC at all. Safari decodes it natively, so those files normalize to JPEG on
+  the platform that produces them; anywhere else the decode fails and the
+  magic-byte sniff is what lets the message name the format and the setting to
+  change.
+
+Two consequences worth holding onto:
+
+- **`MAX_RAW_IMAGE_BYTES` (30 MB) and `MAX_IMAGE_BYTES` (5 MB) are different
+  limits.** The first bounds what may be PICKED, the second what may be SENT.
+  CopilotKit tests its `maxSize` against the ORIGINAL `File`, **before**
+  `onUpload` runs, so it must carry the raw ceiling — passing the send cap there
+  is the bug that rejects an ordinary phone photo outright. The send cap is
+  enforced inside the normalizer, on its output.
+- **The accept string carries dot-extensions** (`IMAGE_ACCEPT_WITH_EXTENSIONS`),
+  not just `image/*`. Files handed over by the iOS Files app and some document
+  providers have an EMPTY `File.type`, and CopilotKit's accept check (a prefix
+  test on that field) drops them before the sniffing could identify them.
+
+A file that is already fine is **passed through untouched**, so a crisp
+screenshot is not softened by a pointless round-trip. "Fine" means JPEG or PNG,
+within the edge cap, under the send cap, carrying **no orientation tag**, and —
+for a PNG — **no possibility of alpha** (IHDR colour type 0/2 and no `tRNS`).
+Neither condition is optional:
+
+- a rotated photo that skipped the canvas would arrive sideways, because the tag
+  travels with it and the server-side decoder ignores tags;
+- a transparent PNG that skipped the canvas would arrive **black**, because the
+  server-side decoder drops the alpha channel WITHOUT compositing, leaving
+  transparent pixels at their stored RGB.
+
+Anything else goes through the canvas, where transparency is flattened onto
+**white** first. The output format is then chosen by whether a resize happened:
+a PNG that needed nothing but flattening stays a **lossless PNG** (a screenshot
+of an exercise must not go through a JPEG encoder for no reason), while anything
+resized is a photo by nature and becomes JPEG. A flattened PNG can come out
+larger than the original, so JPEG is the fallback if it exceeds the send cap.
+Re-encoding also strips all EXIF, **including GPS**, from a photo taken at a
+student's kitchen table.
+
+### When a photo is rejected
+
+`components/image-error-notice.tsx` is the shared notice for both surfaces. It
+shows one sentence per rejected file and a **"Details for your teacher"**
+disclosure holding a copyable report (`lib/image-report.ts`) — the container the
+bytes really are, whether the platform reported a MIME type at all, what the
+decoder said, and what the browser can do. The report is **content-free**: no
+pixels, and the filename is reduced to its extension and length.
+
+**`/image-check`** (`app/image-check/`) is the same report as a standalone page,
+for the case the notice cannot cover: a photo that uploads fine and is merely
+misread produces no error to expand. Signed-in but not teacher-only — the point
+is to have the student run it on the phone that produced the problem — and it
+runs the PRODUCTION normalizer with no option overrides, so its verdict is the
+chat's verdict. Nothing leaves the browser.
+
+## Failure reporting (`RunErrorReportingRunner`)
+
+A turn that dies inside the agent does so **in-band**: the route has already
+answered 200 and the stream is open, so a handler-level `try/catch` sees nothing
+at all. `app/api/copilotkit/run-error-runner.ts` is an `AgentRunner` decorator
+that watches both an AG-UI `RUN_ERROR` event and an errored observable, reports
+each to `recordError`, and passes every frame through untouched and in order.
+
+- It wraps **both** runner variants. Wrapping only the student one is the easy
+  mistake — teachers' failures would then be the invisible half.
+- **Content discipline** (`docs/telemetry.md`): a `RUN_ERROR` message is agent-
+  or provider-authored text that may quote the request, so only its **length** and
+  the short `code` beside it are recorded. A thrown error is one of ours or the
+  ai-sdk's and goes through with its message, as the quiz path already does.
+- It is subject to the same 4-method `AgentRunner` guard as the reasoning runner:
+  a CopilotKit bump that adds a fifth event-producing method must wrap it in
+  **both** decorators.
+
+The route additionally rejects a run/connect whose **declared** `Content-Length`
+exceeds `MAX_RUN_BODY_BYTES` (24 MB) with a 413, before the body is read. The
+browser now picks files larger than it may send, and nothing on this path
+previously looked at the size at all.
+
 ## Backend seam
 
 Out of scope for this chapter. The `/api/copilotkit` route, the per-module
@@ -372,6 +481,37 @@ module.
   confirmed restart moves `threadId` + `providerKey` + headers + the report target
   together (proven by driving a real report through the mocked action) and clears
   the upload notice; a failed one shows the reason and leaves the chat untouched.
+- **`lib/image-normalize.unit.test.ts`** — the PURE half: the magic-byte sniff
+  (every container a phone or laptop produces, the ISO-BMFF brands that separate
+  HEIF from AVIF, SVG text) and the JPEG EXIF walk (both byte orders, EXIF
+  present with no orientation tag, out-of-range values, a truncated segment).
+- **`lib/image-normalize.browser.test.tsx`** — the half only a real browser can
+  prove, in Playwright Chromium against canvas-built files: the edge cap and
+  aspect ratio, **alpha flattened onto white** (the black-homework bug), the
+  JPEG and PNG pass-throughs, the re-encode forced by an orientation tag (and the
+  swapped dimensions that prove the browser baked it in), a HEIC named by its
+  bytes, a non-image, and the raw pick ceiling. Chromium-only, like every
+  component test — the cross-engine orientation behaviour it relies on was
+  verified separately in Firefox and WebKit and is noted in the file.
+- **`lib/image-report.unit.test.ts`** — the copyable block: a verdict for every
+  failure reason, and the content-free guarantee (extension and name length, never
+  the filename).
+- **`app/api/copilotkit/run-error-runner.unit.test.ts`** — synthetic Observables,
+  no Mastra: an in-band `RUN_ERROR` and an errored stream are both reported, the
+  run-error MESSAGE never reaches telemetry (only its length), every frame passes
+  through untouched, `connect` is watched as well as `run`, and a successful turn
+  reports nothing.
+- **`e2e/image-check.spec.ts`** — hermetic (no DB, no LLM): the page is behind the
+  default-deny matcher, and ONE three-photo pick proves the wiring the page alone
+  owns — normalize → diagnose → one numbered report section per file. That pick
+  carries a 4000×3000 photo (resized to 2000×1500), a mislabelled non-image
+  (MISMATCH by its bytes) and a HEIC (named as HEIF), so accepted and rejected
+  verdicts render side by side and the report carries extensions, never filenames.
+  The per-branch verdicts themselves belong to `lib/image-normalize.browser.test.tsx`
+  and `lib/image-report.unit.test.ts`; do not restate them here.
+- **`e2e/image-attachment.spec.ts`** — the `@live` round-trips: the original
+  red-PNG case, plus a **multi-megapixel** photo generated in the page, which is
+  the payload-size regression the tiny fixture can never catch.
 - **`lib/tutor-actions.unit.test.ts`** — `startNewTutorThread` with the session and
   `checkCode` mocked but **`lib/thread-token` real**: the minted token verifies for
   `(code, session user, new thread)` and for nothing else (another user, another

@@ -1,8 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
-import { importJWK, SignJWT } from "jose";
-import { API_AUTH_KID, API_AUTH_PRIVATE_JWK_PATH } from "./api-auth.constants";
+import { mintToken } from "./api-auth.utils";
 
 // The /api/images bearer channel's ACCESS CONTROL over real HTTP: the
 // proxy-matcher exclusion (a bare request gets 401 from the route, not a
@@ -20,24 +17,6 @@ import { API_AUTH_KID, API_AUTH_PRIVATE_JWK_PATH } from "./api-auth.constants";
 // No cookies: these requests must succeed or fail on the bearer token ALONE. A
 // proxy-matcher regression would turn the expected 401 into a sign-in redirect.
 test.use({ storageState: { cookies: [], origins: [] } });
-
-async function mintNonTeacher(): Promise<string> {
-  loadEnvConfig(process.cwd());
-  const tenantId = process.env.AZURE_TENANT_ID;
-  const clientId = process.env.AZURE_CLIENT_ID;
-  if (!tenantId || !clientId) throw new Error("AZURE_TENANT_ID / AZURE_CLIENT_ID missing in env");
-
-  const privateJwk = JSON.parse(await readFile(API_AUTH_PRIVATE_JWK_PATH, "utf8"));
-  const key = await importJWK(privateJwk, "RS256");
-  const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ scp: "cli.access", oid: "e2e-api-oid", name: "E2E Api User", groups: [] })
-    .setProtectedHeader({ alg: "RS256", kid: API_AUTH_KID })
-    .setIssuer(`https://login.microsoftonline.com/${tenantId}/v2.0`)
-    .setAudience(clientId)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 300)
-    .sign(key);
-}
 
 test("bare GET /api/images → 401 with WWW-Authenticate, not a sign-in redirect", async ({
   request,
@@ -67,7 +46,7 @@ test("bare POST /api/images/<name>/confirm → 401, not a sign-in redirect", asy
 });
 
 test("valid non-teacher token → 403 on all three /api/images routes", async ({ request }) => {
-  const token = await mintNonTeacher();
+  const token = await mintToken();
   const headers = { authorization: `Bearer ${token}` };
 
   const list = await request.get("/api/images", { headers });

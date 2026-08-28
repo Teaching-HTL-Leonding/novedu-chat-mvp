@@ -83,6 +83,7 @@ process.env.AUTH_SECRET = "test-secret-for-route-unit";
 
 import { InMemoryAgentRunner } from "@copilotkit/runtime/v2";
 import { ReasoningStrippingRunner } from "@/app/api/copilotkit/reasoning-runner";
+import { RunErrorReportingRunner } from "@/app/api/copilotkit/run-error-runner";
 import {
   getThreadTokenSecret,
   resetThreadTokenSecretForTests,
@@ -208,6 +209,37 @@ describe("endpoint allowlist (classifyRequest)", () => {
   });
 });
 
+// The client may PICK a photo several times larger than it may SEND (it is
+// normalized down in the browser first), so the gap between those two limits is
+// exactly where an unbounded POST would live — and nothing on this path used to
+// look at the body size at all.
+describe("run-body size ceiling", () => {
+  it("413s a run whose declared body is larger than any real turn", async () => {
+    const threadId = crypto.randomUUID();
+    const req = new Request(`${BASE}/agent/tutor/run`, {
+      method: "POST",
+      headers: {
+        "x-code": CODE,
+        "content-type": "application/json",
+        "x-thread-token": token(threadId),
+        "content-length": String(64 * 1024 * 1024),
+      },
+      body: runBody(threadId),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(413);
+    // Rejected BEFORE the code lookup and the token check — the point is to stop
+    // reading, not to reach a verdict about who is asking.
+    expect(checkCode).not.toHaveBeenCalled();
+  });
+
+  it("lets an ordinary turn through", async () => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(runRequest({ threadId, token: token(threadId) }));
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("thread-ownership token (real HMAC)", () => {
   it("403s a run with a bogus token", async () => {
     const res = await POST(runRequest({ threadId: crypto.randomUUID(), token: "deadbeef" }));
@@ -281,11 +313,19 @@ describe("happy path past the gate (tutor module)", () => {
 // `lib/student-mode.ts` is REAL here, so each case exercises the ACTUAL
 // effective-teacher rule, not a stub of it.
 describe("reasoning gate (teacher-only, fail-closed)", () => {
-  /** The `runner` option the route handed CopilotRuntime for the last request. */
+  /**
+   * The runner the reasoning decision produced for the last request. Every
+   * runner is additionally wrapped for failure reporting, so the variant that
+   * matters here is the one INSIDE that wrapper — asserted on the way through,
+   * because a wrapper that swallowed the stripping runner would hand students an
+   * unfiltered stream.
+   */
   function lastRunnerOption(): unknown {
     const options = CopilotRuntime.mock.lastCall?.[0] as { runner?: unknown } | undefined;
     expect(options).toBeDefined();
-    return options?.runner;
+    const runner = options?.runner;
+    expect(runner).toBeInstanceOf(RunErrorReportingRunner);
+    return (runner as RunErrorReportingRunner).wrapped;
   }
 
   /** Drive one authorized run as `session` and report the runner it produced. */

@@ -36,8 +36,11 @@ Four kinds of e2e, by the external infra they need:
   Identity / `az login`** with the `Cognitive Services OpenAI User` role
   (docs/ai-models.md) — so these are **excluded from CI** and run locally only.
   The Foundry legs (the second `tutor-chat-reply` case, the `health-foundry`
-  assertions, the `coding-agent` override case, the `eval-judge` provider-agnosticism
-  case) additionally self-skip when `AZURE_FOUNDRY_ENDPOINT` is not set.
+  assertions, the `coding-agent` override case) additionally self-skip when
+  `AZURE_FOUNDRY_ENDPOINT` is not set. The judge deliberately has no Foundry leg:
+  it resolves its model through the same `resolveLanguageModel` branch the tutor
+  leg already drives (see `e2e/eval-judge.live.spec.ts`'s header for what that
+  knowingly gives up).
   (Such a test is tagged `@live-llm` ONLY — the DB it also uses is implied — so a
   `--grep @live-db` run never selects it.)
 - **`@live-storage` e2e** — need real **Azure Blob Storage** (the image subsystem
@@ -63,11 +66,21 @@ credentials (Azure SQL / SCCH / Azure Blob Storage) must never run on a fork
 | --- | --- | --- | --- | --- |
 | Unit | Vitest `unit` | `**/*.unit.test.{ts,tsx}` | jsdom (or `node` per-file) | ✅ |
 | Component | Vitest `component` | `**/*.browser.test.tsx` | Playwright Chromium (real browser) | ✅ |
+| CLI unit | Vitest `unit` | `cli/src/**/*.unit.test.ts` | jsdom — colocated, rides the root `unit` glob | ✅ |
+| CLI integration | Vitest (`cli/vitest.config.mts`) | `cli/test/*.test.ts` | the built binary + the offline fixtures server | ✅ |
 | Hermetic e2e | Playwright | `e2e/*.spec.ts` (untagged) | dev server, no infra | ✅ |
 | `@live-db` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-db` | SQL Server (container in CI / Azure SQL local) | ✅ |
 | `@live-llm` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-llm` | real DB + SCCH LLM | ❌ local only |
 | `@live-storage` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-storage` | real DB + Azure Blob Storage | ❌ local only |
 
+- The `component` project pins **`maxWorkers`** (≤ 4) and its own
+  `sequence.groupOrder`. Browser mode's default of `min(12, cpus - 1)` tabs
+  saturates the Vite server on a many-core machine until some tester clients
+  miss their 60s connect deadline — and a tab lost that way is never failed,
+  only waited on, so the run HANGS rather than erroring. Two projects may differ
+  in `maxWorkers` only when they sit in different sequence groups, hence the
+  explicit order (unit first). The `--maxWorkers` CLI flag does NOT reach the
+  browser pool; it reads the project config.
 - Config: **`vitest.config.mts`** defines the `unit` + `component` projects;
   **`playwright.config.ts`** the e2e suite (with `e2e/auth.setup.ts` minting
   session cookies — see `docs/auth.md`).
@@ -123,10 +136,11 @@ id because those specs drive the live SCCH endpoint.
 | Script | Runs |
 | --- | --- |
 | `npm run test` | Vitest `unit` + `component` (`test:unit` / `test:component` for one) |
+| `npm run test:cli` | Builds the CLI, then its integration suite (`cli/test/*`) |
 | `npm run test:e2e` | Playwright, all specs (needs `az login` + `.env` for `@live`) |
 | `npm run test:e2e:ci` | Playwright minus `@live-llm` — hermetic + `@live-db` (CI runs this) |
 | `npm run test:e2e:db` | Playwright `@live-db` only (against a local SQL Server container) |
-| `npm run qa` | `check` + `typecheck` + `test` + `build` (`qa:e2e` adds e2e) |
+| `npm run qa` | `check` + `typecheck` + `test` + `test:cli` + `build` + `docs:build` (`qa:e2e` adds e2e) |
 
 Run the local-only smoke (with `az login` done and `.env` populated):
 
@@ -248,7 +262,7 @@ behaviors run in CI without infra.
 ## CI
 
 `.github/workflows/qa.yml` runs `check` → `typecheck` → `test:unit` →
-`test:component` → `build`, plus a separate hermetic e2e job (`test:e2e:ci`) and a
+`test:component` → `test:cli` → `build`, plus a separate hermetic e2e job (`test:e2e:ci`) and a
 PR-only `prod-build` job that builds the production Docker image (no push). Every
 job is **secret-free**; that is a hard security invariant, not a convenience — see
 **`docs/ci-security.md`**.

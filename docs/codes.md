@@ -564,15 +564,19 @@ in-page discussion live in `app/[code]/_quiz/`.
   flag) sets the default; a per-question **`imageInput`** overrides it. The
   effective flag is resolved server-side into the public projection
   (`toPublicQuiz` → `QuizQuestionPublic.imageInput`) and **re-derived on every
-  server action** — the client copy is never trusted. Limits live in the shared
-  client-safe **`lib/answer-images.ts`** (5 MB per image, ≤ 3 per answer,
-  `image/*` — the tutor imports the same constants): the runner validates picks
-  client-side (`readAnswerImage`), both quiz actions re-validate server-side
-  (`validateAnswerImages`, images rejected outright when the effective flag is
-  false). Transport is **base64 data URLs through the existing server actions**
-  (no blob storage, no downscaling) — `next.config.ts` raises the global
-  server-action `bodySizeLimit` to 25 MB for the 3×5 MB base64-inflated worst
-  case. **Image-only answers are allowed** (Submit gates on trimmed text OR ≥ 1
+  server action** — the client copy is never trusted. **Two different size
+  limits** live in the shared, DOM-free **`lib/answer-images.ts`**
+  (`MAX_IMAGE_BYTES` 5 MB per image, ≤ 3 per answer — the tutor imports the same
+  constants) and the browser-only **`lib/image-normalize.ts`**
+  (`MAX_RAW_IMAGE_BYTES` 30 MB): the first bounds what may be SENT, the second
+  what may be PICKED, and normalization sits between them (below). Every pick
+  runs through **`normalizeStudentImage`** client-side; both quiz actions
+  re-validate server-side (`validateAnswerImages`, images rejected outright when
+  the effective flag is false, and only `image/jpeg` / `image/png` accepted —
+  the only two containers the normalizer emits). Transport is **base64 data URLs
+  through the existing server actions** (no blob storage) — `next.config.ts`
+  raises the global server-action `bodySizeLimit` to 25 MB for the 3×5 MB
+  base64-inflated worst case. **Image-only answers are allowed** (Submit gates on trimmed text OR ≥ 1
   photo). Grading sends ONE multimodal user message (text part + one image part
   per photo) to `quizEvaluator`; nothing is persisted — the photos are discarded
   after grading. `startDiscussion` seeds the same photos as stored **`file`

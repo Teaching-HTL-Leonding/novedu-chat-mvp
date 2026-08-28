@@ -1,8 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { loadEnvConfig } from "@next/env";
 import type { APIRequestContext } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { importJWK, SignJWT } from "jose";
 import type { EvalConversationTurn } from "@/lib/eval-schema";
 import {
   buildFeedbackJudgeSubject,
@@ -10,7 +7,7 @@ import {
   FEEDBACK_JUDGE_SYSTEM,
 } from "@/lib/quiz-feedback-judge";
 import { buildTutorJudgeSubject, TUTOR_JUDGE_SYSTEM, tutorJudgeCriteria } from "@/lib/tutor-judge";
-import { API_AUTH_KID, API_AUTH_PRIVATE_JWK_PATH } from "./api-auth.constants";
+import { mintToken } from "./api-auth.utils";
 
 // @live-llm PROBE spec for `POST /api/eval/judge` (docs/cli-eval.md): does a REAL judge
 // model actually catch bad model output, and does it leave good output alone? Covers
@@ -25,9 +22,16 @@ import { API_AUTH_KID, API_AUTH_PRIVATE_JWK_PATH } from "./api-auth.constants";
 // judge is the ONLY check there is: nothing else looks at a generated response.
 //
 // Deliberately SMALL (per kind: one clean case plus blatant violations — 5 quiz + 5 tutor
-// judge calls, plus one optional Foundry smoke). The planted violations are the ones
-// every judge configuration measured at design time caught, including the weakest. Do NOT
-// weaken a probe to chase determinism: a probe a real judge misses is signal, not flake.
+// judge calls). The planted violations are the ones every judge configuration measured at
+// design time caught, including the weakest. Do NOT weaken a probe to chase determinism:
+// a probe a real judge misses is signal, not flake.
+//
+// SCCH only, by choice. The provider branch this route takes is `resolveLanguageModel`,
+// the same one `e2e/tutor-chat-reply.spec.ts` already drives against Foundry, so a
+// Foundry leg here would re-prove that branch rather than anything about the judge.
+// KNOWINGLY GIVEN UP: nothing now proves the judge's STRUCTURED OUTPUT (the `issues`
+// schema) round-trips on Foundry, which is a provider-sensitive feature. Restore a
+// one-probe Foundry leg here if a judge ever runs on Foundry in anger.
 //
 // The teacher token is minted exactly like `e2e/api-management.live.spec.ts` /
 // `api-me.spec.ts`: the REAL env issuer/audience, the e2e signing key from
@@ -309,32 +313,6 @@ you can walk it with for (let i = 0; i < colors.length; i++) { fill(colors[i]); 
   // against the same model, so a tutor-shaped repeat would buy a live call and no signal.
 ];
 
-async function mintTeacher(): Promise<string> {
-  loadEnvConfig(process.cwd());
-  const tenantId = process.env.AZURE_TENANT_ID;
-  const clientId = process.env.AZURE_CLIENT_ID;
-  const teacherGroup = process.env.TEACHER_GROUP_ID;
-  if (!tenantId || !clientId || !teacherGroup) {
-    throw new Error("AZURE_TENANT_ID / AZURE_CLIENT_ID / TEACHER_GROUP_ID missing in env");
-  }
-
-  const privateJwk = JSON.parse(await readFile(API_AUTH_PRIVATE_JWK_PATH, "utf8"));
-  const key = await importJWK(privateJwk, "RS256");
-  const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({
-    scp: "cli.access",
-    oid: "e2e-judge-oid",
-    name: "E2E Judge Teacher",
-    groups: [teacherGroup],
-  })
-    .setProtectedHeader({ alg: "RS256", kid: API_AUTH_KID })
-    .setIssuer(`https://login.microsoftonline.com/${tenantId}/v2.0`)
-    .setAudience(clientId)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 900)
-    .sign(key);
-}
-
 /**
  * Send every probe through the real endpoint and assert the judge's behavior. Shared by
  * both kinds — the endpoint is kind-agnostic, so the assertions are too: only the probe
@@ -345,7 +323,9 @@ async function runProbes(
   probes: readonly JudgeProbe[],
   llm: { provider: string; model: string },
 ): Promise<void> {
-  const headers = { authorization: `Bearer ${await mintTeacher()}` };
+  const headers = {
+    authorization: `Bearer ${await mintToken({ teacher: true, oid: "e2e-judge-oid", name: "E2E Judge Teacher", ttlSeconds: 900 })}`,
+  };
 
   for (const entry of probes) {
     const response = await request.post("/api/eval/judge", {
@@ -402,22 +382,4 @@ test("the real judge flags planted tutor-response violations and leaves a good r
   // The tutor kind's ONLY check. A regression here is not a report-quality nuisance —
   // it means a tutor eval reports nothing at all.
   await runProbes(request, TUTOR_PROBES, { provider: "SCCH", model: SCCH_MODEL });
-});
-
-test("judges on Azure Foundry too, proving the endpoint is provider-agnostic", {
-  tag: ["@live", "@live-llm"],
-}, async ({ request }) => {
-  test.skip(!process.env.AZURE_FOUNDRY_ENDPOINT, "AZURE_FOUNDRY_ENDPOINT is not set");
-  // One blatant probe per kind — this leg proves the provider branch, not judgment
-  // quality (the two SCCH tests above own that).
-  const blatant = [
-    QUIZ_PROBES.find((entry) => entry.name === "quiz/praise-on-incorrect"),
-    TUTOR_PROBES.find((entry) => entry.name === "tutor/hands-over-the-solution"),
-  ];
-  if (blatant.some((entry) => entry === undefined)) throw new Error("probe set changed");
-
-  await runProbes(request, blatant as JudgeProbe[], {
-    provider: "Azure Foundry",
-    model: "gpt-5.4-mini",
-  });
 });

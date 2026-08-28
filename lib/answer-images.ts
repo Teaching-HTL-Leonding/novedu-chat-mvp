@@ -1,58 +1,33 @@
-// Shared limits + helpers for student-supplied images. CLIENT-SAFE and pure at
-// module level — the quiz runner and the tutor chat import the constants, the
-// quiz runner uses `readAnswerImage` (browser-only at runtime: FileReader), and
-// the quiz server actions re-check everything with `validateAnswerImages`
-// (server-authoritative — the client is never trusted).
+// Shared limits + the SERVER-AUTHORITATIVE validator for student-supplied
+// images. Deliberately free of DOM code: `lib/quiz-actions.ts` is a
+// `"use server"` module and imports `validateAnswerImages`, so anything that
+// touches `window` would ride into the server-action module graph. The browser
+// half — sniffing, decoding, resizing, re-encoding — lives in
+// `lib/image-normalize.ts`.
 //
-// The 5 MB cap matches the tutor module's attachment limit: images are inlined
+// The 5 MB cap bounds what is SENT, not what may be picked: images are inlined
 // as base64 into the request AND (for discussions) replayed from Mastra memory
-// on every following turn, so big files would bloat both the request body and
-// the model's context.
+// on every following turn, so a big file bloats both the request body and the
+// model's context on every turn thereafter. Normalization sits in front of it,
+// so a 24 MP phone photo is a perfectly good input that simply arrives larger
+// than it leaves — the ceiling on the PICK is `MAX_RAW_IMAGE_BYTES` there.
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 export const MAX_IMAGES_PER_ANSWER = 3;
-/** The file-picker accept string — any image; phones offer the camera directly. */
-export const IMAGE_ACCEPT = "image/*";
-
-export type ReadAnswerImageResult = { ok: true; dataUrl: string } | { ok: false; message: string };
-
-/**
- * Validates a picked file (type + size) and reads it to a base64 data URL.
- * Browser-only (FileReader). Returns a friendly per-file message on rejection —
- * the caller shows it in a dismissible notice.
- */
-export function readAnswerImage(file: File): Promise<ReadAnswerImageResult> {
-  if (!file.type.startsWith("image/")) {
-    return Promise.resolve({ ok: false, message: `${file.name}: only image files can be added.` });
-  }
-  if (file.size > MAX_IMAGE_BYTES) {
-    return Promise.resolve({
-      ok: false,
-      message: `${file.name}: each photo must be 5 MB or smaller.`,
-    });
-  }
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      if (typeof dataUrl === "string" && dataUrl.startsWith("data:image/")) {
-        resolve({ ok: true, dataUrl });
-      } else {
-        resolve({ ok: false, message: `${file.name}: this file could not be read.` });
-      }
-    };
-    reader.onerror = () =>
-      resolve({ ok: false, message: `${file.name}: this file could not be read.` });
-    reader.readAsDataURL(file);
-  });
-}
 
 export type ValidateAnswerImagesResult =
   | { ok: true; images: string[] }
   | { ok: false; message: string };
 
-// A base64 image data URL: `data:image/<subtype>;base64,<payload>`.
-const IMAGE_DATA_URL = /^data:image\/[\w.+-]+;base64,/;
+/**
+ * The formats the server accepts. Narrower than "any `image/*`" on purpose:
+ * everything now arrives through `normalizeStudentImage`, which emits JPEG for
+ * anything it re-encodes and passes through only already-fine JPEG/PNG. A
+ * container outside this pair means the client skipped normalization, and the
+ * one thing we know about such bytes is that the model may not be able to read
+ * them.
+ */
+const IMAGE_DATA_URL = /^data:image\/(jpeg|png);base64,/;
 
 /** Decoded byte size of a base64 payload (3 bytes per 4 chars, minus padding). */
 function base64Bytes(payload: string): number {
@@ -64,7 +39,7 @@ function base64Bytes(payload: string): number {
  * SERVER-SIDE validation of the images a quiz answer carries. Pure string
  * checks, so both quiz actions share it: images must be allowed by the
  * question's effective `imageInput` flag, at most 3, each a well-formed
- * `data:image/…;base64,` URL of at most 5 MB decoded.
+ * `data:image/{jpeg,png};base64,` URL of at most 5 MB decoded.
  */
 export function validateAnswerImages(
   images: string[] | undefined,

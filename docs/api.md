@@ -432,7 +432,12 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   `e2e/api-codes.spec.ts`, `e2e/api-images.spec.ts` and `e2e/api-reports.spec.ts`
   exercise the routes over
   HTTP with an empty cookie state, which also proves the proxy-matcher
-  exclusions (a regression turns the expected 401 into a sign-in redirect); the
+  exclusions (a regression turns the expected 401 into a sign-in redirect);
+  `e2e/api-gate.spec.ts` covers the two exclusions no per-feature spec owns —
+  `/api/eval/{grade,judge,respond}` and the public `/api/coding/v1/*` — table-driven,
+  one row per route, so a bearer route added without a gate spec is visible rather
+  than silently uncovered (add the row with the route); every spec here mints its
+  token through the single `e2e/api-auth.utils.ts` helper; the
   @live-db `e2e/api-management.live.spec.ts` runs the full file-upsert → list →
   code-create → list lifecycle against the real database, and the @live-db
   `e2e/api-reports.live.spec.ts` files a chat report through the real UI (a

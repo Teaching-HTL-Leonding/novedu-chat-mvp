@@ -2,7 +2,10 @@ import { expect, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 
 // Authorization (not authentication) enforcement: signed-in students must be
-// kept out of the teacher-only surfaces, and teachers must get in. The student
+// kept out of the teacher-only surfaces, and teachers must get in. The two nav
+// tests are the ONE home for the menu's teacher-only entries — every such entry
+// is asserted hidden here and visible there, rather than each feature's spec
+// re-opening the same menu for its own link. The student
 // runs on the project-default storage state (minted without the isTeacher
 // claim); the teacher block opts into the teacher state.
 
@@ -57,6 +60,8 @@ test.describe("as a student", () => {
     ).toHaveText("Teacher Guide");
     await expect(page.getByRole("link", { name: "YAML Files" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Codes", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Health" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Usage" })).toHaveCount(0);
   });
 });
 
@@ -89,5 +94,7 @@ test.describe("as a teacher", () => {
     ).toHaveText("Teacher Guide");
     await expect(page.getByRole("link", { name: "YAML Files" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Codes", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Health" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Usage" })).toBeVisible();
   });
 });

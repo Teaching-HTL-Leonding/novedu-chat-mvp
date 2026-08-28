@@ -264,7 +264,7 @@ test("creating a coding code shows the share link like every other module", {
 // The shared multi-delete layer end-to-end: tick several rows and remove them all
 // in ONE "Delete Selected" action (the same store delete each row's trash button
 // runs). Files only — no LLM — so it runs in CI against the SQL container.
-test("multi-select Delete Selected removes every chosen file in one action", {
+test("the files list pages, sorts and multi-deletes — all DB-side", {
   tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   const stamp = Date.now();
