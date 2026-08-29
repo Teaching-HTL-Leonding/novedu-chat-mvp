@@ -1,7 +1,14 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { scchProvider } from "@/app/mastra/scch";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { scchProvider, stripAssistantReasoning } from "@/app/mastra/scch";
 import { foundryBearerToken, foundryV1Base } from "@/lib/llm/foundry-endpoint";
-import { FOUNDRY_PROVIDER_NAME, type LlmProvider, SCCH_PROVIDER_NAME } from "@/lib/llm/provider";
+import { openrouterBase } from "@/lib/llm/openrouter-endpoint";
+import {
+  FOUNDRY_PROVIDER_NAME,
+  type LlmProvider,
+  OPENROUTER_PROVIDER_NAME,
+  SCCH_PROVIDER_NAME,
+} from "@/lib/llm/provider";
 
 // Provider resolution for the ai-sdk AGENT path — one of the only two places that
 // branch on `LlmProvider` (the other is `lib/llm/endpoint.ts` for the raw coding
@@ -39,17 +46,45 @@ function getFoundryProvider(): ReturnType<typeof createOpenAI> {
   return foundryProvider;
 }
 
-// Both branches pin the Chat Completions API — vLLM does not serve the Responses
+// OpenRouter is a second `@ai-sdk/openai-compatible` INSTANCE beside SCCH's (which
+// lives in app/mastra/scch.ts because it also drives the model dropdown) — same
+// package, same flags, and for the same reasons (docs/ai-models.md, "Two ai-sdk
+// packages"): `includeUsage: true` so streaming calls report tokens to the metering
+// exporter, `supportsStructuredOutputs: true` so `response_format: json_schema`
+// survives, and `transformRequestBody` so a previous turn's `reasoning_content` is
+// not replayed outward. That last hook is the package's behaviour, not SCCH's, so
+// the SCCH implementation is IMPORTED rather than copied. Auth is a static key.
+// Built lazily so an OpenRouter-less deployment never constructs it — and so the
+// key is read at first use, not at import.
+let openrouterProvider: ReturnType<typeof createOpenAICompatible> | undefined;
+
+function getOpenrouterProvider(): ReturnType<typeof createOpenAICompatible> {
+  openrouterProvider ??= createOpenAICompatible({
+    // The `name` is the metering contract — see lib/llm/provider.ts.
+    name: OPENROUTER_PROVIDER_NAME,
+    baseURL: openrouterBase(),
+    // An unset key makes the first call fail upstream with a 401 rather than here;
+    // the authoring/runtime gate (lib/llm/availability.ts) catches it long before.
+    apiKey: process.env.OPENROUTER_API_KEY ?? "",
+    includeUsage: true,
+    supportsStructuredOutputs: true,
+    transformRequestBody: stripAssistantReasoning,
+  });
+  return openrouterProvider;
+}
+
+// Every branch pins the Chat Completions API — vLLM does not serve the Responses
 // API, and the Foundry v1 endpoint is used in its OpenAI-compatible Chat
-// Completions shape — but they spell it differently, because the two branches come
-// from two packages: Foundry's `@ai-sdk/openai` provider exposes `.chat(model)`
-// (its bare `provider(id)` would target the Responses API), while SCCH's
-// `@ai-sdk/openai-compatible` provider — chosen for its `reasoning_content`
-// mapping (see app/mastra/scch.ts) — exposes `.chatModel(model)`.
+// Completions shape — but they spell it differently, because the branches come from
+// two packages: Foundry's `@ai-sdk/openai` provider exposes `.chat(model)` (its bare
+// `provider(id)` would target the Responses API), while the two
+// `@ai-sdk/openai-compatible` instances — SCCH and OpenRouter, chosen for that
+// package's `reasoning_content` mapping (see app/mastra/scch.ts) — expose
+// `.chatModel(model)`.
 export function resolveLanguageModel(provider: LlmProvider, model: string) {
-  return provider === "Azure Foundry"
-    ? getFoundryProvider().chat(model)
-    : scchProvider.chatModel(model);
+  if (provider === "Azure Foundry") return getFoundryProvider().chat(model);
+  if (provider === "OpenRouter") return getOpenrouterProvider().chatModel(model);
+  return scchProvider.chatModel(model);
 }
 
 // The `providerOptions` KEY a caller must file per-request options (today only
@@ -58,15 +93,16 @@ export function resolveLanguageModel(provider: LlmProvider, model: string) {
 // the key IS a property of the package:
 //   - `@ai-sdk/openai` (Foundry) reads its options under the FIXED key "openai",
 //     whatever the `createOpenAI({ name })` instance is called;
-//   - `@ai-sdk/openai-compatible` (SCCH) reads them under the INSTANCE NAME —
-//     `SCCH_PROVIDER_NAME`, the same constant that yields the `scch.chat`
-//     metering id.
+//   - `@ai-sdk/openai-compatible` (SCCH, OpenRouter) reads them under the INSTANCE
+//     NAME — `SCCH_PROVIDER_NAME` / `OPENROUTER_PROVIDER_NAME`, the same constants
+//     that yield the `scch.chat` / `openrouter.chat` metering ids.
 // A pure lookup, exhaustive over `LlmProvider` by type: it opens no endpoint and
 // touches no credential, so it is not one of the three connectivity branches. Its
 // one consumer is `app/mastra/model-entry.ts` (docs/ai-models.md).
 const REASONING_OPTIONS_KEY: Record<LlmProvider, string> = {
   SCCH: SCCH_PROVIDER_NAME,
   "Azure Foundry": "openai",
+  OpenRouter: OPENROUTER_PROVIDER_NAME,
 };
 
 export function reasoningOptionsKey(provider: LlmProvider): string {

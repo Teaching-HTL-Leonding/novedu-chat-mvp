@@ -3,7 +3,7 @@
 Deep reference for the **coding** activity module: an **OpenAI-compatible Chat
 Completions endpoint** that an external coding agent (e.g.
 [little-coder](https://github.com/itayinbarr/little-coder)) points at, so a student
-codes against a model on the SCCH server with a teacher-authored system prompt
+codes against a teacher-pinned model with a teacher-authored system prompt
 layered on. It slots into the generic **codes** subsystem through the fixed seams
 that subsystem exposes (`docs/codes.md`) — the generic flow (code store, create,
 list, edit, bulk-delete, the availability window) is untouched. The always-on
@@ -26,13 +26,15 @@ samples (the coding YAML under `activities/examples/`).
 - Unlike tutor/quiz/writing it has **no in-app chat**: there is no CopilotKit
   runtime agent and no Mastra memory. The `/<code>` web page is just a **connection
   page** showing how to point a tool at the endpoint.
-- It is a **thin pass-through proxy**, not an agent. Both upstreams (SCCH and Azure
-  Foundry, selected by the YAML's `llm.provider` — docs/ai-models.md) are
-  OpenAI-compatible; the route gatekeeps, injects the teacher's system prompt, pins
-  the model, lets the provider's `adaptBody` hook adjust the **parameter dialect**
-  (Azure Foundry renames `max_tokens` → `max_completion_tokens` and drops
-  `temperature`/`top_p`, which its gpt-5.x reasoning deployments reject; SCCH is the
-  identity — the hook lives in `lib/llm/endpoint.ts`, so the route stays
+- It is a **thin pass-through proxy**, not an agent. All three upstreams (SCCH,
+  Azure Foundry and OpenRouter, selected by the YAML's `llm.provider` —
+  docs/ai-models.md) are OpenAI-compatible; the route gatekeeps, injects the
+  teacher's system prompt, pins the model, lets the provider's `adaptBody` hook
+  adjust the **parameter dialect** (Azure Foundry renames `max_tokens` →
+  `max_completion_tokens` and drops `temperature`/`top_p`, which its gpt-5.x
+  reasoning deployments reject; SCCH and OpenRouter are the identity — OpenRouter
+  normalizes the classic dialect itself. The hook lives in `lib/llm/endpoint.ts`,
+  so the route stays
   provider-blind), and **pipes the response stream back unparsed**. Because the rest
   of the body is forwarded verbatim and the response is never re-serialized,
   **client-side tool calling and streaming work unchanged** (the coding agent runs
@@ -126,7 +128,7 @@ name: "Beginner TypeScript Coding Buddy"
 title: "TypeScript Coding Buddy (Beginners)"   # optional — shown on the connection page
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic   # the single pinned model
-  # provider: Azure Foundry                    # optional; missing ⇒ SCCH
+  # provider: Azure Foundry                    # or OpenRouter; missing ⇒ SCCH
 instructions: |
   <the teacher's system prompt — appended after the coding tool's own system prompt
    so it has the final word>
@@ -186,7 +188,8 @@ instructions: |
 3. `loadCoding(entry.fileUrl)` (`lib/coding-fetch.ts`, via the shared
    `appHostedFetcher`) → `502` on failure.
 4. `resolveChatEndpoint(loaded.coding.provider)` resolves the upstream and **starts**
-   the `authHeader()` acquisition (the SCCH key, or a bounded Entra token for Foundry
+   the `authHeader()` acquisition (a static key for SCCH and OpenRouter, or a bounded
+   Entra token for Foundry
    — docs/ai-models.md) so the token round trip overlaps the body read; a missing env
    var or a failed acquisition is a distinct `500` (a real misconfiguration) rather
    than a misleading `502`. `lib/llm/endpoint.ts` is side-effect-free — it does
@@ -366,12 +369,14 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
 - The real end-to-end path is **`e2e/coding-agent.spec.ts`** (`@live-llm`, local
   only): drives the REAL `pi` coding agent (`@earendil-works/pi-coding-agent`, a
   pinned devDependency — little-coder's engine) through the endpoint once per
-  provider. The harness (`e2e/code.utils.ts`'s `mintCodingKey`) mints a code and a
+  provider (the Foundry and OpenRouter legs each self-skip without their env var).
+  The harness (`e2e/code.utils.ts`'s `mintCodingKey`) mints a code and a
   matching per-user key row directly, its value from the app's own pure
   `generateCodingKey`, and authenticates with it (an `afterEach` drops the key rows
   with `deleteCodingKeysByCode` — a raw code delete does not cascade to them); the spec asserts model identity from the
-  upstream's own `model` field (the Foundry leg minting the per-code LLM override,
-  so a silent fallback to the YAML default fails the test). Chat smoke only
+  upstream's own `model` field (the Foundry and OpenRouter legs each minting the
+  per-code LLM override, so a silent fallback to the YAML default fails the test).
+  Chat smoke only
   (`--no-tools`); the agent driver is `e2e/pi-agent.utils.ts`.
 
 ## Future work (deferred)

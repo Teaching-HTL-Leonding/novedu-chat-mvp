@@ -89,6 +89,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.SCCH_BASE_URL = "https://scch.example/v1";
   process.env.SCCH_API_KEY = "scch-secret";
+  process.env.OPENROUTER_API_KEY = "sk-or-test";
+  process.env.OPENROUTER_BASE_URL = "";
   lookupCodingKey.mockResolvedValue({ status: "found", code: CODE, userId: USER_ID });
   checkCode.mockResolvedValue({ ok: true, entry: codingEntry });
   loadCoding.mockResolvedValue({
@@ -445,6 +447,29 @@ describe("POST /api/coding/v1/chat/completions — forwarding", () => {
     expect(url).toBe("https://res.openai.azure.com/openai/v1/chat/completions");
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer entra-token");
     expect(JSON.parse(init.body as string).model).toBe("gpt-5.4-mini");
+  });
+
+  it("routes to OpenRouter when the CODE's override says so, keeping the classic dialect", async () => {
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { ...codingEntry, llm: { provider: "OpenRouter", model: "z-ai/glm-5.3-flash" } },
+    });
+    fetchSpy.mockResolvedValue(
+      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+    );
+    await POST(post({ ...chatBody(), max_tokens: 900, temperature: 0.2 }));
+    const [url, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer sk-or-test");
+
+    const sent = JSON.parse(init.body as string);
+    expect(sent.model).toBe("z-ai/glm-5.3-flash");
+    // No dialect adaptation — OpenRouter takes the classic sampling parameters.
+    expect(sent.max_tokens).toBe(900);
+    expect(sent).not.toHaveProperty("max_completion_tokens");
+    expect(sent.temperature).toBe(0.2);
+    // The teacher's prompt still comes from the YAML — the override swaps only the LLM.
+    expect(sent.messages[0]).toEqual({ role: "system", content: "TEACHER PROMPT" });
   });
 });
 

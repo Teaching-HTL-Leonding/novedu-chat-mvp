@@ -137,10 +137,13 @@ or quiz's `llm.model`. SERVER-ONLY.
 
 ### `llm.provider`
 
-Optional, default `SCCH` (the school's Austrian LLM hosting partner). Set
-`provider: Azure Foundry` to drive the feedback chat from an Azure OpenAI
-deployment instead — then `llm.model` is the **deployment name** (e.g.
-`gpt-5.4-mini`).
+Optional, one of `SCCH` (the default — the school's Austrian LLM hosting
+partner), `Azure Foundry` or `OpenRouter`. With `provider: Azure Foundry` the
+feedback chat runs on an Azure OpenAI deployment and `llm.model` is the
+**deployment name** (e.g. `gpt-5.4-mini`); with `provider: OpenRouter` it runs
+through OpenRouter and `llm.model` is its namespaced routing key (e.g.
+`z-ai/glm-5.3-flash`). Both are only usable if the server is configured for them
+— otherwise the activity is rejected with a readable reason.
 
 The `llm:` values are the **default**: when a teacher mints a code for this
 activity, the code's create/edit form can **override the whole `llm:` block per

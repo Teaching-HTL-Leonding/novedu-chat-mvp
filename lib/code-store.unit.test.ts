@@ -287,11 +287,23 @@ describe("validateCodeRequest", () => {
     }
   });
 
+  it("accepts an OpenRouter override pair", () => {
+    const result = validateCodeRequest({
+      ...valid,
+      llmProvider: "OpenRouter",
+      llmModel: "z-ai/glm-5.3-flash",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.payload.llm).toEqual({ provider: "OpenRouter", model: "z-ai/glm-5.3-flash" });
+    }
+  });
+
   it("rejects an unknown override provider, naming the valid ones", () => {
     const result = validateCodeRequest({ ...valid, llmProvider: "OpenAI", llmModel: "gpt-4o" });
     expect(result).toMatchObject({
       ok: false,
-      message: expect.stringMatching(/SCCH.*Azure Foundry/),
+      message: expect.stringMatching(/SCCH.*Azure Foundry.*OpenRouter/),
     });
   });
 

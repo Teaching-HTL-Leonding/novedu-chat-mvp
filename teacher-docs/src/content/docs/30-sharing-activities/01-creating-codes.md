@@ -38,13 +38,13 @@ Novedu checks the activity file before storing anything. If the file has errors,
 
 The override section has three fields and a row of buttons:
 
-- **LLM provider override** and **LLM model override**, two free-text fields. They always go together: fill in both, or leave both blank.
+- **LLM provider override** and **LLM model override**, two free-text fields. They always go together: fill in both, or leave both blank. The provider is one of `SCCH`, `Azure Foundry`, or `OpenRouter`, written exactly like that.
 - **Reasoning (optional)**, a dropdown that starts on **Provider default** and offers the thinking-effort levels `none`, `minimal`, `low`, `medium`, `high`, and `xhigh`. A level only works alongside a provider and a model; on its own it is rejected. Not every model accepts every level, and some ignore the difference between them, so the chapter on choosing an AI model is worth reading before you set one.
-- **Preset buttons** that fill the whole override in one click, one per common combination. A preset for a reasoning model sets its level too, a preset for a plain model puts the dropdown back on **Provider default**. **Clear** empties all three fields, so the code uses the activity's own settings again.
+- **Preset buttons** that fill the whole override in one click, one per common combination, covering all three providers: **OpenRouter · GLM 5.3 Flash**, for example, fills in the provider `OpenRouter` and the model `z-ai/glm-5.3-flash`. A preset for a reasoning model sets its level too, a preset for a plain model puts the dropdown back on **Provider default**. **Clear** empties all three fields, so the code uses the activity's own settings again.
 
 The override replaces the activity file's whole `llm:` block for this code. If the activity file sets a reasoning level and you leave the dropdown on **Provider default**, the code runs without one. Repeat the level in the override whenever you want to keep it. The chapter on choosing an AI model explains the settings themselves.
 
-One thing to keep in mind when you override: SCCH, the school's Austrian LLM hosting partner, doesn't bill per use, but the Azure models are paid per use, and a high thinking effort multiplies what a lesson costs there. Pointing a code at Azure is a spending decision as well as a quality one.
+One thing to keep in mind when you override: SCCH, the school's Austrian LLM hosting partner, doesn't bill per use, but Azure Foundry and OpenRouter are both paid per use, and a high thinking effort multiplies what a lesson costs on them. Pointing a code at either one is a spending decision as well as a quality one.
 
 ## What you get
 

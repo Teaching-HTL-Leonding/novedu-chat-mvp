@@ -1,6 +1,6 @@
 # AI models & LLM providers
 
-How the app talks to language models: two OpenAI-compatible providers behind one
+How the app talks to language models: three OpenAI-compatible providers behind one
 isolated seam. Every activity YAML picks its model with `llm.model`, its
 provider with `llm.provider` (`"SCCH"` when missing), and optionally a
 **reasoning level** with `llm.reasoning` (below); no other code in the app
@@ -19,31 +19,33 @@ pair explicitly.
 
 Read before touching: `lib/llm/**`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`,
 `buildCognitiveServicesCredential` in `lib/azure-credential.ts`, the `llm:` block
-of any activity schema, and the Foundry probe in `lib/health.ts`.
+of any activity schema, and the optional-provider probes in `lib/health.ts`.
 
-## The two providers
+## The three providers
 
-| | SCCH | Azure Foundry |
-|---|---|---|
-| What | Self-hosted vLLM GPU server (free for us, Austria-only network) | Azure OpenAI resource (paid, e.g. `gpt-5.5`, `gpt-5.4-mini`) |
-| Env | `SCCH_BASE_URL` (includes `/v1`) + `SCCH_API_KEY` | `AZURE_FOUNDRY_ENDPOINT` (bare resource endpoint; trailing slash tolerated) |
-| API | OpenAI Chat Completions | OpenAI-compatible **v1** surface — `${endpoint}/openai/v1`, no `api-version`, the **deployment name is the `model`** |
-| Auth | Static `Bearer ${SCCH_API_KEY}` | **Passwordless Entra** — no API key exists (see below) |
-| `llm.model` | Raw model id (e.g. `RedHatAI/gemma-4-31B-it-FP8-Dynamic`) | Deployment name (e.g. `gpt-5.4-mini`) |
+| | SCCH | Azure Foundry | OpenRouter |
+|---|---|---|---|
+| What | Self-hosted vLLM GPU server (free for us, Austria-only network) | Azure OpenAI resource (paid, e.g. `gpt-5.5`, `gpt-5.4-mini`) | Hosted multi-vendor router (paid, e.g. `z-ai/glm-5.3-flash`) |
+| Env | `SCCH_BASE_URL` (includes `/v1`) + `SCCH_API_KEY` | `AZURE_FOUNDRY_ENDPOINT` (bare resource endpoint; trailing slash tolerated) | `OPENROUTER_API_KEY`; optional `OPENROUTER_BASE_URL` override (defaults to `https://openrouter.ai/api/v1`, already includes `/v1`) |
+| API | OpenAI Chat Completions | OpenAI-compatible **v1** surface — `${endpoint}/openai/v1`, no `api-version`, the **deployment name is the `model`** | OpenAI Chat Completions |
+| Auth | Static `Bearer ${SCCH_API_KEY}` | **Passwordless Entra** — no API key exists (see below) | Static `Bearer ${OPENROUTER_API_KEY}` |
+| `llm.model` | Raw model id (e.g. `RedHatAI/gemma-4-31B-it-FP8-Dynamic`) | Deployment name (e.g. `gpt-5.4-mini`) | Namespaced `<vendor>/<model>` routing key (e.g. `z-ai/glm-5.3-flash`) |
 
-`model` is free text for both; a wrong name fails at runtime. There is no live
-model discovery for Foundry (SCCH's dropdown discovery in `app/mastra/scch.ts` is
-unchanged and SCCH-only). Foundry is **optional**: without
-`AZURE_FOUNDRY_ENDPOINT` the app boots and runs SCCH-only — everything Foundry is
-built lazily on first use, and `foundryConfigured()` gates the Foundry-specific UI
-(the `/health` rows). The optionality is **enforced**: on an SCCH-only server the
-authoring gate (`lib/file-validators.ts`) rejects a Foundry file with a
-`PROVIDER_UNAVAILABLE` error, and the runtime guards (quiz/writing
-`buildRequestContext` → 502, the tutor loader → a thrown reason) catch a Foundry
-file that arrives anyway (externally hosted YAML, an env change) — all through
-`providerUnavailableReason` (`lib/llm/availability.ts`), so no chat ever dies on a
-raw "AZURE_FOUNDRY_ENDPOINT is not set". The CLI never runs this gate — its
-bundled `loadAndCheck*` core stays environment-free.
+`model` is free text for all three; a wrong name fails at runtime. There is no live
+model discovery for Foundry or OpenRouter (SCCH's dropdown discovery in
+`app/mastra/scch.ts` is unchanged and SCCH-only). Foundry and OpenRouter are both
+**optional**: without `AZURE_FOUNDRY_ENDPOINT` / `OPENROUTER_API_KEY` the app boots
+and runs without that provider — everything provider-specific is built lazily on
+first use, and `foundryConfigured()` / `openrouterConfigured()` gate the
+provider-specific UI (the `/health` rows). The optionality is **enforced**: on a
+server that lacks the provider the authoring gate (`lib/file-validators.ts`)
+rejects such a file with a `PROVIDER_UNAVAILABLE` error, and the runtime guards
+(quiz/writing `buildRequestContext` → 502, the tutor loader → a thrown reason)
+catch a file that arrives anyway (externally hosted YAML, an env change) — all
+through `providerUnavailableReason` (`lib/llm/availability.ts`), so no chat ever
+dies on a raw "AZURE_FOUNDRY_ENDPOINT is not set" / "OPENROUTER_API_KEY is not
+set". The CLI never runs this gate — its bundled `loadAndCheck*` core stays
+environment-free.
 
 ## The `lib/llm/` seam — where the distinction lives
 
@@ -52,17 +54,18 @@ The provider branch exists in exactly **three functions** —
 hook), and `providerUnavailableReason`; every call site asks one of them and never
 learns which provider answered.
 
-- `lib/llm/provider.ts` — pure, client-safe: the `LlmProvider` type, the two
+- `lib/llm/provider.ts` — pure, client-safe: the `LlmProvider` type, the three
   literals, `DEFAULT_PROVIDER`, the zod `providerSchema` (default `"SCCH"`) all
   four activity schemas embed, `parseLenientProvider` for the lenient runtime
   parsers, the reasoning-level counterparts (`REASONING_LEVELS`,
   `reasoningLevelSchema`, `parseLenientReasoningLevel` — below), and the ai-sdk
-  **provider names** (`"scch"` / `"azure-foundry"`) with
+  **provider names** (`"scch"` / `"azure-foundry"` / `"openrouter"`) with
   `providerFromModelProviderId` — the metering contract (below).
 - `lib/llm/model.ts` — **the agent path**: `resolveLanguageModel(provider, model)`
-  returns an ai-sdk chat model — `scchProvider.chatModel(model)` (the
-  `@ai-sdk/openai-compatible` spelling) or the lazily-built Foundry
-  `createOpenAI(...).chat(model)` (the `@ai-sdk/openai` spelling); both pin Chat
+  returns an ai-sdk chat model — `scchProvider.chatModel(model)` and the
+  lazily-built OpenRouter `createOpenAICompatible(...).chatModel(model)` (the
+  `@ai-sdk/openai-compatible` spelling), or the lazily-built Foundry
+  `createOpenAI(...).chat(model)` (the `@ai-sdk/openai` spelling); all pin Chat
   Completions. The two packages are deliberate — see "Two ai-sdk packages" below.
   Same file, same reason: `reasoningOptionsKey(provider)` — the `providerOptions`
   key that package reads per-request options under (a pure lookup, no
@@ -70,22 +73,29 @@ learns which provider answered.
   it — never the coding route.
 - `lib/llm/endpoint.ts` — **the raw path** (the coding proxy):
   `resolveChatEndpoint(provider)` → `{ url, authHeader(): Promise<string>, adaptBody(body) }`.
-  Deliberately side-effect-free: it imports only the two `*-endpoint` modules, not
+  Deliberately side-effect-free: it imports only the three `*-endpoint` modules, not
   `app/mastra/scch.ts` (whose top-level model discovery must not run on the lean
   public coding route). `adaptBody` is the **parameter dialect** hook the proxy
   applies after `buildUpstreamChatBody`: Azure's gpt-5.x reasoning deployments
   reject `max_tokens` (it becomes `max_completion_tokens`) and non-default
-  `temperature`/`top_p` (dropped), while SCCH's vLLM speaks the classic dialect
-  (identity). The hook is pure and never touches `stream`/`stream_options`
+  `temperature`/`top_p` (dropped), while SCCH's vLLM and OpenRouter both speak the
+  classic dialect (identity — OpenRouter normalizes it for every model it fronts).
+  The hook is pure and never touches `stream`/`stream_options`
   (the usage tap's `include_usage`), `model`/`messages`, or `reasoning_effort`
-  (which both dialects accept — asserted in `lib/llm/endpoint.unit.test.ts`).
+  (which every dialect accepts — asserted in `lib/llm/endpoint.unit.test.ts`).
 - `lib/llm/availability.ts` — **the availability check** (app-only, never bundled
   by the CLI): `providerUnavailableReason(provider)` → `null` or a teacher-readable
-  reason (Foundry named without `AZURE_FOUNDRY_ENDPOINT`). Consumed by the
-  authoring gate and the runtime guards (above).
+  reason (Foundry named without `AZURE_FOUNDRY_ENDPOINT`, OpenRouter without
+  `OPENROUTER_API_KEY`). Consumed by the authoring gate and the runtime guards
+  (above).
 - `lib/llm/foundry-endpoint.ts` — side-effect-free Foundry access (mirrors
   `lib/scch-endpoint.ts`): URL builders over `AZURE_FOUNDRY_ENDPOINT` (throwing
   only when *called* with it unset) and `foundryBearerToken()`.
+- `lib/llm/openrouter-endpoint.ts` — the OpenRouter counterpart, deliberately
+  IMPORT-FREE like `lib/scch-endpoint.ts`: `openrouterConfigured()` (the key alone
+  decides), `openrouterBase()` (never throws — the public host is the default),
+  the `/chat/completions` + `/models` URL builders, and `openrouterAuthHeader()`
+  (the one function that throws on a missing key).
 - `lib/llm/upstream-error.ts` — **the failure classifier**, provider-AGNOSTIC (it
   interpolates the provider name, never branches on it):
   `classifyUpstreamLlmError(error, { provider, model })` →
@@ -98,16 +108,26 @@ Nothing else changes.
 
 ## Two ai-sdk packages — and why
 
-The agent path builds its two providers from two different packages, and the split
-is load-bearing:
+The agent path builds its three providers from **two** packages — three instances,
+two packages — and the split is load-bearing:
 
-| | SCCH | Azure Foundry |
-|---|---|---|
-| Package | `@ai-sdk/openai-compatible` (`createOpenAICompatible`, `app/mastra/scch.ts`) | `@ai-sdk/openai` (`createOpenAI`, `lib/llm/model.ts`) |
-| Chat model | `.chatModel(id)` | `.chat(id)` |
-| `providerOptions` key (`reasoningOptionsKey`) | the **instance name**, `"scch"` | the fixed `"openai"` |
-| Reasoning text | `reasoning_content` → ai-sdk reasoning parts | dropped (gpt-5.x emits none on Chat Completions anyway) |
-| Structured output | opt-in `supportsStructuredOutputs: true` | always on |
+| | SCCH | OpenRouter | Azure Foundry |
+|---|---|---|---|
+| Package | `@ai-sdk/openai-compatible` (`createOpenAICompatible`, `app/mastra/scch.ts`) | `@ai-sdk/openai-compatible` (`createOpenAICompatible`, `lib/llm/model.ts`) | `@ai-sdk/openai` (`createOpenAI`, `lib/llm/model.ts`) |
+| Chat model | `.chatModel(id)` | `.chatModel(id)` | `.chat(id)` |
+| `providerOptions` key (`reasoningOptionsKey`) | the **instance name**, `"scch"` | the **instance name**, `"openrouter"` | the fixed `"openai"` |
+| Reasoning text | `reasoning_content` → ai-sdk reasoning parts | `reasoning_content ?? reasoning` → ai-sdk reasoning parts | dropped (gpt-5.x emits none on Chat Completions anyway) |
+| Structured output | opt-in `supportsStructuredOutputs: true` | opt-in `supportsStructuredOutputs: true` | always on |
+
+The two `@ai-sdk/openai-compatible` instances carry the **same three flags** for
+the same reasons (below) — `includeUsage: true`, `supportsStructuredOutputs: true`,
+and `transformRequestBody: stripAssistantReasoning`. That last one is the
+package's replay behaviour, not SCCH's, so `app/mastra/scch.ts` **exports**
+`stripAssistantReasoning` and `lib/llm/model.ts` imports it: one implementation,
+not a copy. SCCH's instance lives in `app/mastra/scch.ts` because it also drives
+the model dropdown's discovery; OpenRouter's is built lazily in `lib/llm/model.ts`,
+so an OpenRouter-less deployment never constructs it and the key is read at first
+use rather than at import.
 
 **Why SCCH is not on `@ai-sdk/openai`.** SCCH's vLLM models stream their thinking
 as `delta.reasoning_content` **before** `delta.content` (one transition chunk
@@ -118,10 +138,13 @@ thinking text never reached the browser. `@ai-sdk/openai-compatible` maps
 `reasoning-delta` / `reasoning-end` chunks (and the non-streaming field onto a
 `{type: "reasoning"}` content part), which is what the rest of the pipeline —
 Mastra's reasoning chunks, `@ag-ui/mastra`'s `REASONING_*` events, CopilotKit's
-reasoning message — consumes (`docs/chat.md`).
+reasoning message — consumes (`docs/chat.md`). OpenRouter rides the same mapping:
+the `?? delta.reasoning` half of it is what OpenRouter's own reasoning models
+emit, so their thinking reaches the browser through the identical path (still
+teacher-only — the stripping happens downstream, `docs/chat.md`).
 
 **The version-line trap.** `@ai-sdk/openai-compatible` is **pinned exactly** in
-`package.json` (`2.0.69`). The `2.x` line is the one built on `@ai-sdk/provider`
+`package.json` (`2.0.72`). The `2.x` line is the one built on `@ai-sdk/provider`
 v3 — the ai-sdk v6 generation this app runs. npm's `latest` dist-tag on that
 package is `3.x` (provider v4) and must NOT be installed here; a caret range
 alone is not protection enough for a dependency whose major line tracks a
@@ -149,8 +172,10 @@ are guarded in `app/mastra/scch.unit.test.ts`.
 **Outgoing history carries no `reasoning_content`.** The same package that maps the
 INCOMING `reasoning_content` also replays it OUTWARD: converting the history for the
 next request, it re-attaches a previous turn's thinking to the assistant messages.
-`app/mastra/scch.ts` strips that field back off with the provider's
-`transformRequestBody` hook (applied on both the generate and the stream path).
+`stripAssistantReasoning` (`app/mastra/scch.ts`, shared by both
+`@ai-sdk/openai-compatible` instances) strips that field back off with the
+provider's `transformRequestBody` hook (applied on both the generate and the
+stream path).
 The Chat Completions dialect requires no such replay, and gemma mis-frames it: on the turn after a tool call it answers into
 `reasoning_content` and leaves `content` empty, so the student sees a blank reply with
 the real answer hidden in the collapsed thinking block. The strip is
@@ -176,8 +201,8 @@ field — one of `none`/`minimal`/`low`/`medium`/`high`/`xhigh` (`REASONING_LEVE
 `lib/llm/provider.ts`) — in every activity YAML and as the optional third member
 of the per-code override (above). Absent means the parameter is **not sent**, so
 the model's own default applies. The value is provider-AGNOSTIC: it is sent to
-SCCH too (both providers speak the OpenAI dialect), and a model that rejects a
-level fails at runtime exactly like a wrong model name. The tuple is the UNION of
+SCCH and OpenRouter too (all three providers speak the OpenAI dialect), and a
+model that rejects a level fails at runtime exactly like a wrong model name. The tuple is the UNION of
 the vocabularies our models speak, not a set every model accepts. Nothing narrows
 it per model — `model` is free text with no discovery — so the upstream call is
 the only validator, and the code form offers every level whatever the model.
@@ -226,10 +251,11 @@ How the level reaches the wire, per path:
   array form carrying `providerOptions: { <key>: { reasoningEffort } }`. The
   array form is REQUIRED: a bare-model return drops `providerOptions`, and
   Mastra's `modelSettings.reasoning` is a no-op on ai-sdk v3, so neither is an
-  alternative. The `<key>` is PER PACKAGE, not per wire dialect (above): SCCH's
-  `@ai-sdk/openai-compatible` reads its options under the ai-sdk **instance name**
-  (`"scch"`, the same constant behind the `scch.chat` metering id), Foundry's
-  `@ai-sdk/openai` under the fixed `"openai"` whatever the instance is called.
+  alternative. The `<key>` is PER PACKAGE, not per wire dialect (above): the two
+  `@ai-sdk/openai-compatible` instances read their options under the ai-sdk
+  **instance name** (`"scch"` / `"openrouter"`, the same constants behind the
+  `scch.chat` / `openrouter.chat` metering ids), Foundry's `@ai-sdk/openai` under
+  the fixed `"openai"` whatever the instance is called.
   `reasoningOptionsKey` (`lib/llm/model.ts`, beside `resolveLanguageModel`) holds
   that as a `Record<LlmProvider, string>` — exhaustive by type, so a new provider
   cannot be added without naming its key. A wrong key is silent: the option is
@@ -249,7 +275,7 @@ Metering is unaffected (output tokens already include reasoning tokens,
 When a model call fails, two different audiences need two different things, and
 `classifyUpstreamLlmError` (`lib/llm/upstream-error.ts`) is the one place that splits
 them. It reads the ai-sdk `APICallError` — `statusCode`, `isRetryable`, and the
-OpenAI-shaped `data.error.{code,type}` envelope both providers speak — digging it out
+OpenAI-shaped `data.error.{code,type}` envelope all three providers speak — digging it out
 of wrapper errors first (the ai-sdk's `RetryError`, Mastra's `cause` chain), so a
 wrapped failure classifies exactly like a raw one.
 
@@ -307,17 +333,18 @@ the client-body read), awaits it before the upstream fetch, and maps a failure
 
 ## Server-only invariant
 
-Endpoints, the SCCH key, and Entra tokens live in server modules only and never
+Endpoints, the SCCH and OpenRouter keys, and Entra tokens live in server modules
+only and never
 reach the browser — for every module, including the coding proxy (which keeps the
 teacher prompt + pinned model server-side, docs/coding.md). `provider` is part of
 the activity YAML like `model`: server-read, live, never client-trusted.
 
 ## Metering contract — provider names on spans
 
-Both provider instances are **named** (`scch` / `azure-foundry`), so Mastra
-stamps `attributes.provider = "<name>.chat"` and `attributes.model` (= the YAML's
-`llm.model`) on every MODEL_GENERATION span. Both packages build that id the same
-way (`` `${name}.chat` ``), which is why moving SCCH from `createOpenAI` to
+Every provider instance is **named** (`scch` / `azure-foundry` / `openrouter`), so
+Mastra stamps `attributes.provider = "<name>.chat"` and `attributes.model` (= the
+YAML's `llm.model`) on every MODEL_GENERATION span. Both packages build that id the
+same way (`` `${name}.chat` ``), which is why moving SCCH from `createOpenAI` to
 `createOpenAICompatible` left metering untouched — `lib/llm/model.unit.test.ts`
 guards the `scch.chat` id. The usage exporter reads those
 attributes and maps the name back to the app-level label via
@@ -330,21 +357,35 @@ passes `loaded.coding.provider`/`model` into `recordLlmUsage` directly.
 
 ## Health
 
-`/health` shows Foundry rows only when `AZURE_FOUNDRY_ENDPOINT` is set:
-`checkFoundry()` (`lib/health.ts`) proves token acquisition (the RBAC role) and
-endpoint reachability (a model listing), testids `health-foundry` /
-`health-foundry-host`. An SCCH-only deployment shows no Foundry row at all.
+Each optional provider's `/health` rows exist only when that provider is
+configured — an SCCH-only deployment shows neither, so there is no permanently red
+indicator for a provider nobody uses.
+
+- **Foundry**, only when `AZURE_FOUNDRY_ENDPOINT` is set: `checkFoundry()`
+  (`lib/health.ts`) is two-stage — it proves token acquisition (the RBAC role) and
+  endpoint reachability (a model listing). Testids `health-foundry` /
+  `health-foundry-host`.
+- **OpenRouter**, only when `OPENROUTER_API_KEY` is set: `checkOpenRouter()` is
+  **single-stage** — auth is a static key, so ONE authenticated GET of the models
+  URL proves key validity and reachability at once (a bad key comes back as an
+  HTTP 401), exactly like the SCCH probe. The host row resolves `openrouter.ai`
+  unless `OPENROUTER_BASE_URL` points elsewhere. Testids `health-openrouter` /
+  `health-openrouter-host`.
 
 ## Testing
 
 - **Hermetic** (`lib/llm/*.unit.test.ts`, CI): the provider schema/mapping, the
-  Foundry URL normalization, `resolveChatEndpoint` shapes with a mocked token,
-  and `resolveLanguageModel` model ids/provider names plus the per-provider
-  `reasoningOptionsKey` (building a provider does no I/O).
+  Foundry and OpenRouter URL normalization, `resolveChatEndpoint` shapes with a
+  mocked token, and `resolveLanguageModel` model ids/provider names plus the
+  per-provider `reasoningOptionsKey` (building a provider does no I/O).
   `app/mastra/model-entry.unit.test.ts` covers the rest of the reasoning seam: the
   array form, the omitted-level case, and where the level is filed.
-- **Live** (`@live-llm`, local only — CI has no Managed Identity and no SCCH
-  network): `e2e/tutor-chat-reply.spec.ts` runs the same smoke once per provider
-  (the Foundry leg authors an app-hosted tutor and skips without
-  `AZURE_FOUNDRY_ENDPOINT`), and `e2e/health.spec.ts` asserts the `health-foundry`
-  probe. See docs/testing.md.
+- **Live** (`@live-llm`, local only — CI has no Managed Identity, no SCCH network
+  and, being secret-free, no OpenRouter key): `e2e/tutor-chat-reply.spec.ts` runs
+  the same chat smoke once per provider (the Foundry and OpenRouter legs each
+  author an app-hosted tutor and skip without their env var — the OpenRouter leg
+  is what proves static-key auth and `vendor/model` id resolution on the agent
+  path), `e2e/coding-agent.spec.ts` does the same for the raw proxy path via a
+  code's LLM override, and `e2e/health.spec.ts` asserts the `health-foundry` and
+  `health-openrouter` probes, each branch keyed on its own env so it asserts the
+  rows' ABSENCE when the provider is unconfigured. See docs/testing.md.

@@ -195,7 +195,7 @@ export function CodeForm({
                 className="font-mono"
                 value={llmProvider}
                 onChange={(event) => setLlmProvider(event.target.value)}
-                placeholder="SCCH or Azure Foundry"
+                placeholder="SCCH, Azure Foundry or OpenRouter"
                 disabled={pending}
               />
             </Field>

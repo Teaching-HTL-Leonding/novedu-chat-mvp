@@ -56,8 +56,10 @@ prompt:
     anonymous: false            # optional; writing DEFAULTS TO FALSE (attributed)!
     llm:
       model: RedHatAI/gemma-4-31B-it-FP8-Dynamic   # required; drives the feedback chat
-      provider: SCCH            # optional; default SCCH. "Azure Foundry" serves an
-                                # Azure OpenAI deployment; model is then the deployment name
+      provider: SCCH            # optional; one of "SCCH" (default), "Azure Foundry",
+                                # "OpenRouter". Azure Foundry serves an Azure OpenAI
+                                # deployment (model = the deployment name); OpenRouter
+                                # takes a namespaced id like z-ai/glm-5.3-flash
     instructions: |             # required; the coach's system prompt. SERVER-ONLY —
       ...                       # may freely contain the assessment criteria
     placeholder: |              # optional; starter text prefilled into the editor

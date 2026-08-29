@@ -32,8 +32,8 @@ Columns: `input_tokens_new` / `input_tokens_cached` / `output_tokens` are `bigin
 token sums (`output_tokens` already includes reasoning tokens); `tool_calls` /
 `user_messages` / `quiz_answers` / `writing_saves` are `int` counts. `hour` is the
 UTC top-of-hour bucket. `usage_by_code` additionally carries two nullable
-attribution columns — `provider` (the LLM provider label, e.g. `SCCH` /
-`Azure Foundry`) and `model` (the raw model id / deployment name) — which only the
+attribution columns — `provider` (the LLM provider label: `SCCH`,
+`Azure Foundry` or `OpenRouter`) and `model` (the raw model id / deployment name) — which only the
 LLM recorder knows (see the write seam); a NULL `model` means "metered before
 models were recorded". They exist on `usage_by_code` ONLY: on `usage_by_user` even
 a coarse provider signal would hint which activity a student did. No foreign keys
@@ -112,7 +112,8 @@ On `span_ended` the pure `mapSpanToUsage`:
   same span's typed `attributes.model`/`attributes.provider` (stamped by Mastra
   from the resolved ai-sdk model — the **named-provider contract**, see
   `docs/ai-models.md`) yield the `provider`/`model` attribution:
-  `providerFromModelProviderId` maps `"scch.chat"`/`"azure-foundry.chat"` back to
+  `providerFromModelProviderId` maps
+  `"scch.chat"`/`"azure-foundry.chat"`/`"openrouter.chat"` back to
   the app-level labels; an unmapped id passes through raw so a naming regression
   stays visible. No extra RequestContext keys are involved.
 - `TOOL_CALL` / `CLIENT_TOOL_CALL` / `MCP_TOOL_CALL`: `+1` tool call, no tokens,

@@ -12,6 +12,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 - Do **not** push to GitHub unless the user explicitly asks.
 - `CLAUDE.md` is a symlink to **`AGENTS.md`** — edit `AGENTS.md`.
+- ALL documentation (`docs/**`, `teacher-docs/**`, READMEs, activity guides) describes the **current state only** — no change history, no migration notes, no version-gated remarks ("needs ≥ x", "since version y"). The app is an MVP under heavy development; assume the latest app and CLI are what everyone runs. Describing a live compatibility *mechanism* is fine (e.g. "an outdated CLI rejects unknown provider names — use `npx @novedu/cli@latest`"); naming versions is not.
 - Load the **`mastra`** skill before any Mastra work; never rely on cached APIs. Register every agent/tool/workflow/scorer in `app/mastra/index.ts`; use the `dev`/`build` package scripts, never raw `mastra dev`/`mastra build`.
 - Research current docs before non-trivial work with **Drizzle** ([llms.txt](https://orm.drizzle.team/llms.txt)), **Tailwind v4** (context7 via `ctx7` — CSS-first, differs from training data), or **Recharts** (context7 `/recharts/recharts`).
 
@@ -106,8 +107,8 @@ Read before touching: `app/api/coding/**`, `app/[code]/_coding/**`, `lib/coding-
 Read before touching: `lib/llm/**`, `app/mastra/scch.ts`, `app/mastra/model-entry.ts`, `lib/scch-endpoint.ts`, the `llm:` block of any activity schema.
 
 - Adding a provider = one branch in each of the THREE functions (security block) + a name constant + the schema enum literal + its `providerOptions` key in `reasoningOptionsKey` (beside `resolveLanguageModel` in `lib/llm/model.ts`).
-- The ai-sdk provider names (`scch`/`azure-foundry`) are the metering contract — renaming breaks usage attribution.
-- The agent path uses TWO ai-sdk packages: SCCH on `@ai-sdk/openai-compatible` (exact-pinned `2.x`, the ai-sdk-v6 line — it alone maps vLLM's `reasoning_content`, and needs `includeUsage: true` for metering), Foundry on `@ai-sdk/openai`. `providerOptions` keys differ accordingly.
+- The ai-sdk provider names (`scch`/`azure-foundry`/`openrouter`) are the metering contract — renaming breaks usage attribution.
+- The agent path uses TWO ai-sdk packages across THREE instances: SCCH and OpenRouter on `@ai-sdk/openai-compatible` (exact-pinned `2.x`, the ai-sdk-v6 line — it alone maps `reasoning_content`, and needs `includeUsage: true` for metering; both share the exported `stripAssistantReasoning`), Foundry on `@ai-sdk/openai`. `providerOptions` keys differ accordingly.
 
 ### Chat (CopilotKit surface) → `docs/chat.md`
 

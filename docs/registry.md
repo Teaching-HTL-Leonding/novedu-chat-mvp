@@ -92,7 +92,7 @@ activities:
 | `url` | ” | absolute `http(s)` URL |
 | `start` / `end` | no | ISO 8601 **with an explicit offset or `Z`** (the rule `POST /api/codes` enforces), **whole seconds** (see below); `end` must be after `start` |
 | `note` | no | ≤ 200 chars, trimmed like the server trims it, passed as the code's note at mint time; no behavioral effect |
-| `llm` | no | `{provider, model, reasoning?}` — provider and model both required when present (the API's both-or-nothing rule); `provider` is `SCCH` or `Azure Foundry`; `reasoning` an optional `none`/`minimal`/`low`/`medium`/`high`/`xhigh` (docs/ai-models.md) |
+| `llm` | no | `{provider, model, reasoning?}` — provider and model both required when present (the API's both-or-nothing rule); `provider` is `SCCH`, `Azure Foundry` or `OpenRouter`; `reasoning` an optional `none`/`minimal`/`low`/`medium`/`high`/`xhigh` (docs/ai-models.md) |
 
 Resolved URLs are normalized with `URL.href` — the same form
 `validateCodeRequest` stores in `file_url` — so matching compares identical

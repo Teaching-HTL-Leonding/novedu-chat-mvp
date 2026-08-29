@@ -113,7 +113,7 @@ export function parseWriting(content: string): WritingParseResult {
     return {
       ok: false,
       message:
-        'This writing activity uses an unsupported llm.provider (use "SCCH" or "Azure Foundry").',
+        'This writing activity uses an unsupported llm.provider (use "SCCH", "Azure Foundry" or "OpenRouter").',
     };
   }
 

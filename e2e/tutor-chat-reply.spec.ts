@@ -16,12 +16,16 @@ import { LIVE_TOOLS_TUTOR_URL, LIVE_TUTOR_URL, mintTutorCode } from "./code.util
 //   end-to-end through Mastra. Its tutor YAML is authored app-hosted through
 //   /files/new (the quiz.spec pattern). Skipped when AZURE_FOUNDRY_ENDPOINT is
 //   not set. The other module specs stay SCCH-only by design.
+// - OpenRouter: proves the other auth shape — a STATIC API key (no token step,
+//   no MI) — plus `vendor/model` id resolution end-to-end through Mastra, which
+//   neither of the two other legs exercises. Same app-hosted authoring pass.
+//   Skipped when OPENROUTER_API_KEY is not set.
 //
 // The send-and-await-reply sequence itself is shared with the other module chat
 // specs — `sendAndExpectReply` in e2e/chat.utils.ts.
 
-// Read the dev server's .env the way Next does, so the Foundry skip mirrors
-// exactly what the server sees.
+// Read the dev server's .env the way Next does, so the optional-provider skips
+// (AZURE_FOUNDRY_ENDPOINT / OPENROUTER_API_KEY) mirror exactly what the server sees.
 loadEnvConfig(process.cwd());
 
 // Minimal valid tutor (no fragment files) pointing at a Foundry deployment. It
@@ -36,6 +40,21 @@ description: "A minimal tutor used to smoke-test the Azure Foundry provider."
 llm:
   model: gpt-5.4-mini
   provider: Azure Foundry
+prompt:
+  tutor_instructions: |
+    You are a friendly tutor. Answer briefly.
+`;
+
+// The OpenRouter counterpart, inline and authored through /files/new for the same
+// two reasons: the save-time strict validation of a `provider: OpenRouter` tutor is
+// deliberate coverage, and the `vendor/model` id is account-/catalog-specific, so it
+// has no place in the content-stable fixture tree.
+const OPENROUTER_TUTOR = `id: e2e-openrouter-tutor
+name: "E2E OpenRouter Tutor"
+description: "A minimal tutor used to smoke-test the OpenRouter provider."
+llm:
+  model: z-ai/glm-5.3-flash
+  provider: OpenRouter
 prompt:
   tutor_instructions: |
     You are a friendly tutor. Answer briefly.
@@ -119,6 +138,41 @@ test.describe("via Azure Foundry", () => {
     // 2. Mint a tutor code pointing at the authored file's public URL and chat.
     const tutorUrl = `${new URL(page.url()).origin}/api/files/${name}`;
     await page.goto(`/${await mintTutorCode({ tutor: tutorUrl, note: "e2e foundry tutor" })}`);
+    await sendAndExpectReply(page);
+
+    // 3. Clean up the tutor file (no automatic GC; the minted code lingers like
+    // the other mint-and-leave specs — harmless and tidied with the CI container).
+    await page.goto(`/files/edit/${name}`);
+    page.once("dialog", (dialog) => dialog.accept());
+    const del = page.getByRole("button", { name: /delete/i }).first();
+    if (await del.isVisible().catch(() => false)) await del.click();
+  });
+});
+
+test.describe("via OpenRouter", () => {
+  // Authoring the app-hosted tutor file needs a teacher session (the chat at
+  // /<code> works for any signed-in user, so the teacher session covers both).
+  test.use({ storageState: TEACHER_STORAGE_STATE });
+
+  // @live: needs OPENROUTER_API_KEY (a static key — no Entra token, no MI) +
+  // Azure SQL — excluded in CI (test:e2e:ci).
+  test("sending a message gets a non-empty reply from an OpenRouter tutor", {
+    tag: ["@live", "@live-llm"],
+  }, async ({ page }) => {
+    test.skip(!process.env.OPENROUTER_API_KEY, "OPENROUTER_API_KEY is not set");
+
+    // 1. Author the tutor file (kind=tutor → strict-validated, then stored).
+    const name = `e2e-openrouter-tutor-${Date.now()}`;
+    await page.goto("/files/new");
+    await page.getByLabel(/Name/).fill(name);
+    await page.getByLabel("Kind").selectOption("tutor");
+    await setEditorContent(page, OPENROUTER_TUTOR);
+    await page.getByRole("button", { name: "Validate & create" }).click();
+    await expect(page).toHaveURL(new RegExp(`/files/edit/${name}$`), { timeout: 60_000 });
+
+    // 2. Mint a tutor code pointing at the authored file's public URL and chat.
+    const tutorUrl = `${new URL(page.url()).origin}/api/files/${name}`;
+    await page.goto(`/${await mintTutorCode({ tutor: tutorUrl, note: "e2e openrouter tutor" })}`);
     await sendAndExpectReply(page);
 
     // 3. Clean up the tutor file (no automatic GC; the minted code lingers like

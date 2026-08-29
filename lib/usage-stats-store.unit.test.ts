@@ -24,6 +24,7 @@ import { OTHER_KEY, resolveRange } from "@/lib/usage-range";
 import {
   getDashboardKpis,
   getTokensByModel,
+  getTokensByProvider,
   getTokenTimeSeries,
   getUsageBreakdown,
 } from "@/lib/usage-stats-store";
@@ -157,6 +158,41 @@ describe("getTokensByModel", () => {
   it("returns undefined instead of throwing when the query fails", async () => {
     fake.state.executeError = new Error("connection lost");
     await expect(getTokensByModel({ range: "7d", now: NOW })).resolves.toBeUndefined();
+  });
+});
+
+describe("getTokensByProvider", () => {
+  it("labels rows by provider, renders NULL as (unknown), and drops zero totals", async () => {
+    // The provider split is its own GROUP BY, not a re-reading of the model pie:
+    // two providers may serve the same model id, so only this column is the cost
+    // split (docs/usage-metering.md).
+    fake.state.recordset = [
+      { provider: "SCCH", total: "500" },
+      { provider: "Azure Foundry", total: 200 },
+      { provider: null, total: 40 },
+      { provider: "OpenRouter", total: 0 },
+    ];
+    const slices = await getTokensByProvider({ range: "7d", now: NOW });
+    expect(slices).toEqual([
+      { key: "SCCH", label: "SCCH", total: 500 },
+      { key: "Azure Foundry", label: "Azure Foundry", total: 200 },
+      { key: "(unknown)", label: "(unknown)", total: 40 },
+    ]);
+  });
+
+  it("folds providers beyond the top 9 into Other", async () => {
+    fake.state.recordset = Array.from({ length: 11 }, (_, i) => ({
+      provider: `p${i}`,
+      total: 100 - i,
+    }));
+    const slices = await getTokensByProvider({ range: "30d", now: NOW });
+    expect(slices).toHaveLength(10);
+    expect(slices?.at(-1)).toMatchObject({ key: OTHER_KEY, total: 91 + 90 });
+  });
+
+  it("returns undefined instead of throwing when the query fails", async () => {
+    fake.state.executeError = new Error("connection lost");
+    await expect(getTokensByProvider({ range: "7d", now: NOW })).resolves.toBeUndefined();
   });
 });
 

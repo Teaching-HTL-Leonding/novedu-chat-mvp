@@ -178,7 +178,7 @@ export type BuildResult =
        * Mirrors `LlmProvider` in `lib/llm/provider.ts` (kept inline so this module
        * stays import-free) — update both together.
        */
-      provider: "SCCH" | "Azure Foundry";
+      provider: "SCCH" | "Azure Foundry" | "OpenRouter";
       /**
        * Optional reasoning effort for `model` (tutor `llm.reasoning`); absent ⇒
        * no `reasoning_effort` is sent. Mirrors `ReasoningLevel` in

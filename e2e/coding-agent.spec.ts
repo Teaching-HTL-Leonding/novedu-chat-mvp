@@ -24,11 +24,21 @@ import { fetchServedModel, type PiAgentResult, runPiAgent } from "./pi-agent.uti
 // tool-call passthrough stays covered by the route integration test
 // (app/api/coding/v1/chat/completions/route.unit.test.ts).
 //
+// The provider legs:
+//
+// - SCCH: the fixture's own pinned model, no override.
+// - Azure Foundry: the code's LLM override pair switches the upstream, proving
+//   Managed-Identity/`az login` auth + deployment-as-model on the proxy path.
+//   Skipped when AZURE_FOUNDRY_ENDPOINT is not set.
+// - OpenRouter: the same override mechanism against the other auth shape — a
+//   STATIC API key (no token step, no MI) — plus `vendor/model` id resolution.
+//   Skipped when OPENROUTER_API_KEY is not set.
+//
 // No browser page is used — the Playwright webServer entries (dev server +
 // fixtures server) provide everything.
 
-// Read the dev server's .env the way Next does, so the Foundry skip mirrors
-// exactly what the server sees.
+// Read the dev server's .env the way Next does, so the optional-provider skips
+// (AZURE_FOUNDRY_ENDPOINT / OPENROUTER_API_KEY) mirror exactly what the server sees.
 loadEnvConfig(process.cwd());
 
 // A full pi round-trip (fixture fetch + Next compile + the model) — give it room.
@@ -121,5 +131,39 @@ test.describe("via Azure Foundry", () => {
     const served = await fetchServedModel(apiKey);
     await attachServedCompletion(served.raw);
     expect(served.model.toLowerCase()).toContain("gpt-5.4-mini");
+  });
+});
+
+test.describe("via OpenRouter", () => {
+  // The SAME SCCH fixture — the code's LLM override pair does the provider
+  // switching, keeping the account-specific `vendor/model` id out of the
+  // content-stable fixture tree (the tutor-chat-reply.spec.ts reasoning).
+
+  // @live: needs OPENROUTER_API_KEY (a static key — no Entra token, no MI) +
+  // Azure SQL — excluded in CI (test:e2e:ci).
+  test("pi gets a non-empty reply from the overridden OpenRouter model", {
+    tag: ["@live", "@live-llm"],
+  }, async () => {
+    test.skip(!process.env.OPENROUTER_API_KEY, "OPENROUTER_API_KEY is not set");
+
+    const code = await mintCode({
+      module: "coding",
+      file: LIVE_CODING_URL,
+      llm: { provider: "OpenRouter", model: "z-ai/glm-5.3-flash" },
+      note: "e2e pi agent (OpenRouter)",
+    });
+    mintedCode = code;
+    const apiKey = await mintCodingKey({ code });
+
+    const result = await runPiAgent({ apiKey, prompt: "Reply with exactly one word." });
+    await attachPiOutput(result);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim().length).toBeGreaterThan(0);
+
+    // If the override silently fell back to the YAML default this reports
+    // `gemma…` — the test must fail loudly, not pass on the wrong upstream.
+    const served = await fetchServedModel(apiKey);
+    await attachServedCompletion(served.raw);
+    expect(served.model.toLowerCase()).toContain("glm-5.3-flash");
   });
 });

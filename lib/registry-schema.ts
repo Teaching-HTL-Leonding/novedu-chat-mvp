@@ -66,9 +66,9 @@ function timestampField(field: "start" | "end") {
 
 // An unknown provider would produce an entry that can never match a stored code and then
 // fails at mint time. An enum (not the shared `providerSchema`, which carries a DEFAULT)
-// keeps the both-or-nothing llm rule intact and emits the two literals for editors.
+// keeps the both-or-nothing llm rule intact and emits the literals for editors.
 const providerField = z.enum(LLM_PROVIDERS, {
-  error: 'must be "SCCH" or "Azure Foundry"',
+  error: 'must be "SCCH", "Azure Foundry" or "OpenRouter"',
 });
 
 // The override's optional third member. An enum (not the shared `reasoningLevelSchema`,

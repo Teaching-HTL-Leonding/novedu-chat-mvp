@@ -133,7 +133,8 @@
               "type": "string",
               "enum": [
                 "SCCH",
-                "Azure Foundry"
+                "Azure Foundry",
+                "OpenRouter"
               ],
               "description": "LLM provider override for this code. Required when `llm` is present."
             },

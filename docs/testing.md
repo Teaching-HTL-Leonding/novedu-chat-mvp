@@ -31,13 +31,22 @@ Four kinds of e2e, by the external infra they need:
   alone, and `evalJudge` has no other real-backend coverage in the repo, unlike the
   grader which `e2e/quiz.spec.ts` smokes indirectly. For the **tutor** kind the judge is
   the only check there is, so a regression means a tutor eval reports nothing at all).
-  Neither provider is reachable from CI: the SCCH endpoint is **geo-blocked to
-  Austria** and cannot be containerized, and Azure Foundry needs a **Managed
+  No provider is reachable from CI: the SCCH endpoint is **geo-blocked to
+  Austria** and cannot be containerized, Azure Foundry needs a **Managed
   Identity / `az login`** with the `Cognitive Services OpenAI User` role
-  (docs/ai-models.md) — so these are **excluded from CI** and run locally only.
-  The Foundry legs (the second `tutor-chat-reply` case, the `health-foundry`
-  assertions, the `coding-agent` override case) additionally self-skip when
-  `AZURE_FOUNDRY_ENDPOINT` is not set. The judge deliberately has no Foundry leg:
+  (docs/ai-models.md), and OpenRouter needs an `OPENROUTER_API_KEY` that CI does
+  not have and will not get (`qa.yml` stays secret-free, docs/ci-security.md) — so
+  these are **excluded from CI** and run locally only.
+  Each optional provider's legs additionally self-skip on its own env var. The
+  **Foundry** legs (the `tutor-chat-reply` "via Azure Foundry" case, the
+  `health-foundry` assertions, the `coding-agent` "via Azure Foundry" override
+  case) key on `AZURE_FOUNDRY_ENDPOINT`; the **OpenRouter** legs
+  (`tutor-chat-reply` "via OpenRouter › sending a message gets a non-empty reply
+  from an OpenRouter tutor" — the agent path, proving static-key auth and
+  `vendor/model` id resolution — `coding-agent` "via OpenRouter › pi gets a
+  non-empty reply from the overridden OpenRouter model" — the coding-proxy path
+  through a code's LLM override — and the `health-openrouter` assertions) key on
+  `OPENROUTER_API_KEY`. The judge deliberately has no Foundry leg:
   it resolves its model through the same `resolveLanguageModel` branch the tutor
   leg already drives (see `e2e/eval-judge.live.spec.ts`'s header for what that
   knowingly gives up).

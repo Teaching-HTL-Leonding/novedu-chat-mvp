@@ -142,12 +142,13 @@ export async function getUsageBreakdown(opts: {
 
 /**
  * Total tokens per MODEL over the window, folded to the top 9 + "Other". Grouped
- * by the denormalized `model` column (the activity YAML's `llm.model`); model ids
- * are provider-specific (SCCH ids and Foundry deployment names are disjoint), so
- * this breakdown also reads as the provider split. Rows with a NULL model (metered
- * before models were recorded) show as "(unknown)"; zero-token rows (buckets that
- * only counted messages/saves) are dropped like in the other pies. Returns
- * `undefined` on a DB error. Never throws.
+ * by the denormalized `model` column (the activity YAML's `llm.model`), so slices
+ * are raw model ids / deployment names. This is a MODEL breakdown only — the
+ * provider split is its own query (`getTokensByProvider`), because model ids are
+ * not provider-disjoint (the same id can be served by more than one provider).
+ * Rows with a NULL model (metered before models were recorded) show as
+ * "(unknown)"; zero-token rows (buckets that only counted messages/saves) are
+ * dropped like in the other pies. Returns `undefined` on a DB error. Never throws.
  */
 export async function getTokensByModel(opts: {
   range: UsageRange;
@@ -171,6 +172,43 @@ export async function getTokensByModel(opts: {
     return foldTopN(slices, 9);
   } catch (error) {
     console.error("usage-stats-store: tokens by model failed", error);
+    return undefined;
+  }
+}
+
+/**
+ * Total tokens per LLM PROVIDER over the window. Grouped by the denormalized
+ * `provider` column — the app-level provider label the recorder stamped (e.g.
+ * "SCCH" / "Azure Foundry", docs/usage-metering.md) — so this is the cost split:
+ * which provider's tokens were spent, independent of the model ids they ran.
+ * Rows with a NULL provider (metered before providers were recorded) show as
+ * "(unknown)"; zero-token rows (buckets that only counted messages/saves) are
+ * dropped like in the other pies. Folded to the top 9 + "Other" for consistency
+ * with the sibling pies, though the provider count is far below that in practice.
+ * Returns `undefined` on a DB error. Never throws.
+ */
+export async function getTokensByProvider(opts: {
+  range: UsageRange;
+  now: Date;
+}): Promise<Slice[] | undefined> {
+  const { start } = resolveRange(opts.range, opts.now);
+  try {
+    const res = await getDb().execute<{ provider: string | null; total: number | string }>(sql`
+      SELECT u.provider AS provider,
+             SUM(u.input_tokens_new + u.input_tokens_cached + u.output_tokens) AS total
+      FROM novedu_usage_by_code u
+      WHERE u.hour >= ${start}
+      GROUP BY u.provider
+    `);
+    const slices: Slice[] = res.recordset
+      .map((row) => {
+        const provider = row.provider ?? "(unknown)";
+        return { key: provider, label: provider, total: Number(row.total) };
+      })
+      .filter((s) => s.total > 0);
+    return foldTopN(slices, 9);
+  } catch (error) {
+    console.error("usage-stats-store: tokens by provider failed", error);
     return undefined;
   }
 }

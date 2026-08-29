@@ -63,8 +63,12 @@ function carriesReasoning(message: unknown): boolean {
  * has nothing reliable to key on, and no house model needs its own scratchpad read
  * back to it. Reasoning RECEIVED is untouched — the thinking block still renders
  * (docs/chat.md). Returns the body it was handed when nothing needs stripping.
+ *
+ * Exported because the OpenRouter provider (`lib/llm/model.ts`) is a second
+ * `@ai-sdk/openai-compatible` instance with the same replay behaviour and needs the
+ * same hook — one implementation, not a copy.
  */
-function stripAssistantReasoning(args: Record<string, unknown>): Record<string, unknown> {
+export function stripAssistantReasoning(args: Record<string, unknown>): Record<string, unknown> {
   const { messages } = args;
   if (!Array.isArray(messages) || !messages.some(carriesReasoning)) return args;
   return {
