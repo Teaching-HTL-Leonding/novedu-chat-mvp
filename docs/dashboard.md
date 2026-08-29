@@ -13,11 +13,13 @@ the `--chart-*` tokens in `app/globals.css`, and the `/usage` entry in
 
 - A **stacked bar chart** of token usage over time — cached input, new input, output
   — with a **data table** of the same buckets beneath it.
-- Three **donut pies**: total tokens per **module** (tutor/quiz/writing/coding), per
-  **code** (top 9 + "Other"), and per **model** (top 9 + "Other"; a NULL model —
-  metered before models were recorded — shows as "(unknown)"). Model ids are
-  provider-specific (SCCH ids vs. Foundry deployment names, docs/ai-models.md), so
-  the model pie doubles as the paid-Foundry vs. free-SCCH cost split.
+- Four **donut pies**: total tokens per **module** (tutor/quiz/writing/coding), per
+  **code** (top 9 + "Other"), per **model** (top 9 + "Other"; a NULL model —
+  metered before models were recorded — shows as "(unknown)"), and per **LLM
+  provider** (`docs/ai-models.md`; a NULL provider likewise "(unknown)"). The
+  provider pie is the **cost split** — model ids are not provider-disjoint (the
+  same id can be served by more than one provider), so the model pie cannot stand
+  in for it. The two LLM pies sit side by side beneath the module/code pair.
 - Two **KPIs**: **Chats** (distinct Mastra threads with a user message) and **Quiz
   answers graded** (`SUM(quiz_answers)`).
 
@@ -68,9 +70,13 @@ crosses the wire, and **read once where the shape allows**:
   and code pies (summed by module, folded top-9-by-code + Other). Code slices are
   labelled with the teacher's own **note**, never a student.
 - `getTokensByModel({ range, now })` — one `GROUP BY model` scan for the model pie
-  (label = the raw model id, NULL → "(unknown)", folded top 9 + Other). A
-  tokens-by-**provider** two-slice variant is the same query grouped on the
-  `provider` column, if ever preferred.
+  (label = the raw model id, NULL → "(unknown)", folded top 9 + Other).
+- `getTokensByProvider({ range, now })` — the sibling `GROUP BY provider` scan for
+  the provider pie (label = the app-level provider name the recorder stamped,
+  NULL → "(unknown)", folded top 9 + Other for consistency though the provider
+  count is far below that). Its own read, not a fold of the model query, so a slow
+  or failed one degrades only its own card; `ModelsSection` issues the two in
+  parallel.
 - `getDashboardKpis({ range, now })` — one round trip, two windowed subselects, feeds
   **both KPI tiles**.
 
@@ -108,7 +114,10 @@ HTML styles off the `foreground` ramp. The bar chart's companion table and the p
 legends are the dataviz **"relief"** that keeps the two sub-3:1 hues legible. The app
 is **light-only**. The code pie is top-9 + "Other"; only the first 8 hues are
 CVD-validated and a 10-slice pie is at the readability limit, so `N` is a single
-constant (`foldTopN`) if a ranked bar or top-8 is later preferred.
+constant (`foldTopN`) if a ranked bar or top-8 is later preferred. The model and
+provider pies both use the pie's rank-colored `variant="model"`: neither models
+nor providers have a fixed identity order to color by (unlike the modules), so
+the rank palette + the "Other" gray is exactly the assignment they need.
 
 ## Anonymity
 

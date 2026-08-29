@@ -105,7 +105,7 @@ export function parseCoding(content: string): CodingParseResult {
     return {
       ok: false,
       message:
-        'This coding activity uses an unsupported llm.provider (use "SCCH" or "Azure Foundry").',
+        'This coding activity uses an unsupported llm.provider (use "SCCH", "Azure Foundry" or "OpenRouter").',
     };
   }
 

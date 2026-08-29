@@ -53,7 +53,7 @@ instructions: |
     sorting function on request.
 ```
 
-You also pick the model that answers, and where it runs (the school's Austrian LLM hosting partner or Azure, a provider choice you can adjust per code).
+You also pick the model that answers, and where it runs (the school's Austrian LLM hosting partner, Azure, or the OpenRouter gateway, a provider choice you can adjust per code).
 
 Coding activities keep what a student asks the assistant anonymous: you see overall usage of a code, never an individual conversation. Picking up the connection key itself is the one thing recorded with a student's name, so you know who is connected.
 

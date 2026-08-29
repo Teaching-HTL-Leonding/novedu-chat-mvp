@@ -201,7 +201,7 @@ export function registerCodes(program: Command): void {
     .option("--note <text>", "note shown in the codes list")
     .option(
       "--llm-provider <provider>",
-      'LLM override provider ("SCCH" or "Azure Foundry"; needs --llm-model)',
+      'LLM override provider ("SCCH", "Azure Foundry" or "OpenRouter"; needs --llm-model)',
     )
     .option("--llm-model <model>", "LLM override model id (needs --llm-provider)")
     .option(

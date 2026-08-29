@@ -22,4 +22,22 @@ describe("providerUnavailableReason", () => {
     vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "https://res.openai.azure.com");
     expect(providerUnavailableReason("Azure Foundry")).toBeNull();
   });
+
+  it("OpenRouter without OPENROUTER_API_KEY returns a teacher-readable reason", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    const reason = providerUnavailableReason("OpenRouter");
+    expect(reason).toContain("OpenRouter");
+    expect(reason).toContain("OPENROUTER_API_KEY");
+  });
+
+  it("OpenRouter with the key configured is available", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    expect(providerUnavailableReason("OpenRouter")).toBeNull();
+  });
+
+  it("SCCH stays available even with every optional provider unconfigured", () => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    expect(providerUnavailableReason("SCCH")).toBeNull();
+  });
 });

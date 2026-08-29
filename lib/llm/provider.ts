@@ -9,7 +9,7 @@ import { z } from "zod";
 // The literals themselves, as a tuple, so schemas that need an *enum* (rather than
 // `providerSchema`, which carries a default) can be built from them without restating
 // the names — `lib/registry-schema.ts` is one such consumer.
-export const LLM_PROVIDERS = ["SCCH", "Azure Foundry"] as const;
+export const LLM_PROVIDERS = ["SCCH", "Azure Foundry", "OpenRouter"] as const;
 
 export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
@@ -26,7 +26,7 @@ export const providerSchema = z.enum(LLM_PROVIDERS).default(DEFAULT_PROVIDER).me
 // The reasoning-effort levels a reasoning model may be driven at, as a tuple, so
 // schemas that need an *enum* can be built from them without restating the names
 // (`lib/registry-schema.ts` is one such consumer). Provider-agnostic on purpose:
-// both providers speak the OpenAI `reasoning_effort` parameter, and a model that
+// every provider speaks the OpenAI `reasoning_effort` parameter, and a model that
 // rejects a level fails at runtime like a wrong model name.
 //
 // The tuple is the UNION of the vocabularies our models speak, NOT a set every
@@ -54,12 +54,14 @@ export const reasoningLevelSchema = z.enum(REASONING_LEVELS).optional().meta({
     'Optional reasoning effort for reasoning models. Not every model accepts every level. Omit to let the model decide (the parameter is then not sent); "none" instead turns a reasoning model off.',
 });
 
-// ai-sdk provider names, passed as `createOpenAI({ name })`. They are the METERING
-// contract: Mastra stamps `<name>.chat` as `attributes.provider` on every
-// MODEL_GENERATION span, and the usage exporter maps it back via
-// `providerFromModelProviderId`. Renaming one silently breaks that attribution.
+// ai-sdk provider names, passed as `createOpenAI({ name })` / `createOpenAICompatible({ name })`.
+// They are the METERING contract: Mastra stamps `<name>.chat` as
+// `attributes.provider` on every MODEL_GENERATION span, and the usage exporter maps
+// it back via `providerFromModelProviderId`. Renaming one silently breaks that
+// attribution.
 export const SCCH_PROVIDER_NAME = "scch";
 export const FOUNDRY_PROVIDER_NAME = "azure-foundry";
+export const OPENROUTER_PROVIDER_NAME = "openrouter";
 
 // Maps an ai-sdk model's `provider` id (e.g. "scch.chat") back to the LlmProvider
 // it was created from; `undefined` for anything this app didn't name.
@@ -67,6 +69,7 @@ export function providerFromModelProviderId(id: string | undefined): LlmProvider
   const name = id?.split(".")[0];
   if (name === SCCH_PROVIDER_NAME) return "SCCH";
   if (name === FOUNDRY_PROVIDER_NAME) return "Azure Foundry";
+  if (name === OPENROUTER_PROVIDER_NAME) return "OpenRouter";
   return undefined;
 }
 
@@ -74,8 +77,14 @@ export function providerFromModelProviderId(id: string | undefined): LlmProvider
 // including a non-string — is `undefined`. The CALLER decides how to treat a
 // missing value (`?? DEFAULT_PROVIDER`) vs. a present-but-invalid one (reject, so
 // a Foundry-intended activity never silently runs against SCCH).
+//
+// The comparisons are spelled out rather than derived from `LLM_PROVIDERS`: a
+// `.includes()` over the tuple does NOT narrow `unknown` to `LlmProvider`, so every
+// literal added above must be added here too.
 export function parseLenientProvider(value: unknown): LlmProvider | undefined {
-  return value === "SCCH" || value === "Azure Foundry" ? value : undefined;
+  return value === "SCCH" || value === "Azure Foundry" || value === "OpenRouter"
+    ? value
+    : undefined;
 }
 
 // The `parseLenientProvider` counterpart for the reasoning level: a valid literal

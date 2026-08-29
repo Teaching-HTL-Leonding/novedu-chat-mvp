@@ -76,8 +76,10 @@ prompt:
     anonymous: false            # optional; default true (chats NOT linked to students)
     llm:
       model: RedHatAI/gemma-4-31B-it-FP8-Dynamic   # required
-      provider: SCCH            # optional; default SCCH. "Azure Foundry" serves an
-                                # Azure OpenAI deployment; model is then the deployment name
+      provider: SCCH            # optional; one of "SCCH" (default), "Azure Foundry",
+                                # "OpenRouter". Azure Foundry serves an Azure OpenAI
+                                # deployment (model = the deployment name); OpenRouter
+                                # takes a namespaced id like z-ai/glm-5.3-flash
       imageInput: false         # optional; default true, set false to disable image uploads
     tools:                      # optional; default [] (no tools) — built-in server-side
       - random_number           # tools the model may call during the chat

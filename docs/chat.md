@@ -229,8 +229,9 @@ so there is nothing to find in devtools either.
 
 ### The path
 
-The model streams `reasoning_content`, `@ai-sdk/openai-compatible` turns it into
-ai-sdk reasoning parts (SCCH only — `docs/ai-models.md`), Mastra emits
+The model streams `reasoning_content` (or `reasoning`), `@ai-sdk/openai-compatible`
+turns it into ai-sdk reasoning parts (SCCH and OpenRouter — the two instances on
+that package, `docs/ai-models.md`), Mastra emits
 `reasoning-start`/`-delta`/`-end` chunks, `@ag-ui/mastra` maps those to AG-UI
 `REASONING_*` events, the `/api/copilotkit` runtime passes them through
 type-agnostically, and `@ag-ui/client` assembles a message with
@@ -328,11 +329,15 @@ it describes the run, not a phase of it.
 
 ### Two things that follow from where this sits
 
-- **Foundry emits none.** gpt-5.x returns no reasoning *text* on the Chat
-  Completions surface (only reasoning *tokens* in usage), so a Foundry activity
-  shows no thinking block however `llm.reasoning` is set — for teachers either.
-  An SCCH activity run with `reasoning: none` (or a "… - Reasoning OFF" model id)
-  likewise shows none.
+- **Whether there is a thinking block at all is the provider's + model's answer,
+  not a setting here.** SCCH's vLLM models emit reasoning text and so show one.
+  **OpenRouter** rides the same `reasoning_content ?? reasoning` mapping, so an
+  OpenRouter model that returns reasoning text shows one too — under the identical
+  rules, teacher-only. **Foundry** emits none: gpt-5.x returns no reasoning *text*
+  on the Chat Completions surface (only reasoning *tokens* in usage), so a Foundry
+  activity shows no thinking block however `llm.reasoning` is set — for teachers
+  either. Any activity run with `reasoning: none` (or SCCH's "… - Reasoning OFF"
+  model id) likewise shows none.
 - **The read-only transcript shows none.** Nothing is stored to show:
   `mastra_messages` carries no reasoning at all (below). `toAguiMessage`
   (`lib/conversation-collapse.ts`) additionally rebuilds each stored row from its

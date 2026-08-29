@@ -70,11 +70,12 @@ test("the usage dashboard renders seeded token metrics", { tag: ["@live", "@live
 
     await page.goto("/usage");
 
-    // All four sections render their headings.
+    // All sections render their headings.
     await expect(page.getByRole("heading", { name: "Token usage over time" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tokens by category" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tokens by code" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Tokens by model" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tokens by provider" })).toBeVisible();
 
     // The time-series query ran and the shared table rendered.
     await expect(page.getByRole("columnheader", { name: "Total" })).toBeVisible();

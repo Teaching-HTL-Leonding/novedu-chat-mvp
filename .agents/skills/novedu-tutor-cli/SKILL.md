@@ -23,6 +23,12 @@ accept, so treat the CLI as authoritative — don't re-derive validation rules
 yourself. It is built to grow: run `<command> --help` whenever a task sounds
 like a newer flag or command might already cover it.
 
+For up-to-date teacher-facing documentation on any Novedu feature (activity
+YAML fields, codes, quizzes, providers, …), fetch the machine-readable teacher
+guide: <https://novedu.at/docs/llms.txt> is the index, `llms-full.txt` beside
+it the full corpus, and every chapter has a `.md` twin at its own URL. Prefer
+it over guessing — it is generated from the same corpus the `/docs` site serves.
+
 ## Pick the invocation
 
 - **Inside the app repo** (root `package.json` is named `chat-prototype`):

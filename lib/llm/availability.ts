@@ -1,4 +1,5 @@
 import { foundryConfigured } from "@/lib/llm/foundry-endpoint";
+import { openrouterConfigured } from "@/lib/llm/openrouter-endpoint";
 import type { LlmProvider } from "@/lib/llm/provider";
 
 // The ONE place that answers "can THIS server actually serve this provider?" —
@@ -20,6 +21,13 @@ export function providerUnavailableReason(provider: LlmProvider): string | null 
       'This activity uses the "Azure Foundry" LLM provider, which is not configured on ' +
       "this server (AZURE_FOUNDRY_ENDPOINT is not set). Switch llm.provider to SCCH or " +
       "ask the operator to configure Azure Foundry."
+    );
+  }
+  if (provider === "OpenRouter" && !openrouterConfigured()) {
+    return (
+      'This activity uses the "OpenRouter" LLM provider, which is not configured on ' +
+      "this server (OPENROUTER_API_KEY is not set). Switch llm.provider to SCCH or " +
+      "ask the operator to configure OpenRouter."
     );
   }
   return null;

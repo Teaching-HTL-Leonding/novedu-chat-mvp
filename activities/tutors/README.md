@@ -196,7 +196,7 @@ exampleQuestions: # optional: clickable starter questions on the empty chat
 anonymous: false # optional: omit for default true; false records which student each chat belongs to
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model serves this tutor
-  provider: SCCH # optional: omit for default SCCH; "Azure Foundry" uses an Azure OpenAI deployment
+  provider: SCCH # optional: omit for default SCCH; "Azure Foundry" (a deployment name) or "OpenRouter"
   imageInput: false # optional: omit for default true; set false to disable image uploads
 tools: # optional: omit for default [] (no tools); built-in tools the model may call
   - random_number
@@ -248,10 +248,14 @@ anonymous: false
 
 ### `llm.provider`
 
-Optional, default `SCCH` (the school's Austrian LLM hosting partner). Set
-`provider: Azure Foundry` to serve the tutor from an Azure OpenAI deployment
-instead — then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`)
-rather than an SCCH model id.
+Optional, one of `SCCH` (the default — the school's Austrian LLM hosting
+partner), `Azure Foundry` or `OpenRouter`. With `provider: Azure Foundry` the
+tutor is served from an Azure OpenAI deployment and `llm.model` is the
+**deployment name** (e.g. `gpt-5.4-mini`) rather than an SCCH model id; with
+`provider: OpenRouter` it is served through OpenRouter and `llm.model` is its
+namespaced routing key (e.g. `z-ai/glm-5.3-flash`). Both are only usable if the
+server is configured for them — otherwise the activity is rejected with a
+readable reason.
 
 The `llm:` values are the **default**: when a teacher mints a code for this
 activity, the code's create/edit form can **override the whole `llm:` block per

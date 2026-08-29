@@ -249,14 +249,14 @@ The **LLM override** section is two free-text fields (provider + model) plus a
 and
 preset buttons (`LLM_OVERRIDE_PRESETS`, `lib/llm/presets.ts` — the built-in
 SCCH/Gemma-4, Azure-Foundry/gpt-5.4-mini, Azure-Foundry/gpt-5.6-terra (which
-also fills reasoning `low`) and SCCH/Qwen-3.8-27B fills; a Clear button empties
-all three).
+also fills reasoning `low`), SCCH/Qwen-3.8-27B and OpenRouter/GLM-5.3-Flash
+fills; a Clear button empties all three).
 Left blank, the code serves the activity YAML's `llm:` values. Filled, the
 override replaces the whole `llm:` block for every request under the code (the
 pair is both-or-nothing and a reasoning level requires it: the server rejects a
 half-filled pair, an unknown provider, an unknown level, or a level without the
 pair, and gates the override's provider through `providerUnavailableReason` at
-save time so a Foundry override cannot be stored on an SCCH-only server). The
+save time so an override naming an unconfigured provider cannot be stored). The
 override swaps
 ONLY the LLM — the system prompt, `anonymous`, and everything else still come
 from the YAML (a tutor YAML's `llm.imageInput` still gates the attachment UI, so

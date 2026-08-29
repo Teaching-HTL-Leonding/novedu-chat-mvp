@@ -200,7 +200,8 @@ export function parseQuiz(content: string): QuizParseResult {
   if (!provider) {
     return {
       ok: false,
-      message: 'This quiz uses an unsupported llm.provider (use "SCCH" or "Azure Foundry").',
+      message:
+        'This quiz uses an unsupported llm.provider (use "SCCH", "Azure Foundry" or "OpenRouter").',
     };
   }
 

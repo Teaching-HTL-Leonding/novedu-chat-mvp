@@ -2,8 +2,9 @@ import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 
-// Read the dev server's .env the way Next does, so the Foundry assertions below
-// mirror exactly what the server sees (AZURE_FOUNDRY_ENDPOINT set or not).
+// Read the dev server's .env the way Next does, so the optional-provider
+// assertions below mirror exactly what the server sees (AZURE_FOUNDRY_ENDPOINT /
+// OPENROUTER_API_KEY set or not).
 loadEnvConfig(process.cwd());
 
 // The /health page renders its shell immediately (the server only gates access
@@ -75,6 +76,19 @@ test.describe("as a teacher", () => {
     } else {
       await expect(page.getByTestId("health-foundry")).toHaveCount(0);
       await expect(page.getByTestId("health-foundry-host")).toHaveCount(0);
+    }
+
+    // OpenRouter is optional too: the API key alone makes it configured, and a
+    // single authenticated model listing proves the key (no token step).
+    if (process.env.OPENROUTER_API_KEY) {
+      await expect(page.getByTestId("health-openrouter")).toContainText("OK", { timeout: 20_000 });
+      await expect(page.getByTestId("health-openrouter")).toContainText("models available");
+      await expect(page.getByTestId("health-openrouter-host")).toHaveText(hostPattern, {
+        timeout: 20_000,
+      });
+    } else {
+      await expect(page.getByTestId("health-openrouter")).toHaveCount(0);
+      await expect(page.getByTestId("health-openrouter-host")).toHaveCount(0);
     }
   });
 

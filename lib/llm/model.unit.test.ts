@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest";
 // with an equivalently-named provider so this test never touches the network. Only
 // the NAME matters here (it is the metering contract asserted below); the real
 // provider's option flags are guarded in app/mastra/scch.unit.test.ts.
+// `stripAssistantReasoning` is re-exported by the same module for the OpenRouter
+// provider built in lib/llm/model.ts; its behaviour is guarded there too.
 vi.mock("@/app/mastra/scch", async () => {
   const { createOpenAICompatible } = await import("@ai-sdk/openai-compatible");
   const { SCCH_PROVIDER_NAME } = await import("@/lib/llm/provider");
@@ -14,11 +16,16 @@ vi.mock("@/app/mastra/scch", async () => {
       apiKey: "sk-test",
       includeUsage: true,
     }),
+    stripAssistantReasoning: (args: Record<string, unknown>) => args,
   };
 });
 
 import { reasoningOptionsKey, resolveLanguageModel } from "@/lib/llm/model";
-import { providerFromModelProviderId, SCCH_PROVIDER_NAME } from "@/lib/llm/provider";
+import {
+  OPENROUTER_PROVIDER_NAME,
+  providerFromModelProviderId,
+  SCCH_PROVIDER_NAME,
+} from "@/lib/llm/provider";
 
 describe("resolveLanguageModel", () => {
   it("SCCH → a chat model on the SCCH provider, carrying the metering name", () => {
@@ -39,6 +46,16 @@ describe("resolveLanguageModel", () => {
     expect(model.modelId).toBe("gpt-5.4-mini");
     expect(model.provider).toBe("azure-foundry.chat");
   });
+
+  it("OpenRouter → a chat model on the lazily-built OpenRouter provider", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    const model = resolveLanguageModel("OpenRouter", "z-ai/glm-5.3-flash");
+    expect(model.modelId).toBe("z-ai/glm-5.3-flash");
+    // Same metering contract as SCCH — `<instance name>.chat`, mapped back by the
+    // usage exporter (lib/llm/provider.ts).
+    expect(model.provider).toBe("openrouter.chat");
+    expect(providerFromModelProviderId(model.provider)).toBe("OpenRouter");
+  });
 });
 
 // The other half of the package choice: WHERE per-request options must be filed
@@ -55,5 +72,13 @@ describe("reasoningOptionsKey", () => {
 
   it('Azure Foundry → the FIXED "openai" key (@ai-sdk/openai ignores the instance name)', () => {
     expect(reasoningOptionsKey("Azure Foundry")).toBe("openai");
+  });
+
+  it("OpenRouter → its own ai-sdk INSTANCE NAME (the second openai-compatible instance)", () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    expect(reasoningOptionsKey("OpenRouter")).toBe(OPENROUTER_PROVIDER_NAME);
+    expect(resolveLanguageModel("OpenRouter", "m").provider).toBe(
+      `${reasoningOptionsKey("OpenRouter")}.chat`,
+    );
   });
 });

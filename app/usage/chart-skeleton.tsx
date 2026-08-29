@@ -39,6 +39,7 @@ export function ModelsSkeleton() {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <ChartSkeleton title="Tokens by model" />
+      <ChartSkeleton title="Tokens by provider" />
     </div>
   );
 }

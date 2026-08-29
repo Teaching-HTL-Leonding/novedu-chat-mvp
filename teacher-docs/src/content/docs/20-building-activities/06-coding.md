@@ -34,7 +34,7 @@ instructions: |
 - **`id`** (required): a short machine name for the activity.
 - **`name`** (optional): a human-readable label for you.
 - **`title`** (optional): the heading students see on the connection page when they open the activity's code link.
-- **`llm.model`** (required): the model that answers. You can also add `llm.provider` to run on Azure instead of the school's Austrian LLM hosting partner, and `llm.reasoning` to set how hard the model thinks before it answers; the same `llm:` block works here as in every other activity.
+- **`llm.model`** (required): the model that answers. You can also add `llm.provider` to run on Azure Foundry or OpenRouter instead of the school's Austrian LLM hosting partner, and `llm.reasoning` to set how hard the model thinks before it answers; the same `llm:` block works here as in every other activity.
 - **`instructions`** (required): the assistant's rules, written by you.
 
 The first comment line is an editor hint: with a YAML-aware editor such as VS Code with the Red Hat YAML extension, it turns on validation and autocompletion while you type.

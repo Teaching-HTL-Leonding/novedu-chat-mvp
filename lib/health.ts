@@ -6,6 +6,12 @@ import {
   foundryConfigured,
   foundryModelsUrl,
 } from "@/lib/llm/foundry-endpoint";
+import {
+  openrouterAuthHeader,
+  openrouterBase,
+  openrouterConfigured,
+  openrouterModelsUrl,
+} from "@/lib/llm/openrouter-endpoint";
 import { withTimeout } from "@/lib/promise-timeout";
 
 // Server-side health probes behind the teacher-only /api/health endpoint. Each
@@ -112,6 +118,29 @@ export async function checkFoundry(): Promise<HealthIndicator> {
   }
 }
 
+/**
+ * Single-stage OpenRouter probe: unlike Foundry there is no token to acquire —
+ * auth is the static `OPENROUTER_API_KEY` — so ONE authenticated model listing
+ * proves both key validity and endpoint reachability, exactly like the SCCH probe.
+ */
+export async function checkOpenRouter(): Promise<HealthIndicator> {
+  if (!openrouterConfigured()) {
+    return { ok: false, detail: "Not configured (OPENROUTER_API_KEY is missing)." };
+  }
+  try {
+    const res = await fetch(openrouterModelsUrl(), {
+      headers: { Authorization: openrouterAuthHeader() },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      cache: "no-store",
+    });
+    if (!res.ok) return { ok: false, detail: `Model listing failed (HTTP ${res.status}).` };
+    const json = (await res.json()) as { data?: { id: string }[] };
+    return { ok: true, detail: `${json.data?.length ?? 0} models available.` };
+  } catch (e) {
+    return { ok: false, detail: errorMessage(e) };
+  }
+}
+
 /** DNS-resolve a host. Pure DNS — succeeds even when a firewall blocks TCP. */
 async function resolveHost(fqdn: string | null, missingHint: string): Promise<HostInfo> {
   if (!fqdn) return { fqdn: null, ips: [], error: missingHint };
@@ -173,4 +202,18 @@ export async function resolveFoundryHost(): Promise<HostInfo> {
     foundryFqdn(),
     "No Foundry host (AZURE_FOUNDRY_ENDPOINT missing or unparseable).",
   );
+}
+
+// The OpenRouter base always has a value (the public host is the default), so
+// this only comes back null when an OPENROUTER_BASE_URL override is unparseable.
+function openrouterFqdn(): string | null {
+  try {
+    return new URL(openrouterBase()).hostname;
+  } catch {
+    return null;
+  }
+}
+
+export async function resolveOpenRouterHost(): Promise<HostInfo> {
+  return resolveHost(openrouterFqdn(), "No OpenRouter host (OPENROUTER_BASE_URL is unparseable).");
 }

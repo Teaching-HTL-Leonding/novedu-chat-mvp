@@ -1,13 +1,14 @@
 import { foundryBearerToken, foundryChatCompletionsUrl } from "@/lib/llm/foundry-endpoint";
+import { openrouterAuthHeader, openrouterChatCompletionsUrl } from "@/lib/llm/openrouter-endpoint";
 import type { LlmProvider } from "@/lib/llm/provider";
 import { scchAuthHeader, scchChatCompletionsUrl } from "@/lib/scch-endpoint";
 
 // Provider resolution for the RAW Chat Completions path (the coding proxy) — one
 // of the few places that branch on `LlmProvider` (see `lib/llm/model.ts` for the
 // ai-sdk agent path and `lib/llm/availability.ts`). Deliberately side-effect-free:
-// it imports only the two `*-endpoint` modules, NEVER `app/mastra/scch.ts`, whose
+// it imports only the `*-endpoint` modules, NEVER `app/mastra/scch.ts`, whose
 // top-level `await fetchModels()` must not run in the lean public coding route.
-// Both getters below throw on missing env; the route maps that (and a failed
+// The getters below throw on missing env; the route maps that (and a failed
 // token acquisition) to its 500 config-error path.
 //
 // SERVER-ONLY.
@@ -22,7 +23,7 @@ export interface ChatEndpoint {
    * `buildUpstreamChatBody` and immediately before the upstream fetch. Pure, and
    * it MUST NOT touch `stream`/`stream_options` (the usage tap depends on the
    * `include_usage` merge done by `buildUpstreamChatBody`) nor `model`/`messages`.
-   * SCCH: identity.
+   * SCCH and OpenRouter: identity.
    */
   adaptBody(body: Record<string, unknown>): Record<string, unknown>;
 }
@@ -30,8 +31,8 @@ export interface ChatEndpoint {
 /**
  * Azure OpenAI's gpt-5.x reasoning deployments reject the classic sampling
  * dialect: `max_tokens` must be `max_completion_tokens`, and `temperature`/`top_p`
- * only accept their defaults. SCCH's vLLM accepts the classic dialect, so the
- * adaptation lives here — the proxy itself stays provider-blind.
+ * only accept their defaults. SCCH's vLLM and OpenRouter both accept the classic
+ * dialect, so the adaptation lives here — the proxy itself stays provider-blind.
  */
 export function adaptFoundryChatBody(body: Record<string, unknown>): Record<string, unknown> {
   return stripSamplingParams(renameMaxTokens(body));
@@ -56,6 +57,15 @@ export function resolveChatEndpoint(provider: LlmProvider): ChatEndpoint {
       url: foundryChatCompletionsUrl(),
       authHeader: async () => `Bearer ${await foundryBearerToken()}`,
       adaptBody: adaptFoundryChatBody,
+    };
+  }
+  if (provider === "OpenRouter") {
+    // OpenRouter normalizes the classic OpenAI dialect for every model it fronts,
+    // so there is nothing to adapt — identity, like SCCH.
+    return {
+      url: openrouterChatCompletionsUrl(),
+      authHeader: async () => openrouterAuthHeader(),
+      adaptBody: (body) => body,
     };
   }
   return {

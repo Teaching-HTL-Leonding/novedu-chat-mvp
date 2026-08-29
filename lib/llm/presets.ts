@@ -33,4 +33,6 @@ export const LLM_OVERRIDE_PRESETS: readonly LlmOverridePreset[] = [
   },
   // The reasoning variant; SCCH also serves a "… - Reasoning OFF" sibling.
   { label: "SCCH · Qwen 3.8 27B", provider: "SCCH", model: "Qwen/Qwen3.8-27B-FP8" },
+  // OpenRouter models are namespaced `<vendor>/<model>` — the id is the routing key.
+  { label: "OpenRouter · GLM 5.3 Flash", provider: "OpenRouter", model: "z-ai/glm-5.3-flash" },
 ];

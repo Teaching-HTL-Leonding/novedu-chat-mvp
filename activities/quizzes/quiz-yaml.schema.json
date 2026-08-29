@@ -124,7 +124,8 @@
           "type": "string",
           "enum": [
             "SCCH",
-            "Azure Foundry"
+            "Azure Foundry",
+            "OpenRouter"
           ]
         },
         "reasoning": {

@@ -715,7 +715,7 @@ export function registerEval(program: Command): void {
     .option("--repeats <n>", "run every case N times (quiz: take the majority verdict)", "1")
     .option(
       "--llm-provider <provider>",
-      'run with this provider instead of the activity\'s ("SCCH" or "Azure Foundry"; needs --llm-model)',
+      'run with this provider instead of the activity\'s ("SCCH", "Azure Foundry" or "OpenRouter"; needs --llm-model)',
     )
     .option(
       "--llm-model <model>",
@@ -731,7 +731,7 @@ export function registerEval(program: Command): void {
     )
     .option(
       "--judge-llm-provider <provider>",
-      'judge with this provider ("SCCH" or "Azure Foundry"; needs --judge-llm-model)',
+      'judge with this provider ("SCCH", "Azure Foundry" or "OpenRouter"; needs --judge-llm-model)',
     )
     .option(
       "--judge-llm-model <model>",

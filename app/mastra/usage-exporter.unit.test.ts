@@ -81,6 +81,9 @@ describe("mapSpanToUsage — provider/model attribution (span attributes)", () =
     expect(
       mapSpanToUsage(genWith({ provider: "azure-foundry.chat", model: "gpt-5.4-mini" })),
     ).toMatchObject({ provider: "Azure Foundry", model: "gpt-5.4-mini" });
+    expect(
+      mapSpanToUsage(genWith({ provider: "openrouter.chat", model: "z-ai/glm-5.3-flash" })),
+    ).toMatchObject({ provider: "OpenRouter", model: "z-ai/glm-5.3-flash" });
   });
 
   it("passes an unmapped provider id through raw (a naming regression stays visible)", () => {

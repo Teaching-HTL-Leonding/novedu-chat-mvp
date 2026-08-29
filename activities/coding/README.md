@@ -20,7 +20,7 @@ A student configures a coding agent with three things — **base URL**, **key**,
 **model** — and starts coding. The **code is the API key**.
 
 ```
-coding agent (little-coder)        the app                        SCCH model
+coding agent (little-coder)        the app                     the pinned model
   ─── request + your key ──▶  check code + window                 (e.g. gemma)
                               append your system prompt    ──▶
                               pin the model
@@ -130,9 +130,13 @@ needs to know it.
 
 ### `llm.provider`
 
-Optional, default `SCCH` (the school's Austrian LLM hosting partner). Set
-`provider: Azure Foundry` to answer from an Azure OpenAI deployment instead —
-then `llm.model` is the **deployment name** (e.g. `gpt-5.4-mini`). Like the
+Optional, one of `SCCH` (the default — the school's Austrian LLM hosting
+partner), `Azure Foundry` or `OpenRouter`. With `provider: Azure Foundry` the
+answers come from an Azure OpenAI deployment and `llm.model` is the **deployment
+name** (e.g. `gpt-5.4-mini`); with `provider: OpenRouter` they come through
+OpenRouter and `llm.model` is its namespaced routing key (e.g.
+`z-ai/glm-5.3-flash`). Both are only usable if the server is configured for them
+— otherwise the activity is rejected with a readable reason. Like the
 model, the provider never reaches the student.
 
 The `llm:` values are the **default**: when a teacher mints a code for this
@@ -371,8 +375,8 @@ works).
 
 ## 9. Checklist before you publish
 
-- [ ] The activity has an `id`, an `llm.model` (a real SCCH model id), and a
-      non-empty `instructions`.
+- [ ] The activity has an `id`, an `llm.model` (a real model id for the chosen
+      provider), and a non-empty `instructions`.
 - [ ] `instructions` constrains the assistant to what your class has learned
       (language, feature subset, teaching style).
 - [ ] You validated the activity and it passes (in `/files` or with the CLI).

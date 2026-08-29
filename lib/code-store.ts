@@ -191,7 +191,7 @@ export function validateCodeRequest(input: {
     if (!provider) {
       return {
         ok: false,
-        message: 'The LLM override provider must be "SCCH" or "Azure Foundry".',
+        message: 'The LLM override provider must be "SCCH", "Azure Foundry" or "OpenRouter".',
       };
     }
     if (modelText.length > MAX_LLM_MODEL_LENGTH) {

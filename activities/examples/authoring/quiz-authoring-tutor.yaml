@@ -60,8 +60,10 @@ prompt:
     shuffle: false              # optional; default true (random question order per attempt)
     llm:
       model: RedHatAI/gemma-4-31B-it-FP8-Dynamic   # required; grades AND drives the discussion
-      provider: SCCH            # optional; default SCCH. "Azure Foundry" serves an
-                                # Azure OpenAI deployment; model is then the deployment name
+      provider: SCCH            # optional; one of "SCCH" (default), "Azure Foundry",
+                                # "OpenRouter". Azure Foundry serves an Azure OpenAI
+                                # deployment (model = the deployment name); OpenRouter
+                                # takes a namespaced id like z-ai/glm-5.3-flash
     discussion:                 # optional
       instructions: |
         Guidance for the per-question follow-up chat.

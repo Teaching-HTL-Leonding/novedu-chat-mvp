@@ -18,9 +18,9 @@ const PILL = "mr-2 rounded-full px-2 py-0.5 font-bold";
 // rows, which the server already knows) renders immediately; the connectivity
 // probes are fetched from /api/health in parallel and each row flips from
 // "Checking…" to its result the moment its own response lands — a timing-out
-// dependency never delays the others. The Azure Foundry rows exist only when the
-// server says the provider is configured (an SCCH-only deployment shows no red
-// Foundry indicator); mounting them is what starts their probes.
+// dependency never delays the others. The Azure Foundry and OpenRouter rows
+// exist only when the server says that provider is configured (an SCCH-only
+// deployment shows no red indicator for either); mounting them starts their probes.
 
 type Pending<T> = { status: "pending" } | { status: "done"; value: T };
 
@@ -92,8 +92,8 @@ function HostValue({ state, testId }: { state: Pending<HostInfo>; testId: string
   );
 }
 
-// Rendered only when Foundry is configured; its own component so the probe hooks
-// run only in that case.
+// Rendered only when the optional provider is configured; each is its own
+// component so the probe hooks run only in that case.
 function FoundryStatusRow() {
   const foundry = useProbe("foundry", indicatorError);
   return (
@@ -114,16 +114,38 @@ function FoundryHostRow() {
   );
 }
 
+function OpenRouterStatusRow() {
+  const openrouter = useProbe("openrouter", indicatorError);
+  return (
+    <div className={ROW}>
+      <dt className={TERM}>OpenRouter models</dt>
+      <StatusValue state={openrouter} testId="health-openrouter" />
+    </div>
+  );
+}
+
+function OpenRouterHostRow() {
+  const openrouterHost = useProbe("openrouter-host", hostError);
+  return (
+    <div className={ROW}>
+      <dt className={TERM}>OpenRouter host</dt>
+      <HostValue state={openrouterHost} testId="health-openrouter-host" />
+    </div>
+  );
+}
+
 export function HealthDashboard({
   userLabel,
   isTeacher,
   build,
   foundryConfigured,
+  openrouterConfigured,
 }: {
   userLabel: string;
   isTeacher: boolean;
   build: BuildInfo;
   foundryConfigured: boolean;
+  openrouterConfigured: boolean;
 }) {
   const db = useProbe("db", indicatorError);
   const scch = useProbe("scch", indicatorError);
@@ -152,6 +174,7 @@ export function HealthDashboard({
             <StatusValue state={scch} testId="health-scch" />
           </div>
           {foundryConfigured && <FoundryStatusRow />}
+          {openrouterConfigured && <OpenRouterStatusRow />}
           <div className={ROW}>
             <dt className={TERM}>Signed-in user</dt>
             <dd className={VALUE} data-testid="health-user">
@@ -173,6 +196,7 @@ export function HealthDashboard({
             <HostValue state={scchHost} testId="health-scch-host" />
           </div>
           {foundryConfigured && <FoundryHostRow />}
+          {openrouterConfigured && <OpenRouterHostRow />}
         </dl>
       </div>
     </section>

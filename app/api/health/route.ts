@@ -1,8 +1,10 @@
 import {
   checkDb,
   checkFoundry,
+  checkOpenRouter,
   checkScch,
   resolveFoundryHost,
+  resolveOpenRouterHost,
   resolveScchHost,
   resolveSqlHost,
 } from "@/lib/health";
@@ -19,9 +21,11 @@ const PROBES = {
   db: checkDb,
   scch: checkScch,
   foundry: checkFoundry,
+  openrouter: checkOpenRouter,
   "sql-host": resolveSqlHost,
   "scch-host": resolveScchHost,
   "foundry-host": resolveFoundryHost,
+  "openrouter-host": resolveOpenRouterHost,
 } as const;
 
 export async function GET(req: Request) {

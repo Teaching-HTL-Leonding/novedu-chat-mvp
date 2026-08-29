@@ -65,8 +65,10 @@ prompt:
     title: "Shown on /<code>"   # optional; student-facing label on the connection page
     llm:
       model: RedHatAI/gemma-4-31B-it-FP8-Dynamic   # required; pinned server-side
-      provider: SCCH            # optional; default SCCH. "Azure Foundry" serves an
-                                # Azure OpenAI deployment; model is then the deployment name
+      provider: SCCH            # optional; one of "SCCH" (default), "Azure Foundry",
+                                # "OpenRouter". Azure Foundry serves an Azure OpenAI
+                                # deployment (model = the deployment name); OpenRouter
+                                # takes a namespaced id like z-ai/glm-5.3-flash
     instructions: |             # required; the coding agent's system prompt. SERVER-ONLY
       ...
     ```
