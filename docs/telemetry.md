@@ -94,8 +94,8 @@ prompt, or user-entered text. `recordError()` records the error's own message/st
   workspace, RG `Novedu-Chat-MVP`, region `austriaeast`). Query it through the
   **Log Analytics workspace using the `App*` table names** (`AppRequests`,
   `AppDependencies`, `AppExceptions`, `AppEvents`, …). The classic component query
-  API (lowercase `requests`/`dependencies`/…) returns empty for a workspace-based
-  component.
+  API (`az monitor app-insights query --app novedu-chat-mvp-ai`, lowercase
+  `requests`/`dependencies`/`exceptions`/`customEvents`) reads the same data.
 - **Dependencies:** `@azure/monitor-opentelemetry`, `@opentelemetry/api`,
   `@opentelemetry/api-logs` (`api-logs` is pinned to match the distro's global
   logger). The distro is listed in `serverExternalPackages` so it is not bundled.
@@ -104,6 +104,11 @@ prompt, or user-entered text. `recordError()` records the error's own message/st
 
 The Azure Monitor distro auto-instruments the `pg` driver, so every database
 round trip (Drizzle queries and Mastra's storage calls alike, since both share
-the one pool from `lib/db/pool.ts`) is expected to show up as `AppDependencies`
-rows once telemetry is on. Confirm this after the first production deploy by
-querying `AppDependencies` for `pg`-typed rows.
+the one pool from `lib/db/pool.ts`) is an `AppDependencies` row of type
+`postgresql` with target `db-pgnovedu.postgres.database.azure.com|novedu`; the
+`name` carries the statement's verb (`pg.query:SELECT novedu`) and `data` the
+statement text with `$1`-style placeholders, never the bound values. A failed
+statement is the same row with `success == false` plus an `AppExceptions` row
+whose message names the SQLSTATE (`PostgreSQL error … (code: 42501)`) — the
+first place to look when a boot logs a privilege problem (`docs/database.md`,
+ownership hazard).

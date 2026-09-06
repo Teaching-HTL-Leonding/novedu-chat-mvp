@@ -352,20 +352,3 @@ only delete path). The bulk delete (`deleteCodesAndData` in
 
 The READ side of stats — counts, per-conversation timings — is plain by-value
 SQL against `mastra.mastra_threads`/`mastra.mastra_messages`; see `docs/codes.md`.
-
-## One-off data copy
-
-`scripts/mssql-to-pg/` is a standalone, dependency-isolated tool (its own
-`package.json`, excluded from the root `tsconfig.json` and from Biome) that
-copies the 11 `novedu_*` tables from a source database into this one, table by
-table, in a fixed dependency order, inside one transaction per table. It
-**dry-runs by default** — connecting to both sides and printing per-table row
-counts and target-emptiness without writing anything — and its real copy
-**refuses a non-empty target table**, so a rerun can never double rows. See
-`scripts/mssql-to-pg/README.md` for the exact environment variables and
-invocation. `scripts/db/reset-before-copy.sql` is the paired admin-run remedy
-for the refusal: run only in a coordinated cutover (never by the app, never
-against a database serving traffic), it `TRUNCATE`s every `novedu_*` table and
-every table in schema `mastra`, leaving `novedu_drizzle_migrations` alone —
-clearing the way for a fresh copy into the tables the app's own migrator and
-`initMastraStorage()` already created.

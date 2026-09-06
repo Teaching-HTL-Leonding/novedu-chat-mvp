@@ -33,5 +33,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "cli", "teacher-docs", "scripts/mssql-to-pg"]
+  "exclude": ["node_modules", "cli", "teacher-docs"]
 }
