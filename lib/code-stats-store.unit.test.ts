@@ -309,7 +309,7 @@ describe("getConversationMessages — Mastra v2 → AG-UI conversion", () => {
 });
 
 describe("getConversationMessages collapses replays end to end", () => {
-  it("returns each turn once for a telescoping recordset", async () => {
+  it("returns each turn once for a telescoping result set", async () => {
     const text = (role: string, content: string) =>
       row(crypto.randomUUID(), role, { parts: [{ type: "text", text: content }], content });
     fake.state.rows = [
