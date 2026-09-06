@@ -215,8 +215,12 @@ grant on tables it doesn't own, is locked out of them until ownership is
 reassigned. `scripts/db/reassign-ownership.sql` is the documented remedy: an
 idempotent `DO` block that `ALTER … OWNER TO`s every table/view/sequence in
 `public` and `mastra` not already owned by `novedu-chat-mvp-at`, skipping
-sequences that belong to a table (those move with it). Run it as the Entra
-admin after any such local-first boot.
+sequences that belong to a table (those move with it), plus a second block for
+functions — Mastra's boot also runs `CREATE OR REPLACE FUNCTION
+mastra.trigger_set_timestamps()`, which only the function's owner may do (a
+foreign-owned function fails with `42501`; the app still boots, but every
+restart logs the exception). Run the script as the Entra admin after any such
+local-first boot.
 
 ## App-owned schema (`novedu_*`) & Drizzle workflow
 
@@ -348,20 +352,3 @@ only delete path). The bulk delete (`deleteCodesAndData` in
 
 The READ side of stats — counts, per-conversation timings — is plain by-value
 SQL against `mastra.mastra_threads`/`mastra.mastra_messages`; see `docs/codes.md`.
-
-## One-off data copy
-
-`scripts/mssql-to-pg/` is a standalone, dependency-isolated tool (its own
-`package.json`, excluded from the root `tsconfig.json` and from Biome) that
-copies the 11 `novedu_*` tables from a source database into this one, table by
-table, in a fixed dependency order, inside one transaction per table. It
-**dry-runs by default** — connecting to both sides and printing per-table row
-counts and target-emptiness without writing anything — and its real copy
-**refuses a non-empty target table**, so a rerun can never double rows. See
-`scripts/mssql-to-pg/README.md` for the exact environment variables and
-invocation. `scripts/db/reset-before-copy.sql` is the paired admin-run remedy
-for the refusal: run only in a coordinated cutover (never by the app, never
-against a database serving traffic), it `TRUNCATE`s every `novedu_*` table and
-every table in schema `mastra`, leaving `novedu_drizzle_migrations` alone —
-clearing the way for a fresh copy into the tables the app's own migrator and
-`initMastraStorage()` already created.
