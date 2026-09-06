@@ -18,6 +18,9 @@ const fake = vi.hoisted(() => {
     // "drop the whole table": counting the call proves a DELETE happened, never
     // that it was scoped.
     deleteWhere: [] as unknown[][],
+    // The most recent `select()…limit()` builder handed out — the prune passes it
+    // UN-awaited into `notInArray` as a subquery, so the test needs its identity.
+    lastLimited: undefined as unknown,
   };
   // The query tail is a lazy thenable (NOT an eager promise): the rejected
   // promise only comes into existence when the store actually awaits it, so
@@ -25,12 +28,16 @@ const fake = vi.hoisted(() => {
   const queryTail = () => {
     const run = () =>
       state.selectError ? Promise.reject(state.selectError) : Promise.resolve(state.rows);
+    // `then` makes the builder awaitable, like drizzle's thenable query builder.
+    const then = (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args);
     return {
       orderBy: () => ({
-        limit: () => run(),
+        limit: () => {
+          state.lastLimited = { then };
+          return state.lastLimited;
+        },
       }),
-      // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
-      then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
+      then,
     };
   };
   const selectChain = () => {
@@ -75,6 +82,7 @@ beforeEach(() => {
   fake.state.conflicts = [];
   fake.state.deletes = 0;
   fake.state.deleteWhere = [];
+  fake.state.lastLimited = undefined;
 });
 
 describe("listRecentCodes", () => {
@@ -92,7 +100,6 @@ describe("listRecentCodes", () => {
 
 describe("recordRecentCode", () => {
   it("inserts a fresh entry and prunes beyond the cap", async () => {
-    fake.state.rows = [{ code: CODE }]; // the prune subselect's survivors
     await recordRecentCode(USER, CODE);
     expect(fake.state.inserted).toEqual([
       expect.objectContaining({ userId: USER, code: CODE, lastUsed: expect.any(Date) }),
@@ -101,7 +108,6 @@ describe("recordRecentCode", () => {
   });
 
   it("upserts on the (user_id, code) conflict, refreshing last_used", async () => {
-    fake.state.rows = [{ code: CODE }];
     await recordRecentCode(USER, CODE);
     expect(fake.state.conflicts).toEqual([
       {
@@ -114,21 +120,17 @@ describe("recordRecentCode", () => {
   // The prune is a DELETE with no LIMIT: its entire safety is the predicate.
   // Counting the call (above) passes just as happily when the WHERE is dropped
   // or loses a term — which would delete every OTHER user's recents, or this
-  // user's whole list rather than only the overflow. So pin both terms.
-  it("scopes the prune to this user AND to the codes outside the survivor set", async () => {
-    const survivors = [{ code: CODE }, { code: "b2c3d4e5f6" }];
-    fake.state.rows = survivors;
-
+  // user's whole list rather than only the overflow. So pin both terms: the
+  // user, and NOT IN the survivor subquery (the newest-N SELECT, un-awaited).
+  it("scopes the prune to this user AND to the codes outside the survivor subquery", async () => {
     await recordRecentCode(USER, CODE);
 
+    expect(fake.state.lastLimited).toBeDefined();
     expect(fake.state.deleteWhere).toEqual([
       [
         and(
           eq(recentCodes.userId, USER),
-          notInArray(
-            recentCodes.code,
-            survivors.map((row) => row.code),
-          ),
+          notInArray(recentCodes.code, fake.state.lastLimited as never),
         ),
       ],
     ]);

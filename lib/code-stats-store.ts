@@ -141,8 +141,8 @@ export async function getCodeStats(
     }>(sql`
       SELECT
         t.id AS "threadId",
-        MIN(COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC')) AS "firstAt",
-        MAX(COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC')) AS "lastAt",
+        MIN(m."createdAtZ") AS "firstAt",
+        MAX(m."createdAtZ") AS "lastAt",
         SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS "userMessageCount",
         uc.user_id AS "userId",
         un.display_name AS "userName"
@@ -153,7 +153,7 @@ export async function getCodeStats(
       WHERE t."resourceId" = ${code}
       GROUP BY t.id, uc.user_id, un.display_name
       HAVING SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) >= 1
-      ORDER BY MAX(COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC')) DESC
+      ORDER BY MAX(m."createdAtZ") DESC
     `);
 
     const interactions: Interaction[] = res.rows.map((row) => ({
@@ -211,8 +211,8 @@ export async function listStudentConversations(
     }>(sql`
       SELECT
         t.id AS "threadId",
-        MIN(COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC')) AS "firstAt",
-        MAX(COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC')) AS "lastAt",
+        MIN(m."createdAtZ") AS "firstAt",
+        MAX(m."createdAtZ") AS "lastAt",
         SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS "userMessageCount"
       FROM mastra.mastra_threads t
       JOIN mastra.mastra_messages m ON m.thread_id = t.id
@@ -220,7 +220,7 @@ export async function listStudentConversations(
       WHERE t."resourceId" = ${code} AND uc.user_id = ${userId}
       GROUP BY t.id
       HAVING SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) >= 1
-      ORDER BY MAX(COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC')) DESC
+      ORDER BY MAX(m."createdAtZ") DESC
     `);
     return res.rows.map((row) => ({
       threadId: row.threadId,
@@ -253,7 +253,7 @@ export async function getConversationMessages(
       FROM mastra.mastra_messages m
       JOIN mastra.mastra_threads t ON t.id = m.thread_id
       WHERE m.thread_id = ${threadId} AND t."resourceId" = ${code}
-      ORDER BY COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC') ASC, m.id ASC
+      ORDER BY m."createdAtZ" ASC, m.id ASC
     `);
     const messages = res.rows.map(toAguiMessage).filter((m): m is Message => m !== null);
     return collapseReplayedRuns(messages);

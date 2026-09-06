@@ -195,8 +195,8 @@ Two things are load-bearing:
 The same COALESCE is the `owner` entry of each store's `*_SORT_COLUMNS`, so the
 column sorts by what it displays — which is why it is the shared `ownerLabel()`
 rather than an expression each store spells out. (`/reports` sorts its `student`
-column by the bare joined name — NULLs first — because that list has no oid fallback
-in its ORDER BY.)
+column by the bare joined name — a missing name sorts last ascending — because that
+list has no oid fallback in its ORDER BY.)
 
 A page therefore adds the whole feature with three lines: `parseOwner(sp, userId)`,
 `ownerColumn<Row>()` in its `columns`, and `<OwnerFilter>` in its filter bar. A
@@ -445,7 +445,8 @@ their JSON is unchanged.
 Every column backed by a real column **of the list's own query** gets a `sortKey` —
 text, dates and numbers alike, it is the same code. Not sortable: the selection and
 Actions columns, and `/codes`' **Interactions**, which is a page-scoped aggregate over
-the Mastra-owned tables (a different pool, so it cannot be an `ORDER BY` term).
+the Mastra-owned tables computed after the page is read (so it cannot be an `ORDER BY`
+term).
 
 `/reports` orders `Code` and `Student` by the JOINed `codes.note` / `users.displayName`
 — the values those cells lead with. Codes with an empty note therefore group together.
@@ -456,13 +457,14 @@ applies wherever a nullable column is sortable, and a few of those are worth
 knowing about:
 
 - `/codes`' `Valid from`/`Valid until` — a windowless code (no bound set) is the
-  common case, so ascending now trails with all of them instead of leading.
-- `/reports`' `Status` sorts by `resolved_at` (NULL while open): **ascending
-  now reads "resolved first, open last"** — the inverse of what the column name
-  suggests — so use **`?sort=status:desc`** for "open first."
+  common case, so ascending trails with all of them.
+- `/reports`' `Status` deliberately does NOT sort by the nullable `resolved_at`
+  (ascending would read resolved-first, the inverse of the column name). Its
+  key is `CASE WHEN resolved_at IS NULL THEN 0 ELSE 1 END` — the state the badge
+  shows — so ascending is open-first and `?sort=-status` resolved-first, the
+  same "sort by what you display" rule as the owner label.
 - `/reports`' `Code`/`Student`, when the joined code row or the reporter's
-  display name is missing: the missing value now sorts **LAST** ascending
-  (previously first).
+  display name is missing: the missing value sorts **LAST** ascending.
 
 ### URL plumbing
 

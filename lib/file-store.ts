@@ -6,6 +6,7 @@ import { isUniqueViolation } from "@/lib/db/errors";
 import type { OwnerOption } from "@/lib/db/owner-filter";
 import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
+import { affectedRows } from "@/lib/db/result";
 import { files, users } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
@@ -63,14 +64,6 @@ export type FileListRow = FileListEntry & { ownerName: string | null };
 /** The active version of one file, including its content (for the editor / GET). */
 export interface ActiveFile extends FileListEntry {
   content: string;
-}
-
-// node-postgres reports the number of rows an UPDATE touched as `rowCount`
-// (`number | null`); a conditional UPDATE uses it to tell "I closed the active
-// row" (>=1) from "there was nothing to close" (0 or null).
-function affectedRows(result: unknown): number {
-  const r = (result as { rowCount?: unknown }).rowCount;
-  return typeof r === "number" ? r : 0;
 }
 
 // Column caps for the DENORMALIZED search fields (see `title`/`description` in

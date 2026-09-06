@@ -17,19 +17,19 @@ const logger = new PinoLogger({ name: "Mastra", level: "info" });
 // Build the Mastra store on the app's ONE Postgres pool (`getPool()` in
 // lib/db/pool.ts — the same pool Drizzle uses for the `novedu_*` tables). A pool
 // passed in via `pool:` is never closed by Mastra, so there is no lifecycle
-// coupling. Mastra's tables live in their own `mastra` schema, which the store
-// creates on `init()`; the app's tables stay in `public`.
+// coupling. Mastra's tables live in their own `mastra` schema — pre-created by
+// provisioning (scripts/db/provision.sql), since the app role may not create
+// schemas; `init()` only creates the tables inside it. The app's tables stay in
+// `public`.
 function buildStore(): PostgresStore {
   const store = new PostgresStore({ id: "mastra-storage", pool: getPool(), schemaName: "mastra" });
   // Keep agentic-loop workflow snapshots OUT of the database: every agent run
-  // persists a "pending" snapshot at start (and deletes it at the end), and that
-  // snapshot inlines the full input — with photo answers that's megabytes of
-  // base64, which times out the write on the small database tier before the LLM
-  // is even called. Nothing here resumes workflows (no suspend/approval flows),
-  // so the snapshots are transient scratch state; swapping the workflows domain
-  // to Mastra's in-memory store is the same substitution Mastra itself makes
-  // when a composite store lacks the domain. Threads/messages stay in the
-  // database untouched.
+  // persists a "pending" snapshot at start, reads it back, and deletes it at the
+  // end — three round trips per turn for state nothing here ever resumes (no
+  // suspend/approval flows). The snapshots are transient scratch state, so
+  // swapping the workflows domain to Mastra's in-memory store is the same
+  // substitution Mastra itself makes when a composite store lacks the domain.
+  // Threads/messages stay in the database untouched.
   store.stores.workflows = new WorkflowsInMemory({ db: new InMemoryDB() });
   return store;
 }
@@ -48,8 +48,8 @@ if (process.env.DATABASE_URL && !globalForStore.mastraStore) {
   logger.warn("DATABASE_URL not set — tutor chat will fail without storage");
 }
 
-// Create the `mastra` schema and Mastra's own `mastra_*` tables. `PostgresStore`
-// auto-initializes them, but only LAZILY — on the store's first use, i.e. the
+// Create Mastra's own `mastra_*` tables in the pre-provisioned `mastra` schema.
+// `PostgresStore` auto-initializes them, but only LAZILY — on the store's first use, i.e. the
 // first agent run. That is too late for us: `lib/code-stats-store.ts` reads
 // `mastra_threads` / `mastra_messages` directly (the by-value join model in
 // docs/codes.md), so on a database where no agent has run yet a teacher opening

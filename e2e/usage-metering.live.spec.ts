@@ -9,7 +9,7 @@ import { query } from "./db";
 // This needs the SCCH LLM (a real generation produces the MODEL_GENERATION span the
 // exporter meters) AND the DB, so it is tagged `@live-llm` (the DB it also uses is
 // implied) — local only, never CI. Uses the shared `e2e/db.ts` plain `pg` helper
-// (the Playwright CJS runner cannot load drizzle's ESM `lib/db`), mirroring the
+// (kept independent of the app's query layer), mirroring the
 // store round-trip in `e2e/writing.spec.ts`. Metering is written OFF the response
 // path (the exporter is async; the `user_messages` counter runs in `after()`), so
 // the DB read POLLS until the row lands. See docs/usage-metering.md.

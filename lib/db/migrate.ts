@@ -14,10 +14,12 @@ import { getDb } from "@/lib/db";
 // expects must fail loudly at startup, not at the first student's request.
 //
 // `migrationsSchema` is pinned to `public` on purpose: the driver's default is a
-// SEPARATE `drizzle` schema, which the app role may not create — it holds
-// CREATE on exactly `public` and `mastra` and does not own the database
-// (docs/database.md). Keeping the bookkeeping beside the tables it tracks needs
-// no extra grant.
+// SEPARATE `drizzle` schema, and the bookkeeping belongs beside the tables it
+// tracks. NOTE the migrator ALWAYS runs `CREATE SCHEMA IF NOT EXISTS <schema>`
+// first — even for `public` — and Postgres checks CREATE on the DATABASE before
+// the IF NOT EXISTS shortcut, so the app role needs that grant
+// (scripts/db/provision.sql, docs/database.md "Privilege model") or the boot
+// fails with "permission denied for database".
 export async function runMigrations(): Promise<void> {
   await migrate(getDb(), {
     migrationsFolder: path.join(process.cwd(), "drizzle"),

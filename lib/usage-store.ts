@@ -147,16 +147,21 @@ async function record(
   op: string,
   attr?: LlmAttribution,
 ): Promise<void> {
-  try {
-    const hour = hourBucket(at);
-    // Provider/model attribution goes to `usage_by_code` ONLY — on `usage_by_user`
-    // even a coarse provider signal would hint WHICH activity a student did
-    // (the anonymity invariant, docs/usage-metering.md).
-    await bumpByCode(code, hour, module, d, attr);
-    if (userId) await bumpByUser(userId, hour, d);
-  } catch (error) {
-    console.error(`usage-store: ${op} failed`, error);
-    recordError(error, { store: "usage", op });
+  const hour = hourBucket(at);
+  // Provider/model attribution goes to `usage_by_code` ONLY — on `usage_by_user`
+  // even a coarse provider signal would hint WHICH activity a student did
+  // (the anonymity invariant, docs/usage-metering.md). The two upserts touch
+  // independent tables, so they run concurrently; a failure of one never
+  // suppresses the other, and each failure is reported on its own.
+  const results = await Promise.allSettled([
+    bumpByCode(code, hour, module, d, attr),
+    ...(userId ? [bumpByUser(userId, hour, d)] : []),
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.error(`usage-store: ${op} failed`, result.reason);
+      recordError(result.reason, { store: "usage", op });
+    }
   }
 }
 

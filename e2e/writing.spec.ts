@@ -204,8 +204,8 @@ test("writing round-trip: write → chat reply → save → teacher reads the sa
 
 // The store round-trip, against the real table — upsert (insert then update on the
 // same key) and savers-list ordering, then the code-delete row cleanup. Uses the
-// shared `e2e/db.ts` plain `pg` helper (the Playwright CJS runner cannot load
-// drizzle's ESM), with statements that mirror lib/writing-store.ts. Needs the DB,
+// shared `e2e/db.ts` plain `pg` helper (kept independent of the app's query
+// layer), with statements that mirror lib/writing-store.ts. Needs the DB,
 // no LLM. Shares the per-worker pool from `e2e/db.ts` — no `closePool()` here, since
 // other specs in this file (and the suite) still use it.
 test("writing submissions store round-trip (upsert / list / delete)", {

@@ -108,6 +108,7 @@ import {
   getCode,
   listCodeOwners,
   listCodes,
+  MAX_FILE_URL_LENGTH,
   MAX_LLM_MODEL_LENGTH,
   MAX_NOTE_LENGTH,
   updateCode,
@@ -220,6 +221,12 @@ describe("validateCodeRequest", () => {
     const result = validateCodeRequest({ ...valid, note: null });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.payload.note).toBe("");
+  });
+
+  it("rejects an over-long file URL (the column is unbounded text; this is the cap)", () => {
+    const file = `https://example.com/${"a".repeat(MAX_FILE_URL_LENGTH)}`;
+    const result = validateCodeRequest({ ...valid, file });
+    expect(result).toMatchObject({ ok: false, message: expect.stringContaining("2048") });
   });
 
   it("rejects an over-long note", () => {

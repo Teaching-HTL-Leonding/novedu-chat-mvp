@@ -42,8 +42,10 @@ describe("buildPoolConfig", () => {
 
   it("applies the pool bounds and the UTC session pin", () => {
     const config = buildPoolConfig(PASSWORD_URL);
-    expect(config.max).toBe(10);
+    expect(config.max).toBe(20);
     expect(config.idleTimeoutMillis).toBe(30_000);
+    // A checkout must never wait forever on an exhausted pool / unreachable server.
+    expect(config.connectionTimeoutMillis).toBe(10_000);
     expect(config.statement_timeout).toBe(60_000);
     expect(config.options).toBe("-c TimeZone=UTC");
     expect(config.application_name).toBe("novedu");
@@ -81,15 +83,28 @@ describe("buildPoolConfig", () => {
     expect(config.user).toBe("rainer@software-architects.at");
   });
 
-  it("verifies TLS on sslmode=require and sslmode=verify-full", () => {
+  it("verifies TLS on every sslmode but disable (no silent plaintext downgrade)", () => {
     expect(buildPoolConfig(ENTRA_URL).ssl).toEqual({ rejectUnauthorized: true });
-    expect(buildPoolConfig(`${PASSWORD_URL}?sslmode=verify-full`).ssl).toEqual({
-      rejectUnauthorized: true,
-    });
+    for (const mode of ["verify-full", "verify-ca", "prefer", "allow", "bogus"]) {
+      expect(buildPoolConfig(`${PASSWORD_URL}?sslmode=${mode}`).ssl, mode).toEqual({
+        rejectUnauthorized: true,
+      });
+    }
   });
 
-  it("leaves a local URL without sslmode on plain TCP", () => {
+  it("leaves a local URL without sslmode (or with sslmode=disable) on plain TCP", () => {
     expect(buildPoolConfig(PASSWORD_URL).ssl).toBeUndefined();
+    expect(buildPoolConfig(`${PASSWORD_URL}?sslmode=disable`).ssl).toBeUndefined();
+  });
+
+  it("names the malformed part instead of throwing a bare URIError", () => {
+    // `new URL()` accepts a `%` not followed by two hex digits; decoding does not.
+    expect(() => buildPoolConfig("postgresql://postgres:Pa%ss@localhost:5432/novedu")).toThrow(
+      /DATABASE_URL has a malformed percent-encoding in its password/,
+    );
+    expect(() => buildPoolConfig("postgresql://us%zzer@localhost:5432/novedu")).toThrow(
+      /in its user/,
+    );
   });
 });
 

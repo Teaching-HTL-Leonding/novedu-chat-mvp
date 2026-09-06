@@ -90,5 +90,11 @@ tests (`node --test`, no database needed).
 
 1. `az webapp stop`
 2. `scripts/db/reset-before-copy.sql` (Entra admin, on database `novedu`)
-3. `COPY_CONFIRM=yes npm start -- --execute` — check the final count table
-4. set `DATABASE_URL` on the web app, deploy, `az webapp start`
+3. `select name from public.novedu_drizzle_migrations` must list exactly the
+   folder names under `drizzle/` in the image being deployed (Drizzle matches
+   applied migrations by folder NAME; a stale row from an earlier baseline makes
+   the boot re-run `CREATE TABLE` and abort with 42P07 — with the copied data
+   already inside). If it does not match, drop the `novedu_*` tables and the
+   bookkeeping table and let one boot recreate them before copying.
+4. `COPY_CONFIRM=yes npm start -- --execute` — check the final count table
+5. set `DATABASE_URL` on the web app, deploy, `az webapp start`

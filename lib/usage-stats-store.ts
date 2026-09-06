@@ -26,14 +26,15 @@ import {
 //
 // SERVER-ONLY: uses the database. Never import from client components.
 
-// Day/month buckets use Postgres' date_trunc('day' | 'month', u.hour) on the
-// timestamptz `hour` column; the pool pins the session TimeZone to UTC, so the
-// truncation happens in UTC and every bucket comes back as a timestamptz
-// instant we can re-key in JS.
+// Day/month buckets use the three-argument date_trunc('day' | 'month', u.hour,
+// 'UTC') on the timestamptz `hour` column: the explicit zone makes the
+// truncation UTC regardless of the session TimeZone (the pool pins it to UTC
+// too, but the query must not depend on that), and every bucket comes back as a
+// timestamptz instant we can re-key in JS.
 function bucketExpr(grain: "hour" | "day" | "month") {
   if (grain === "hour") return sql`u.hour`;
-  if (grain === "day") return sql`date_trunc('day', u.hour)`;
-  return sql`date_trunc('month', u.hour)`;
+  if (grain === "day") return sql`date_trunc('day', u.hour, 'UTC')`;
+  return sql`date_trunc('month', u.hour, 'UTC')`;
 }
 
 /**
@@ -247,7 +248,7 @@ export async function getDashboardKpis(opts: {
           WHERE EXISTS (
             SELECT 1 FROM mastra.mastra_messages m
             WHERE m.thread_id = t.id AND m.role = 'user'
-              AND COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC') >= ${start}
+              AND m."createdAtZ" >= ${start}
           )) AS chats,
         (SELECT COALESCE(SUM(u.quiz_answers), 0)
            FROM novedu_usage_by_code u

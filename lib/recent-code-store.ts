@@ -60,23 +60,25 @@ export async function recordRecentCode(userId: string, code: string): Promise<vo
         set: { lastUsed: now },
       });
 
-    // Prune: keep only the newest MAX_RECENT_CODES per user — read the survivors
-    // (the ORDER BY + LIMIT), then delete everything else for this user.
-    const keep = await db
-      .select({ code: recentCodes.code })
-      .from(recentCodes)
-      .where(eq(recentCodes.userId, userId))
-      .orderBy(desc(recentCodes.lastUsed))
-      .limit(MAX_RECENT_CODES);
-    await db.delete(recentCodes).where(
-      and(
-        eq(recentCodes.userId, userId),
-        notInArray(
-          recentCodes.code,
-          keep.map((row) => row.code),
+    // Prune: keep only the newest MAX_RECENT_CODES per user, in ONE statement —
+    // the survivors are a subquery (ORDER BY + LIMIT) inside the DELETE, so it
+    // runs under a single snapshot and two concurrent opens cannot over-delete.
+    await db
+      .delete(recentCodes)
+      .where(
+        and(
+          eq(recentCodes.userId, userId),
+          notInArray(
+            recentCodes.code,
+            db
+              .select({ code: recentCodes.code })
+              .from(recentCodes)
+              .where(eq(recentCodes.userId, userId))
+              .orderBy(desc(recentCodes.lastUsed))
+              .limit(MAX_RECENT_CODES),
+          ),
         ),
-      ),
-    );
+      );
   } catch (error) {
     console.error("recent-code-store: recording a recent code failed", error);
   }

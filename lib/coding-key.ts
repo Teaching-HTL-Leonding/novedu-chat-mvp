@@ -2,8 +2,8 @@ import { randomInt } from "node:crypto";
 
 // THE definition of the coding module's `nvk-` API-key format: the accepted shape
 // and the generator that mints it. PURE — no database, no app imports (node:crypto
-// only) — so the e2e harness (`e2e/code.utils.ts`, kept on the plain `pg` driver
-// because Playwright's CJS runner cannot load drizzle) shares this one definition
+// only) — so the e2e harness (`e2e/code.utils.ts`, kept on the plain `pg` driver,
+// independent of the app's query layer) shares this one definition
 // instead of a copy. Storage, lookup and issuance live in `lib/coding-key-store.ts`.
 
 // The accepted key shape: the `nvk-` prefix plus 40 lowercase letters/digits.

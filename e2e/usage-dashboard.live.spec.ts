@@ -6,8 +6,8 @@ import { query } from "./db";
 // A REAL end-to-end check that the dashboard's aggregate queries run against the
 // live schema and render. It seeds `novedu_usage_by_code` rows for the current UTC
 // hour (so the default 24h window includes them) via the shared `e2e/db.ts` plain
-// `pg` helper — the Playwright CJS runner can't load Drizzle's ESM `lib/db`, same
-// as the other @live specs — then loads `/usage` as a teacher and asserts the
+// `pg` helper (kept independent of the app's query layer, same as the other
+// @live specs) — then loads `/usage` as a teacher and asserts the
 // charts/table/KPIs reflect the seed. Needs the DB but NOT the LLM, so it is
 // `@live-db` and runs in CI against the ephemeral container. Cleans up its own
 // rows in `finally`. See docs/dashboard.md + docs/testing.md.

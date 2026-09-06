@@ -1,19 +1,34 @@
 import { Pool, type PoolConfig } from "pg";
 import { buildDataStoreCredential } from "@/lib/azure-credential";
 
-// The ONE connection seam to the app's Postgres database: every consumer —
-// Drizzle (lib/db/index.ts), the Mastra store (app/mastra/index.ts) and the e2e
-// helper — takes the SAME pool from `getPool()`, so the parse/auth decision can
-// never drift between them.
+// The ONE connection seam to the app's Postgres database: every consumer in the
+// server process — Drizzle (lib/db/index.ts) and the Mastra store
+// (app/mastra/index.ts) — takes the SAME pool from `getPool()`, and the e2e
+// helper (e2e/db.ts, a separate Playwright process) calls the same `getPool()`
+// for its own, so the parse/auth decision can never drift between them.
 //
 // This module deliberately imports NOTHING but `pg` and the credential builder:
-// no drizzle, nothing from `app/**`. Playwright's CommonJS test runner loads
-// `buildPoolConfig` directly, and drizzle's ESM-only build would break that.
+// no drizzle, nothing from `app/**`, so the e2e helper can load it without
+// pulling the app's query layer into the test runner.
 //
 // SERVER-ONLY: may build Azure credentials. Never import from client components.
 
 /** Entra scope for Azure Database for PostgreSQL Flexible Server. */
 const POSTGRES_TOKEN_SCOPE = "https://ossrdbms-aad.database.windows.net/.default";
+
+// `new URL()` accepts a `%` that is not followed by two hex digits (a literal `%`
+// in a password, say); `decodeURIComponent` then throws a bare `URIError`, which
+// would surface from the first store call with no hint at its cause. Name the
+// culprit instead.
+function decodeUrlPart(value: string, part: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    throw new Error(
+      `DATABASE_URL has a malformed percent-encoding in its ${part} — encode a literal "%" as "%25"`,
+    );
+  }
+}
 
 /**
  * Parses `DATABASE_URL` into a node-postgres pool config and picks the auth mode
@@ -34,27 +49,35 @@ const POSTGRES_TOKEN_SCOPE = "https://ossrdbms-aad.database.windows.net/.default
  */
 export function buildPoolConfig(url: string): PoolConfig {
   const parsed = new URL(url);
-  const password = parsed.password ? decodeURIComponent(parsed.password) : undefined;
+  const password = parsed.password ? decodeUrlPart(parsed.password, "password") : undefined;
   const sslmode = parsed.searchParams.get("sslmode");
 
   const config: PoolConfig = {
     host: parsed.hostname,
     port: parsed.port ? Number(parsed.port) : 5432,
-    database: decodeURIComponent(parsed.pathname.replace(/^\//, "")),
+    database: decodeUrlPart(parsed.pathname.replace(/^\//, ""), "database name"),
     // Locally the Postgres role is the developer's Entra UPN, which the URL
     // carries percent-encoded (`rainer%40example.com`); `URL.username` keeps the
     // encoding, so decode it here.
-    user: decodeURIComponent(parsed.username),
+    user: decodeUrlPart(parsed.username, "user"),
     // Bound the pool: dev, prod and the Playwright workers share one small
-    // server (`max_connections = 50`).
-    max: 10,
+    // server (`max_connections = 50`). Drizzle and the Mastra store share these
+    // twenty clients — the one production process takes at most 20, leaving the
+    // rest for developers, e2e runs and admin sessions.
+    max: 20,
     idleTimeoutMillis: 30_000,
+    // Bound the WAIT for a client too: node-postgres's default (0) queues a
+    // checkout forever when the pool is exhausted or the server is unreachable,
+    // so every request would hang instead of failing into the stores'
+    // never-throws paths (and the /health probe would never report it).
+    connectionTimeoutMillis: 10_000,
     // Bounds every statement: the app's largest writes —
     // Mastra messages carrying base64 photo attachments — must not be cut off,
     // but a runaway statement must still fail loudly.
     statement_timeout: 60_000,
-    // Pin the session timezone so `now()` and `date_trunc` bucket in UTC
-    // regardless of the server default (the usage dashboard depends on it).
+    // Pin the session timezone to UTC as a defence: the app's own queries are
+    // written TZ-independently (`date_trunc(..., 'UTC')`, timestamptz columns),
+    // but `now()` and any ad-hoc expression still follow the session setting.
     options: "-c TimeZone=UTC",
     application_name: "novedu",
   };
@@ -70,8 +93,11 @@ export function buildPoolConfig(url: string): PoolConfig {
     };
   }
 
-  // Azure requires TLS; a local container URL without `sslmode` stays plain TCP.
-  if (sslmode === "require" || sslmode === "verify-full") {
+  // Azure requires TLS. Any `sslmode` other than `disable` turns TLS ON with
+  // certificate verification (libpq's `prefer`/`allow`/`verify-ca` included —
+  // an unrecognised mode must never silently downgrade to plaintext); a local
+  // container URL without `sslmode` stays plain TCP.
+  if (sslmode && sslmode !== "disable") {
     config.ssl = { rejectUnauthorized: true };
   }
 
@@ -100,6 +126,17 @@ export function getPool(): Pool {
     globalForPool.noveduPool = pool;
   }
   return globalForPool.noveduPool;
+}
+
+/**
+ * Closes the process's pool and forgets it, so a later `getPool()` builds a
+ * fresh one. For test teardown (the e2e helper); the server never calls it.
+ */
+export async function closePool(): Promise<void> {
+  const pool = globalForPool.noveduPool;
+  if (!pool) return;
+  globalForPool.noveduPool = undefined;
+  await pool.end();
 }
 
 /**

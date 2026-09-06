@@ -16,8 +16,8 @@ import { FIXTURES_BASE } from "./fixtures.constants";
 // the shared constant in e2e/fixtures.constants.ts.
 //
 // Deliberately uses the plain `pg` driver (via `./db`) instead of the app's
-// Drizzle store: Playwright's CJS test runner cannot load drizzle-orm's ESM
-// modules. Every statement below must match lib/db/schema.ts — keep them in sync.
+// Drizzle store, so the fixtures stay independent of the query layer under test.
+// Every statement below must match lib/db/schema.ts — keep them in sync.
 export const VALID_TUTOR_URL = `${FIXTURES_BASE}/tutors/test-tutor.yaml`;
 export const BROKEN_TUTOR_URL = `${FIXTURES_BASE}/tutors/broken-tutor.yaml`;
 // A minimal tutor with a REAL model for the @live-llm chat specs (they send a
@@ -233,7 +233,7 @@ export async function getStoredMessages(code: string): Promise<StoredMessageRow[
      FROM mastra.mastra_messages m
      JOIN mastra.mastra_threads t ON t.id = m.thread_id
      WHERE t."resourceId" = $1
-     ORDER BY COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC') ASC, m.id ASC`,
+     ORDER BY m."createdAtZ" ASC, m.id ASC`,
     [code],
   );
 }

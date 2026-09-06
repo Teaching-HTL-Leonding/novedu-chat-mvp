@@ -13,12 +13,15 @@
 --
 -- Resulting shape ("privilege model A"): the web app's system-assigned Managed
 -- Identity `novedu-chat-mvp-at` is a plain login role — not superuser, no CREATEDB /
--- CREATEROLE, not the database owner — with CONNECT on `novedu` and USAGE + CREATE on
--- exactly two schemas. It owns the tables it creates at boot (Drizzle migrations in
--- `public`, Mastra's `init()` in `mastra`) and nothing else. Mastra needs DDL rights
--- at runtime (CREATE TABLE IF NOT EXISTS / ALTER TABLE ... ADD COLUMN IF NOT EXISTS),
--- which Postgres refuses for a non-owner even when nothing needs creating — that is
--- why the app role is not DML-only.
+-- CREATEROLE, not the database owner — with CONNECT + CREATE on `novedu` and USAGE +
+-- CREATE on exactly two schemas. It owns the tables it creates at boot (Drizzle
+-- migrations in `public`, Mastra's `init()` in `mastra`) and nothing else. Mastra
+-- needs DDL rights at runtime (CREATE TABLE IF NOT EXISTS / ALTER TABLE ... ADD COLUMN
+-- IF NOT EXISTS), which Postgres refuses for a non-owner even when nothing needs
+-- creating — that is why the app role is not DML-only. CREATE on the DATABASE is
+-- needed because Drizzle's migrator always runs `CREATE SCHEMA IF NOT EXISTS` for its
+-- bookkeeping schema (`public` here) before touching anything, and Postgres checks that
+-- privilege BEFORE the IF NOT EXISTS shortcut — a role without it cannot boot.
 
 ---------------------------------------------------------------------------------
 -- Block 1 — on database `postgres` (pgaadauth_* only exists there)
@@ -40,7 +43,9 @@ create schema mastra;
 -- Nobody but explicitly granted roles may create objects in public.
 revoke create on schema public from public;
 
-grant connect on database novedu to "novedu-chat-mvp-at";
+-- CREATE on the database only permits creating schemas (not tables in them); it is
+-- what lets the Drizzle migrator's `CREATE SCHEMA IF NOT EXISTS "public"` pass.
+grant connect, create on database novedu to "novedu-chat-mvp-at";
 grant usage, create on schema public to "novedu-chat-mvp-at";
 grant usage, create on schema mastra to "novedu-chat-mvp-at";
 

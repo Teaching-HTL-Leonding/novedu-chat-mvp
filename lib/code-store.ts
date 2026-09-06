@@ -7,6 +7,7 @@ import { isUniqueViolation } from "@/lib/db/errors";
 import type { OwnerOption } from "@/lib/db/owner-filter";
 import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
+import { affectedRows } from "@/lib/db/result";
 import { codes, users } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
@@ -57,6 +58,9 @@ export const MAX_NOTE_LENGTH = 200;
 
 /** Longest accepted override model id. */
 export const MAX_LLM_MODEL_LENGTH = 256;
+
+/** Longest accepted activity file URL (after normalisation to `URL.href`). */
+export const MAX_FILE_URL_LENGTH = 2048;
 
 /**
  * A code's per-code LLM override: replaces the activity YAML's
@@ -141,6 +145,12 @@ export function validateCodeRequest(input: {
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return { ok: false, message: "Provide a public http(s) URL to the activity YAML file." };
+  }
+  if (url.href.length > MAX_FILE_URL_LENGTH) {
+    return {
+      ok: false,
+      message: `The file URL must be at most ${MAX_FILE_URL_LENGTH} characters long.`,
+    };
   }
 
   // Either bound may be blank — a blank start means the code opens immediately, a
@@ -458,8 +468,8 @@ const OWNER_LABEL = ownerLabel(codes.createdBy);
  * The `/codes` list's sortable columns (ORDER BY map + `parseSort` allow-list).
  * `module` sorts by the STORED value (coding, quiz, tutor, writing alphabetically),
  * not by the badge label the row renders. The list's "Interactions" column is
- * deliberately absent: it is a separate aggregate over the Mastra-owned tables (a
- * different pool), so it cannot be an ORDER BY term of this query.
+ * deliberately absent: it is a separate aggregate over the Mastra-owned tables,
+ * computed for the page AFTER it is read, so it cannot be an ORDER BY term of this query.
  */
 export const CODE_SORT_COLUMNS = {
   module: codes.module,
@@ -588,11 +598,7 @@ export async function updateCode(
         llmReasoning: data.llm?.reasoning ?? null,
       })
       .where(eq(codes.code, code));
-    const affected =
-      typeof (updated as { rowCount?: unknown }).rowCount === "number"
-        ? (updated as { rowCount: number }).rowCount
-        : 0;
-    if (affected < 1) return { ok: false, reason: "not-found" };
+    if (affectedRows(updated) < 1) return { ok: false, reason: "not-found" };
     return { ok: true };
   } catch (error) {
     console.error("code-store: updating code failed", error);

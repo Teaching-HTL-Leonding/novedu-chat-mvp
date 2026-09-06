@@ -1,4 +1,5 @@
 import { asc } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Behavior-level tests over a fake drizzle handle — what rows come back and what
@@ -271,6 +272,17 @@ describe("listReports", () => {
     // `code` orders by the JOINED note the row leads with, not by `reports.code`.
     await listReports({ status: "open", sort: { key: "code", dir: "asc" } });
     expect(fake.state.order).toEqual([asc(codes.note), asc(reports.id)]);
+  });
+
+  it("sorts `status` by the open/resolved rank, not by the nullable resolved_at", async () => {
+    // Ascending must read OPEN FIRST (what the badge shows); ordering by the raw
+    // timestamp would put the open rows' NULLs last under Postgres's ASC default.
+    await listReports({ status: "all", sort: { key: "status", dir: "asc" } });
+    const [first] = fake.state.order;
+    const { sql: rendered } = new PgDialect().sqlToQuery(first as never);
+    expect(rendered).toMatch(
+      /^CASE WHEN "novedu_reports"\."resolved_at" IS NULL THEN 0 ELSE 1 END asc$/,
+    );
   });
 
   it("LEFT-JOINs novedu_users + novedu_codes and NEVER novedu_user_chats", async () => {

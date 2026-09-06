@@ -6,6 +6,7 @@ import { isUniqueViolation } from "@/lib/db/errors";
 import type { OwnerOption } from "@/lib/db/owner-filter";
 import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
+import { affectedRows } from "@/lib/db/result";
 import { images, users } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
@@ -55,14 +56,6 @@ export type ImageListRow = ImageListEntry & { ownerName: string | null };
 
 /** The active version of one image. Metadata only — the bytes live in Blob Storage. */
 export type ActiveImage = ImageListEntry;
-
-// node-postgres reports the number of rows an UPDATE touched as `rowCount`
-// (`number | null`); a conditional UPDATE uses it to tell "I closed the active
-// row" (>=1) from "there was nothing to close" (0 or null).
-function affectedRows(result: unknown): number {
-  const r = (result as { rowCount?: unknown }).rowCount;
-  return typeof r === "number" ? r : 0;
-}
 
 // The list's WHERE, built once and shared by the COUNT and the row query — they
 // must never drift, or a page's total would describe a different set than its rows.

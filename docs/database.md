@@ -28,9 +28,11 @@ is **never** passed to the `Pool`: node-postgres re-parses a `connectionString`
 and lets it override explicit fields, which would silently discard the token
 callback.
 
-`sslmode=require` (or `verify-full`) in the URL turns on TLS with certificate
-verification (`ssl: { rejectUnauthorized: true }`); a local container URL
-without `sslmode` stays plain TCP.
+Any `sslmode` other than `disable` in the URL turns on TLS with certificate
+verification (`ssl: { rejectUnauthorized: true }`) — `require`, `verify-full`,
+and libpq's `prefer`/`allow`/`verify-ca` alike, so an unrecognised mode can
+never silently downgrade to plaintext; a local container URL without `sslmode`
+stays plain TCP.
 
 ### When to use which (policy)
 
@@ -97,11 +99,11 @@ DATABASE_URL=postgresql://postgres:Test-Passw0rd!@localhost:5432/novedu
 
 ## `lib/db/pool.ts` — the one seam
 
-`lib/db/pool.ts` exports `buildPoolConfig(url)`, `getPool()`, and
-`databaseHost(url?)`. It deliberately imports **nothing but `pg` and the
-credential builder** — no drizzle, nothing from `app/**` — so Playwright's
-CommonJS test runner can load `buildPoolConfig` directly (drizzle's ESM-only
-build would break that).
+`lib/db/pool.ts` exports `buildPoolConfig(url)`, `getPool()`, `closePool()`
+(test teardown only), and `databaseHost(url?)`. It deliberately imports
+**nothing but `pg` and the credential builder** — no drizzle, nothing from
+`app/**` — so the Playwright e2e helper (`e2e/db.ts`) can call `getPool()`
+without pulling the app's query layer into the test runner.
 
 `getPool()` returns **one `pg.Pool` per process**, cached on `globalThis` so
 Next.js HMR reloads in dev reuse it instead of leaking a new pool per reload.
@@ -113,16 +115,22 @@ process as an unhandled event.
 
 The pool is bounded and pinned:
 
-- `max: 10` — dev, prod, and every Playwright worker share one small server
-  (`max_connections = 50` on `db-pgnovedu`'s B1ms tier), so no single process
-  may hog the connection budget.
+- `max: 20` — Drizzle and the Mastra store share these clients. Dev, prod, and
+  every Playwright worker share one small server (`max_connections = 50` on
+  `db-pgnovedu`'s B1ms tier), so the one production process takes at most 20
+  and leaves the rest for developers, e2e runs and admin sessions.
+- `connectionTimeoutMillis: 10_000` — a checkout waits at most 10 s for a free
+  client. Without it node-postgres queues forever when the pool is exhausted or
+  the server is unreachable, so requests would hang instead of failing into the
+  stores' never-throw paths (and `/health` would never report it).
 - `idleTimeoutMillis: 30_000`.
 - `statement_timeout: 60_000`: the app's largest writes (Mastra messages
   carrying base64 photo attachments) must not be cut off, but a runaway
   statement must still fail loudly. This applies **per statement**.
-- `options: "-c TimeZone=UTC"` — pins the session timezone so `now()` and
-  `date_trunc` bucket in UTC regardless of the server default (the usage
-  dashboard depends on it).
+- `options: "-c TimeZone=UTC"` — pins the session timezone to UTC as a defence.
+  The app's own queries are written timezone-independently (`date_trunc(...,
+  'UTC')`, `timestamptz` columns), but `now()` and any ad-hoc expression still
+  follow the session setting.
 - `application_name: "novedu"`.
 
 `databaseHost(url)` returns the URL's hostname (or `null` when unset/
@@ -144,13 +152,12 @@ decision, no lifecycle mismatch:
    "mastra-storage", pool: getPool(), schemaName: "mastra" })` (`@mastra/pg`).
    A pool passed in via `pool:` is never closed by Mastra, so there is no
    lifecycle coupling. One domain is deliberately swapped out: the
-   **workflows domain runs in-memory** (`WorkflowsInMemory`), because every
-   agent run persists a transient agentic-loop snapshot that inlines the full
-   input — with photo answers that is megabytes of base64, which risks the
-   statement timeout on a small tier before the LLM is even called. Nothing in
-   this app suspends/resumes workflows, so the snapshots never need to survive
-   a restart. Threads/messages (Mastra Memory) stay in Postgres, in schema
-   `mastra`.
+   **workflows domain runs in-memory** (`WorkflowsInMemory`). Every agent run
+   writes a transient "pending" agentic-loop snapshot at start, reads it back,
+   and deletes it at the end — three database round trips per turn for state
+   nothing here ever resumes (no suspend/approval flows), so they stay in
+   process memory. Threads/messages (Mastra Memory) stay in Postgres, in
+   schema `mastra`.
 
 Unset `DATABASE_URL` → the app boots without persistence (warns; the boot
 sequence skips migrations); chat then fails because tutor codes and the tutor
@@ -159,10 +166,15 @@ agent's memory need the database.
 ## Privilege model
 
 The web app's Postgres role is a **plain login role** — not superuser, no
-`CREATEDB` / `CREATEROLE`, and **not the database owner**. It holds `CONNECT`
-on `novedu` and `USAGE` + `CREATE` on exactly two schemas: `public` (the
-app-owned `novedu_*` tables, migrated by Drizzle at boot) and `mastra`
-(Mastra's own tables, created by `initMastraStorage()`). `REVOKE CREATE ON
+`CREATEDB` / `CREATEROLE`, and **not the database owner**. It holds `CONNECT` +
+`CREATE` on `novedu` and `USAGE` + `CREATE` on exactly two schemas: `public`
+(the app-owned `novedu_*` tables, migrated by Drizzle at boot) and `mastra`
+(pre-created by provisioning; Mastra's own tables are created inside it by
+`initMastraStorage()`). `CREATE` on the *database* only permits creating
+schemas; it is required because Drizzle's migrator always runs `CREATE SCHEMA
+IF NOT EXISTS` for its bookkeeping schema (`public`) before anything else, and
+Postgres checks that privilege before the `IF NOT EXISTS` shortcut — without it
+the boot fails with `permission denied for database`. `REVOKE CREATE ON
 SCHEMA public FROM public` closes the default-open schema, so nothing but the
 app role (and the admin) may create objects there. The role **OWNS the tables
 it creates at boot** — Drizzle's migrations in `public`, Mastra's `init()` in
@@ -186,7 +198,7 @@ the server's Entra admin: on the `postgres` database,
 `pgaadauth_create_principal('novedu-chat-mvp-at', false, false)` registers the
 Managed Identity as a role, then `create database novedu`; on `novedu`,
 `create schema mastra`, the `revoke create on schema public from public`, and
-the three `grant` statements above. A developer's own `az login` role is made a
+the `grant` statements above. A developer's own `az login` role is made a
 **member** of the app role (`grant "novedu-chat-mvp-at" to "<developer role>"`,
 the script's third block): membership confers the app role's privileges on every
 table it owns, so local dev needs no per-table grants — and this applies to the
@@ -216,10 +228,11 @@ admin after any such local-first boot.
 - Migrations are applied **automatically at server startup**
   (`instrumentation.ts` → `lib/db/migrate.ts`, `drizzle-orm/node-postgres/migrator`),
   bookkept in **`novedu_drizzle_migrations`**. `migrationsSchema` is pinned to
-  `public` on purpose: the driver's default is a *separate* `drizzle` schema,
-  which the app role has no `CREATE` grant on — keeping the bookkeeping beside
-  the tables it tracks needs no extra grant. A failed migration aborts startup
-  on purpose.
+  `public` on purpose (the driver's default is a *separate* `drizzle` schema;
+  the bookkeeping belongs beside the tables it tracks). The migrator still
+  runs `CREATE SCHEMA IF NOT EXISTS "public"` on every boot, which is why the
+  app role holds `CREATE` on the database (see "Privilege model"). A failed
+  migration aborts startup on purpose.
 - Startup then calls **`initMastraStorage()`** (`app/mastra/index.ts`) to
   create Mastra's own `mastra.*` tables. `PostgresStore` does that itself, but
   only **lazily** — on the store's first use, i.e. the first agent run — and

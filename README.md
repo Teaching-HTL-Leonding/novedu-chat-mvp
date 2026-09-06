@@ -124,8 +124,8 @@ TEACHER_GROUP_ID=your-entra-teacher-group-object-id
 #   * Include a password (`postgresql://user:pw@host/db`) for classic password auth —
 #     a DEV/TEST/CI-ONLY fallback for environments that can't do Entra (e.g. a remote
 #     coding agent, a CI service container). NEVER use a password in a production URL.
-#   * `sslmode=require` turns on TLS with certificate verification (needed for Azure;
-#     a local container typically omits it).
+#   * Any `sslmode` other than `disable` (e.g. `sslmode=require`) turns on TLS with
+#     certificate verification (needed for Azure; a local container typically omits it).
 #
 # Passwordless (Entra), against the real Azure server:
 # DATABASE_URL=postgresql://<your-encoded-upn>@db-pgnovedu.postgres.database.azure.com/novedu?sslmode=require

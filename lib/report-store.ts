@@ -287,13 +287,20 @@ function listConditions(opts: {
 // descriptors, so reusing this one is safe, like the JOIN constants above.
 const URGENT_FIRST = sql`CASE WHEN ${reports.reaction} = 'holysh' AND ${reports.resolvedAt} IS NULL THEN 0 ELSE 1 END`;
 
+// The `Status` column's sort key: what the badge SHOWS (open / resolved), not the
+// raw `resolved_at`. Ordering by the timestamp would make "ascending" read
+// resolved-first (Postgres sorts the open rows' NULLs last), the inverse of the
+// column name — so the key is the two-state expression, ascending = open first.
+// Same principle as `ownerLabel()`: a column sorts by exactly what it displays.
+const STATUS_RANK = sql`CASE WHEN ${reports.resolvedAt} IS NULL THEN 0 ELSE 1 END`;
+
 /**
  * The `/reports` list's sortable columns (ORDER BY map + `parseSort` allow-list).
  * `code` and `student` order by the JOINED columns the rows lead with; a report
  * whose code row is gone, or whose reporter has no `novedu_users` row, is NULL
  * there and sorts LAST ascending (Postgres puts NULLs last on ASC, first on DESC).
- * `status` is `resolved_at`, NULL while open — so ascending puts open reports
- * LAST ("resolved first, open last"); `?sort=status:desc` reads open-first.
+ * `status` orders by `STATUS_RANK` (open = 0, resolved = 1), so ascending reads
+ * open-first and `?sort=-status` resolved-first, matching the badge.
  */
 export const REPORT_SORT_COLUMNS = {
   reaction: reports.reaction,
@@ -301,7 +308,7 @@ export const REPORT_SORT_COLUMNS = {
   code: codes.note,
   student: users.displayName,
   created: reports.createdAt,
-  status: reports.resolvedAt,
+  status: STATUS_RANK,
 } satisfies SortColumns;
 
 export async function listReports(opts: {
