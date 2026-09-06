@@ -128,8 +128,12 @@ describe("getCodeStats", () => {
   it("counts conversations and distinct students, mapping each interaction (non-anonymous)", async () => {
     const t1 = new Date("2026-06-12T10:00:00Z");
     const t2 = new Date("2026-06-12T10:05:00Z");
+    // Raw execute() rows arrive with the wire strings for timestamps and SUM —
+    // the store must hand back real Dates and numbers.
+    const raw1 = "2026-06-12 10:00:00+00";
+    const raw2 = "2026-06-12 10:05:00+00";
     fake.state.rows = [
-      { threadId: "th1", firstAt: t1, lastAt: t2, userMessageCount: 3, userId: "stu-1" },
+      { threadId: "th1", firstAt: raw1, lastAt: raw2, userMessageCount: "3", userId: "stu-1" },
       // Same student, a second conversation — must count as one student.
       { threadId: "th2", firstAt: t1, lastAt: t2, userMessageCount: 1, userId: "stu-1" },
       { threadId: "th3", firstAt: t1, lastAt: t2, userMessageCount: 2, userId: "stu-2" },

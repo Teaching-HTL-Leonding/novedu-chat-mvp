@@ -131,11 +131,14 @@ export async function getCodeStats(
   anonymous: boolean,
 ): Promise<CodeStats | undefined> {
   try {
+    // Raw `execute()` rows are NOT run through drizzle's column mappers: its
+    // node-postgres session hands timestamps back as the wire strings, and
+    // COUNT/SUM arrive as bigint strings — so both are converted below.
     const res = await getDb().execute<{
       threadId: string;
-      firstAt: Date;
-      lastAt: Date;
-      userMessageCount: number;
+      firstAt: string;
+      lastAt: string;
+      userMessageCount: number | string;
       userId: string | null;
       userName: string | null;
     }>(sql`
@@ -158,8 +161,8 @@ export async function getCodeStats(
 
     const interactions: Interaction[] = res.rows.map((row) => ({
       threadId: row.threadId,
-      firstAt: row.firstAt,
-      lastAt: row.lastAt,
+      firstAt: new Date(row.firstAt),
+      lastAt: new Date(row.lastAt),
       userMessageCount: Number(row.userMessageCount),
       // Anonymous code → never emit the student id OR name, whatever the join returned.
       userId: anonymous ? null : (row.userId ?? null),
@@ -203,11 +206,12 @@ export async function listStudentConversations(
   userId: string,
 ): Promise<StudentConversation[] | undefined> {
   try {
+    // Same raw-row conversions as getCodeStats (timestamps and SUM are strings).
     const res = await getDb().execute<{
       threadId: string;
-      firstAt: Date;
-      lastAt: Date;
-      userMessageCount: number;
+      firstAt: string;
+      lastAt: string;
+      userMessageCount: number | string;
     }>(sql`
       SELECT
         t.id AS "threadId",
@@ -224,8 +228,8 @@ export async function listStudentConversations(
     `);
     return res.rows.map((row) => ({
       threadId: row.threadId,
-      firstAt: row.firstAt,
-      lastAt: row.lastAt,
+      firstAt: new Date(row.firstAt),
+      lastAt: new Date(row.lastAt),
       userMessageCount: Number(row.userMessageCount),
     }));
   } catch (error) {

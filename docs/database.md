@@ -322,6 +322,12 @@ Mastra's own tables live in schema `mastra` (`mastra_threads`, `mastra_messages`
 `"resourceId"`, `"createdAt"`) must be double-quoted in any raw SQL that reads
 them, since Postgres lower-cases an unquoted identifier.
 
+Rows from a raw `db.execute(sql\`…\`)` bypass drizzle's column mappers: the
+node-postgres session returns every timestamp as its wire string and
+`COUNT`/`SUM` as bigint strings. A store that reads them converts explicitly
+(`new Date(row.firstAt)`, `Number(row.total)`), as `lib/code-stats-store.ts`
+and `lib/usage-stats-store.ts` do.
+
 ## Deletion (no garbage collection)
 
 There is **no** automatic garbage collection. Codes and their conversation
