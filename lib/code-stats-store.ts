@@ -54,17 +54,17 @@ export async function getInteractionCounts(
       sql`, `,
     );
     const res = await getDb().execute<{ code: string; interactions: number }>(sql`
-      SELECT t.resourceId AS code, COUNT(*) AS interactions
-      FROM mastra_threads t
-      WHERE t.resourceId IN (${inList})
+      SELECT t."resourceId" AS code, COUNT(*) AS interactions
+      FROM mastra.mastra_threads t
+      WHERE t."resourceId" IN (${inList})
         AND EXISTS (
-          SELECT 1 FROM mastra_messages m
+          SELECT 1 FROM mastra.mastra_messages m
           WHERE m.thread_id = t.id AND m.role = 'user'
         )
-      GROUP BY t.resourceId
+      GROUP BY t."resourceId"
     `);
     const counts = new Map<string, number>();
-    for (const row of res.recordset) counts.set(row.code, Number(row.interactions));
+    for (const row of res.rows) counts.set(row.code, Number(row.interactions));
     return counts;
   } catch (error) {
     console.error("code-stats-store: counting interactions failed", error);
@@ -131,35 +131,38 @@ export async function getCodeStats(
   anonymous: boolean,
 ): Promise<CodeStats | undefined> {
   try {
+    // Raw `execute()` rows are NOT run through drizzle's column mappers: its
+    // node-postgres session hands timestamps back as the wire strings, and
+    // COUNT/SUM arrive as bigint strings — so both are converted below.
     const res = await getDb().execute<{
       threadId: string;
-      firstAt: Date;
-      lastAt: Date;
-      userMessageCount: number;
+      firstAt: string;
+      lastAt: string;
+      userMessageCount: number | string;
       userId: string | null;
       userName: string | null;
     }>(sql`
       SELECT
-        t.id AS threadId,
-        MIN(m.createdAt) AS firstAt,
-        MAX(m.createdAt) AS lastAt,
-        SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS userMessageCount,
-        uc.user_id AS userId,
-        un.display_name AS userName
-      FROM mastra_threads t
-      JOIN mastra_messages m ON m.thread_id = t.id
+        t.id AS "threadId",
+        MIN(m."createdAtZ") AS "firstAt",
+        MAX(m."createdAtZ") AS "lastAt",
+        SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS "userMessageCount",
+        uc.user_id AS "userId",
+        un.display_name AS "userName"
+      FROM mastra.mastra_threads t
+      JOIN mastra.mastra_messages m ON m.thread_id = t.id
       LEFT JOIN novedu_user_chats uc ON uc.thread_id = t.id
       LEFT JOIN novedu_users un ON un.user_id = uc.user_id
-      WHERE t.resourceId = ${code}
+      WHERE t."resourceId" = ${code}
       GROUP BY t.id, uc.user_id, un.display_name
       HAVING SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) >= 1
-      ORDER BY MAX(m.createdAt) DESC
+      ORDER BY MAX(m."createdAtZ") DESC
     `);
 
-    const interactions: Interaction[] = res.recordset.map((row) => ({
+    const interactions: Interaction[] = res.rows.map((row) => ({
       threadId: row.threadId,
-      firstAt: row.firstAt,
-      lastAt: row.lastAt,
+      firstAt: new Date(row.firstAt),
+      lastAt: new Date(row.lastAt),
       userMessageCount: Number(row.userMessageCount),
       // Anonymous code → never emit the student id OR name, whatever the join returned.
       userId: anonymous ? null : (row.userId ?? null),
@@ -203,29 +206,30 @@ export async function listStudentConversations(
   userId: string,
 ): Promise<StudentConversation[] | undefined> {
   try {
+    // Same raw-row conversions as getCodeStats (timestamps and SUM are strings).
     const res = await getDb().execute<{
       threadId: string;
-      firstAt: Date;
-      lastAt: Date;
-      userMessageCount: number;
+      firstAt: string;
+      lastAt: string;
+      userMessageCount: number | string;
     }>(sql`
       SELECT
-        t.id AS threadId,
-        MIN(m.createdAt) AS firstAt,
-        MAX(m.createdAt) AS lastAt,
-        SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS userMessageCount
-      FROM mastra_threads t
-      JOIN mastra_messages m ON m.thread_id = t.id
+        t.id AS "threadId",
+        MIN(m."createdAtZ") AS "firstAt",
+        MAX(m."createdAtZ") AS "lastAt",
+        SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS "userMessageCount"
+      FROM mastra.mastra_threads t
+      JOIN mastra.mastra_messages m ON m.thread_id = t.id
       JOIN novedu_user_chats uc ON uc.thread_id = t.id
-      WHERE t.resourceId = ${code} AND uc.user_id = ${userId}
+      WHERE t."resourceId" = ${code} AND uc.user_id = ${userId}
       GROUP BY t.id
       HAVING SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) >= 1
-      ORDER BY MAX(m.createdAt) DESC
+      ORDER BY MAX(m."createdAtZ") DESC
     `);
-    return res.recordset.map((row) => ({
+    return res.rows.map((row) => ({
       threadId: row.threadId,
-      firstAt: row.firstAt,
-      lastAt: row.lastAt,
+      firstAt: new Date(row.firstAt),
+      lastAt: new Date(row.lastAt),
       userMessageCount: Number(row.userMessageCount),
     }));
   } catch (error) {
@@ -250,12 +254,12 @@ export async function getConversationMessages(
   try {
     const res = await getDb().execute<{ id: string; role: string; content: string }>(sql`
       SELECT m.id, m.role, m.content
-      FROM mastra_messages m
-      JOIN mastra_threads t ON t.id = m.thread_id
-      WHERE m.thread_id = ${threadId} AND t.resourceId = ${code}
-      ORDER BY m.createdAt ASC, m.seq_id ASC
+      FROM mastra.mastra_messages m
+      JOIN mastra.mastra_threads t ON t.id = m.thread_id
+      WHERE m.thread_id = ${threadId} AND t."resourceId" = ${code}
+      ORDER BY m."createdAtZ" ASC, m.id ASC
     `);
-    const messages = res.recordset.map(toAguiMessage).filter((m): m is Message => m !== null);
+    const messages = res.rows.map(toAguiMessage).filter((m): m is Message => m !== null);
     return collapseReplayedRuns(messages);
   } catch (error) {
     console.error("code-stats-store: loading conversation messages failed", error);

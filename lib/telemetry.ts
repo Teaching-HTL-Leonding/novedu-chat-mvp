@@ -3,7 +3,7 @@
 // Two responsibilities, deliberately split:
 //   1. initTelemetry(): one-time SDK bring-up. Loads the heavy
 //      `@azure/monitor-opentelemetry` distro (auto-instruments HTTP + the
-//      mssql/tedious driver, captures exceptions, exports traces/metrics/logs).
+//      `pg` driver, captures exceptions, exports traces/metrics/logs).
 //      Gated on APPLICATIONINSIGHTS_CONNECTION_STRING — unset means telemetry is
 //      fully OFF (no exporter, no network sink). Called once from
 //      instrumentation.ts, in the Node-only branch.

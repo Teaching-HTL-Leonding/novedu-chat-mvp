@@ -203,8 +203,8 @@ export async function startDiscussion(
       return { ok: false, message: "The discussion could not be started right now." };
     }
     await memory.createThread({ threadId, resourceId });
-    // Distinct, increasing createdAt so the transcript orders by time as well as
-    // by insertion (seq_id). The stored content envelope is the v2 UIMessage
+    // Distinct, increasing createdAt so the transcript orders by time, with the
+    // id as tiebreaker. The stored content envelope is the v2 UIMessage
     // shape the read-only viewer parses (`lib/conversation-collapse.ts`): text
     // parts plus — for the student-answer seed — one `file` part per photo whose
     // `data` is the data URL, exactly what the tutor's attachments persist.

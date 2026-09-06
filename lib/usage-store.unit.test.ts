@@ -9,9 +9,7 @@ import { usageByCode, usageByUser } from "@/lib/db/schema";
 const mocks = vi.hoisted(() => ({
   insert: vi.fn(),
   insertValues: vi.fn(),
-  update: vi.fn(),
-  updateSet: vi.fn(),
-  updateWhere: vi.fn(),
+  onConflictDoUpdate: vi.fn(),
   recordError: vi.fn(),
 }));
 
@@ -19,14 +17,10 @@ vi.mock("@/lib/db", () => ({
   getDb: () => ({
     insert: (table: unknown) => {
       mocks.insert(table);
-      return { values: mocks.insertValues };
-    },
-    update: (table: unknown) => {
-      mocks.update(table);
       return {
-        set: (setArg: unknown) => {
-          mocks.updateSet(setArg);
-          return { where: mocks.updateWhere };
+        values: (values: unknown) => {
+          mocks.insertValues(values);
+          return { onConflictDoUpdate: mocks.onConflictDoUpdate };
         },
       };
     },
@@ -45,18 +39,28 @@ import {
 const CODE = "a1b2c3d4e5";
 const USER = "student-oid-1";
 
-const duplicateKeyError = () =>
-  Object.assign(new Error("Failed query"), {
-    cause: Object.assign(new Error("Violation of PRIMARY KEY constraint"), { number: 2627 }),
-  });
-
-// The table object the store hands to insert/update, to assert which table was hit.
+// The table object the store hands to insert(), to assert which table was hit.
 const tableOf = (call: unknown[]): unknown => call[0];
+
+// The `set` object passed to the Nth insert's onConflictDoUpdate call.
+const setOf = (n: number): Record<string, unknown> => {
+  const config = mocks.onConflictDoUpdate.mock.calls[n]?.[0] as { set: Record<string, unknown> };
+  return config.set;
+};
+
+const COUNTER_KEYS = [
+  "inputTokensNew",
+  "inputTokensCached",
+  "outputTokens",
+  "toolCalls",
+  "userMessages",
+  "quizAnswers",
+  "writingSaves",
+];
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.insertValues.mockResolvedValue(undefined);
-  mocks.updateWhere.mockResolvedValue(undefined);
+  mocks.onConflictDoUpdate.mockResolvedValue(undefined);
 });
 
 describe("hourBucket", () => {
@@ -139,54 +143,24 @@ describe("recordLlmUsage", () => {
     const userRow = mocks.insertValues.mock.calls[1]?.[0] as Record<string, unknown>;
     expect(userRow).not.toHaveProperty("provider");
     expect(userRow).not.toHaveProperty("model");
+    expect(setOf(1)).not.toHaveProperty("provider");
+    expect(setOf(1)).not.toHaveProperty("model");
   });
 
-  it("COALESCE-fills provider/model on the duplicate-key UPDATE (a counter usually creates the bucket first)", async () => {
-    mocks.insertValues.mockRejectedValue(duplicateKeyError());
-    await recordLlmUsage({
-      code: CODE,
-      module: "tutor",
-      provider: "SCCH",
-      model: "some-model",
-      inputNew: 5,
-      inputCached: 0,
-      output: 3,
-      toolCalls: 0,
-    });
-    const setArg = mocks.updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(setArg).toHaveProperty("provider");
-    expect(setArg).toHaveProperty("model");
-  });
-
-  it("does not touch the provider/model columns when the caller has no attribution", async () => {
-    mocks.insertValues.mockRejectedValue(duplicateKeyError());
+  it("passes null provider/model into the INSERT when the caller has no attribution — a no-op COALESCE", async () => {
     await recordUserMessage({ code: CODE, module: "tutor", userId: USER });
-    const setArg = mocks.updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(setArg).not.toHaveProperty("provider");
-    expect(setArg).not.toHaveProperty("model");
+    expect(mocks.insertValues).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ provider: null, model: null }),
+    );
+    // The ON CONFLICT set still names both — COALESCE is a no-op on a NULL insert
+    // value, it doesn't remove the column from the statement.
+    expect(setOf(0)).toHaveProperty("provider");
+    expect(setOf(0)).toHaveProperty("model");
   });
 
-  it("falls back to an increment UPDATE on a duplicate key, and never throws", async () => {
-    mocks.insertValues.mockRejectedValue(duplicateKeyError());
-    await expect(
-      recordLlmUsage({
-        code: CODE,
-        module: "tutor",
-        userId: USER,
-        inputNew: 5,
-        inputCached: 0,
-        output: 3,
-        toolCalls: 1,
-      }),
-    ).resolves.toBeUndefined();
-    // Both tables tried insert, both fell back to update.
-    expect(mocks.update.mock.calls.map(tableOf)).toEqual([usageByCode, usageByUser]);
-    expect(mocks.updateWhere).toHaveBeenCalledTimes(2);
-    expect(mocks.recordError).not.toHaveBeenCalled();
-  });
-
-  it("swallows a non-duplicate DB error and routes it to recordError (never throws)", async () => {
-    mocks.insertValues.mockRejectedValue(new Error("connection lost"));
+  it("never throws on a database error and routes it to recordError", async () => {
+    mocks.onConflictDoUpdate.mockRejectedValue(new Error("connection lost"));
     await expect(
       recordLlmUsage({
         code: CODE,
@@ -213,6 +187,12 @@ describe("discrete counters", () => {
       1,
       expect.objectContaining({ code: CODE, module: "writing", userMessages: 1 }),
     );
+  });
+
+  it("the by-code ON CONFLICT set carries the 7 counters plus provider/model; by-user carries only the 7", async () => {
+    await recordUserMessage({ code: CODE, module: "writing", userId: USER });
+    expect(Object.keys(setOf(0)).sort()).toEqual([...COUNTER_KEYS, "provider", "model"].sort());
+    expect(Object.keys(setOf(1)).sort()).toEqual([...COUNTER_KEYS].sort());
   });
 
   it("recordQuizAnswer bumps quiz_answers with module 'quiz'", async () => {

@@ -33,7 +33,7 @@ The highest-cost rules to break. They always apply, regardless of subsystem; the
 - Telemetry carries **no** message / prompt / PII content (`docs/telemetry.md`).
 - Usage metering writes two **independent** hourly buckets — `usage_by_code` (no user) and `usage_by_user` (no code). **Never** a `(user × code)` row; ids + counts only, never content (`docs/usage-metering.md`).
 - Fork-PR CI stays **secret-free**; never add `pull_request_target` (`docs/ci-security.md`).
-- Production SQL is always passwordless Entra / Managed Identity; SQL user/password is dev/test only (`docs/database.md`).
+- Production Postgres is always passwordless Entra / Managed Identity; password auth is dev/test only (`docs/database.md`).
 
 ## Subsystem map
 
@@ -152,11 +152,11 @@ Read before touching: `components/data-list.tsx`, `components/list-*.tsx`, `lib/
 
 - Filtering happens in the database via URL search params — never in memory. Delete is bulk-only; no per-row or edit-page delete anywhere.
 
-### Azure SQL, Drizzle & credentials → `docs/database.md`
+### Postgres, Drizzle & credentials → `docs/database.md`
 
 Read before touching: Mastra storage (`app/mastra/index.ts`), `lib/db/`, migrations, `instrumentation.ts`.
 
-- Every pool builds its config via `buildMssqlConnectionConfig()` — the one auth seam. App tables use the `novedu_` prefix; **no foreign keys** between `novedu_*` and `mastra_*`.
+- Every consumer takes the ONE pool from `getPool()` (`lib/db/pool.ts`) — the one auth seam; app tables use the `novedu_` prefix in `public`, Mastra's live in schema `mastra`; **no foreign keys** between `novedu_*` and `mastra_*`.
 
 ### Telemetry → `docs/telemetry.md`
 

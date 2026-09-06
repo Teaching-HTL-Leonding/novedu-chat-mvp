@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { usageByCode, usageByUser } from "@/lib/db/schema";
 import { recordError } from "@/lib/telemetry";
@@ -30,17 +30,6 @@ interface UsageDeltas {
   writingSaves?: number;
 }
 
-// Mirrors isDuplicateKeyError in the other stores: mssql 2627/2601 in the error's
-// `cause` chain means the `(code|user, hour)` row already exists, so the UPSERT
-// falls back to an increment UPDATE.
-function isDuplicateKeyError(error: unknown): boolean {
-  for (let e = error; typeof e === "object" && e !== null; e = (e as { cause?: unknown }).cause) {
-    const number = (e as { number?: unknown }).number;
-    if (number === 2627 || number === 2601) return true;
-  }
-  return false;
-}
-
 /**
  * Truncates a Date to the top of its UTC hour — the bucket key for both tables.
  * Exported for unit testing.
@@ -61,20 +50,19 @@ interface LlmAttribution {
   model?: string;
 }
 
-// Increment-UPSERT: INSERT the bucket with the deltas as its initial values; on a
-// duplicate key (the bucket exists, or a concurrent writer just created it)
-// increment each column in place. Same INSERT-first / catch-UPDATE idiom as
-// writing-store, adapted to ADD rather than overwrite — so two concurrent writers
-// on one bucket both land (one inserts, the other catches + increments). An
-// UPDATE-first form would avoid the per-hit exception once the bucket exists, but
-// the proven idiom is preferred here; contention on one hourly bucket is negligible
-// at classroom scale.
+// Increment-UPSERT as ONE statement: INSERT the bucket with the deltas as its
+// initial values, ON CONFLICT DO UPDATE incrementing each column in place —
+// `excluded` is the row that would have been inserted, so the UPDATE adds
+// exactly the same deltas the INSERT would have set. Two concurrent writers on
+// one bucket both land: whichever commits first creates the row, the other
+// increments it.
 //
-// `provider`/`model` are NOT increments: the INSERT sets them when known, and the
-// UPDATE only COALESCE-fills a NULL (a user-message counter usually creates the
-// bucket BEFORE the generation finishes, so insert-only would leave them NULL).
-// First writer WITH the knowledge wins; the rare bucket straddling a republished
-// YAML keeps its first-seen value — negligible for a cost aggregate.
+// `provider`/`model` are NOT increments: the INSERT sets them when known, and a
+// NULL insert value makes the UPDATE's COALESCE a no-op, so the column only
+// ever fills in from empty (a user-message counter usually creates the bucket
+// BEFORE the generation finishes, so an insert-only write would leave them
+// NULL). First writer WITH the knowledge wins; the rare bucket straddling a
+// republished YAML keeps its first-seen value — negligible for a cost aggregate.
 async function bumpByCode(
   code: string,
   hour: Date,
@@ -82,11 +70,11 @@ async function bumpByCode(
   d: UsageDeltas,
   attr?: LlmAttribution,
 ): Promise<void> {
-  const db = getDb();
-  const provider = attr?.provider?.slice(0, 32);
-  const model = attr?.model?.slice(0, 256);
-  try {
-    await db.insert(usageByCode).values({
+  const provider = attr?.provider?.slice(0, 32) ?? null;
+  const model = attr?.model?.slice(0, 256) ?? null;
+  await getDb()
+    .insert(usageByCode)
+    .values({
       code,
       hour,
       module,
@@ -99,32 +87,30 @@ async function bumpByCode(
       userMessages: d.userMessages ?? 0,
       quizAnswers: d.quizAnswers ?? 0,
       writingSaves: d.writingSaves ?? 0,
+    })
+    .onConflictDoUpdate({
+      target: [usageByCode.code, usageByCode.hour],
+      set: {
+        inputTokensNew: sql`${usageByCode.inputTokensNew} + excluded.input_tokens_new`,
+        inputTokensCached: sql`${usageByCode.inputTokensCached} + excluded.input_tokens_cached`,
+        outputTokens: sql`${usageByCode.outputTokens} + excluded.output_tokens`,
+        toolCalls: sql`${usageByCode.toolCalls} + excluded.tool_calls`,
+        userMessages: sql`${usageByCode.userMessages} + excluded.user_messages`,
+        quizAnswers: sql`${usageByCode.quizAnswers} + excluded.quiz_answers`,
+        writingSaves: sql`${usageByCode.writingSaves} + excluded.writing_saves`,
+        provider: sql`COALESCE(${usageByCode.provider}, excluded.provider)`,
+        model: sql`COALESCE(${usageByCode.model}, excluded.model)`,
+      },
     });
-  } catch (error) {
-    if (!isDuplicateKeyError(error)) throw error;
-    await db
-      .update(usageByCode)
-      .set({
-        inputTokensNew: sql`${usageByCode.inputTokensNew} + ${d.inputTokensNew ?? 0}`,
-        inputTokensCached: sql`${usageByCode.inputTokensCached} + ${d.inputTokensCached ?? 0}`,
-        outputTokens: sql`${usageByCode.outputTokens} + ${d.outputTokens ?? 0}`,
-        toolCalls: sql`${usageByCode.toolCalls} + ${d.toolCalls ?? 0}`,
-        userMessages: sql`${usageByCode.userMessages} + ${d.userMessages ?? 0}`,
-        quizAnswers: sql`${usageByCode.quizAnswers} + ${d.quizAnswers ?? 0}`,
-        writingSaves: sql`${usageByCode.writingSaves} + ${d.writingSaves ?? 0}`,
-        ...(provider !== undefined
-          ? { provider: sql`COALESCE(${usageByCode.provider}, ${provider})` }
-          : {}),
-        ...(model !== undefined ? { model: sql`COALESCE(${usageByCode.model}, ${model})` } : {}),
-      })
-      .where(and(eq(usageByCode.code, code), eq(usageByCode.hour, hour)));
-  }
 }
 
+// No `provider`/`model` here — `usage_by_user` never carries an LLM (or code)
+// signal that could hint which activity a student used (the anonymity
+// invariant, docs/usage-metering.md).
 async function bumpByUser(userId: string, hour: Date, d: UsageDeltas): Promise<void> {
-  const db = getDb();
-  try {
-    await db.insert(usageByUser).values({
+  await getDb()
+    .insert(usageByUser)
+    .values({
       userId,
       hour,
       inputTokensNew: d.inputTokensNew ?? 0,
@@ -134,22 +120,19 @@ async function bumpByUser(userId: string, hour: Date, d: UsageDeltas): Promise<v
       userMessages: d.userMessages ?? 0,
       quizAnswers: d.quizAnswers ?? 0,
       writingSaves: d.writingSaves ?? 0,
+    })
+    .onConflictDoUpdate({
+      target: [usageByUser.userId, usageByUser.hour],
+      set: {
+        inputTokensNew: sql`${usageByUser.inputTokensNew} + excluded.input_tokens_new`,
+        inputTokensCached: sql`${usageByUser.inputTokensCached} + excluded.input_tokens_cached`,
+        outputTokens: sql`${usageByUser.outputTokens} + excluded.output_tokens`,
+        toolCalls: sql`${usageByUser.toolCalls} + excluded.tool_calls`,
+        userMessages: sql`${usageByUser.userMessages} + excluded.user_messages`,
+        quizAnswers: sql`${usageByUser.quizAnswers} + excluded.quiz_answers`,
+        writingSaves: sql`${usageByUser.writingSaves} + excluded.writing_saves`,
+      },
     });
-  } catch (error) {
-    if (!isDuplicateKeyError(error)) throw error;
-    await db
-      .update(usageByUser)
-      .set({
-        inputTokensNew: sql`${usageByUser.inputTokensNew} + ${d.inputTokensNew ?? 0}`,
-        inputTokensCached: sql`${usageByUser.inputTokensCached} + ${d.inputTokensCached ?? 0}`,
-        outputTokens: sql`${usageByUser.outputTokens} + ${d.outputTokens ?? 0}`,
-        toolCalls: sql`${usageByUser.toolCalls} + ${d.toolCalls ?? 0}`,
-        userMessages: sql`${usageByUser.userMessages} + ${d.userMessages ?? 0}`,
-        quizAnswers: sql`${usageByUser.quizAnswers} + ${d.quizAnswers ?? 0}`,
-        writingSaves: sql`${usageByUser.writingSaves} + ${d.writingSaves ?? 0}`,
-      })
-      .where(and(eq(usageByUser.userId, userId), eq(usageByUser.hour, hour)));
-  }
 }
 
 // Applies deltas to `usage_by_code` (always) and `usage_by_user` (only when a
@@ -164,16 +147,21 @@ async function record(
   op: string,
   attr?: LlmAttribution,
 ): Promise<void> {
-  try {
-    const hour = hourBucket(at);
-    // Provider/model attribution goes to `usage_by_code` ONLY — on `usage_by_user`
-    // even a coarse provider signal would hint WHICH activity a student did
-    // (the anonymity invariant, docs/usage-metering.md).
-    await bumpByCode(code, hour, module, d, attr);
-    if (userId) await bumpByUser(userId, hour, d);
-  } catch (error) {
-    console.error(`usage-store: ${op} failed`, error);
-    recordError(error, { store: "usage", op });
+  const hour = hourBucket(at);
+  // Provider/model attribution goes to `usage_by_code` ONLY — on `usage_by_user`
+  // even a coarse provider signal would hint WHICH activity a student did
+  // (the anonymity invariant, docs/usage-metering.md). The two upserts touch
+  // independent tables, so they run concurrently; a failure of one never
+  // suppresses the other, and each failure is reported on its own.
+  const results = await Promise.allSettled([
+    bumpByCode(code, hour, module, d, attr),
+    ...(userId ? [bumpByUser(userId, hour, d)] : []),
+  ]);
+  for (const result of results) {
+    if (result.status === "rejected") {
+      console.error(`usage-store: ${op} failed`, result.reason);
+      recordError(result.reason, { store: "usage", op });
+    }
   }
 }
 

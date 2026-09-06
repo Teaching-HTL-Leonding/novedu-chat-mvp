@@ -142,9 +142,9 @@ texts outlive a deleted code unless the code-delete path drops them explicitly
 | column | type | meaning |
 | --- | --- | --- |
 | `code` | `varchar(32)` | the writing code (= `novedu_codes.code`, same width) |
-| `user_id` | `nvarchar(64)` | the student's Entra `oid` |
-| `text` | `nvarchar(max)` | the saved Markdown |
-| `text_updated_at` | `datetime2` | last save time, UTC |
+| `user_id` | `varchar(64)` | the student's Entra `oid` |
+| `text` | `text` | the saved Markdown |
+| `text_updated_at` | `timestamptz` | last save time, UTC |
 
 **Primary key `(code, user_id)`** enforces "one saved text per student per code"
 and doubles as the per-code lookup index (code prefix) for the teacher review. Rows
@@ -160,11 +160,9 @@ surfaces the error to its action.
 
 - `getSubmission(code, userId)` — the student's saved row, or `null` (none saved /
   DB error). Backs the render component's prefill.
-- `saveSubmission({ code, userId, text })` — the **upsert**: `INSERT`, falling back
-  to `UPDATE` on a duplicate primary key (mssql 2627/2601, via the same
-  `isDuplicateKeyError` shape as `lib/code-store.ts`), stamping `text_updated_at =
-  now`. The PK `(code, userId)` means a student can only ever write their own single
-  row.
+- `saveSubmission({ code, userId, text })` — the **upsert**: a single `INSERT …
+  ON CONFLICT (code, user_id) DO UPDATE` stamping `text_updated_at = now`. The
+  PK `(code, userId)` means a student can only ever write their own single row.
 - `listSavers(code, { search? })` — the students who saved, **newest save first**,
   each with a count of their qualifying conversations (a correlated subquery joining
   the Mastra tables by value — one round trip, no N+1) and their **display name**
@@ -397,5 +395,5 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   save → the savers list → the student text is retrievable), built straight on the
   published sample YAML. The store round-trip (`saveSubmission` upsert / savers-list
   ordering / the code-delete cleanup that mirrors `deleteCodeRows`) runs against the
-  ephemeral SQL container. Minting a writing code passes `anonymous: false` so the
+  ephemeral Postgres container. Minting a writing code passes `anonymous: false` so the
   review dispatches to the savers list.

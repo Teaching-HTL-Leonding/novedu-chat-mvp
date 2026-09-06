@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fake = vi.hoisted(() => {
   const state = {
     rows: [] as unknown[],
-    // What the paginated list's COUNT(*) reports, plus every OFFSET/FETCH window
+    // What the paginated list's COUNT(*) reports, plus every LIMIT/OFFSET window
     // the store asked for (so a test can pin the SQL-side paging).
     total: 0,
     windows: [] as { offset: number; limit: number }[],
@@ -21,7 +21,7 @@ const fake = vi.hoisted(() => {
     deleteError: undefined as unknown,
     updated: [] as Record<string, unknown>[],
     updateError: undefined as unknown,
-    updateRowsAffected: [1] as number[],
+    updateRowCount: 1 as number,
   };
   // The query tail is a lazy thenable (NOT an eager promise): the rejected
   // promise only comes into existence when the store actually awaits it, so
@@ -36,12 +36,12 @@ const fake = vi.hoisted(() => {
     };
     return {
       // `orderBy` returns a builder (not a promise) because the paged query
-      // continues with `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
+      // continues with `.limit(…).offset(…)`; it stays awaitable for the unpaged call.
       orderBy: (...order: unknown[]) => {
         state.order = order;
         return {
-          offset: (offset: number) => ({
-            fetch: (limit: number) => {
+          limit: (limit: number) => ({
+            offset: (offset: number) => {
               state.windows.push({ offset, limit });
               return run();
             },
@@ -89,7 +89,7 @@ const fake = vi.hoisted(() => {
       where: async () => {
         if (state.updateError) throw state.updateError;
         state.updated.push(values);
-        return { rowsAffected: state.updateRowsAffected };
+        return { rowCount: state.updateRowCount };
       },
     }),
   });
@@ -108,6 +108,7 @@ import {
   getCode,
   listCodeOwners,
   listCodes,
+  MAX_FILE_URL_LENGTH,
   MAX_LLM_MODEL_LENGTH,
   MAX_NOTE_LENGTH,
   updateCode,
@@ -146,10 +147,12 @@ function toRow(e: CodeEntry): Record<string, unknown> {
   };
 }
 
-// mssql duplicate-key errors arrive wrapped (DrizzleQueryError → cause chain).
+// Postgres duplicate-key errors arrive wrapped (DrizzleQueryError → cause chain).
 const duplicateKeyError = () =>
   Object.assign(new Error("Failed query"), {
-    cause: Object.assign(new Error("Violation of PRIMARY KEY constraint"), { number: 2627 }),
+    cause: Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+    }),
   });
 
 beforeEach(() => {
@@ -163,7 +166,7 @@ beforeEach(() => {
   fake.state.deleteError = undefined;
   fake.state.updated = [];
   fake.state.updateError = undefined;
-  fake.state.updateRowsAffected = [1];
+  fake.state.updateRowCount = 1;
 });
 
 describe("generateCode", () => {
@@ -218,6 +221,12 @@ describe("validateCodeRequest", () => {
     const result = validateCodeRequest({ ...valid, note: null });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.payload.note).toBe("");
+  });
+
+  it("rejects an over-long file URL (the column is unbounded text; this is the cap)", () => {
+    const file = `https://example.com/${"a".repeat(MAX_FILE_URL_LENGTH)}`;
+    const result = validateCodeRequest({ ...valid, file });
+    expect(result).toMatchObject({ ok: false, message: expect.stringContaining("2048") });
   });
 
   it("rejects an over-long note", () => {
@@ -556,7 +565,7 @@ describe("checkCode", () => {
 });
 
 describe("listCodes", () => {
-  it("returns all rows unpaged, without a COUNT or an OFFSET/FETCH", async () => {
+  it("returns all rows unpaged, without a COUNT or a LIMIT/OFFSET", async () => {
     const rows = [entry(), entry({ code: "f6g7h8i9j0", createdBy: "another-teacher" })];
     fake.state.rows = rows.map(toRow);
     await expect(listCodes()).resolves.toEqual({ rows, total: 2, page: 1, pageSize: 2 });
@@ -797,7 +806,7 @@ describe("updateCode", () => {
   });
 
   it("reports not-found when no row was affected", async () => {
-    fake.state.updateRowsAffected = [0];
+    fake.state.updateRowCount = 0;
     await expect(updateCode("a1b2c3d4e5", data)).resolves.toEqual({
       ok: false,
       reason: "not-found",

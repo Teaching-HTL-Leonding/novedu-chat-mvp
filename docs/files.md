@@ -26,7 +26,7 @@ documented in `docs/api.md`.
 | GUI editor | `/files/gui/edit/<name>` (`app/files/gui/edit/[...name]/page.tsx`) | teacher | student-built form GUI; "Edit in GUI" on the list |
 
 The edit route is a **catch-all** (`[...name]`) and the `name` column is a
-generous `nvarchar(450)`, both deliberately folder-ready (`/`-separated names) —
+generous `varchar(450)`, both deliberately folder-ready (`/`-separated names) —
 a deferred extension; today names are flat (`FILE_NAME_PATTERN`).
 
 The **GUI editor/viewer** are a separate, student-built form interface over the
@@ -53,7 +53,7 @@ whoever ended it (updater **or** deleter), so logical deletions are attributed t
 The active row's `created_by` is therefore the file's "last writer".
 
 **"At most one active version per name" is enforced at the DATABASE level** by a
-SQL Server **filtered unique index** `ux_novedu_files_active_name`
+Postgres **partial unique index** `ux_novedu_files_active_name`
 (`name` WHERE `valid_until IS NULL`). It both closes the create-time race (two
 concurrent creates of the same name cannot both succeed) and serves the
 GET/edit/close hot-path lookup (`name WHERE valid_until IS NULL`). The conditional
@@ -86,8 +86,8 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
   the edit page and the GET endpoint.
 - `createFile` / `updateFile` / `softDeleteFiles` — the transitions above (delete is
   bulk-only: `softDeleteFiles` loops the per-item `closeActiveFile` primitive in one
-  transaction). `createFile` maps a duplicate-key error (mssql 2601/2627, via
-  `isDuplicateKeyError`) to `reason: "name-taken"`.
+  transaction). `createFile` maps a duplicate-key error (Postgres SQLSTATE `23505`,
+  via `isUniqueViolation`) to `reason: "name-taken"`.
 - `title` / `description` are **denormalized** from the validated tutor YAML so the
   list is searchable without parsing every body; they are clamped to the column
   caps (512 / 2048) — lossless for the file (the body in `content` is authoritative)

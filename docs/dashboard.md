@@ -55,10 +55,13 @@ server-only, so the client may use it too.
 
 ## The read seam — `lib/usage-stats-store.ts`
 
-Mirrors `lib/code-stats-store.ts`: raw by-value `sql` via `getDb().execute` (the KPI
-query joins Mastra's `mastra_messages`, which Drizzle never declares), and the
-**never-throws** contract — every function returns `undefined` on a DB error and
-logs it, so a failed panel degrades to "unavailable" instead of crashing the page.
+Mirrors `lib/code-stats-store.ts`: raw by-value `sql` via `getDb().execute`
+(the KPI query joins Mastra's `mastra.mastra_messages`, which Drizzle never
+declares — its camelCase columns are double-quoted in the raw SQL, and
+`db.execute()` returns `{ rows }`, so every read pulls its rows off that
+property), and the **never-throws** contract — every function returns
+`undefined` on a DB error and logs it, so a failed panel degrades to
+"unavailable" instead of crashing the page.
 **One query per chart/KPI**, each aggregating in SQL so only a small result set
 crosses the wire, and **read once where the shape allows**:
 
@@ -131,13 +134,14 @@ students. No message/prompt content or PII is read.
 - **Unit** — `lib/usage-range.unit.test.ts` (pure windowing/labels/zero-fill/foldTopN
   with an injected `now`); `lib/usage-stats-store.unit.test.ts` (the
   `code-stats-store.unit.test.ts` template — mock `getDb().execute` with a canned
-  recordset, assert the shaping + never-throws); `app/usage/page.unit.test.tsx` (the
+  `{ rows }` result, assert the shaping + never-throws); `app/usage/page.unit.test.tsx` (the
   teacher gate) and the section server components via `renderToStaticMarkup`.
 - **Component** — the bar + pie charts render props-driven in the `vitest-browser`
   project (real Chromium).
 - **E2E** — `e2e/usage-dashboard.live.spec.ts` (`@live-db`, seeds
-  `novedu_usage_by_code` via the raw `mssql` driver, runs in CI) and a hermetic
-  access-denied spec (default student session). See docs/testing.md.
+  `novedu_usage_by_code` via the plain `pg` driver through `e2e/db.ts`, runs in
+  CI) and a hermetic access-denied spec (default student session). See
+  docs/testing.md.
 
 ## Extending it
 

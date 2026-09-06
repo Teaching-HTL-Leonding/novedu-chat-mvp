@@ -3,9 +3,11 @@ import { and, asc, desc, eq, getTableColumns, inArray, type SQL } from "drizzle-
 import { CODE_MODULES, type CodeModule, isCodeModule } from "@/lib/code-modules/types";
 import { getDb } from "@/lib/db";
 import { countRows } from "@/lib/db/count";
+import { isUniqueViolation } from "@/lib/db/errors";
 import type { OwnerOption } from "@/lib/db/owner-filter";
 import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
+import { affectedRows } from "@/lib/db/result";
 import { codes, users } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
@@ -48,11 +50,17 @@ export function generateCode(): string {
   return code;
 }
 
-/** Longest accepted teacher note — matches the `note` column's nvarchar(200). */
+// The `note` and `llm_model` columns are unbounded `text` in Postgres; these
+// caps are app-side UI/validation limits, not column widths.
+
+/** Longest accepted teacher note. */
 export const MAX_NOTE_LENGTH = 200;
 
-/** Longest accepted override model id — matches the `llm_model` column's nvarchar(256). */
+/** Longest accepted override model id. */
 export const MAX_LLM_MODEL_LENGTH = 256;
+
+/** Longest accepted activity file URL (after normalisation to `URL.href`). */
+export const MAX_FILE_URL_LENGTH = 2048;
 
 /**
  * A code's per-code LLM override: replaces the activity YAML's
@@ -137,6 +145,12 @@ export function validateCodeRequest(input: {
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     return { ok: false, message: "Provide a public http(s) URL to the activity YAML file." };
+  }
+  if (url.href.length > MAX_FILE_URL_LENGTH) {
+    return {
+      ok: false,
+      message: `The file URL must be at most ${MAX_FILE_URL_LENGTH} characters long.`,
+    };
   }
 
   // Either bound may be blank — a blank start means the code opens immediately, a
@@ -310,16 +324,9 @@ function toLlmOverride(
 
 export type CreateCodeResult = { stored: true; code: string } | { stored: false };
 
-// A duplicate primary key surfaces as mssql error 2627 (PK constraint) or 2601
-// (unique index), wrapped by drizzle in a DrizzleQueryError whose `cause` is the
-// driver error — the signal to retry with a fresh random code.
-function isDuplicateKeyError(error: unknown): boolean {
-  for (let e = error; typeof e === "object" && e !== null; e = (e as { cause?: unknown }).cause) {
-    const number = (e as { number?: unknown }).number;
-    if (number === 2627 || number === 2601) return true;
-  }
-  return false;
-}
+// A duplicate primary key surfaces as SQLSTATE 23505 (unique_violation), wrapped
+// by drizzle in a DrizzleQueryError whose `cause` is the driver error — the
+// signal to retry with a fresh random code.
 
 // With a 36^10 keyspace two consecutive collisions are practically impossible;
 // the cap only guards against a systematic duplicate-key error turning into an
@@ -368,7 +375,7 @@ export async function createCode(
         });
       return { stored: true, code: candidate };
     } catch (error) {
-      if (isDuplicateKeyError(error)) continue; // code taken — retry with a new one
+      if (isUniqueViolation(error)) continue; // code taken — retry with a new one
       console.error("code-store: failed to store code", error);
       return { stored: false };
     }
@@ -461,8 +468,8 @@ const OWNER_LABEL = ownerLabel(codes.createdBy);
  * The `/codes` list's sortable columns (ORDER BY map + `parseSort` allow-list).
  * `module` sorts by the STORED value (coding, quiz, tutor, writing alphabetically),
  * not by the badge label the row renders. The list's "Interactions" column is
- * deliberately absent: it is a separate aggregate over the Mastra-owned tables (a
- * different pool), so it cannot be an ORDER BY term of this query.
+ * deliberately absent: it is a separate aggregate over the Mastra-owned tables,
+ * computed for the page AFTER it is read, so it cannot be an ORDER BY term of this query.
  */
 export const CODE_SORT_COLUMNS = {
   module: codes.module,
@@ -490,7 +497,7 @@ export async function listCodeOwners(): Promise<OwnerOption[]> {
  * activity. Never throws — an unreachable database reads as `undefined`, which
  * the page notes.
  *
- * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
+ * `paging` makes the SKIP and the LIMIT part of the SQL too (`LIMIT/OFFSET`,
  * with a COUNT for the total), and `sort` the ORDER BY — so a sort spans the whole
  * filtered set, not one page. Omitting both returns every match in the default
  * order, which is what the bearer API route wants.
@@ -520,7 +527,7 @@ export async function listCodes(opts?: {
           .orderBy(
             ...sortOrder(opts?.sort, CODE_SORT_COLUMNS, [desc(codes.createdAt)], asc(codes.code)),
           );
-        const rows = await (window ? query.offset(window.offset).fetch(window.limit) : query);
+        const rows = await (window ? query.limit(window.limit).offset(window.offset) : query);
         // Unreachable now that the module check is a WHERE condition (a dropped
         // row would make a page short and disagree with the COUNT) — kept so a
         // future condition change can't silently reintroduce that mismatch.
@@ -591,9 +598,7 @@ export async function updateCode(
         llmReasoning: data.llm?.reasoning ?? null,
       })
       .where(eq(codes.code, code));
-    const ra = (updated as { rowsAffected?: unknown }).rowsAffected;
-    const affected = Array.isArray(ra) ? Number(ra[0] ?? 0) : typeof ra === "number" ? ra : 1;
-    if (affected < 1) return { ok: false, reason: "not-found" };
+    if (affectedRows(updated) < 1) return { ok: false, reason: "not-found" };
     return { ok: true };
   } catch (error) {
     console.error("code-store: updating code failed", error);

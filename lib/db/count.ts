@@ -1,5 +1,5 @@
 import { and, type SQL, sql } from "drizzle-orm";
-import type { AnyMsSqlTable } from "drizzle-orm/mssql-core";
+import type { AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db";
 
 // The `COUNT(*)` half of a paginated list (see `docs/filtered-lists.md`). Every
@@ -20,12 +20,14 @@ import { getDb } from "@/lib/db";
  * existing try/catch is what turns an unreachable database into `undefined`.
  */
 export async function countRows(
-  table: AnyMsSqlTable,
+  table: AnyPgTable,
   conditions: SQL[],
-  joins: { table: AnyMsSqlTable; on: SQL }[] = [],
+  joins: { table: AnyPgTable; on: SQL }[] = [],
 ): Promise<number> {
   // `$dynamic()` so the joins can be applied in a loop. Only `n` is ever read, so
-  // the row-type erasure it causes costs nothing here.
+  // the row-type erasure it causes costs nothing here. `mapWith(Number)` converts
+  // `COUNT(*)`, which node-postgres returns as a string (it does that for every
+  // bigint-typed column).
   let query = getDb()
     .select({ n: sql<number>`COUNT(*)`.mapWith(Number) })
     .from(table)

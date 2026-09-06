@@ -45,14 +45,14 @@ the heavy distro directly:
 `register()` runs once per server instance (Node runtime only) and does, in order:
 
 1. **`initTelemetry()` FIRST** — before anything opens a connection — so the
-   distro's auto-instrumentation can patch the HTTP and mssql/tedious modules. Then
+   distro's auto-instrumentation can patch the HTTP and `pg` modules. Then
    `emitEvent("app_started", …)`.
 2. Apply Drizzle migrations (see `docs/database.md`).
 
 Telemetry is **independent of the database**: it is gated on
-`APPLICATIONINSIGHTS_CONNECTION_STRING`, not `MSSQL_CONNECTION_STRING`, so the
-no-DB boot path (e.g. plain `next build`, tutor validation) still initializes
-telemetry if its own connection string is set.
+`APPLICATIONINSIGHTS_CONNECTION_STRING`, not `DATABASE_URL`, so the no-DB boot
+path (e.g. plain `next build`, tutor validation) still initializes telemetry
+if its own connection string is set.
 
 ## Capturing uncaught errors: `onRequestError`
 
@@ -100,10 +100,10 @@ prompt, or user-entered text. `recordError()` records the error's own message/st
   `@opentelemetry/api-logs` (`api-logs` is pinned to match the distro's global
   logger). The distro is listed in `serverExternalPackages` so it is not bundled.
 
-## Known gap
+## `pg` dependency calls
 
-SQL/tedious calls do **not** currently show up as `AppDependencies`: the distro
-does not auto-instrument tedious by default, and `register()`-time init can miss an
-already-loaded driver (the ESM loader-ordering caveat). Follow-up: add explicit
-tedious instrumentation and/or the `node --import @azure/monitor-opentelemetry/loader`
-flag in the start command.
+The Azure Monitor distro auto-instruments the `pg` driver, so every database
+round trip (Drizzle queries and Mastra's storage calls alike, since both share
+the one pool from `lib/db/pool.ts`) is expected to show up as `AppDependencies`
+rows once telemetry is on. Confirm this after the first production deploy by
+querying `AppDependencies` for `pg`-typed rows.

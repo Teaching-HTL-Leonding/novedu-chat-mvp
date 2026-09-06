@@ -1,5 +1,5 @@
 import { and, asc, eq, type SQL, sql } from "drizzle-orm";
-import type { AnyMsSqlColumn, AnyMsSqlTable } from "drizzle-orm/mssql-core";
+import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db";
 import type { OwnerOption } from "@/lib/db/owner-filter";
 import { users } from "@/lib/db/schema";
@@ -19,7 +19,7 @@ import { users } from "@/lib/db/schema";
  * is DISPLAY-ONLY — no list condition may reach into `users`, or the joinless COUNT
  * would stop describing the same set as the rows.
  */
-export function ownerJoin(createdBy: AnyMsSqlColumn): SQL {
+export function ownerJoin(createdBy: AnyPgColumn): SQL {
   return eq(users.userId, createdBy);
 }
 
@@ -29,9 +29,9 @@ export function ownerJoin(createdBy: AnyMsSqlColumn): SQL {
  * it is what the dropdown shows AND what the `owner` sort key orders by, so the
  * column always sorts by exactly what it displays. Ordering by the coalesced label
  * (rather than by `display_name`) is also what keeps an oid-only owner inside the
- * alphabet instead of leading the list as a NULL: mssql has no NULLS LAST.
+ * alphabet instead of leading the list as a NULL.
  */
-export function ownerLabel(createdBy: AnyMsSqlColumn): SQL<string> {
+export function ownerLabel(createdBy: AnyPgColumn): SQL<string> {
   return sql<string>`COALESCE(${users.displayName}, ${createdBy})`;
 }
 
@@ -48,13 +48,13 @@ export function ownerLabel(createdBy: AnyMsSqlColumn): SQL<string> {
  * renders (with just the "me" and "all owners" entries) instead of failing.
  */
 export async function listOwners(
-  table: AnyMsSqlTable,
-  createdBy: AnyMsSqlColumn,
+  table: AnyPgTable,
+  createdBy: AnyPgColumn,
   conditions: SQL[],
 ): Promise<OwnerOption[]> {
-  // mssql requires every ORDER BY term of a SELECT DISTINCT to appear in the select
-  // list, which is why the ORDER BY repeats this exact expression rather than
-  // ordering by `users.display_name`.
+  // Postgres requires every ORDER BY term of a SELECT DISTINCT to appear in the
+  // select list, which is why the ORDER BY repeats this exact expression rather
+  // than ordering by `users.display_name`.
   const label = ownerLabel(createdBy);
   try {
     const rows = await getDb()

@@ -13,7 +13,7 @@ const fake = vi.hoisted(() => {
     // What every `select(...).from(...).where(...)` resolves to (the existence
     // check in confirm, the active row in getActive / the delete pre-read, the list).
     rows: [] as Record<string, unknown>[],
-    // What the paginated list's COUNT(*) reports, plus every OFFSET/FETCH window
+    // What the paginated list's COUNT(*) reports, plus every LIMIT/OFFSET window
     // the store asked for (so a test can pin the SQL-side paging).
     total: 0,
     windows: [] as { offset: number; limit: number }[],
@@ -23,8 +23,8 @@ const fake = vi.hoisted(() => {
     selectError: undefined as unknown,
     inserted: [] as Record<string, unknown>[],
     insertError: undefined as unknown,
-    // The mssql IResult shape returned by `update(...).set(...).where(...)`.
-    closeResult: { rowsAffected: [1] } as unknown,
+    // The node-postgres result shape returned by `update(...).set(...).where(...)`.
+    closeResult: { rowCount: 1 } as unknown,
     updateError: undefined as unknown,
   };
 
@@ -37,13 +37,13 @@ const fake = vi.hoisted(() => {
   };
   // A lazy thenable so error cases only reject when actually awaited. `orderBy`
   // returns a builder (not a promise) because the paged list query continues with
-  // `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
+  // `.limit(…).offset(…)`; it stays awaitable for the unpaged call.
   const queryTail = (fields?: Record<string, unknown>) => ({
     orderBy: (...order: unknown[]) => {
       state.order = order;
       return {
-        offset: (offset: number) => ({
-          fetch: (limit: number) => {
+        limit: (limit: number) => ({
+          offset: (offset: number) => {
             state.windows.push({ offset, limit });
             return selectRun(fields);
           },
@@ -106,11 +106,13 @@ vi.mock("@/lib/image-blob", () => ({ deleteBlob: blob.deleteBlob }));
 import { images } from "@/lib/db/schema";
 import { confirmImage, getActiveImage, listImages, softDeleteImages } from "@/lib/image-store";
 
-// A duplicate-key (unique index) violation as drizzle wraps it: cause chain with
-// the mssql error number.
+// A duplicate-key (unique constraint) violation as drizzle wraps it: cause chain
+// with the Postgres SQLSTATE.
 const uniqueViolation = () =>
   Object.assign(new Error("Failed query"), {
-    cause: Object.assign(new Error("Violation of UNIQUE KEY constraint"), { number: 2601 }),
+    cause: Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+    }),
   });
 
 function activeRow(overrides: Record<string, unknown> = {}) {
@@ -135,13 +137,13 @@ beforeEach(() => {
   fake.state.selectError = undefined;
   fake.state.inserted = [];
   fake.state.insertError = undefined;
-  fake.state.closeResult = { rowsAffected: [1] };
+  fake.state.closeResult = { rowCount: 1 };
   fake.state.updateError = undefined;
   blob.deleteBlob.mockResolvedValue(undefined);
 });
 
 describe("listImages", () => {
-  it("returns the active rows, unpaged, without a COUNT or an OFFSET/FETCH", async () => {
+  it("returns the active rows, unpaged, without a COUNT or a LIMIT/OFFSET", async () => {
     fake.state.rows = [activeRow()];
     await expect(listImages()).resolves.toEqual({
       rows: [activeRow()],
@@ -261,7 +263,7 @@ describe("confirmImage", () => {
 describe("softDeleteImages", () => {
   it("closes every named image, counts the closed rows, and deletes each blob", async () => {
     fake.state.rows = [{ blobPath: "abc.png" }];
-    fake.state.closeResult = { rowsAffected: [1] };
+    fake.state.closeResult = { rowCount: 1 };
     await expect(softDeleteImages(["a", "b", "c"], "teacher-3")).resolves.toEqual({
       ok: true,
       deleted: 3,
@@ -280,7 +282,7 @@ describe("softDeleteImages", () => {
 
   it("treats a lost conditional-close race as not counted (no blob delete)", async () => {
     fake.state.rows = [{ blobPath: "abc.png" }];
-    fake.state.closeResult = { rowsAffected: [0] };
+    fake.state.closeResult = { rowCount: 0 };
     await expect(softDeleteImages(["diagram"], "teacher-3")).resolves.toEqual({
       ok: true,
       deleted: 0,
@@ -290,7 +292,7 @@ describe("softDeleteImages", () => {
 
   it("still succeeds (best-effort) when a blob delete throws", async () => {
     fake.state.rows = [{ blobPath: "abc.png" }];
-    fake.state.closeResult = { rowsAffected: [1] };
+    fake.state.closeResult = { rowCount: 1 };
     blob.deleteBlob.mockRejectedValue(new Error("blob gone"));
     await expect(softDeleteImages(["diagram"], "teacher-3")).resolves.toEqual({
       ok: true,

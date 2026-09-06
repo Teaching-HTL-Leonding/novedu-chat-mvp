@@ -1,13 +1,11 @@
 import { randomInt } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { loadEnvConfig } from "@next/env";
 import { expect, type Page, test } from "@playwright/test";
-import sql from "mssql";
-import { buildMssqlConnectionConfig } from "../lib/azure-credential";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { sendAndExpectReply } from "./chat.utils";
 import { deleteUserName, mintCode, setUserName, VALID_WRITING_URL } from "./code.utils";
+import { query } from "./db";
 
 // End-to-end coverage for the Writing module: a `novedu_codes` row with
 // `module: "writing"` reached at `/<code>`. The student writes Markdown on the
@@ -16,7 +14,7 @@ import { deleteUserName, mintCode, setUserName, VALID_WRITING_URL } from "./code
 // student to read their text on /codes/[code]/s/[userId].
 //
 // The write → save → reload-restores → savers-list → student-text leg needs the DB
-// but no LLM (@live-db, run in CI against the ephemeral SQL container). The legs
+// but no LLM (@live-db, run in CI against the ephemeral Postgres container). The legs
 // that hit the SCCH model — the getCurrentText read and the full write→chat→save→
 // review round-trip — are @live-llm (excluded from CI; a `--grep @live-db` run
 // skips them).
@@ -206,51 +204,36 @@ test("writing round-trip: write → chat reply → save → teacher reads the sa
 
 // The store round-trip, against the real table — upsert (insert then update on the
 // same key) and savers-list ordering, then the code-delete row cleanup. Uses the
-// plain `mssql` driver (the Playwright CJS runner cannot load drizzle's ESM), with
-// statements that mirror lib/writing-store.ts. Needs the DB, no LLM.
+// shared `e2e/db.ts` plain `pg` helper (kept independent of the app's query
+// layer), with statements that mirror lib/writing-store.ts. Needs the DB,
+// no LLM. Shares the per-worker pool from `e2e/db.ts` — no `closePool()` here, since
+// other specs in this file (and the suite) still use it.
 test("writing submissions store round-trip (upsert / list / delete)", {
   tag: ["@live", "@live-db"],
 }, async () => {
-  loadEnvConfig(process.cwd());
-  const connectionString = process.env.MSSQL_CONNECTION_STRING;
-  if (!connectionString) throw new Error("e2e: MSSQL_CONNECTION_STRING is not set");
-  const pool = await new sql.ConnectionPool(buildMssqlConnectionConfig(connectionString)).connect();
-
   const suffix = randomInt(1_000_000).toString().padStart(6, "0");
   const code = `e2ewr${suffix}`;
   const userA = `e2e-user-a-${suffix}`;
   const userB = `e2e-user-b-${suffix}`;
 
   const upsert = async (userId: string, text: string) => {
-    // Mirrors saveSubmission's insert→update-on-duplicate-key upsert.
-    await pool
-      .request()
-      .input("code", sql.VarChar(32), code)
-      .input("userId", sql.NVarChar(64), userId)
-      .input("text", sql.NVarChar(sql.MAX), text)
-      .input("now", sql.DateTime2, new Date())
-      .query(
-        `MERGE novedu_writing_submissions AS t
-         USING (SELECT @code AS code, @userId AS user_id) AS s
-         ON t.code = s.code AND t.user_id = s.user_id
-         WHEN MATCHED THEN UPDATE SET text = @text, text_updated_at = @now
-         WHEN NOT MATCHED THEN INSERT (code, user_id, text, text_updated_at)
-           VALUES (@code, @userId, @text, @now);`,
-      );
+    // Mirrors saveSubmission's insert→update-on-conflict upsert.
+    await query(
+      `INSERT INTO novedu_writing_submissions (code, user_id, text, text_updated_at)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (code, user_id) DO UPDATE SET text = excluded.text, text_updated_at = excluded.text_updated_at`,
+      [code, userId, text, new Date()],
+    );
   };
 
-  const list = async () =>
-    (
-      await pool
-        .request()
-        .input("code", sql.VarChar(32), code)
-        .query<{ user_id: string; text: string }>(
-          `SELECT user_id, CAST(text AS NVARCHAR(MAX)) AS text
-           FROM novedu_writing_submissions
-           WHERE code = @code
-           ORDER BY text_updated_at DESC`,
-        )
-    ).recordset;
+  const list = () =>
+    query<{ user_id: string; text: string }>(
+      `SELECT user_id, text
+       FROM novedu_writing_submissions
+       WHERE code = $1
+       ORDER BY text_updated_at DESC`,
+      [code],
+    );
 
   try {
     await upsert(userA, "first version");
@@ -266,17 +249,9 @@ test("writing submissions store round-trip (upsert / list / delete)", {
     expect(both.map((r) => r.user_id)).toEqual([userB, userA]);
 
     // The code-delete path drops every row for the code.
-    await pool
-      .request()
-      .input("code", sql.VarChar(32), code)
-      .query(`DELETE FROM novedu_writing_submissions WHERE code = @code`);
+    await query(`DELETE FROM novedu_writing_submissions WHERE code = $1`, [code]);
     expect(await list()).toHaveLength(0);
   } finally {
-    await pool
-      .request()
-      .input("code", sql.VarChar(32), code)
-      .query(`DELETE FROM novedu_writing_submissions WHERE code = @code`)
-      .catch(() => {});
-    await pool.close();
+    await query(`DELETE FROM novedu_writing_submissions WHERE code = $1`, [code]).catch(() => {});
   }
 });

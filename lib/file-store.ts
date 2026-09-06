@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { type DbExecutor, getDb } from "@/lib/db";
 import { countRows } from "@/lib/db/count";
+import { isUniqueViolation } from "@/lib/db/errors";
 import type { OwnerOption } from "@/lib/db/owner-filter";
 import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
+import { affectedRows } from "@/lib/db/result";
 import { files, users } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
@@ -64,16 +66,6 @@ export interface ActiveFile extends FileListEntry {
   content: string;
 }
 
-// The mssql driver returns an `IResult` whose `rowsAffected` is a per-statement
-// array; read the first entry defensively so a conditional UPDATE can tell "I
-// closed the active row" (>=1) from "there was nothing to close" (0).
-function affectedRows(result: unknown): number {
-  const ra = (result as { rowsAffected?: unknown }).rowsAffected;
-  if (Array.isArray(ra)) return Number(ra[0] ?? 0);
-  if (typeof ra === "number") return ra;
-  return 0;
-}
-
 // Column caps for the DENORMALIZED search fields (see `title`/`description` in
 // lib/db/schema.ts). They exist only so the list can be searched without parsing
 // every body — the authoritative text always lives in `content` — so clamping an
@@ -84,18 +76,6 @@ const TITLE_MAX = 512;
 const DESCRIPTION_MAX = 2048;
 function clamp(value: string | null, max: number): string | null {
   return value !== null && value.length > max ? value.slice(0, max) : value;
-}
-
-// A unique-index violation surfaces as mssql error 2601 (unique index) or 2627
-// (PK/unique constraint), wrapped by drizzle in a DrizzleQueryError whose `cause`
-// is the driver error. For createFile that means the filtered unique index
-// rejected a second active row for the same name — i.e. the name is taken.
-function isDuplicateKeyError(error: unknown): boolean {
-  for (let e = error; typeof e === "object" && e !== null; e = (e as { cause?: unknown }).cause) {
-    const number = (e as { number?: unknown }).number;
-    if (number === 2601 || number === 2627) return true;
-  }
-  return false;
 }
 
 // The list's WHERE, built once and shared by the COUNT and the row query — they
@@ -143,7 +123,7 @@ export async function listFileOwners(): Promise<OwnerOption[]> {
  * and the list never shows it). `undefined` on a database error, which the page
  * notes.
  *
- * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
+ * `paging` makes the SKIP and the LIMIT part of the SQL too (`LIMIT/OFFSET`,
  * with a COUNT for the total), and `sort` the ORDER BY — so a sort spans the whole
  * filtered set, not one page. Omitting both returns every match in the default
  * order, which is what the bearer API route wants.
@@ -179,7 +159,7 @@ export async function listFiles(opts?: {
           .orderBy(
             ...sortOrder(opts?.sort, FILE_SORT_COLUMNS, [desc(files.validFrom)], asc(files.id)),
           );
-        return window ? query.offset(window.offset).fetch(window.limit) : query;
+        return window ? query.limit(window.limit).offset(window.offset) : query;
       },
     });
   } catch (error) {
@@ -263,9 +243,10 @@ export async function createFile(
       return { ok: true, name: input.name };
     });
   } catch (error) {
-    // The pre-check above handles the common case, but the filtered unique index
-    // is the real guard against a concurrent create racing in after it.
-    if (isDuplicateKeyError(error)) return { ok: false, reason: "name-taken" };
+    // The pre-check above handles the common case, but the partial unique index
+    // is the real guard against a concurrent create racing in after it — it
+    // rejected a second active row for the same name, SQLSTATE 23505.
+    if (isUniqueViolation(error)) return { ok: false, reason: "name-taken" };
     console.error("file-store: create failed", error);
     return { ok: false, reason: "error" };
   }

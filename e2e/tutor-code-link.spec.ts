@@ -11,7 +11,7 @@ import { mintTutorCode } from "./code.utils";
 //   - the rejection components themselves → tests/component/code-error.browser.test.tsx
 // What remains here is one @live-db happy-path smoke that genuinely needs a minted
 // code + a real database (no LLM — the composer renders without SCCH), so it runs
-// in CI against the SQL Server container as well as locally.
+// in CI against the Postgres container as well as locally.
 
 // The valid-code smoke fetches the sample tutor from GitHub — give it room.
 test.setTimeout(60_000);

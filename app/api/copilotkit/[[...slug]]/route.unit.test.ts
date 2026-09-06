@@ -57,7 +57,7 @@ vi.mock("@/lib/code-modules/registry", () => ({
     writing: { fileKind: "writing", runtime: { agentId: "writing", buildRequestContext } },
   },
 }));
-// Importing the real Mastra instance would pull in @mastra/mssql + the Azure
+// Importing the real Mastra instance would pull in @mastra/pg + the Azure
 // credential chain; the handler only passes it through to getLocalAgents.
 vi.mock("@/app/mastra", () => ({ mastra: {} }));
 // after() needs a Next request scope; the happy-path tests don't assert the

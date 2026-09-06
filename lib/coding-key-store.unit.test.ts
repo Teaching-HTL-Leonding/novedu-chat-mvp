@@ -92,10 +92,12 @@ import {
 } from "@/lib/coding-key-store";
 import { codingKeys } from "@/lib/db/schema";
 
-// mssql duplicate-key errors arrive wrapped (DrizzleQueryError → cause chain).
+// Postgres duplicate-key errors arrive wrapped (DrizzleQueryError → cause chain).
 const duplicateKeyError = () =>
   Object.assign(new Error("Failed query"), {
-    cause: Object.assign(new Error("Violation of PRIMARY KEY constraint"), { number: 2627 }),
+    cause: Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+    }),
   });
 
 // A stored row as the store reads it back.

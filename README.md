@@ -19,7 +19,7 @@ Students can voluntarily **report** an AI interaction — a chat or a graded qui
 
 It is a prototype: access is gated behind Microsoft Entra ID sign-in (the teacher
 guide at `/docs` is deliberately public), and agent memory/storage is persisted to
-Azure SQL (authenticated via Entra — no SQL password).
+Azure Database for PostgreSQL (authenticated via Entra — no password required).
 
 ## What's in here
 
@@ -27,7 +27,7 @@ Azure SQL (authenticated via Entra — no SQL password).
 | --- | --- |
 | **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the code-entry page; `app/[code]/page.tsx` checks the code and **dispatches by its `module`** to the tutor/quiz/writing/coding renderer. Teachers create, list, and edit **codes** under `/codes` (new at `/codes/new`, edit at `/codes/edit/<code>`), author **app-hosted YAML files** under `/files` and **images** under `/images`, triage **student reports** under `/reports` ([`docs/reports.md`](docs/reports.md)), and see usage on the `/usage` dashboard. See [`docs/codes.md`](docs/codes.md). Lists filter in the DB — see [`docs/filtered-lists.md`](docs/filtered-lists.md). |
 | **Prompt-fragment core** (`lib/prompt-fragments/`) | The shared, framework-agnostic pipeline every activity kind builds on: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. `assembleFragmentPrompt` resolves a document-level fragment block into a prompt string (a structured result, never throws); tutor, quiz, writing, and coding all call it. Handlebars is confined to this module (grep-guard enforced). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the activity YAML, and fragment inputs may declare **defaults**. See [`docs/prompt-fragments.md`](docs/prompt-fragments.md) and [`activities/tutors/README.md`](activities/tutors/README.md) (the authoring guide). |
-| **Mastra agents** (`app/mastra/`) | The `tutor`, `quizDiscussion`, and `writing` agents resolve their instructions + model per request and persist conversations via Mastra `Memory`; the server-only `quizEvaluator` grader and the eval agents `evalJudge` + `evalTutor` are never web-reachable by students (their only web callers are the teacher-only `/api/eval/*` routes). Agents are registered in `app/mastra/index.ts`. Storage is **Azure SQL** via `@mastra/mssql`, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). (The `coding` module has **no** Mastra agent — it is a thin proxy.) |
+| **Mastra agents** (`app/mastra/`) | The `tutor`, `quizDiscussion`, and `writing` agents resolve their instructions + model per request and persist conversations via Mastra `Memory`; the server-only `quizEvaluator` grader and the eval agents `evalJudge` + `evalTutor` are never web-reachable by students (their only web callers are the teacher-only `/api/eval/*` routes). Agents are registered in `app/mastra/index.ts`. Storage is **Azure Database for PostgreSQL** via `@mastra/pg`, on the app's one shared pool, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). (The `coding` module has **no** Mastra agent — it is a thin proxy.) |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. See [`docs/chat.md`](docs/chat.md). |
 | **Coding proxy** (`app/api/coding/**`, `lib/coding-proxy.ts`, `lib/coding-key-store.ts`) | A **public**, OpenAI-compatible `POST /api/coding/v1/chat/completions` (plus `GET /api/coding/v1/models` as the sanctioned key-validity check) that authenticates with a **per-user API key** minted on the code's page (`novedu_coding_keys`; key row + code row re-verified on every request), appends the teacher's system prompt, pins the model, and streams the upstream's response straight back. See [`docs/coding.md`](docs/coding.md). |
 | **Images** (`app/images/**`, `lib/image-*.ts`) | Teacher-uploaded images stored in Azure Blob Storage, addressed by passwordless **User-Delegation SAS** (account keys disabled); retrieval is direct-to-blob (no app route serves the bytes). See [`docs/images.md`](docs/images.md). |
@@ -62,12 +62,13 @@ Azure SQL (authenticated via Entra — no SQL password).
   **OpenRouter** API key as additional providers — see
   [`docs/ai-models.md`](docs/ai-models.md).
 - A **Microsoft Entra ID app registration** for sign-in.
-- An **Azure SQL database** for persistent agent memory/storage, with your Entra
-  identity granted a database user (the app authenticates via Entra — no SQL password).
-  Locally that identity is your `az login`; on Azure it is the app's Managed Identity.
-  (A SQL `User ID`/`Password` login also works as a **dev/test-only** fallback for
-  environments without Entra — see [Storage](#notes--caveats-prototype) below — but
-  **production always uses passwordless Entra**.)
+- An **Azure Database for PostgreSQL** server for persistent agent memory/storage,
+  with your Entra identity granted a database role (the app authenticates via Entra —
+  no password). Locally that identity is your `az login`; on Azure it is the app's
+  Managed Identity. (A password-carrying `DATABASE_URL` also works as a
+  **dev/test-only** fallback for environments without Entra — see
+  [Storage](#notes--caveats-prototype) below — but **production always uses
+  passwordless Entra**.)
 - **Optional:** an **Azure Blob Storage** account (account keys disabled; passwordless
   User-Delegation SAS) for the image subsystem.
 
@@ -110,27 +111,33 @@ AUTH_SECRET=your-generated-secret
 # configuration, not a secret. Required — the app fails to start without it.
 TEACHER_GROUP_ID=your-entra-teacher-group-object-id
 
-# --- Azure SQL (Microsoft SQL Server) — Mastra memory + app tables (novedu_*) ---
-# Standard ADO.NET connection string. Required to chat — codes and the agents'
-# memory live in this database. The app picks the auth mode from the string itself:
-#   * Omit user/password to use passwordless Microsoft Entra auth (your `az login`
-#     identity locally, the app's Managed Identity on Azure). The `Authentication=...`
-#     keyword is ignored; Entra is wired up in code. ← USE THIS IN PRODUCTION.
-#   * Include `User ID=...;Password=...` for classic SQL Server auth — a DEV/TEST-ONLY
-#     fallback for environments that can't do Entra (e.g. a remote coding agent / CI
-#     box). NEVER use a SQL password in a production connection string.
-MSSQL_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;
-# Entra tenant of the SQL database, used for the local `az login` credential. Only
-# relevant on the Entra path (ignored when the connection string carries a SQL
-# user/password). SEPARATE from AZURE_TENANT_ID above (the user sign-in tenant),
-# because the database lives in a different tenant. Optional — if unset, the az
-# credential uses its ambient default tenant.
+# --- Postgres (Azure Database for PostgreSQL) — Mastra memory + app tables (novedu_*) ---
+# A postgresql:// URL. Required to chat — codes and the agents' memory live in this
+# database. The app picks the auth mode from the URL itself:
+#   * Omit the password to use passwordless Microsoft Entra auth (your `az login`
+#     identity locally, the app's Managed Identity on Azure) — an Entra access token
+#     is fetched and used as the password on every new connection. ← USE THIS IN
+#     PRODUCTION. The Postgres role name is your Entra UPN exactly as Azure registers
+#     it (for a guest account, the `<local>_<domain>#EXT#@<tenant>.onmicrosoft.com`
+#     form — URL-encode the `#`/`@` in it); production uses the identity name
+#     novedu-chat-mvp-at.
+#   * Include a password (`postgresql://user:pw@host/db`) for classic password auth —
+#     a DEV/TEST/CI-ONLY fallback for environments that can't do Entra (e.g. a remote
+#     coding agent, a CI service container). NEVER use a password in a production URL.
+#   * Any `sslmode` other than `disable` (e.g. `sslmode=require`) turns on TLS with
+#     certificate verification (needed for Azure; a local container typically omits it).
+#
+# Passwordless (Entra), against the real Azure server:
+# DATABASE_URL=postgresql://<your-encoded-upn>@db-pgnovedu.postgres.database.azure.com/novedu?sslmode=require
+#
+# Password auth, against a local container (dev/test only):
+DATABASE_URL=postgresql://postgres:Test-Passw0rd!@localhost:5432/novedu
+# Entra tenant of the Postgres server, used for the local `az login` credential. Only
+# relevant on the Entra path (ignored when the URL carries a password). SEPARATE from
+# AZURE_TENANT_ID above (the user sign-in tenant), because the database lives in a
+# different tenant. Optional — if unset, the az credential uses its ambient default
+# tenant.
 STORAGE_TENANT_ID=your-data-store-tenant-id
-# OPTIONAL, local-only — a SECOND connection string to the SAME database that uses a
-# SQL `User ID=...;Password=...` login instead of Entra. Used ONLY by the `@live`
-# DB-auth test (e2e/db-auth.live.spec.ts), which SKIPS when this is unset. Keep it out
-# of CI/the repo. See docs/testing.md for how to provision the SQL login.
-MSSQL_SQLAUTH_CONNECTION_STRING=Server=tcp:<server>.database.windows.net,1433;Initial Catalog=<database>;Encrypt=True;User ID=<sql-login>;Password=<password>;
 
 # --- Public origin ---
 # Public origin the generated code URLs (`https://<origin>/<code>`) and the coding
@@ -175,12 +182,13 @@ Notes:
 - `APPLICATIONINSIGHTS_CONNECTION_STRING` is **optional**: unset means telemetry is
   fully off. When set, server telemetry exports to Azure Monitor / App Insights — no
   conversation content is ever sent. See `docs/telemetry.md`.
-- `MSSQL_CONNECTION_STRING` is **required to chat**: codes and the agents' memory live
-  in the database, so creating/opening an activity fails if it is unset (the rest of the
-  app still boots; activity validation without the app is the CLI's `validate` command). When set, the Mastra schema (`mastra_*`
-  tables) is created automatically on first use and the app's own `novedu_*` tables are
-  migrated by Drizzle at startup (`instrumentation.ts`), so the configured SQL login or
-  Entra identity needs table-creation rights (e.g. `db_owner`).
+- `DATABASE_URL` is **required to chat**: codes and the agents' memory live in the
+  database, so creating/opening an activity fails if it is unset (the rest of the app
+  still boots; activity validation without the app is the CLI's `validate` command).
+  When set, the app's own `novedu_*` tables are migrated by Drizzle at startup and
+  Mastra's `mastra.*` tables are created right after (`instrumentation.ts`), so the
+  configured role needs `CREATE` on the `public` and `mastra` schemas and must own the
+  tables it creates — see `docs/database.md` ("Privilege model").
 - Schema changes to the `novedu_*` tables: edit `lib/db/schema.ts`, run
   `npm run db:generate`, and commit the generated migration in `drizzle/`.
 - Codes are **not** garbage-collected: a code and all of its conversation data persist
@@ -245,7 +253,7 @@ automatically; a plain local build without staging simply 404s on `/docs`.)
 | `npm run typecheck` | All three workspaces: `tsc --noEmit` (app) + `tsc -p cli` + `astro check` (docs site). |
 | `npm run test` | Vitest (unit + component). (`test:unit` / `test:component` for one project.) |
 | `npm run test:e2e` | Playwright end-to-end tests (all specs, incl. `@live`). |
-| `npm run test:e2e:ci` | Hermetic + `@live-db` (against a SQL container); skips `@live-llm` and `@live-storage`. (`test:e2e:db` / `test:e2e:storage` run one live group.) |
+| `npm run test:e2e:ci` | Hermetic + `@live-db` (against a Postgres container); skips `@live-llm` and `@live-storage`. (`test:e2e:db` / `test:e2e:storage` run one live group.) |
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
 | `npm run qa` | `check` + `typecheck` + `test` + `build` + `docs:build`. (`qa:e2e` adds the e2e suite.) |
 | `npm run docs:dev` | Serve the teacher guide locally at `:4321/docs/` (Astro Starlight; `docs:build` / `docs:preview` for the static build, `docs:stage` to stage it into `public/docs` so the app serves `/docs` locally). |
@@ -254,7 +262,7 @@ automatically; a plain local build without staging simply 404s on `/docs`.)
 > Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
 
 > Testing layers, the `@live-db` / `@live-llm` / `@live-storage` split (and how DB-backed
-> live tests run in CI against a SQL Server container), and the patterns for testing the
+> live tests run in CI against a Postgres container), and the patterns for testing the
 > chat gate without a database or LLM are documented in [`docs/testing.md`](docs/testing.md).
 
 ## Activities
@@ -311,23 +319,25 @@ teacher guide corpus + docs site ([`teacher-docs.md`](docs/teacher-docs.md)).
 
 ## Notes & caveats (prototype)
 
-- **Storage** — Mastra memory/storage is persisted to Azure SQL (`@mastra/mssql`). The
-  connection string drives the auth mode: classic SQL user/password when the string
-  carries `User ID`/`Password`, otherwise passwordless Microsoft Entra auth
-  (`token-credential` + an explicit `az login`/Managed Identity credential chain;
-  tokens are fetched and auto-refreshed per pooled connection). **When to use which:**
-  production is **always** passwordless Entra (no secret in the connection string);
-  SQL user/password is a **dev/test-only** fallback for environments that can't do
-  Entra (e.g. a remote coding agent or CI box without `az login` / a Managed Identity).
-  Never put a SQL password in a production `MSSQL_CONNECTION_STRING`. The chat agents'
-  memory requires this store, so `MSSQL_CONNECTION_STRING` must be set to chat — there is
-  no in-memory fallback. Memory is scoped by **code**: the code is the Mastra
+- **Storage** — Mastra memory/storage is persisted to Azure Database for PostgreSQL
+  (`@mastra/pg`, on the app's one shared pool). The `DATABASE_URL` drives the auth
+  mode: classic password auth when the URL carries a password, otherwise passwordless
+  Microsoft Entra auth (an Entra access token used as the password, via an explicit
+  `az login`/Managed Identity credential chain; tokens are fetched and auto-refreshed
+  per new connection). **When to use which:** production is **always** passwordless
+  Entra (no secret in the URL); password auth is a **dev/test/CI-only** fallback for
+  environments that can't do Entra (e.g. a remote coding agent or CI service
+  container). Never put a password in a production `DATABASE_URL`. The chat agents'
+  memory requires this store, so `DATABASE_URL` must be set to chat — there is no
+  in-memory fallback. Memory is scoped by **code**: the code is the Mastra
   `resourceId`, so every thread is grouped under it. A user↔chat link is written to
   `novedu_user_chats` **only** for activities that opt out of anonymity
   (`anonymous: false`); the default is module-specific (tutor/quiz default anonymous,
   writing does not). See `docs/codes.md`. The one sanctioned exception is a voluntary,
   student-initiated **report**, which always records the reporter — behind an explicit
-  "reports are not anonymous" notice on the form (`docs/reports.md`).
+  "reports are not anonymous" notice on the form (`docs/reports.md`). Full mechanics —
+  the credential chain, the one shared pool, the privilege model — are in
+  `docs/database.md`.
 - **Anonymity & metering** — usage is metered into two independent hourly tables that
   never link a user to a code (`usage_by_code` has no user, `usage_by_user` has no code),
   so the anonymity invariant holds even though the runtime knows the `oid`. See

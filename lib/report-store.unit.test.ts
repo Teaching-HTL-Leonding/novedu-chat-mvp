@@ -1,4 +1,5 @@
 import { asc } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Behavior-level tests over a fake drizzle handle — what rows come back and what
@@ -10,7 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fake = vi.hoisted(() => {
   const state = {
     rows: [] as unknown[],
-    // What the paginated list's COUNT(*) reports, plus every OFFSET/FETCH window
+    // What the paginated list's COUNT(*) reports, plus every LIMIT/OFFSET window
     // the store asked for (so a test can pin the SQL-side paging). The small
     // count helpers keep resolving `rows` — only the LIST's count reads `total`.
     total: 0,
@@ -52,12 +53,12 @@ const fake = vi.hoisted(() => {
       // How the shared `countRows` helper applies its joins in a loop.
       $dynamic: () => builder,
       // `orderBy` returns a builder (not a promise) because the paged list query
-      // continues with `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
+      // continues with `.limit(…).offset(…)`; it stays awaitable for the unpaged call.
       orderBy: (...order: unknown[]) => {
         state.order = order;
         return {
-          offset: (offset: number) => ({
-            fetch: (limit: number) => {
+          limit: (limit: number) => ({
+            offset: (offset: number) => {
               state.windows.push({ offset, limit });
               return run();
             },
@@ -248,7 +249,7 @@ describe("listReports", () => {
         codeCreatedBy: "teacher-1",
       }),
     ).resolves.toEqual(expected);
-    // Unpaged: no COUNT, no OFFSET/FETCH.
+    // Unpaged: no COUNT, no LIMIT/OFFSET.
     expect(fake.state.windows).toEqual([]);
   });
 
@@ -271,6 +272,17 @@ describe("listReports", () => {
     // `code` orders by the JOINED note the row leads with, not by `reports.code`.
     await listReports({ status: "open", sort: { key: "code", dir: "asc" } });
     expect(fake.state.order).toEqual([asc(codes.note), asc(reports.id)]);
+  });
+
+  it("sorts `status` by the open/resolved rank, not by the nullable resolved_at", async () => {
+    // Ascending must read OPEN FIRST (what the badge shows); ordering by the raw
+    // timestamp would put the open rows' NULLs last under Postgres's ASC default.
+    await listReports({ status: "all", sort: { key: "status", dir: "asc" } });
+    const [first] = fake.state.order;
+    const { sql: rendered } = new PgDialect().sqlToQuery(first as never);
+    expect(rendered).toMatch(
+      /^CASE WHEN "novedu_reports"\."resolved_at" IS NULL THEN 0 ELSE 1 END asc$/,
+    );
   });
 
   it("LEFT-JOINs novedu_users + novedu_codes and NEVER novedu_user_chats", async () => {

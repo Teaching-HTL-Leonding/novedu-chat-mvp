@@ -21,7 +21,7 @@ export type SortColumns = Record<string, SQLWrapper>;
  *   tiebreaker already resolves ties deterministically, so a second, invisible sort
  *   key would only obscure the ordering.
  * - `tiebreaker` — a UNIQUE column, the table's primary key — always comes last. It
- *   is what keeps `OFFSET/FETCH` from repeating or skipping a row between pages, so
+ *   is what keeps `LIMIT/OFFSET` from repeating or skipping a row between pages, so
  *   it is a parameter rather than something each store remembers to append.
  *
  * An unknown key normally cannot arrive — `parseSort` validates against this same

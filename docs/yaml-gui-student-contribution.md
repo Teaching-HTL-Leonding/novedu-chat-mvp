@@ -347,7 +347,7 @@ npm run typecheck        # TypeScript
 
 - Keep unit/component tests **next to** your components.
 - Tag an e2e test that needs the real database `{ tag: ["@live", "@live-db"] }` —
-  those **run in CI** against an ephemeral SQL Server container, so your
+  those **run in CI** against an ephemeral Postgres container, so your
   DB-backed specs get CI coverage. You never need `@live-llm` (the GUI doesn't use
   the LLM). Leave a spec untagged if it needs no real database. See `docs/testing.md`.
 - Prefer many small, fast unit tests over a few slow e2e ones.

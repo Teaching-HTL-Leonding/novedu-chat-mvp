@@ -1,18 +1,16 @@
-import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
-import sql from "mssql";
-import { buildMssqlConnectionConfig } from "../lib/azure-credential";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { mintCode } from "./code.utils";
+import { query } from "./db";
 
 // A REAL end-to-end check that the dashboard's aggregate queries run against the
 // live schema and render. It seeds `novedu_usage_by_code` rows for the current UTC
-// hour (so the default 24h window includes them) via the plain `mssql` driver — the
-// Playwright CJS runner can't load Drizzle's ESM `lib/db`, same as the other @live
-// specs — then loads `/usage` as a teacher and asserts the charts/table/KPIs
-// reflect the seed. Needs the DB but NOT the LLM, so it is `@live-db` and runs in CI
-// against the ephemeral container. Cleans up its own rows in `finally`. See
-// docs/dashboard.md + docs/testing.md.
+// hour (so the default 24h window includes them) via the shared `e2e/db.ts` plain
+// `pg` helper (kept independent of the app's query layer, same as the other
+// @live specs) — then loads `/usage` as a teacher and asserts the
+// charts/table/KPIs reflect the seed. Needs the DB but NOT the LLM, so it is
+// `@live-db` and runs in CI against the ephemeral container. Cleans up its own
+// rows in `finally`. See docs/dashboard.md + docs/testing.md.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
 
@@ -28,11 +26,6 @@ test.setTimeout(60_000);
 test("the usage dashboard renders seeded token metrics", { tag: ["@live", "@live-db"] }, async ({
   page,
 }) => {
-  loadEnvConfig(process.cwd());
-  const connectionString = process.env.MSSQL_CONNECTION_STRING;
-  if (!connectionString) throw new Error("e2e: MSSQL_CONNECTION_STRING is not set");
-  const pool = await new sql.ConnectionPool(buildMssqlConnectionConfig(connectionString)).connect();
-
   // A unique note so it can be found unambiguously in the code-pie legend.
   const note = `E2E Usage ${Date.now()}`;
   const quizCode = await mintCode({
@@ -46,23 +39,14 @@ test("the usage dashboard renders seeded token metrics", { tag: ["@live", "@live
   // provider/model columns are seeded like the LLM recorder writes them.
   const model = `e2e-model-${Date.now()}`;
   const seedUsage = (code: string, module: string, quizAnswers: number) =>
-    pool
-      .request()
-      .input("code", sql.VarChar(32), code)
-      .input("module", sql.VarChar(16), module)
-      .input("model", sql.NVarChar(256), model)
-      .input("inNew", sql.BigInt, TOKENS_NEW)
-      .input("inCached", sql.BigInt, TOKENS_CACHED)
-      .input("out", sql.BigInt, TOKENS_OUTPUT)
-      .input("quiz", sql.Int, quizAnswers)
-      .query(
-        `INSERT INTO novedu_usage_by_code
-             (code, hour, module, provider, model, input_tokens_new, input_tokens_cached,
-              output_tokens, tool_calls, user_messages, quiz_answers, writing_saves)
-           VALUES
-             (@code, DATEADD(hour, DATEDIFF(hour, 0, SYSUTCDATETIME()), 0), @module,
-              'SCCH', @model, @inNew, @inCached, @out, 0, 0, @quiz, 0)`,
-      );
+    query(
+      `INSERT INTO novedu_usage_by_code
+           (code, hour, module, provider, model, input_tokens_new, input_tokens_cached,
+            output_tokens, tool_calls, user_messages, quiz_answers, writing_saves)
+         VALUES
+           ($1, date_trunc('hour', now()), $2, 'SCCH', $3, $4, $5, $6, 0, 0, $7, 0)`,
+      [code, module, model, TOKENS_NEW, TOKENS_CACHED, TOKENS_OUTPUT, quizAnswers],
+    );
 
   try {
     await seedUsage(quizCode, "quiz", QUIZ_ANSWERS);
@@ -106,15 +90,11 @@ test("the usage dashboard renders seeded token metrics", { tag: ["@live", "@live
 
     await expect(page.getByTestId("usage-kpi-chats")).toBeVisible();
   } finally {
-    await pool
-      .request()
-      .input("q", sql.VarChar(32), quizCode)
-      .input("t", sql.VarChar(32), tutorCode)
-      .query(
-        `DELETE FROM novedu_usage_by_code WHERE code IN (@q, @t);
-           DELETE FROM novedu_codes WHERE code IN (@q, @t);`,
-      )
-      .catch(() => {});
-    await pool.close();
+    await query(`DELETE FROM novedu_usage_by_code WHERE code = ANY($1)`, [
+      [quizCode, tutorCode],
+    ]).catch(() => {});
+    await query(`DELETE FROM novedu_codes WHERE code = ANY($1)`, [[quizCode, tutorCode]]).catch(
+      () => {},
+    );
   }
 });

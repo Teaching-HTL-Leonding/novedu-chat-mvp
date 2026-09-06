@@ -11,7 +11,7 @@ const fake = vi.hoisted(() => {
     // What every `select(...).from(...).where(...)` resolves to (the existence
     // check inside create, the active row inside update/getActiveFile, the list).
     rows: [] as Record<string, unknown>[],
-    // What the paginated list's COUNT(*) reports, plus every OFFSET/FETCH window
+    // What the paginated list's COUNT(*) reports, plus every LIMIT/OFFSET window
     // the store asked for (so a test can pin the SQL-side paging).
     total: 0,
     windows: [] as { offset: number; limit: number }[],
@@ -21,8 +21,8 @@ const fake = vi.hoisted(() => {
     selectError: undefined as unknown,
     inserted: [] as Record<string, unknown>[],
     insertError: undefined as unknown,
-    // The mssql IResult shape returned by `update(...).set(...).where(...)`.
-    closeResult: { rowsAffected: [1] } as unknown,
+    // The node-postgres result shape returned by `update(...).set(...).where(...)`.
+    closeResult: { rowCount: 1 } as unknown,
     updateError: undefined as unknown,
   };
 
@@ -35,13 +35,13 @@ const fake = vi.hoisted(() => {
   };
   // A lazy thenable so error cases only reject when actually awaited. `orderBy`
   // returns a builder (not a promise) because the paged query continues with
-  // `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
+  // `.limit(…).offset(…)`; it stays awaitable for the unpaged call.
   const queryTail = (fields?: Record<string, unknown>) => ({
     orderBy: (...order: unknown[]) => {
       state.order = order;
       return {
-        offset: (offset: number) => ({
-          fetch: (limit: number) => {
+        limit: (limit: number) => ({
+          offset: (offset: number) => {
             state.windows.push({ offset, limit });
             return selectRun(fields);
           },
@@ -110,11 +110,13 @@ import {
 // `lib/file-name.ts` and are covered by `lib/file-name.unit.test.ts`; this file
 // owns the temporal store transitions only.
 
-// A duplicate-key (unique index) violation as drizzle wraps it: cause chain with
-// the mssql error number.
+// A duplicate-key (unique constraint) violation as drizzle wraps it: cause chain
+// with the Postgres SQLSTATE.
 const uniqueViolation = () =>
   Object.assign(new Error("Failed query"), {
-    cause: Object.assign(new Error("Violation of UNIQUE KEY constraint"), { number: 2601 }),
+    cause: Object.assign(new Error("duplicate key value violates unique constraint"), {
+      code: "23505",
+    }),
   });
 
 function activeRow(overrides: Record<string, unknown> = {}) {
@@ -139,12 +141,12 @@ beforeEach(() => {
   fake.state.selectError = undefined;
   fake.state.inserted = [];
   fake.state.insertError = undefined;
-  fake.state.closeResult = { rowsAffected: [1] };
+  fake.state.closeResult = { rowCount: 1 };
   fake.state.updateError = undefined;
 });
 
 describe("listFiles", () => {
-  it("returns the active rows, unpaged, without a COUNT or an OFFSET/FETCH", async () => {
+  it("returns the active rows, unpaged, without a COUNT or a LIMIT/OFFSET", async () => {
     fake.state.rows = [activeRow()];
     await expect(listFiles()).resolves.toEqual({
       rows: [activeRow()],
@@ -279,7 +281,7 @@ describe("updateFile", () => {
 
   it("closes the active row and inserts a new version, preserving kind", async () => {
     fake.state.rows = [{ id: "v1", kind: "fragment" }];
-    fake.state.closeResult = { rowsAffected: [1] };
+    fake.state.closeResult = { rowCount: 1 };
     const result = await updateFile("linked-lists", input, "teacher-2");
     expect(result).toEqual({ ok: true });
     expect(fake.state.inserted).toHaveLength(1);
@@ -302,7 +304,7 @@ describe("updateFile", () => {
 
   it("returns not-found when the conditional close affects 0 rows (lost race)", async () => {
     fake.state.rows = [{ id: "v1", kind: "tutor" }];
-    fake.state.closeResult = { rowsAffected: [0] };
+    fake.state.closeResult = { rowCount: 0 };
     await expect(updateFile("linked-lists", input, "teacher-2")).resolves.toEqual({
       ok: false,
       reason: "not-found",
@@ -322,12 +324,12 @@ describe("updateFile", () => {
 
 // Bulk soft-delete (the list's "Delete Selected", the only delete path) loops the
 // `closeActiveFile` primitive inside ONE transaction. These pin the batch contract:
-// the count of rows actually closed, the already-gone no-op, the `rowsAffected`
-// driver-shape robustness, all-or-nothing rollback on a DB error, and the
+// the count of rows actually closed, the already-gone no-op, the `rowCount`
+// presence/absence handling, all-or-nothing rollback on a DB error, and the
 // empty-input short-circuit.
 describe("softDeleteFiles", () => {
   it("closes every named file and counts the rows actually closed", async () => {
-    fake.state.closeResult = { rowsAffected: [1] };
+    fake.state.closeResult = { rowCount: 1 };
     await expect(softDeleteFiles(["a", "b", "c"], "teacher-3")).resolves.toEqual({
       ok: true,
       deleted: 3,
@@ -335,19 +337,19 @@ describe("softDeleteFiles", () => {
   });
 
   it("treats already-gone names as no-op successes (not counted), still ok", async () => {
-    fake.state.closeResult = { rowsAffected: [0] };
+    fake.state.closeResult = { rowCount: 0 };
     await expect(softDeleteFiles(["ghost1", "ghost2"], "teacher-3")).resolves.toEqual({
       ok: true,
       deleted: 0,
     });
   });
 
-  it("reads a scalar rowsAffected too (driver-shape robustness)", async () => {
-    fake.state.closeResult = { rowsAffected: 1 };
+  it("treats rowCount present as the closed-row count", async () => {
+    fake.state.closeResult = { rowCount: 1 };
     await expect(softDeleteFiles(["a"], "teacher-3")).resolves.toEqual({ ok: true, deleted: 1 });
   });
 
-  it("treats a missing rowsAffected as 0 (not counted, never a false success)", async () => {
+  it("treats a missing rowCount as 0 (not counted, never a false success)", async () => {
     fake.state.closeResult = {};
     await expect(softDeleteFiles(["a"], "teacher-3")).resolves.toEqual({ ok: true, deleted: 0 });
   });

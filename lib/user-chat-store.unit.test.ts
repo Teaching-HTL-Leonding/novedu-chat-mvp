@@ -4,10 +4,18 @@ const mocks = vi.hoisted(() => ({
   loadAndBuildTutorPrompt: vi.fn(),
   loadQuiz: vi.fn(),
   insertValues: vi.fn(),
+  onConflictDoNothing: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
-  getDb: () => ({ insert: () => ({ values: mocks.insertValues }) }),
+  getDb: () => ({
+    insert: () => ({
+      values: (values: Record<string, unknown>) => {
+        mocks.insertValues(values);
+        return { onConflictDoNothing: mocks.onConflictDoNothing };
+      },
+    }),
+  }),
 }));
 vi.mock("@/lib/tutors", () => ({
   loadAndBuildTutorPrompt: mocks.loadAndBuildTutorPrompt,
@@ -25,15 +33,10 @@ const THREAD = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const USER = "student-sub-1";
 const FILE_URL = "https://example.com/tutor.yaml";
 
-const duplicateKeyError = () =>
-  Object.assign(new Error("Failed query"), {
-    cause: Object.assign(new Error("Violation of PRIMARY KEY constraint"), { number: 2627 }),
-  });
-
 beforeEach(() => {
   vi.clearAllMocks();
   resetUserChatDedupeCacheForTests();
-  mocks.insertValues.mockResolvedValue(undefined);
+  mocks.onConflictDoNothing.mockResolvedValue(undefined);
   // Default tutor/quiz: anonymous (the YAML default) — nothing must be stored.
   mocks.loadAndBuildTutorPrompt.mockResolvedValue({ ok: true, anonymous: true });
   mocks.loadQuiz.mockResolvedValue({ ok: true, quiz: { anonymous: true } });
@@ -115,10 +118,12 @@ describe("recordUserChat — dedupe & robustness", () => {
     expect(mocks.insertValues).not.toHaveBeenCalled();
   });
 
-  it("treats a duplicate-key error as success (row already exists)", async () => {
+  it("conflict is a silent success (a concurrent insert already stored the row)", async () => {
     mocks.loadAndBuildTutorPrompt.mockResolvedValue({ ok: true, anonymous: false });
-    mocks.insertValues.mockRejectedValueOnce(duplicateKeyError());
     await recordUserChat(CODE, THREAD, USER, FILE_URL, "tutor");
+    expect(mocks.onConflictDoNothing).toHaveBeenCalledWith(
+      expect.objectContaining({ target: expect.anything() }),
+    );
     // Cached as handled: the next call does nothing.
     await recordUserChat(CODE, THREAD, USER, FILE_URL, "tutor");
     expect(mocks.insertValues).toHaveBeenCalledTimes(1);
@@ -126,7 +131,7 @@ describe("recordUserChat — dedupe & robustness", () => {
 
   it("retries after a transient database error (decision not cached)", async () => {
     mocks.loadAndBuildTutorPrompt.mockResolvedValue({ ok: true, anonymous: false });
-    mocks.insertValues.mockRejectedValueOnce(new Error("connection lost"));
+    mocks.onConflictDoNothing.mockRejectedValueOnce(new Error("connection lost"));
     await recordUserChat(CODE, THREAD, USER, FILE_URL, "tutor"); // fails, never throws
     await recordUserChat(CODE, THREAD, USER, FILE_URL, "tutor"); // retried
     expect(mocks.insertValues).toHaveBeenCalledTimes(2);

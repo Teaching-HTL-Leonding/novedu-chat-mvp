@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fake = vi.hoisted(() => {
   const state = {
-    recordset: [] as Record<string, unknown>[],
+    rows: [] as Record<string, unknown>[],
     executeError: undefined as unknown,
     executeCalls: 0,
     deleteError: undefined as unknown,
@@ -22,7 +22,7 @@ const fake = vi.hoisted(() => {
     execute: async () => {
       state.executeCalls += 1;
       if (state.executeError) throw state.executeError;
-      return { recordset: state.recordset };
+      return { rows: state.rows };
     },
     delete: (table: unknown) => ({
       where: async () => {
@@ -85,7 +85,7 @@ function row(id: string, role: string, content: unknown): Record<string, unknown
 }
 
 beforeEach(() => {
-  fake.state.recordset = [];
+  fake.state.rows = [];
   fake.state.executeError = undefined;
   fake.state.executeCalls = 0;
   fake.state.deleteError = undefined;
@@ -103,7 +103,7 @@ describe("getInteractionCounts", () => {
   });
 
   it("maps the aggregate rows to a code → count map", async () => {
-    fake.state.recordset = [
+    fake.state.rows = [
       { code: "aaaaaaaaaa", interactions: 3 },
       { code: "bbbbbbbbbb", interactions: 1 },
     ];
@@ -128,8 +128,12 @@ describe("getCodeStats", () => {
   it("counts conversations and distinct students, mapping each interaction (non-anonymous)", async () => {
     const t1 = new Date("2026-06-12T10:00:00Z");
     const t2 = new Date("2026-06-12T10:05:00Z");
-    fake.state.recordset = [
-      { threadId: "th1", firstAt: t1, lastAt: t2, userMessageCount: 3, userId: "stu-1" },
+    // Raw execute() rows arrive with the wire strings for timestamps and SUM —
+    // the store must hand back real Dates and numbers.
+    const raw1 = "2026-06-12 10:00:00+00";
+    const raw2 = "2026-06-12 10:05:00+00";
+    fake.state.rows = [
+      { threadId: "th1", firstAt: raw1, lastAt: raw2, userMessageCount: "3", userId: "stu-1" },
       // Same student, a second conversation — must count as one student.
       { threadId: "th2", firstAt: t1, lastAt: t2, userMessageCount: 1, userId: "stu-1" },
       { threadId: "th3", firstAt: t1, lastAt: t2, userMessageCount: 2, userId: "stu-2" },
@@ -162,12 +166,12 @@ describe("getCodeStats", () => {
       userId: "stu-1",
       userName: "Ada Lovelace",
     };
-    fake.state.recordset = [row];
+    fake.state.rows = [row];
     expect((await getCodeStats("aaaaaaaaaa", false))?.interactions[0]?.userName).toBe(
       "Ada Lovelace",
     );
     // Anonymous → the name is nulled at the data layer alongside the id.
-    fake.state.recordset = [row];
+    fake.state.rows = [row];
     const anon = await getCodeStats("aaaaaaaaaa", true);
     expect(anon?.interactions[0]?.userName).toBeNull();
     expect(anon?.interactions[0]?.userId).toBeNull();
@@ -179,7 +183,7 @@ describe("getCodeStats", () => {
     // minted), an anonymous code must never surface who a student is.
     const t1 = new Date("2026-06-12T10:00:00Z");
     const t2 = new Date("2026-06-12T10:05:00Z");
-    fake.state.recordset = [
+    fake.state.rows = [
       { threadId: "th1", firstAt: t1, lastAt: t2, userMessageCount: 3, userId: "stu-1" },
       { threadId: "th2", firstAt: t1, lastAt: t2, userMessageCount: 2, userId: "stu-2" },
     ];
@@ -192,7 +196,7 @@ describe("getCodeStats", () => {
   });
 
   it("returns zeroes for a code with no conversations", async () => {
-    fake.state.recordset = [];
+    fake.state.rows = [];
     await expect(getCodeStats("aaaaaaaaaa", false)).resolves.toEqual({
       conversations: 0,
       studentCount: 0,
@@ -211,7 +215,7 @@ describe("getConversationMessages — Mastra v2 → AG-UI conversion", () => {
   const THREAD = "thread-1";
 
   it("converts a text-only user message to a plain string content", async () => {
-    fake.state.recordset = [
+    fake.state.rows = [
       row("m1", "user", { format: 2, parts: [{ type: "text", text: "Hi" }], content: "Hi" }),
     ];
     await expect(getConversationMessages(CODE, THREAD)).resolves.toEqual([
@@ -221,7 +225,7 @@ describe("getConversationMessages — Mastra v2 → AG-UI conversion", () => {
 
   it("rebuilds assistant text from parts even when the top-level content is absent", async () => {
     // Some stored rows have no top-level `content` — the text lives only in parts.
-    fake.state.recordset = [
+    fake.state.rows = [
       row("m1", "assistant", { format: 2, parts: [{ type: "text", text: "Hello there" }] }),
     ];
     await expect(getConversationMessages(CODE, THREAD)).resolves.toEqual([
@@ -230,7 +234,7 @@ describe("getConversationMessages — Mastra v2 → AG-UI conversion", () => {
   });
 
   it("concatenates multiple text parts", async () => {
-    fake.state.recordset = [
+    fake.state.rows = [
       row("m1", "assistant", {
         parts: [
           { type: "text", text: "foo" },
@@ -244,7 +248,7 @@ describe("getConversationMessages — Mastra v2 → AG-UI conversion", () => {
 
   it("maps an image (file) part on a user message to an inline image part", async () => {
     const dataUrl = "data:image/png;base64,AAAA";
-    fake.state.recordset = [
+    fake.state.rows = [
       row("m1", "user", {
         parts: [
           { type: "text", text: "what colour?" },
@@ -266,7 +270,7 @@ describe("getConversationMessages — Mastra v2 → AG-UI conversion", () => {
 
   it("emits image-only content when a user message has a file part but no text", async () => {
     const dataUrl = "data:image/png;base64,BBBB";
-    fake.state.recordset = [row("m1", "user", { parts: [{ type: "file", data: dataUrl }] })];
+    fake.state.rows = [row("m1", "user", { parts: [{ type: "file", data: dataUrl }] })];
     const messages = await getConversationMessages(CODE, THREAD);
     expect(messages?.[0]).toEqual({
       id: "m1",
@@ -276,7 +280,7 @@ describe("getConversationMessages — Mastra v2 → AG-UI conversion", () => {
   });
 
   it("skips messages whose content is not valid JSON", async () => {
-    fake.state.recordset = [
+    fake.state.rows = [
       { id: "bad", role: "user", content: "not json{" },
       row("m1", "user", { parts: [{ type: "text", text: "ok" }] }),
     ];
@@ -285,7 +289,7 @@ describe("getConversationMessages — Mastra v2 → AG-UI conversion", () => {
   });
 
   it("skips roles that are not part of a tutor chat (system/tool/…)", async () => {
-    fake.state.recordset = [
+    fake.state.rows = [
       row("sys", "system", { parts: [{ type: "text", text: "system prompt" }] }),
       row("m1", "assistant", { parts: [{ type: "text", text: "answer" }] }),
     ];
@@ -308,7 +312,7 @@ describe("getConversationMessages collapses replays end to end", () => {
   it("returns each turn once for a telescoping recordset", async () => {
     const text = (role: string, content: string) =>
       row(crypto.randomUUID(), role, { parts: [{ type: "text", text: content }], content });
-    fake.state.recordset = [
+    fake.state.rows = [
       text("user", "hi"),
       text("assistant", "hello"),
       text("user", "hi"),

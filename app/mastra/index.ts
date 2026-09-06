@@ -2,10 +2,9 @@ import { Mastra } from "@mastra/core/mastra";
 import { SamplingStrategyType } from "@mastra/core/observability";
 import { InMemoryDB, WorkflowsInMemory } from "@mastra/core/storage";
 import { PinoLogger } from "@mastra/loggers";
-import { MSSQLStore } from "@mastra/mssql";
 import { Observability } from "@mastra/observability";
-import sql from "mssql";
-import { buildMssqlConnectionConfig } from "@/lib/azure-credential";
+import { PostgresStore } from "@mastra/pg";
+import { getPool } from "@/lib/db/pool";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
 import { evalJudgeAgent, evalTutorAgent } from "./eval-agents";
 import { quizDiscussionAgent, quizEvaluatorAgent } from "./quiz-agents";
@@ -15,23 +14,22 @@ import { writingAgent } from "./writing-agents";
 
 const logger = new PinoLogger({ name: "Mastra", level: "info" });
 
-// Build the Azure SQL store from the connection string in `MSSQL_CONNECTION_STRING`.
-//
-// `buildMssqlConnectionConfig` parses the string for host/database/encrypt and
-// chooses the auth mode from the string itself: classic SQL user/password when
-// present, otherwise passwordless Microsoft Entra ID. The auth seam lives in one
-// place (`lib/azure-credential.ts`); see the invariant there.
-function buildMssqlStore(connectionString: string): MSSQLStore {
-  const config = buildMssqlConnectionConfig(connectionString);
-  const store = new MSSQLStore({ id: "mastra-storage", pool: new sql.ConnectionPool(config) });
-  // Keep agentic-loop workflow snapshots OUT of SQL: every agent run persists a
-  // "pending" snapshot at start (and deletes it at the end), and that snapshot
-  // inlines the full input — with photo answers that's megabytes of base64,
-  // which times out the write on the small Azure SQL tier before the LLM is
-  // even called. Nothing here resumes workflows (no suspend/approval flows), so
-  // the snapshots are transient scratch state; swapping the workflows domain to
-  // Mastra's in-memory store is the same substitution Mastra itself makes when
-  // a composite store lacks the domain. Threads/messages stay in SQL untouched.
+// Build the Mastra store on the app's ONE Postgres pool (`getPool()` in
+// lib/db/pool.ts — the same pool Drizzle uses for the `novedu_*` tables). A pool
+// passed in via `pool:` is never closed by Mastra, so there is no lifecycle
+// coupling. Mastra's tables live in their own `mastra` schema — pre-created by
+// provisioning (scripts/db/provision.sql), since the app role may not create
+// schemas; `init()` only creates the tables inside it. The app's tables stay in
+// `public`.
+function buildStore(): PostgresStore {
+  const store = new PostgresStore({ id: "mastra-storage", pool: getPool(), schemaName: "mastra" });
+  // Keep agentic-loop workflow snapshots OUT of the database: every agent run
+  // persists a "pending" snapshot at start, reads it back, and deletes it at the
+  // end — three round trips per turn for state nothing here ever resumes (no
+  // suspend/approval flows). The snapshots are transient scratch state, so
+  // swapping the workflows domain to Mastra's in-memory store is the same
+  // substitution Mastra itself makes when a composite store lacks the domain.
+  // Threads/messages stay in the database untouched.
   store.stores.workflows = new WorkflowsInMemory({ db: new InMemoryDB() });
   return store;
 }
@@ -39,24 +37,24 @@ function buildMssqlStore(connectionString: string): MSSQLStore {
 // Reuse a single store (and its connection pool) across Next.js HMR reloads in dev,
 // otherwise every hot reload would leak a new pool. In production the module is
 // evaluated once, so this is just a no-op cache.
-const globalForStore = globalThis as unknown as { mastraStore?: MSSQLStore };
+const globalForStore = globalThis as unknown as { mastraStore?: PostgresStore };
 
-const connectionString = process.env.MSSQL_CONNECTION_STRING;
-if (connectionString && !globalForStore.mastraStore) {
-  globalForStore.mastraStore = buildMssqlStore(connectionString);
-} else if (!connectionString) {
+if (process.env.DATABASE_URL && !globalForStore.mastraStore) {
+  globalForStore.mastraStore = buildStore();
+} else if (!process.env.DATABASE_URL) {
   // The app still boots (non-chat flows like tutor validation work without a DB),
-  // but the tutor's Memory REQUIRES a store — chatting will fail until a connection
-  // string is set. We don't degrade gracefully; that surfaces as a server error.
-  logger.warn("MSSQL_CONNECTION_STRING not set — tutor chat will fail without storage");
+  // but the tutor's Memory REQUIRES a store — chatting will fail until a database
+  // URL is set. We don't degrade gracefully; that surfaces as a server error.
+  logger.warn("DATABASE_URL not set — tutor chat will fail without storage");
 }
 
-// Create Mastra's own `mastra_*` tables. `MSSQLStore` auto-initializes them, but
-// only LAZILY — on the store's first use, i.e. the first agent run. That is too
-// late for us: `lib/code-stats-store.ts` reads `mastra_threads` / `mastra_messages`
-// directly (the by-value join model in docs/codes.md), so on a database where no
-// agent has run yet a teacher opening a code detail page hits "Invalid object
-// name" and the stats panel degrades to "Stats temporarily unavailable".
+// Create Mastra's own `mastra_*` tables in the pre-provisioned `mastra` schema.
+// `PostgresStore` auto-initializes them, but only LAZILY — on the store's first use, i.e. the
+// first agent run. That is too late for us: `lib/code-stats-store.ts` reads
+// `mastra_threads` / `mastra_messages` directly (the by-value join model in
+// docs/codes.md), so on a database where no agent has run yet a teacher opening
+// a code detail page hits "relation does not exist" and the stats panel degrades
+// to "Stats temporarily unavailable".
 // instrumentation.ts therefore calls this at startup, right after the Drizzle
 // migrations, so the boot contract stays "every table this server reads exists
 // once startup finishes". Failures propagate for the same reason migration
@@ -94,13 +92,13 @@ export const mastra = new Mastra({
     evalTutor: evalTutorAgent,
     writing: writingAgent,
   },
-  // Persistent storage is Azure SQL (Microsoft SQL Server) via `@mastra/mssql`,
-  // authenticated with SQL user/password or Microsoft Entra ID depending on the
-  // connection string. Undefined when no connection string is configured (see above).
+  // Persistent storage is Postgres via `@mastra/pg`, on the app's shared pool
+  // (schema `mastra`); the pool decides password-vs-Entra auth from `DATABASE_URL`
+  // (lib/db/pool.ts). Undefined when no database URL is configured (see above).
   storage: globalForStore.mastraStore,
   logger,
   // Usage metering: one observability instance whose only exporter meters token
-  // usage + tool calls into our SQL tables (lib/usage-store.ts). `default:
+  // usage + tool calls into our `novedu_usage_*` tables (lib/usage-store.ts). `default:
   // { enabled: false }` keeps Mastra's built-in storage/platform exporters out — we
   // only want ours. `requestContextKeys` snapshots the three attribution keys the
   // seams set (the CopilotKit route's `built.context`; the quiz grader's

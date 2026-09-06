@@ -4,12 +4,12 @@ import {
   ManagedIdentityCredential,
   type TokenCredential,
 } from "@azure/identity";
-import sql from "mssql";
 
-// The ONE way this app authenticates against its data store — the Azure SQL DB,
-// reached through two pools: Mastra's (app/mastra/index.ts) and the app's own
-// Drizzle pool for the novedu_* tables (lib/db/index.ts). The DB lives in the
-// `STORAGE_TENANT_ID` tenant.
+// The ONE way this app authenticates against its data store — the Postgres
+// database behind the single shared pool (lib/db/pool.ts), used by Drizzle for
+// the novedu_* tables and by the Mastra store alike. It is reached
+// passwordless: the token this credential mints is handed to node-postgres as
+// the connection password. The DB lives in the `STORAGE_TENANT_ID` tenant.
 //
 // The chain is built EXPLICITLY rather than using `DefaultAzureCredential`: that
 // one would pick up `AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET` via
@@ -44,41 +44,4 @@ export function buildDataStoreCredential(): TokenCredential {
 // SERVER-ONLY: handles Azure credentials. Never import from client components.
 export function buildCognitiveServicesCredential(): TokenCredential {
   return new ChainedTokenCredential(new AzureCliCredential({}), new ManagedIdentityCredential());
-}
-
-// Parses `MSSQL_CONNECTION_STRING` into a node-mssql config and picks the auth
-// mode — the ONE place that decides how the app authenticates against its SQL
-// Azure database, so the Mastra store, the Drizzle pool, and the e2e helper can
-// never drift. Both pools share this "parse, then choose auth" pattern.
-//
-// Two modes are supported, chosen from the connection string itself:
-//  1. SQL auth — the string carries `User ID=...;Password=...` (node-mssql parses
-//     these into `config.user`/`config.password`). We leave the config untouched
-//     so tedious uses classic SQL Server login.
-//  2. Microsoft Entra ID (passwordless) — no SQL credentials in the string. We
-//     attach the explicit data-store credential chain via tedious's
-//     `token-credential` type: a `TokenCredential` *object* (NOT a pre-fetched
-//     token), so tedious calls `getToken()` per pooled connection and tokens
-//     auto-refresh. node-mssql's parser does not understand the ADO.NET
-//     `Authentication=...` keyword, which is why Entra is wired up here in code.
-//
-// SERVER-ONLY: may build Azure credentials. Never import from client components.
-export function buildMssqlConnectionConfig(
-  connectionString: string,
-): ReturnType<typeof sql.ConnectionPool.parseConnectionString> {
-  const config = sql.ConnectionPool.parseConnectionString(connectionString);
-  // node-mssql's default requestTimeout is 15 s — too tight for this app's
-  // largest writes (Mastra messages carrying base64 photo attachments) on a
-  // small Azure SQL tier, whose capped log-write rate makes a multi-hundred-KB
-  // INSERT crawl. 60 s rides out the throttling instead of failing the request.
-  config.requestTimeout ??= 60_000;
-  // SQL auth wins only when the string supplies BOTH a username and a password;
-  // otherwise fall back to passwordless Entra ID.
-  if (!config.user || !config.password) {
-    config.authentication = {
-      type: "token-credential",
-      options: { credential: buildDataStoreCredential() },
-    };
-  }
-  return config;
 }

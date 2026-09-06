@@ -1,0 +1,25 @@
+{
+  "name": "novedu-mssql-to-pg",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "One-off SQL Server -> Postgres data copy for the Novedu novedu_* tables. Delete after the cutover.",
+  "scripts": {
+    "start": "tsx copy.ts",
+    "dry-run": "tsx copy.ts",
+    "test": "node --test",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@azure/identity": "^4.0.0",
+    "mssql": "^12.0.0",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/mssql": "^9.1.7",
+    "@types/node": "^24.5.2",
+    "@types/pg": "^8.15.6",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

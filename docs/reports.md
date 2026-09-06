@@ -50,19 +50,19 @@ code-delete path drops it explicitly (it does — see **Lifecycle**).
 | `id` | `varchar(36)` PK | surrogate `randomUUID` |
 | `kind` | `varchar(16)` | `"chat"` \| `"quiz-answer"` — picks which snapshot columns are populated |
 | `code` | `varchar(32)` | the reported activity's code (= `novedu_codes.code`, same width) |
-| `user_id` | `nvarchar(64)` | the reporting student's Entra `oid` — **ALWAYS set** |
+| `user_id` | `varchar(64)` | the reporting student's Entra `oid` — **ALWAYS set** |
 | `reaction` | `varchar(16)` | one of the four reactions (below), stored verbatim |
-| `description` | `nvarchar(2000)` | optional free text; empty string when none |
-| `created_at` | `datetime2` | when filed, UTC |
+| `description` | `text` | optional free text; empty string when none |
+| `created_at` | `timestamptz` | when filed, UTC |
 | `thread_id` | `varchar(64)` | **chat only** — the reported Mastra thread (null for quiz) |
-| `question_id` | `nvarchar(450)` | **quiz only** — the reported question's id |
-| `question_text` | `nvarchar(max)` | **quiz only** — the SERVER's authoritative question text |
-| `answer_text` | `nvarchar(max)` | **quiz only** — the student's graded answer (client-sent) |
-| `feedback_text` | `nvarchar(max)` | **quiz only** — the grader's feedback (client-sent) |
+| `question_id` | `varchar(450)` | **quiz only** — the reported question's id |
+| `question_text` | `text` | **quiz only** — the SERVER's authoritative question text |
+| `answer_text` | `text` | **quiz only** — the student's graded answer (client-sent) |
+| `feedback_text` | `text` | **quiz only** — the grader's feedback (client-sent) |
 | `verdict` | `varchar(16)` | **quiz only** — `correct` \| `partial` \| `incorrect` |
-| `had_images` | `bit` | **quiz only** — whether the graded answer carried photos; flagged, **never stored** |
-| `resolved_at` | `datetime2` | resolution timestamp — **resolved ⇔ NOT NULL** (single source of truth) |
-| `resolved_by` | `nvarchar(64)` | the resolving teacher's oid (null while open) |
+| `had_images` | `boolean` | **quiz only** — whether the graded answer carried photos; flagged, **never stored** |
+| `resolved_at` | `timestamptz` | resolution timestamp — **resolved ⇔ NOT NULL** (single source of truth) |
+| `resolved_by` | `varchar(64)` | the resolving teacher's oid (null while open) |
 
 Indexes: `ix_novedu_reports_code` (the per-code drill-down) and
 `ix_novedu_reports_resolved_at` (open vs. resolved — the open rows are the working

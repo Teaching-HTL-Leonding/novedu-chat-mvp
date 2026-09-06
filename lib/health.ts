@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
-import sql from "mssql";
 import { mastra } from "@/app/mastra";
+import { databaseHost } from "@/lib/db/pool";
 import {
   foundryBearerToken,
   foundryConfigured,
@@ -47,7 +47,7 @@ function errorMessage(e: unknown): string {
 export async function checkDb(): Promise<HealthIndicator> {
   const storage = mastra.getStorage();
   if (!storage) {
-    return { ok: false, detail: "Not configured (MSSQL_CONNECTION_STRING is missing)." };
+    return { ok: false, detail: "Not configured (DATABASE_URL is missing)." };
   }
   try {
     const memory = await withTimeout(
@@ -156,16 +156,6 @@ async function resolveHost(fqdn: string | null, missingHint: string): Promise<Ho
   }
 }
 
-function sqlServerFqdn(): string | null {
-  const connectionString = process.env.MSSQL_CONNECTION_STRING;
-  if (!connectionString) return null;
-  try {
-    return sql.ConnectionPool.parseConnectionString(connectionString).server ?? null;
-  } catch {
-    return null;
-  }
-}
-
 function scchFqdn(): string | null {
   const baseUrl = process.env.SCCH_BASE_URL;
   if (!baseUrl) return null;
@@ -176,11 +166,8 @@ function scchFqdn(): string | null {
   }
 }
 
-export async function resolveSqlHost(): Promise<HostInfo> {
-  return resolveHost(
-    sqlServerFqdn(),
-    "No SQL server host (MSSQL_CONNECTION_STRING missing or unparseable).",
-  );
+export async function resolveDbHost(): Promise<HostInfo> {
+  return resolveHost(databaseHost(), "No database host (DATABASE_URL missing or unparseable).");
 }
 
 export async function resolveScchHost(): Promise<HostInfo> {

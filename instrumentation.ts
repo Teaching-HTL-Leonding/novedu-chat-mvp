@@ -4,8 +4,8 @@ import type { Instrumentation } from "next";
 // instrumentation file convention). Two startup duties:
 //
 //   1. Bring up telemetry (Azure Monitor / Application Insights via OpenTelemetry)
-//      FIRST, so its auto-instrumentation can patch the HTTP and mssql/tedious
-//      modules before anything opens a connection. No-op when the connection
+//      FIRST, so its auto-instrumentation can patch the HTTP and `pg` modules
+//      before anything opens a connection. No-op when the connection
 //      string is unset. Also records a content-free `app_started` event.
 //   2. Apply pending Drizzle migrations to the app-owned `novedu_*` tables — the
 //      server must never run against an older schema than its code expects.
@@ -21,7 +21,7 @@ import type { Instrumentation } from "next";
 //
 // Needs Node.js (database driver + OTEL SDK); the edge/browser builds of this
 // file do nothing. The dynamic imports keep those modules out of edge bundles.
-// The no-DB case (MSSQL_CONNECTION_STRING unset, e.g. plain `next build`) skips
+// The no-DB case (DATABASE_URL unset, e.g. plain `next build`) skips
 // migrations: the app boots for DB-less flows like tutor validation, matching
 // the graceful degradation in app/mastra/index.ts. Telemetry is independent of
 // the DB and gated on its own connection string.
@@ -32,8 +32,8 @@ export async function register(): Promise<void> {
   await initTelemetry();
   emitEvent("app_started", { runtime: "nodejs" });
 
-  if (!process.env.MSSQL_CONNECTION_STRING) {
-    console.warn("instrumentation: MSSQL_CONNECTION_STRING not set — skipping migrations");
+  if (!process.env.DATABASE_URL) {
+    console.warn("instrumentation: DATABASE_URL not set — skipping migrations");
     return;
   }
 

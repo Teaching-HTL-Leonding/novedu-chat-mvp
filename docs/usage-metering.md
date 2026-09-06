@@ -55,17 +55,20 @@ counters use `after()`; the coding tap is fire-and-forget).
 - `recordUserMessage` / `recordQuizAnswer` / `recordWritingSave` — `+1` on their
   counter in both tables; they carry no provider/model.
 
-Each write is an **increment-UPSERT**: INSERT the bucket with the deltas as its
-initial values; on a duplicate key increment each column in place (the same
-INSERT-first / catch-UPDATE idiom as `writing-store`, adapted to add rather than
-overwrite, so two concurrent writers on one bucket both land). `module` is required
-for the `usage_by_code` INSERT; it is constant per code, so whichever recorder
-inserts first sets it. `provider`/`model` are NOT increments and only the LLM
-recorder knows them — and a user-message counter usually creates the `(code, hour)`
-bucket BEFORE the generation finishes — so the INSERT sets them when known and the
-LLM recorder's duplicate-key UPDATE **COALESCE-fills a NULL** (first writer WITH
-the knowledge wins; a bucket straddling a republished YAML keeps its first-seen
-value — negligible for a cost aggregate).
+Each write is a **single `INSERT … ON CONFLICT … DO UPDATE`** statement: the
+`INSERT` supplies the deltas as the bucket's initial values, and on a
+conflicting `(code, hour)` / `(user_id, hour)` key the `DO UPDATE SET` adds
+each counter onto the existing value in place (`col = table.col +
+excluded.col`), so two concurrent writers on one bucket both land in one
+round trip. `module` is required for the `usage_by_code` INSERT; it is
+constant per code, so whichever recorder inserts first sets it.
+`provider`/`model` are NOT increments and only the LLM recorder knows them —
+and a user-message counter usually creates the `(code, hour)` bucket BEFORE
+the generation finishes — so the INSERT sets them when known and the LLM
+recorder's `ON CONFLICT` clause **COALESCE-fills a NULL**
+(`provider = COALESCE(table.provider, excluded.provider)`, same for `model`;
+first writer WITH the knowledge wins; a bucket straddling a republished YAML
+keeps its first-seen value — negligible for a cost aggregate).
 
 ## Capture points
 
@@ -157,4 +160,4 @@ is for cost visibility.
   fake spans (`app/mastra/usage-exporter.unit.test.ts`), and the coding usage
   extractor + `include_usage` request shaping (`lib/coding-proxy.unit.test.ts`).
 - The real UPSERT / concurrent double-increment is a `@live-db` concern (a real
-  SQL Server), consistent with `docs/testing.md`.
+  Postgres database), consistent with `docs/testing.md`.

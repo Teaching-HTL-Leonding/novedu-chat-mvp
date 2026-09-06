@@ -7,7 +7,7 @@ import { mintTutorCode, VISION_TUTOR_URL } from "./code.utils";
 // GATING (imageInput on/off → whether the attachments config is passed to
 // CopilotKit, plus the upload-failure notice) is our code's contribution and is
 // covered without a browser/LLM in tests/component/tutor-chat.browser.test.tsx.
-// What's left here genuinely needs the SCCH vision model + Azure SQL.
+// What's left here genuinely needs the SCCH vision model + the database.
 //
 // The vision tutor YAML is served by the shared local fixtures server (see
 // code.utils.ts / test-fixtures/serve.mjs); the Next dev server fetches it
@@ -25,7 +25,7 @@ async function openChat(page: import("@playwright/test").Page, tutorUrl: string)
 }
 
 // A REAL multi-modal round-trip: attach a solid-red PNG and ask for its color.
-// @live: needs the SCCH model endpoint + Azure SQL — excluded in CI (test:e2e:ci).
+// @live: needs the SCCH model endpoint + the database — excluded in CI (test:e2e:ci).
 test("the tutor answers a question about an attached image", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
@@ -77,7 +77,7 @@ test("the tutor answers a question about an attached image", {
 //
 // The photo is generated in the page rather than committed: a multi-megabyte
 // binary fixture is not worth carrying, and a canvas produces one deterministically.
-// @live: needs the SCCH model endpoint + Azure SQL — excluded in CI.
+// @live: needs the SCCH model endpoint + the database — excluded in CI.
 test("a multi-megapixel photo survives the whole path to the model", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {

@@ -3,7 +3,7 @@
 Deep reference for how CI keeps secrets safe from untrusted pull requests. The
 always-on invariants are summarized in `AGENTS.md`; this file has the full
 mechanics. Read it before touching `.github/workflows/`, adding a secret to a
-workflow, or wiring real infra (Azure SQL / SCCH) into CI.
+workflow, or wiring real infra (Azure Postgres / SCCH) into CI.
 
 ## The threat
 
@@ -35,11 +35,11 @@ run untrusted PR code.**
   and `AUTH_SECRET` only has to *match* between the e2e helpers and the dev server —
   e2e tests mint Auth.js session cookies directly, so no real Entra round-trip
   happens. There is nothing real in this environment to steal.
-  - The `e2e` job runs an **ephemeral SQL Server 2022 service container** so the
+  - The `e2e` job runs an **ephemeral `postgres:18` service container** so the
     DB-backed `@live-db` tests run on every PR. This stays secret-free: the
-    container's `MSSQL_SA_PASSWORD` is a **non-secret dummy literal**, the app
-    reaches it with throwaway **SQL auth** (not Entra), and the database is
-    discarded with the runner. No `secrets.*`, no real Azure SQL.
+    container's `POSTGRES_PASSWORD` is a **non-secret dummy literal**, the app
+    reaches it with throwaway **password auth** (not Entra), and the database is
+    discarded with the runner. No `secrets.*`, no real Azure Postgres.
   - The `prod-build` job (PR-only — `if: github.event_name == 'pull_request'`)
     reproduces `docker-publish.yml`'s multi-stage image build so a build break
     surfaces on the PR instead of after merge. It is **also secret-free**: it never
@@ -83,14 +83,14 @@ run untrusted PR code.**
   credential to a workflow that runs on `pull_request`. The `env:` block is
   dummies only.
 - **No real credentials on a fork `pull_request`.** The live tag is split:
-  `@live-db` (needs a SQL Server, no LLM) runs in CI against the **ephemeral
+  `@live-db` (needs a Postgres database, no LLM) runs in CI against the **ephemeral
   container** above — safe because the container is a non-secret dummy, not real
   infra. `@live-llm` (needs the SCCH LLM — geo-blocked to Austria +
   un-containerizable) and `@live-storage` (needs **real Azure Blob Storage** for the
   image subsystem — no container substitutes for it, and the User-Delegation SAS
   path needs the passwordless data-store credential) are both excluded from the PR
   run via `npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage"`) and run
-  local-only. Tests against **real** Azure SQL, SCCH, or Azure Blob Storage must run
+  local-only. Tests against **real** Azure Postgres, SCCH, or Azure Blob Storage must run
   only on a **trusted trigger** — `push` to `main`, a `schedule`, or a
   reviewer-gated GitHub *Environment* — never on fork PR code.
 - **Keep `permissions:` least-privilege.** `qa.yml` only reads code and runs
