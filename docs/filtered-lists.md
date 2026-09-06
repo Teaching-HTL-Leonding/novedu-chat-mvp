@@ -66,8 +66,9 @@ Build an `SQL[]` of optional conditions and apply them with `.where(and(...condi
 — `and()` over an empty array is a no-op, and `undefined` conditions are dropped.
 Do not chain multiple `.where()` (each replaces the previous). Text search uses the
 shared `containsAny(term, [cols])` from `lib/db/text-filter.ts` (a parameterized,
-wildcard-escaped `LIKE`; mssql's default collation is case-insensitive, so no
-`ilike`/`LOWER`). Example (`listFiles`):
+wildcard-escaped `ILIKE` — Postgres's plain `LIKE` is case-sensitive, so a
+case-insensitive "contains" match needs `ILIKE` instead; no `LOWER()` needed).
+Example (`listFiles`):
 
 ```ts
 const conditions: SQL[] = [isNull(files.validUntil)];
@@ -186,7 +187,7 @@ Two things are load-bearing:
 - It gets the list's **base conditions only** (`isNull(validUntil)`, the known-module
   guard), never the active search/module filter — otherwise the owner a teacher just
   picked could vanish from the control that picked them.
-- The ORDER BY repeats the **selected** COALESCE expression: mssql requires every
+- The ORDER BY repeats the **selected** COALESCE expression: Postgres requires every
   `ORDER BY` term of a `SELECT DISTINCT` to appear in the select list. Ordering by
   the coalesced label (not by `display_name`) is also what keeps an owner without a
   `novedu_users` row inside the alphabet instead of leading it as a NULL.
@@ -293,7 +294,7 @@ the wired DB delete is the `@live-db` case in `e2e/file-and-tutor-code-crud.spec
 
 ## Pagination
 
-Same discipline as filtering: the **skip and the limit are SQL** (`OFFSET … FETCH`),
+Same discipline as filtering: the **skip and the limit are SQL** (`LIMIT/OFFSET`),
 never an in-memory `slice()`. The page lives in the URL like every other filter
 param. Page size is **20** (`DEFAULT_PAGE_SIZE`), with a hidden `?size=` override
 clamped to `1…100` — `size=1` is legal on purpose, it is how the e2e suite forces a
@@ -323,7 +324,7 @@ export async function listFiles(opts?: { search?; createdBy?; paging?: Paging })
       rows: (window) => {                            // a FRESH builder per call — drizzle builders are stateful
         const query = getDb().select({…}).from(files).where(and(...conditions))
           .orderBy(desc(files.validFrom), asc(files.id));
-        return window ? query.offset(window.offset).fetch(window.limit) : query;
+        return window ? query.limit(window.limit).offset(window.offset) : query;
       },
     });
   } catch (error) { console.error(…); return undefined; }   // unchanged never-throw contract
@@ -332,10 +333,9 @@ export async function listFiles(opts?: { search?; createdBy?; paging?: Paging })
 
 Four things are load-bearing:
 
-- **mssql has no `.limit()`.** It is `.orderBy(…).offset(o).fetch(n)` — `orderBy`
-  unlocks `offset`, which unlocks `fetch`. No `$dynamic()` needed: the windowed and
+- **`.limit().offset()`, applied together.** No `$dynamic()` needed: the windowed and
   unwindowed chains are two expressions inside the one `rows` closure.
-- **The ORDER BY must be unique.** `OFFSET/FETCH` over a non-unique sort can repeat or
+- **The ORDER BY must be unique.** `LIMIT/OFFSET` over a non-unique sort can repeat or
   skip rows between pages, so every list appends a primary-key tiebreaker
   (`files.id`, `images.id`, `codes.code`, `reports.id`).
 - **The count repeats the joins.** `listReports` filters on `users`/`codes` columns, so
@@ -433,7 +433,7 @@ Two rules hold in every store:
   `holysh` `CASE` leads only while no column is sorted, and comes back when the sort
   is cycled off.
 - **The primary-key tiebreaker always trails** (`files.id`, `images.id`, `codes.code`,
-  `reports.id`) — the same `OFFSET/FETCH` stability requirement paging already has.
+  `reports.id`) — the same `LIMIT/OFFSET` stability requirement paging already has.
   It is the helper's last argument rather than something each store remembers to
   append, so a new list cannot forget it.
 
@@ -450,12 +450,19 @@ the Mastra-owned tables (a different pool, so it cannot be an `ORDER BY` term).
 `/reports` orders `Code` and `Student` by the JOINed `codes.note` / `users.displayName`
 — the values those cells lead with. Codes with an empty note therefore group together.
 
-**NULL ordering** is mssql's: NULLs first ascending, last descending (there is no
-`NULLS LAST`). It applies wherever a nullable column is sortable, and a few of those
-are worth knowing about: `/codes`' `Valid from`/`Valid until` (a windowless code is
-the common case, so ascending leads with all of them), `/reports`' `Status`
-(`resolved_at` is NULL while open, so ascending reads as "open first"), and
-`/reports`' `Code`/`Student` when the code row or the reporter is gone.
+**NULL ordering** follows Postgres's default: NULLs sort **LAST ascending, FIRST
+descending** (`asc()`/`desc()` are used plain — no `NULLS LAST` needed). It
+applies wherever a nullable column is sortable, and a few of those are worth
+knowing about:
+
+- `/codes`' `Valid from`/`Valid until` — a windowless code (no bound set) is the
+  common case, so ascending now trails with all of them instead of leading.
+- `/reports`' `Status` sorts by `resolved_at` (NULL while open): **ascending
+  now reads "resolved first, open last"** — the inverse of what the column name
+  suggests — so use **`?sort=status:desc`** for "open first."
+- `/reports`' `Code`/`Student`, when the joined code row or the reporter's
+  display name is missing: the missing value now sorts **LAST** ascending
+  (previously first).
 
 ### URL plumbing
 

@@ -99,7 +99,7 @@ Entra `name` claim, i.e. exactly what the nav bar shows). The pieces:
   present) upserts the name via **`lib/user-name-store.ts`** `upsertUserName`. This
   is the **one database write in the whole auth flow**. It runs only on an
   interactive sign-in, never on the per-request session decode, and the store is
-  imported **dynamically** so the SQL driver stays off the proxy's hot path. Any
+  imported **dynamically** so the database driver stays off the proxy's hot path. Any
   error is **swallowed** — a DB hiccup must never block sign-in; the name just isn't
   recorded that time. A blank `name` is skipped (no row), so the oid stays the
   fallback. (Next 16's proxy runs on the **Node.js runtime** by default, so this is

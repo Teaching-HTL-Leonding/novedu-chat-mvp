@@ -64,15 +64,15 @@ surrogate `id` is per-version); the **active** version is the single row with
 | Column | Meaning |
 | --- | --- |
 | `id` (PK) | per-version uuid |
-| `name` | the teacher-chosen public identifier (`nvarchar(450)`) |
+| `name` | the teacher-chosen public identifier (`varchar(450)`) |
 | `blob_path` | server-chosen blob name within the container: `<uuid>.<ext>` |
 | `mime_type` | `image/png` \| `image/jpeg` \| `image/svg+xml` |
 | `byte_size` | size of the uploaded blob in bytes |
-| `credit` | optional attribution / "Content Credentials" (e.g. a CC BY notice), `nvarchar(512)`, NULL when none |
+| `credit` | optional attribution / "Content Credentials" (e.g. a CC BY notice), `text`, NULL when none |
 | `created_by` / `valid_from` / `valid_until` / `closed_by` | the temporal columns |
 
 **"At most one active version per name" is enforced at the DATABASE level** by a
-SQL Server **filtered unique index** `ux_novedu_images_active_name`
+Postgres **partial unique index** `ux_novedu_images_active_name`
 (`name` WHERE `valid_until IS NULL`) — it both closes the create-time race and
 serves the active-row hot path. Names are reusable after deletion (the index only
 constrains *active* rows). As with every `novedu_*` table there are **NO foreign
@@ -98,7 +98,7 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
   upload-time name-clash check.
 - `confirmImage(input, userId)` — writes version 1 **after** the blob is in place;
   a transaction makes the existence check + insert atomic, and a duplicate-key
-  error (mssql 2601/2627, via `isDuplicateKeyError`) maps to `reason: "name-taken"`.
+  error (Postgres SQLSTATE `23505`, via `isUniqueViolation`) maps to `reason: "name-taken"`.
 - `softDeleteImages` — delete is **bulk-only**: closes the active rows, then removes
   the backing blobs **best-effort, OUTSIDE the transaction** (a blob failure never
   fails the delete — an orphaned blob just lingers). It loops the per-item

@@ -19,7 +19,7 @@ in `docs/api.md`.
 
 A **code** is a `[a-z0-9-]` string (1–32 chars; `generateCode()` mints 10 random
 `[a-z0-9]`, 36^10 ≈ 3.6 × 10^15 — unguessable) minted by a teacher on
-`/codes/new` and stored as a row in the `novedu_codes` SQL table:
+`/codes/new` and stored as a row in the `novedu_codes` table:
 
 | Column | Meaning |
 | --- | --- |
@@ -27,7 +27,7 @@ A **code** is a `[a-z0-9-]` string (1–32 chars; `generateCode()` mints 10 rand
 | `module` | the dispatch discriminator — `tutor` \| `quiz` \| `writing` \| `coding`, picks the renderer + agent (the `coding` module has no in-app agent — it is an OpenAI-compatible endpoint; see `docs/coding.md`) |
 | `created_by` | session user id (Entra `oid`) of the creating teacher |
 | `file_url` | public URL of the activity YAML (normalized via `URL.href`) |
-| `valid_from` / `valid_until` | availability window, UTC `datetime2`, **both bounds inclusive**. Each is **nullable** — a null `valid_from` opens the code immediately, a null `valid_until` never expires it (both null = always valid). `checkCode` / `windowStatus` coalesce a null bound to `DISTANT_PAST` / `DISTANT_FUTURE` |
+| `valid_from` / `valid_until` | availability window, UTC `timestamptz`, **both bounds inclusive**. Each is **nullable** — a null `valid_from` opens the code immediately, a null `valid_until` never expires it (both null = always valid). `checkCode` / `windowStatus` coalesce a null bound to `DISTANT_PAST` / `DISTANT_FUTURE` |
 | `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
 | `origin` | **documentation-only**: where the code was created (DEV vs PROD rows). Lookups never read it — a code created on localhost works in production, since all environments share the database |
 | `anonymous` | the activity YAML's `anonymous` flag (default is module-specific — tutor/quiz `true`, writing `false`, coding always `true`), **frozen at create time** — a later YAML edit does NOT update it. Governs whether the stats page shows per-student data |
