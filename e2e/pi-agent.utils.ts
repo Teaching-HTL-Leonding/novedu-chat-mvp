@@ -13,7 +13,7 @@ import { buildLittleCoderConfig } from "../lib/little-coder-config";
 //
 // Plain `node:child_process` + `node:fs` — Playwright's CJS test runner cannot
 // load ESM-only modules (the same constraint that keeps `code.utils.ts` on the
-// plain `mssql` driver). `buildLittleCoderConfig` is the app's own pure,
+// plain `pg` driver). `buildLittleCoderConfig` is the app's own pure,
 // client-safe config builder, so the generated file can never drift from what
 // the connection page tells students to paste.
 

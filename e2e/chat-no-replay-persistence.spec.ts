@@ -7,7 +7,7 @@ import { getStoredMessages, LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 // route-level `trimToNewTurn` fix, Mastra re-persisted that whole history each
 // turn (fresh ids), so a k-turn chat ballooned to k·(k+1) rows — the early
 // turns stored over and over. This is the ONE thing a unit test can't prove: it
-// needs the real chat → real Mastra → real Azure SQL round-trip. The route unit
+// needs the real chat → real Mastra → real database round-trip. The route unit
 // test asserts we FORWARD a trimmed body; this asserts Mastra then STORES only
 // the new turn.
 //
@@ -64,7 +64,7 @@ async function sendTurnAndSettle(
     .toBe(true);
 }
 
-// @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
+// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("a two-turn chat stores each turn once (no replayed-history duplicates)", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {

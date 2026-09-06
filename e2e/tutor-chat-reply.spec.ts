@@ -8,7 +8,7 @@ import { LIVE_TOOLS_TUTOR_URL, LIVE_TUTOR_URL, mintTutorCode } from "./code.util
 // "Hi!", and assert the tutor streams back a non-empty answer (content doesn't
 // matter — only that it replies without error). Unlike `tutor-code-link.spec.ts`,
 // this DOES hit the LLM; it also exercises the `tutor` agent's Mastra Memory (the
-// turn is persisted to the configured Azure SQL store, scoped to the tutor code
+// turn is persisted to the configured database store, scoped to the tutor code
 // as resourceId).
 //
 // - SCCH: the local fixtures server's live-tutor.yaml (a real model).
@@ -71,7 +71,7 @@ async function setEditorContent(page: Page, text: string): Promise<void> {
 // Fixture fetch + Next compile + a full model round-trip — give it room.
 test.setTimeout(120_000);
 
-// @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
+// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("sending a message gets a non-empty reply from the tutor", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
@@ -86,7 +86,7 @@ test("sending a message gets a non-empty reply from the tutor", {
 // inventing a plausible number could theoretically land in range too — but a broken
 // tools path fails loudly (resolver throw = no reply; tool never called = gemma has
 // no number to echo), so in-range + no error is a faithful smoke of the wiring.
-// @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
+// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("a tutor with the random_number tool weaves a tool result into its reply", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
@@ -120,7 +120,7 @@ test.describe("via Azure Foundry", () => {
   test.use({ storageState: TEACHER_STORAGE_STATE });
 
   // @live: needs the Foundry endpoint (MI / `az login` with the Cognitive
-  // Services OpenAI User role) + Azure SQL — excluded in CI (test:e2e:ci).
+  // Services OpenAI User role) + the database — excluded in CI (test:e2e:ci).
   test("sending a message gets a non-empty reply from a Foundry tutor", {
     tag: ["@live", "@live-llm"],
   }, async ({ page }) => {
@@ -155,7 +155,7 @@ test.describe("via OpenRouter", () => {
   test.use({ storageState: TEACHER_STORAGE_STATE });
 
   // @live: needs OPENROUTER_API_KEY (a static key — no Entra token, no MI) +
-  // Azure SQL — excluded in CI (test:e2e:ci).
+  // the database — excluded in CI (test:e2e:ci).
   test("sending a message gets a non-empty reply from an OpenRouter tutor", {
     tag: ["@live", "@live-llm"],
   }, async ({ page }) => {

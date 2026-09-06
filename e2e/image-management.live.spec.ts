@@ -24,7 +24,7 @@ import { mintCode } from "./code.utils";
 // because it additionally needs storage no container provides.
 
 // Load `.env` into the Playwright runner's process (the dev server and the other
-// live e2e helpers do the same) so MSSQL_CONNECTION_STRING, IMAGE_STORAGE_ACCOUNT
+// live e2e helpers do the same) so DATABASE_URL, IMAGE_STORAGE_ACCOUNT
 // and the storage credentials are visible to the server seams imported below.
 loadEnvConfig(process.cwd());
 
@@ -42,8 +42,8 @@ test.describe("image storage round-trip (seams)", () => {
     tag: ["@live", "@live-storage"],
   }, async ({ request }) => {
     test.skip(
-      !process.env.MSSQL_CONNECTION_STRING,
-      "MSSQL_CONNECTION_STRING is not set — cannot reach the image metadata table",
+      !process.env.DATABASE_URL,
+      "DATABASE_URL is not set — cannot reach the image metadata table",
     );
 
     const userId = "e2e-test-suite";
@@ -174,8 +174,8 @@ test.describe("hosted image upload + student display", () => {
     tag: ["@live", "@live-storage"],
   }, async ({ page }) => {
     test.skip(
-      !process.env.MSSQL_CONNECTION_STRING,
-      "MSSQL_CONNECTION_STRING is not set — cannot reach the image metadata table",
+      !process.env.DATABASE_URL,
+      "DATABASE_URL is not set — cannot reach the image metadata table",
     );
 
     const imageName = `e2e-disp-${Date.now()}`;

@@ -38,7 +38,7 @@ test.describe("as a teacher", () => {
   // Live dependency probes (DB round-trip, SCCH fetch) + dev compilation.
   test.setTimeout(60_000);
 
-  // @live: probes hit the real Azure SQL DB + SCCH endpoint — excluded in CI (test:e2e:ci).
+  // @live: probes hit the real database + SCCH endpoint — excluded in CI (test:e2e:ci).
   test("renders the shell immediately and resolves all probes", {
     tag: ["@live", "@live-llm"],
   }, async ({ page }) => {
@@ -58,7 +58,7 @@ test.describe("as a teacher", () => {
     // FQDN + at least one resolved IP for both dependency hosts. The FQDNs
     // come from .env, so assert shape (host — dotted address), not values.
     const hostPattern = /\S+\.\S+ — \d+\.\d+\.\d+\.\d+|\S+\.\S+ — [0-9a-f:]+/i;
-    await expect(page.getByTestId("health-sql-host")).toHaveText(hostPattern, {
+    await expect(page.getByTestId("health-db-host")).toHaveText(hostPattern, {
       timeout: 20_000,
     });
     await expect(page.getByTestId("health-scch-host")).toHaveText(hostPattern, {

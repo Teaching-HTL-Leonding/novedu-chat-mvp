@@ -126,7 +126,7 @@ test.beforeAll(async () => {
 // A real reasoning-model round-trip — give it room.
 test.setTimeout(240_000);
 
-// @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
+// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("an effective teacher receives the reasoning and sees the thinking block", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
@@ -145,7 +145,7 @@ test("an effective teacher receives the reasoning and sees the thinking block", 
   expect(teacherReasoningFrames).toBeGreaterThan(0);
 });
 
-// @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
+// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("a teacher in view-as-student mode receives ZERO reasoning frames", {
   tag: ["@live", "@live-llm"],
 }, async ({ page }) => {
@@ -181,7 +181,7 @@ test("a teacher in view-as-student mode receives ZERO reasoning frames", {
   await expect(page.getByText(/Thought for/)).toHaveCount(0);
 });
 
-// @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
+// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("a real student session receives ZERO reasoning frames", {
   tag: ["@live", "@live-llm"],
 }, async ({ browser }) => {

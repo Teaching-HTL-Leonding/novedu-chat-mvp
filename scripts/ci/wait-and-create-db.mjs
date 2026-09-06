@@ -1,57 +1,50 @@
-// Waits for the CI SQL Server container to accept connections, then creates the
-// app's database. Used by the e2e job in .github/workflows/qa.yml BEFORE Playwright
-// boots the dev server — the app migrates *tables* on startup but never creates the
-// *database* itself (Drizzle migrates an existing DB), so the target catalog must
-// exist first. See docs/testing.md (the @live-db CI section).
+// Waits for the CI Postgres service container to accept connections, then
+// creates the `mastra` schema Mastra's `PostgresStore` expects. Used by the e2e
+// job in .github/workflows/qa.yml BEFORE Playwright boots the dev server.
 //
-// Reads MSSQL_CONNECTION_STRING (a SQL-auth container string, e.g.
-//   Server=tcp:localhost,1433;Initial Catalog=noveduTest;Encrypt=False;User ID=sa;Password=...;
-// ). It connects to `master` (the target DB does not exist yet) and creates it.
-// Reuses the existing `mssql` dependency — no extra tooling. Pure CI helper.
+// The `postgres:18` image creates the target database itself (`POSTGRES_DB`),
+// and the app creates its own `novedu_*` tables at boot (instrumentation.ts) —
+// this script only polls readiness and idempotently ensures the `mastra` schema
+// exists ahead of time. See docs/testing.md (the @live-db CI section).
+//
+// Reads DATABASE_URL (a `postgresql://` URL — the CI container's is a
+// password-auth string with a non-secret dummy password). Reuses the existing
+// `pg` dependency — no extra tooling. Pure CI helper.
 
-import sql from "mssql";
+import pg from "pg";
 
-const connectionString = process.env.MSSQL_CONNECTION_STRING;
+const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
-  console.error("wait-and-create-db: MSSQL_CONNECTION_STRING is not set");
+  console.error("wait-and-create-db: DATABASE_URL is not set");
   process.exit(1);
 }
-
-const config = sql.ConnectionPool.parseConnectionString(connectionString);
-const targetDb = config.database;
-if (!targetDb || !/^[A-Za-z0-9_]+$/.test(targetDb)) {
-  console.error(`wait-and-create-db: refusing unusual database name: ${JSON.stringify(targetDb)}`);
-  process.exit(1);
-}
-
-// Connect to `master` (the target DB does not exist yet) with a short per-attempt
-// timeout so the readiness poll stays responsive.
-config.database = "master";
-config.connectionTimeout = 5000;
 
 const MAX_ATTEMPTS = 60;
 const DELAY_MS = 2000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-let pool;
+let client;
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+  client = new pg.Client({ connectionString, connectionTimeoutMillis: 5000 });
   try {
-    pool = await new sql.ConnectionPool(config).connect();
+    await client.connect();
+    await client.query("SELECT 1");
     break;
   } catch (err) {
+    await client.end().catch(() => {});
+    client = undefined;
     if (attempt === MAX_ATTEMPTS) {
-      console.error(`wait-and-create-db: SQL Server never became ready: ${err.message}`);
+      console.error(`wait-and-create-db: Postgres never became ready: ${err.message}`);
       process.exit(1);
     }
-    console.log(`wait-and-create-db: SQL not ready yet (attempt ${attempt}/${MAX_ATTEMPTS})…`);
+    console.log(`wait-and-create-db: Postgres not ready yet (attempt ${attempt}/${MAX_ATTEMPTS})…`);
     await sleep(DELAY_MS);
   }
 }
 
 try {
-  // targetDb is validated above as a plain identifier; safe to interpolate.
-  await pool.request().query(`IF DB_ID('${targetDb}') IS NULL CREATE DATABASE [${targetDb}]`);
-  console.log(`wait-and-create-db: database '${targetDb}' is ready`);
+  await client.query("CREATE SCHEMA IF NOT EXISTS mastra");
+  console.log("wait-and-create-db: database is ready, 'mastra' schema present");
 } finally {
-  await pool.close();
+  await client.end();
 }

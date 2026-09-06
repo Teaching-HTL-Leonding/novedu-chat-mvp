@@ -77,7 +77,7 @@ async function attachServedCompletion(raw: string): Promise<void> {
     .attach("served-model-completion", { body: raw, contentType: "application/json" });
 }
 
-// @live: needs the real SCCH endpoint + Azure SQL — excluded in CI (test:e2e:ci).
+// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("pi gets a non-empty reply through the coding proxy", {
   tag: ["@live", "@live-llm"],
 }, async () => {
@@ -106,7 +106,7 @@ test.describe("via Azure Foundry", () => {
   // the content-stable fixture tree (the tutor-chat-reply.spec.ts reasoning).
 
   // @live: needs the Foundry endpoint (MI / `az login` with the Cognitive
-  // Services OpenAI User role) + Azure SQL — excluded in CI (test:e2e:ci).
+  // Services OpenAI User role) + the database — excluded in CI (test:e2e:ci).
   test("pi gets a non-empty reply from the overridden Foundry model", {
     tag: ["@live", "@live-llm"],
   }, async () => {
@@ -140,7 +140,7 @@ test.describe("via OpenRouter", () => {
   // content-stable fixture tree (the tutor-chat-reply.spec.ts reasoning).
 
   // @live: needs OPENROUTER_API_KEY (a static key — no Entra token, no MI) +
-  // Azure SQL — excluded in CI (test:e2e:ci).
+  // the database — excluded in CI (test:e2e:ci).
   test("pi gets a non-empty reply from the overridden OpenRouter model", {
     tag: ["@live", "@live-llm"],
   }, async () => {

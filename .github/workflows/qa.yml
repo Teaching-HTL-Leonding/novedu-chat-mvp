@@ -2,8 +2,8 @@ name: QA
 
 # Full quality gate: biome check, typecheck, unit + component tests, production
 # build, and the Playwright e2e suite (hermetic + DB-backed @live-db against an
-# ephemeral SQL Server). Runs standalone on pull requests and as a reusable
-# workflow (workflow_call) gating the Docker publish on main.
+# ephemeral Postgres container). Runs standalone on pull requests and as a
+# reusable workflow (workflow_call) gating the Docker publish on main.
 on:
   pull_request:
     branches: [main]
@@ -31,12 +31,13 @@ permissions:
 # exfiltratable. The values below are test-only DUMMIES (NOT secrets). Tests
 # needing the SCCH LLM (geo-blocked to Austria, un-containerizable) are tagged
 # @live-llm and excluded via `npm run test:e2e:ci`; they stay local-only. The
-# DB-backed tests are tagged @live-db and DO run here, against the ephemeral SQL
-# Server service in the e2e job (reached with SQL auth — its SA password is a
-# non-secret DUMMY, so secret-freeness holds). Live credentials (real Azure SQL /
-# SCCH) must NEVER be added here or run on a fork pull_request — only on a trusted
-# trigger (push to main, a schedule, or a reviewer-gated environment). See
-# docker-publish.yml for the secret-bearing main-only path.
+# DB-backed tests are tagged @live-db and DO run here, against the ephemeral
+# Postgres service in the e2e job (reached with a throwaway password — the
+# container's password is a non-secret DUMMY, so secret-freeness holds). Live
+# credentials (real Azure Postgres / SCCH) must NEVER be added here or run on a
+# fork pull_request — only on a trusted trigger (push to main, a schedule, or a
+# reviewer-gated environment). See docker-publish.yml for the secret-bearing
+# main-only path.
 #
 # auth.ts requires the AZURE_* vars and TEACHER_GROUP_ID at module load (also
 # during `next build`); AUTH_SECRET only needs to match between the e2e helpers
@@ -94,23 +95,28 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    # Ephemeral SQL Server so the DB-backed @live-db tests run here via SQL auth (a
-    # throwaway login, NOT Entra). The SA password is a non-secret DUMMY literal, so
-    # this stays secret-free / fork-safe. The @live-llm tests are NOT run here (the
-    # SCCH endpoint is geo-blocked + can't be containerized) — they stay local.
+    # Ephemeral Postgres so the DB-backed @live-db tests run here via a throwaway
+    # password (NOT Entra). The container's password is a non-secret DUMMY
+    # literal, so this stays secret-free / fork-safe. The @live-llm tests are NOT
+    # run here (the SCCH endpoint is geo-blocked + can't be containerized) — they
+    # stay local.
     services:
-      sqlserver:
-        image: mcr.microsoft.com/mssql/server:2022-latest
+      postgres:
+        image: postgres:18
         env:
-          ACCEPT_EULA: "Y"
-          MSSQL_SA_PASSWORD: "Test-Passw0rd!"
+          POSTGRES_PASSWORD: "Test-Passw0rd!" # dummy, non-secret — see docs/ci-security.md
+          POSTGRES_DB: novedu
         ports:
-          - 1433:1433
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
     env:
-      # SQL auth → the container. Encrypt=False (local self-signed cert); the
-      # password is the dummy SA password above, NOT a secret.
-      MSSQL_CONNECTION_STRING: "Server=tcp:localhost,1433;Initial Catalog=noveduTest;Encrypt=False;User ID=sa;Password=Test-Passw0rd!;Connection Timeout=30;"
-      MSSQL_SQLAUTH_CONNECTION_STRING: "Server=tcp:localhost,1433;Initial Catalog=noveduTest;Encrypt=False;User ID=sa;Password=Test-Passw0rd!;Connection Timeout=30;"
+      # Password auth → the container. The password is the dummy literal above,
+      # NOT a secret. The image creates the `novedu` database itself.
+      DATABASE_URL: "postgresql://postgres:Test-Passw0rd!@localhost:5432/novedu"
     steps:
       - uses: actions/checkout@v6
 
@@ -129,10 +135,11 @@ jobs:
 
       - run: npx playwright install --with-deps chromium
 
-      # The service container is up but SQL takes ~20-40s to accept connections;
-      # wait, then create the app's database (the app migrates tables on boot via
-      # instrumentation.ts but never creates the database itself).
-      - name: Wait for SQL Server + create database
+      # The postgres:18 image creates the `novedu` database itself; the app
+      # creates its own tables at boot (instrumentation.ts). This step only waits
+      # for the service to accept connections and creates Mastra's `mastra` schema
+      # ahead of time.
+      - name: Wait for Postgres + create schema
         run: node scripts/ci/wait-and-create-db.mjs
 
       # Runs hermetic + @live-db (against the container), excludes @live-llm.
