@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { generateCodingKey, KEY_PATTERN } from "@/lib/coding-key";
 import { type DbExecutor, getDb } from "@/lib/db";
+import { isUniqueViolation } from "@/lib/db/errors";
 import { codingKeys, users } from "@/lib/db/schema";
 
 // Persistence for the coding module's per-user API keys in the
@@ -32,19 +33,11 @@ import { codingKeys, users } from "@/lib/db/schema";
 // SERVER-ONLY: uses the database. Never import from client components, and never
 // from the CLI-bundled `lib/**` closure.
 
-// Mirrors isDuplicateKeyError in lib/user-name-store.ts (and code-store /
-// writing-store): mssql 2627/2601 wrapped in a DrizzleQueryError's `cause` chain.
-// Here it is ambiguous by design — it means EITHER the `(code, user_id)` PK
-// already has a key (a concurrent first visit won the race) OR the freshly minted
-// `api_key` hit the unique index (a re-mint); `getOrCreateCodingKey` tells the two
-// apart by looking for the existing row.
-function isDuplicateKeyError(error: unknown): boolean {
-  for (let e = error; typeof e === "object" && e !== null; e = (e as { cause?: unknown }).cause) {
-    const number = (e as { number?: unknown }).number;
-    if (number === 2627 || number === 2601) return true;
-  }
-  return false;
-}
+// `isUniqueViolation` (lib/db/errors.ts) reports SQLSTATE 23505, which is
+// ambiguous by design here — it means EITHER the `(code, user_id)` PK already
+// has a key (a concurrent first visit won the race) OR the freshly minted
+// `api_key` hit the unique index (a re-mint); `getOrCreateCodingKey` tells the
+// two apart by looking for the existing row (the re-SELECT below).
 
 /** A user's stored key for one coding code, as read back from `novedu_coding_keys`. */
 export interface CodingKeyRow {
@@ -136,7 +129,7 @@ export async function getOrCreateCodingKey(
       await getDb().insert(codingKeys).values(row);
       return row;
     } catch (error) {
-      if (!isDuplicateKeyError(error)) {
+      if (!isUniqueViolation(error)) {
         console.error(`coding-key-store: minting a key for code ${code} failed`, error);
         return null;
       }

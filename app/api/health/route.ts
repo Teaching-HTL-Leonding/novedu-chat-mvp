@@ -3,10 +3,10 @@ import {
   checkFoundry,
   checkOpenRouter,
   checkScch,
+  resolveDbHost,
   resolveFoundryHost,
   resolveOpenRouterHost,
   resolveScchHost,
-  resolveSqlHost,
 } from "@/lib/health";
 import { requireEffectiveTeacher } from "@/lib/student-mode";
 
@@ -22,7 +22,7 @@ const PROBES = {
   scch: checkScch,
   foundry: checkFoundry,
   openrouter: checkOpenRouter,
-  "sql-host": resolveSqlHost,
+  "db-host": resolveDbHost,
   "scch-host": resolveScchHost,
   "foundry-host": resolveFoundryHost,
   "openrouter-host": resolveOpenRouterHost,

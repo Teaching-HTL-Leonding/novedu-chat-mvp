@@ -44,17 +44,6 @@ export function resetUserChatDedupeCacheForTests(): void {
   dedupeCache.clear();
 }
 
-// Mirrors isDuplicateKeyError in code-store: mssql 2627/2601 wrapped in a
-// DrizzleQueryError's `cause` chain. A duplicate here just means the row exists
-// (e.g. after a server restart emptied the cache) — success, not an error.
-function isDuplicateKeyError(error: unknown): boolean {
-  for (let e = error; typeof e === "object" && e !== null; e = (e as { cause?: unknown }).cause) {
-    const number = (e as { number?: unknown }).number;
-    if (number === 2627 || number === 2601) return true;
-  }
-  return false;
-}
-
 /**
  * Persists the user↔chat link for a thread opened under a code — IF the activity
  * opts into attribution (`anonymous: false` in its YAML). The flag is read
@@ -86,13 +75,14 @@ export async function recordUserChat(
   }
 
   try {
-    await getDb().insert(userChats).values({ threadId, code, userId, createdAt: new Date() });
+    // A conflicting thread id just means the row already exists (e.g. after a
+    // server restart emptied the cache) — a silent success, not an error.
+    await getDb()
+      .insert(userChats)
+      .values({ threadId, code, userId, createdAt: new Date() })
+      .onConflictDoNothing({ target: userChats.threadId });
     rememberDecision(key, true);
   } catch (error) {
-    if (isDuplicateKeyError(error)) {
-      rememberDecision(key, true); // row already exists — same outcome as storing
-      return;
-    }
     // NOT cached: a transient DB error should retry on the next run request.
     console.error("user-chat-store: failed to record user chat", error);
   }

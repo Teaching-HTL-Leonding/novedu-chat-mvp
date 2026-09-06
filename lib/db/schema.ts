@@ -1,24 +1,26 @@
 import { sql } from "drizzle-orm";
 import {
   bigint,
-  bit,
-  datetime2,
+  boolean,
   index,
-  int,
-  mssqlTable,
-  nvarchar,
+  integer,
+  pgTable,
   primaryKey,
+  text,
+  timestamp,
   uniqueIndex,
   varchar,
-} from "drizzle-orm/mssql-core";
+} from "drizzle-orm/pg-core";
 
-// NOTE: drizzle's mssql `nvarchar` accepts `{ length: "max" }`, which compiles to
-// SQL Server's `NVARCHAR(MAX)` — used for the (potentially large) YAML body below.
-// `NVARCHAR(MAX)` can NOT live in an index key, which is why `name` (the lookup
-// key on the chat hot path) is a bounded, indexable `nvarchar(450)`.
+// NOTE: unbounded free text is `text` (Postgres stores it exactly like a
+// `varchar`, with no length ceiling) — the YAML bodies, report snapshots and
+// saved student texts below. Key and other bounded columns keep an explicit
+// `varchar(n)`: the cap documents the value's shape and is enforced by the
+// database, not only by the app-side clamps that mirror it.
 
-// App-owned tables in the shared Azure SQL database. They live next to Mastra's
-// auto-managed `mastra_*` tables, distinguished by the `novedu_` prefix.
+// App-owned tables in the `public` schema of the shared Postgres database. They
+// live next to Mastra's auto-managed `mastra_*` tables (in their own `mastra`
+// schema), distinguished by the `novedu_` prefix.
 //
 // HARD RULE: NO foreign keys between `novedu_*` and `mastra_*` tables — Mastra
 // owns its schema and may recreate/migrate it at any time; we never couple to it.
@@ -38,7 +40,7 @@ import {
 // route read it off the row to pick the renderer/agent. `file_url` is the
 // activity YAML the code hands out. The creating teacher is `created_by` (the
 // session user id = Entra `oid`). The validity window is inclusive in both
-// directions, stored as UTC datetime2; each bound is OPTIONAL — a null
+// directions, stored as UTC `timestamptz`; each bound is OPTIONAL — a null
 // `valid_from` opens the code immediately, a null `valid_until` never expires it
 // (both null = always valid). `origin` documents where the code was
 // created (dev/prod host) and is NEVER used in lookups — a code created on
@@ -66,26 +68,26 @@ import {
 // like the usage tables' provider/model columns. `llm_reasoning` is the pair's
 // OPTIONAL third member (the reasoning-effort level): it requires the pair but
 // the pair does not require it — NULL simply means no `reasoning_effort` is sent.
-export const codes = mssqlTable(
+export const codes = pgTable(
   "novedu_codes",
   {
     code: varchar("code", { length: 32 }).primaryKey(),
     module: varchar("module", { length: 16 }).notNull(),
-    createdBy: nvarchar("created_by", { length: 64 }).notNull(),
-    fileUrl: nvarchar("file_url", { length: 2048 }).notNull(),
-    validFrom: datetime2("valid_from"),
-    validUntil: datetime2("valid_until"),
-    note: nvarchar("note", { length: 200 }).notNull().default(""),
-    origin: nvarchar("origin", { length: 256 }),
+    createdBy: varchar("created_by", { length: 64 }).notNull(),
+    fileUrl: text("file_url").notNull(),
+    validFrom: timestamp("valid_from", { withTimezone: true, mode: "date" }),
+    validUntil: timestamp("valid_until", { withTimezone: true, mode: "date" }),
+    note: text("note").notNull().default(""),
+    origin: text("origin"),
     // Default true = anonymous: the privacy-safe default, and what any row
     // predating this column should read as.
-    anonymous: bit("anonymous").notNull().default(true),
+    anonymous: boolean("anonymous").notNull().default(true),
     // Per-code LLM override pair (see the block comment above): NULL = no
     // override. Set/cleared together, never singly.
     llmProvider: varchar("llm_provider", { length: 32 }),
-    llmModel: nvarchar("llm_model", { length: 256 }),
+    llmModel: text("llm_model"),
     llmReasoning: varchar("llm_reasoning", { length: 16 }),
-    createdAt: datetime2("created_at").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   },
   // The teacher's "Codes" page (and the stats pages) list by creator; the
   // module filter narrows by activity. No index on `valid_until`: nothing
@@ -103,13 +105,13 @@ export const codes = mssqlTable(
 //
 // No FK to novedu_codes either: these rows are deliberately kept even after a
 // code is deleted, so chat-history attribution outlives the code.
-export const userChats = mssqlTable(
+export const userChats = pgTable(
   "novedu_user_chats",
   {
     threadId: varchar("thread_id", { length: 64 }).primaryKey(),
     code: varchar("code", { length: 32 }).notNull(),
-    userId: nvarchar("user_id", { length: 64 }).notNull(),
-    createdAt: datetime2("created_at").notNull(),
+    userId: varchar("user_id", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   },
   (t) => [
     // "All chats for a code" …
@@ -129,13 +131,13 @@ export const userChats = mssqlTable(
 // raw oid when no row exists yet (a user who has not signed in since this table was
 // introduced). No history (the upsert overwrites), never garbage-collected, and no
 // foreign keys (same rule as the other novedu_* tables).
-export const users = mssqlTable("novedu_users", {
+export const users = pgTable("novedu_users", {
   // The Entra `oid` — the same stable user key stored as `user_id` in the tables
   // above. PK doubles as the lookup index for the joins.
-  userId: nvarchar("user_id", { length: 64 }).primaryKey(),
+  userId: varchar("user_id", { length: 64 }).primaryKey(),
   // The Entra `name` claim. Never blank: the upsert skips an empty name, so an
   // absent name leaves no row and the oid is shown as the fallback instead.
-  displayName: nvarchar("display_name", { length: 256 }).notNull(),
+  displayName: text("display_name").notNull(),
 });
 
 // A user's recently used codes, backing the shortcuts on the chat entry page
@@ -144,12 +146,12 @@ export const users = mssqlTable("novedu_users", {
 // was deleted silently drop out of the list. Kept separate from
 // novedu_user_chats on purpose: that table is the privacy-gated user↔chat
 // attribution, this one only says "this user opened this code".
-export const recentCodes = mssqlTable(
+export const recentCodes = pgTable(
   "novedu_recent_codes",
   {
-    userId: nvarchar("user_id", { length: 64 }).notNull(),
+    userId: varchar("user_id", { length: 64 }).notNull(),
     code: varchar("code", { length: 32 }).notNull(),
-    lastUsed: datetime2("last_used").notNull(),
+    lastUsed: timestamp("last_used", { withTimezone: true, mode: "date" }).notNull(),
   },
   // The PK doubles as the per-user lookup index (user_id prefix).
   (t) => [primaryKey({ columns: [t.userId, t.code] })],
@@ -165,13 +167,13 @@ export const recentCodes = mssqlTable(
 // No foreign keys (same rule as the other novedu_* tables): no FK to novedu_codes,
 // so saved texts outlive a deleted code unless the code-delete path drops them
 // explicitly.
-export const writingSubmissions = mssqlTable(
+export const writingSubmissions = pgTable(
   "novedu_writing_submissions",
   {
     code: varchar("code", { length: 32 }).notNull(),
-    userId: nvarchar("user_id", { length: 64 }).notNull(),
-    text: nvarchar("text", { length: "max" }).notNull().default(""),
-    textUpdatedAt: datetime2("text_updated_at").notNull(),
+    userId: varchar("user_id", { length: 64 }).notNull(),
+    text: text("text").notNull().default(""),
+    textUpdatedAt: timestamp("text_updated_at", { withTimezone: true, mode: "date" }).notNull(),
   },
   // The PK enforces "one saved text per student per code" and doubles as the
   // per-code lookup index (code prefix) for the teacher review.
@@ -205,7 +207,7 @@ export const writingSubmissions = mssqlTable(
 // uuid PK like novedu_files/novedu_images; NO foreign keys (same rule as the
 // other novedu_* tables) — reports are dropped explicitly when their code is
 // deleted (lib/code-stats-store.ts).
-export const reports = mssqlTable(
+export const reports = pgTable(
   "novedu_reports",
   {
     // Surrogate id (randomUUID).
@@ -215,26 +217,26 @@ export const reports = mssqlTable(
     // The reported activity's code (by value; widened to match novedu_codes.code).
     code: varchar("code", { length: 32 }).notNull(),
     // The reporting student's Entra `oid` — ALWAYS set (see the block above).
-    userId: nvarchar("user_id", { length: 64 }).notNull(),
+    userId: varchar("user_id", { length: 64 }).notNull(),
     reaction: varchar("reaction", { length: 16 }).notNull(),
     // Optional free text; empty string when the student gave none.
-    description: nvarchar("description", { length: 2000 }).notNull().default(""),
-    createdAt: datetime2("created_at").notNull(),
+    description: text("description").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
     // chat only: the reported Mastra thread (null for quiz-answer reports).
     threadId: varchar("thread_id", { length: 64 }),
     // quiz only (all null for chat reports): the snapshot the teacher reviews.
-    questionId: nvarchar("question_id", { length: 450 }),
+    questionId: varchar("question_id", { length: 450 }),
     // The SERVER's authoritative question text (immune to client tampering and
     // later YAML edits); the answer/feedback are the student's own graded turn.
-    questionText: nvarchar("question_text", { length: "max" }),
-    answerText: nvarchar("answer_text", { length: "max" }),
-    feedbackText: nvarchar("feedback_text", { length: "max" }),
+    questionText: text("question_text"),
+    answerText: text("answer_text"),
+    feedbackText: text("feedback_text"),
     verdict: varchar("verdict", { length: 16 }),
     // Whether the graded answer carried photos — flagged, never stored.
-    hadImages: bit("had_images").notNull().default(false),
+    hadImages: boolean("had_images").notNull().default(false),
     // Resolution: resolved ⇔ resolved_at IS NOT NULL; resolved_by = teacher oid.
-    resolvedAt: datetime2("resolved_at"),
-    resolvedBy: nvarchar("resolved_by", { length: 64 }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
+    resolvedBy: varchar("resolved_by", { length: 64 }),
   },
   (t) => [
     // The inbox lists by code (per-code drill-down) …
@@ -272,17 +274,17 @@ export const reports = mssqlTable(
 // NO foreign keys (same rule as the other novedu_* tables) — key rows are dropped
 // explicitly when their code is deleted (lib/code-stats-store.ts); nothing else
 // deletes them (no revocation, no garbage collection).
-export const codingKeys = mssqlTable(
+export const codingKeys = pgTable(
   "novedu_coding_keys",
   {
     // The coding code this key belongs to (by value; widened to match novedu_codes.code).
     code: varchar("code", { length: 32 }).notNull(),
     // The requesting user's Entra `oid` — ALWAYS set (see the block above).
-    userId: nvarchar("user_id", { length: 64 }).notNull(),
+    userId: varchar("user_id", { length: 64 }).notNull(),
     // The bearer secret handed to the student's coding tool (see the block above).
     apiKey: varchar("api_key", { length: 64 }).notNull(),
     // UTC issuance timestamp — the teacher-visible "requested at".
-    createdAt: datetime2("created_at").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   },
   (t) => [
     // The PK enforces "one stable key per user per code" and doubles as the
@@ -314,39 +316,38 @@ export const codingKeys = mssqlTable(
 // whoever ended it (the updater OR the deleter), so logical deletions are
 // attributed too. The active row's `created_by` is therefore the file's "last
 // writer". "At most one active row per name" is enforced at the DATABASE level
-// by a FILTERED UNIQUE index (`name` WHERE `valid_until IS NULL`), so two
+// by a PARTIAL UNIQUE index (`name` WHERE `valid_until IS NULL`), so two
 // concurrent creates of the same name cannot both succeed — the conditional
 // `UPDATE … WHERE id=? AND valid_until IS NULL` in update/delete is the matching
 // optimistic-concurrency guard. There are NO foreign keys (same rule as the
 // other novedu_* tables).
-export const files = mssqlTable(
+export const files = pgTable(
   "novedu_files",
   {
     // Surrogate id, unique PER VERSION (a fresh uuid for every row).
     id: varchar("id", { length: 36 }).primaryKey(),
-    // Public identifier / GET-URL key. Bounded so it can be indexed (see note
-    // above). Allows letters/digits/underscore/hyphen today; `/`-separated
+    // Public identifier / GET-URL key. Bounded (see the note above). Allows letters/digits/underscore/hyphen today; `/`-separated
     // folder paths are a future extension (hence the generous length).
-    name: nvarchar("name", { length: 450 }).notNull(),
+    name: varchar("name", { length: 450 }).notNull(),
     // "tutor" | "fragment" | "quiz" — chosen at create time, picks the validator.
     kind: varchar("kind", { length: 16 }).notNull(),
     // Denormalized from the validated YAML (tutor only; null for fragments/quiz) so
     // the file list can be searched by title/description without parsing every body.
-    title: nvarchar("title", { length: 512 }),
-    description: nvarchar("description", { length: 2048 }),
-    // The ENTIRE YAML for this version (NVARCHAR(MAX)).
-    content: nvarchar("content", { length: "max" }).notNull(),
+    title: text("title"),
+    description: text("description"),
+    // The ENTIRE YAML for this version (unbounded `text`).
+    content: text("content").notNull(),
     // oid of the writer who created this version.
-    createdBy: nvarchar("created_by", { length: 64 }).notNull(),
+    createdBy: varchar("created_by", { length: 64 }).notNull(),
     // When this version became active.
-    validFrom: datetime2("valid_from").notNull(),
+    validFrom: timestamp("valid_from", { withTimezone: true, mode: "date" }).notNull(),
     // When this version was closed; NULL = currently active.
-    validUntil: datetime2("valid_until"),
+    validUntil: timestamp("valid_until", { withTimezone: true, mode: "date" }),
     // oid of whoever set valid_until (updater or deleter); NULL while active.
-    closedBy: nvarchar("closed_by", { length: 64 }),
+    closedBy: varchar("closed_by", { length: 64 }),
   },
   (t) => [
-    // At most ONE active version per name — a SQL Server filtered unique index.
+    // At most ONE active version per name — a Postgres PARTIAL unique index.
     // This both enforces the invariant (closing the create-time race) and serves
     // the GET/edit/close hot path, whose lookup is exactly `name WHERE
     // valid_until IS NULL`.
@@ -368,35 +369,35 @@ export const files = mssqlTable(
 // the single row with `valid_until IS NULL`, every other row is history.
 // `created_by` is the oid of whoever wrote a version; `closed_by` is the oid of
 // whoever ended it. "At most one active row per name" is enforced at the DATABASE
-// level by a FILTERED UNIQUE index (`name` WHERE `valid_until IS NULL`). There
+// level by a PARTIAL UNIQUE index (`name` WHERE `valid_until IS NULL`). There
 // are NO foreign keys (same rule as the other novedu_* tables).
-export const images = mssqlTable(
+export const images = pgTable(
   "novedu_images",
   {
     // Surrogate id, unique PER VERSION (a fresh uuid for every row).
     id: varchar("id", { length: 36 }).primaryKey(),
-    // Public identifier the teacher picks. Bounded so it can be indexed.
-    name: nvarchar("name", { length: 450 }).notNull(),
+    // Public identifier the teacher picks.
+    name: varchar("name", { length: 450 }).notNull(),
     // Server-chosen blob name within the container: `<uuid>.<ext>`.
     blobPath: varchar("blob_path", { length: 80 }).notNull(),
     // "image/png" | "image/jpeg" | "image/svg+xml".
     mimeType: varchar("mime_type", { length: 32 }).notNull(),
     // Size of the uploaded blob in bytes.
-    byteSize: int("byte_size").notNull(),
+    byteSize: integer("byte_size").notNull(),
     // Optional attribution / "Content Credentials" (e.g. a CC BY notice) shown
     // below the image wherever it is rendered. NULL when the teacher gave none.
-    credit: nvarchar("credit", { length: 512 }),
+    credit: text("credit"),
     // oid of the writer who created this version.
-    createdBy: nvarchar("created_by", { length: 64 }).notNull(),
+    createdBy: varchar("created_by", { length: 64 }).notNull(),
     // When this version became active.
-    validFrom: datetime2("valid_from").notNull(),
+    validFrom: timestamp("valid_from", { withTimezone: true, mode: "date" }).notNull(),
     // When this version was closed; NULL = currently active.
-    validUntil: datetime2("valid_until"),
+    validUntil: timestamp("valid_until", { withTimezone: true, mode: "date" }),
     // oid of whoever set valid_until; NULL while active.
-    closedBy: nvarchar("closed_by", { length: 64 }),
+    closedBy: varchar("closed_by", { length: 64 }),
   },
   (t) => [
-    // At most ONE active version per name — a SQL Server filtered unique index.
+    // At most ONE active version per name — a Postgres PARTIAL unique index.
     uniqueIndex("ux_novedu_images_active_name").on(t.name).where(sql`${t.validUntil} IS NULL`),
     // "all active images" for the list page.
     index("ix_novedu_images_valid_until").on(t.validUntil),
@@ -417,11 +418,11 @@ export const images = mssqlTable(
 // large across a busy hour); the discrete counts are `int`. `input_tokens_cached`
 // counts prefix-cache hits (SCCH's `prompt_tokens_details.cached_tokens`; see
 // docs/usage-metering.md); `output_tokens` already includes reasoning tokens.
-export const usageByCode = mssqlTable(
+export const usageByCode = pgTable(
   "novedu_usage_by_code",
   {
     code: varchar("code", { length: 32 }).notNull(),
-    hour: datetime2("hour").notNull(),
+    hour: timestamp("hour", { withTimezone: true, mode: "date" }).notNull(),
     // Denormalized from novedu_codes so admin can group by module without a join.
     module: varchar("module", { length: 16 }).notNull(),
     // Denormalized from the activity YAML (docs/usage-metering.md): which LLM
@@ -431,14 +432,14 @@ export const usageByCode = mssqlTable(
     // raw id (SCCH ids and Foundry deployment names are disjoint). NULL model on
     // pre-metering rows means "unknown".
     provider: varchar("provider", { length: 32 }),
-    model: nvarchar("model", { length: 256 }),
+    model: text("model"),
     inputTokensNew: bigint("input_tokens_new", { mode: "number" }).notNull().default(0),
     inputTokensCached: bigint("input_tokens_cached", { mode: "number" }).notNull().default(0),
     outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
-    toolCalls: int("tool_calls").notNull().default(0),
-    userMessages: int("user_messages").notNull().default(0),
-    quizAnswers: int("quiz_answers").notNull().default(0),
-    writingSaves: int("writing_saves").notNull().default(0),
+    toolCalls: integer("tool_calls").notNull().default(0),
+    userMessages: integer("user_messages").notNull().default(0),
+    quizAnswers: integer("quiz_answers").notNull().default(0),
+    writingSaves: integer("writing_saves").notNull().default(0),
   },
   (t) => [
     // Per-code cost-over-time is the PK's natural read; the extra index serves the
@@ -452,18 +453,18 @@ export const usageByCode = mssqlTable(
 // rolling window. NO `code` and NO `module`: this table must never reveal WHICH
 // activity a student did, only how much they used in an hour. `user_id` is the
 // student's Entra `oid`.
-export const usageByUser = mssqlTable(
+export const usageByUser = pgTable(
   "novedu_usage_by_user",
   {
-    userId: nvarchar("user_id", { length: 64 }).notNull(),
-    hour: datetime2("hour").notNull(),
+    userId: varchar("user_id", { length: 64 }).notNull(),
+    hour: timestamp("hour", { withTimezone: true, mode: "date" }).notNull(),
     inputTokensNew: bigint("input_tokens_new", { mode: "number" }).notNull().default(0),
     inputTokensCached: bigint("input_tokens_cached", { mode: "number" }).notNull().default(0),
     outputTokens: bigint("output_tokens", { mode: "number" }).notNull().default(0),
-    toolCalls: int("tool_calls").notNull().default(0),
-    userMessages: int("user_messages").notNull().default(0),
-    quizAnswers: int("quiz_answers").notNull().default(0),
-    writingSaves: int("writing_saves").notNull().default(0),
+    toolCalls: integer("tool_calls").notNull().default(0),
+    userMessages: integer("user_messages").notNull().default(0),
+    quizAnswers: integer("quiz_answers").notNull().default(0),
+    writingSaves: integer("writing_saves").notNull().default(0),
   },
   // The PK `(user_id, hour)` doubles as the per-user quota-window range-scan index.
   (t) => [primaryKey({ columns: [t.userId, t.hour] })],

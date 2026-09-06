@@ -2,15 +2,16 @@ import { and, eq, notInArray } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Fake drizzle handle covering the recents store's query shapes:
-// select().top().from().innerJoin().where().orderBy(), insert().values(),
-// update().set().where(), delete().where().
+// select().from().innerJoin().where().orderBy().limit(),
+// insert().values().onConflictDoUpdate(), delete().where().
 const fake = vi.hoisted(() => {
   const state = {
     rows: [] as unknown[],
     selectError: undefined as unknown,
     inserted: [] as Record<string, unknown>[],
     insertError: undefined as unknown,
-    updates: 0,
+    // The `{ target, set }` passed to `onConflictDoUpdate`, per call.
+    conflicts: [] as { target: unknown; set: unknown }[],
     deletes: 0,
     // The WHERE terms of each DELETE, in call order. Captured because a prune's
     // predicate is the only thing standing between "drop the overflow" and
@@ -25,27 +26,25 @@ const fake = vi.hoisted(() => {
     const run = () =>
       state.selectError ? Promise.reject(state.selectError) : Promise.resolve(state.rows);
     return {
-      orderBy: () => run(),
+      orderBy: () => ({
+        limit: () => run(),
+      }),
       // biome-ignore lint/suspicious/noThenProperty: being awaitable is the point — it mimics drizzle's thenable query builder
       then: (...args: Parameters<Promise<unknown[]>["then"]>) => run().then(...args),
     };
   };
   const selectChain = () => {
     const tail = { where: () => queryTail(), innerJoin: () => tail };
-    return { from: () => tail, top: () => ({ from: () => tail }) };
+    return { from: () => tail };
   };
   const db = {
     select: () => selectChain(),
     insert: () => ({
-      values: async (values: Record<string, unknown>) => {
-        if (state.insertError) throw state.insertError;
-        state.inserted.push(values);
-      },
-    }),
-    update: () => ({
-      set: () => ({
-        where: async () => {
-          state.updates += 1;
+      values: (values: Record<string, unknown>) => ({
+        onConflictDoUpdate: async (conflict: { target: unknown; set: unknown }) => {
+          if (state.insertError) throw state.insertError;
+          state.inserted.push(values);
+          state.conflicts.push(conflict);
         },
       }),
     }),
@@ -68,17 +67,12 @@ import { listRecentCodes, recordRecentCode, removeRecentCode } from "@/lib/recen
 const USER = "student-sub-1";
 const CODE = "a1b2c3d4e5";
 
-const duplicateKeyError = () =>
-  Object.assign(new Error("Failed query"), {
-    cause: Object.assign(new Error("Violation of PRIMARY KEY constraint"), { number: 2627 }),
-  });
-
 beforeEach(() => {
   fake.state.rows = [];
   fake.state.selectError = undefined;
   fake.state.inserted = [];
   fake.state.insertError = undefined;
-  fake.state.updates = 0;
+  fake.state.conflicts = [];
   fake.state.deletes = 0;
   fake.state.deleteWhere = [];
 });
@@ -104,7 +98,17 @@ describe("recordRecentCode", () => {
       expect.objectContaining({ userId: USER, code: CODE, lastUsed: expect.any(Date) }),
     ]);
     expect(fake.state.deletes).toBe(1); // prune
-    expect(fake.state.updates).toBe(0);
+  });
+
+  it("upserts on the (user_id, code) conflict, refreshing last_used", async () => {
+    fake.state.rows = [{ code: CODE }];
+    await recordRecentCode(USER, CODE);
+    expect(fake.state.conflicts).toEqual([
+      {
+        target: [recentCodes.userId, recentCodes.code],
+        set: { lastUsed: expect.any(Date) },
+      },
+    ]);
   });
 
   // The prune is a DELETE with no LIMIT: its entire safety is the predicate.
@@ -128,13 +132,6 @@ describe("recordRecentCode", () => {
         ),
       ],
     ]);
-  });
-
-  it("refreshes last_used when the entry already exists (duplicate key)", async () => {
-    fake.state.insertError = duplicateKeyError();
-    fake.state.rows = [{ code: CODE }];
-    await recordRecentCode(USER, CODE);
-    expect(fake.state.updates).toBe(1);
   });
 
   it("never throws on database failures", async () => {

@@ -1,2 +1,0 @@
-DROP INDEX [ix_novedu_tutor_codes_valid_until] ON [novedu_tutor_codes];--> statement-breakpoint
-ALTER TABLE [novedu_tutor_codes] ADD [anonymous] bit NOT NULL CONSTRAINT [novedu_tutor_codes_anonymous_default] DEFAULT ((1));

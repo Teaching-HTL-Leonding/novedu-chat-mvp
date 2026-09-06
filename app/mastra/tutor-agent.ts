@@ -138,7 +138,7 @@ export const tutorAgent = new Agent({
   // tools in the prompt; authors reference them in `tutor_instructions`.
   tools: async ({ requestContext }) => selectTutorTools((await loadTutor(requestContext)).tools),
   // Persist the conversation so the tutor remembers earlier turns. No explicit
-  // storage here: Memory inherits the Mastra instance's Azure SQL store (see
+  // storage here: Memory inherits the Mastra instance's Postgres store (see
   // `index.ts`), so threads/messages land in the `mastra_*` tables. The thread
   // id is server-generated per page load (app/[code]/page.tsx) and ownership-
   // checked in the CopilotKit route, which also sets the resource id (the
@@ -153,7 +153,7 @@ export const tutorAgent = new Agent({
   // for a sentence-by-sentence tutor; raise it if longer sessions need to see
   // further back.
   //
-  // NOTE: `Memory` REQUIRES a storage provider — if `MSSQL_CONNECTION_STRING` is
+  // NOTE: `Memory` REQUIRES a storage provider — if `DATABASE_URL` is
   // unset, the instance has no store and a tutor chat fails ("Memory requires a
   // storage provider"). That's acceptable: storage is effectively required to chat.
   memory: new Memory({

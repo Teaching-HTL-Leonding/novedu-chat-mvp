@@ -6,7 +6,7 @@ import { defineConfig } from "drizzle-kit";
 // at app startup (instrumentation.ts), NOT by drizzle-kit, so no
 // `dbCredentials` are configured here.
 export default defineConfig({
-  dialect: "mssql",
+  dialect: "postgresql",
   schema: "./lib/db/schema.ts",
   out: "./drizzle",
 });

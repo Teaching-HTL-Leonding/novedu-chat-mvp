@@ -1,70 +1,54 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The user-name store upsert: INSERT, falling back to UPDATE on a duplicate primary
-// key (the user has signed in before). Behavior-level test with a fake drizzle
-// handle — what gets inserted/updated, and that a non-duplicate error propagates
-// (the auth caller swallows it, but the store itself must not hide it). No DB, runs
-// in CI.
+// The user-name store upsert: one INSERT .. ON CONFLICT DO UPDATE. Behavior-level
+// test with a fake drizzle handle — what gets inserted and what the conflict
+// target/set are, and that a database error propagates (the auth caller
+// swallows it, but the store itself must not hide it). No DB, runs in CI.
 
 const fake = vi.hoisted(() => {
   const state = {
     inserted: [] as Record<string, unknown>[],
-    updated: [] as Record<string, unknown>[],
+    conflicts: [] as { target: unknown; set: Record<string, unknown> }[],
     insertError: undefined as unknown,
   };
   const insert = () => ({
-    values: async (values: Record<string, unknown>) => {
-      if (state.insertError) throw state.insertError;
+    values: (values: Record<string, unknown>) => {
       state.inserted.push(values);
+      return {
+        onConflictDoUpdate: async (config: { target: unknown; set: Record<string, unknown> }) => {
+          if (state.insertError) throw state.insertError;
+          state.conflicts.push(config);
+        },
+      };
     },
   });
-  const update = () => ({
-    set: (values: Record<string, unknown>) => ({
-      where: async () => {
-        state.updated.push(values);
-      },
-    }),
-  });
-  return { state, db: { insert, update } };
+  return { state, db: { insert } };
 });
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
+import { users } from "@/lib/db/schema";
 import { upsertUserName } from "@/lib/user-name-store";
-
-// A duplicate-key error shaped like the driver's: the mssql error number lives in
-// the `cause` chain of a DrizzleQueryError (see isDuplicateKeyError in the store).
-function duplicateKeyError(number = 2627): Error {
-  return Object.assign(new Error("Violation of PRIMARY KEY"), {
-    cause: Object.assign(new Error("dup"), { number }),
-  });
-}
 
 beforeEach(() => {
   fake.state.inserted = [];
-  fake.state.updated = [];
+  fake.state.conflicts = [];
   fake.state.insertError = undefined;
 });
 
 describe("upsertUserName", () => {
-  it("inserts a fresh row when the user is new", async () => {
+  it("upserts via a single INSERT .. ON CONFLICT DO UPDATE", async () => {
     await upsertUserName({ userId: "oid-1", displayName: "Ada Lovelace" });
     expect(fake.state.inserted).toEqual([{ userId: "oid-1", displayName: "Ada Lovelace" }]);
-    expect(fake.state.updated).toEqual([]);
+    expect(fake.state.conflicts).toEqual([
+      { target: users.userId, set: { displayName: "Ada Lovelace" } },
+    ]);
   });
 
-  it("falls back to UPDATE on a duplicate primary key (a returning user's new name)", async () => {
-    fake.state.insertError = duplicateKeyError(2627);
-    await upsertUserName({ userId: "oid-1", displayName: "Ada B. Lovelace" });
-    expect(fake.state.inserted).toEqual([]);
-    expect(fake.state.updated).toEqual([{ displayName: "Ada B. Lovelace" }]);
-  });
-
-  it("rethrows a non-duplicate database error", async () => {
+  it("propagates a database error (the auth caller swallows it, not this store)", async () => {
     fake.state.insertError = new Error("connection reset");
     await expect(upsertUserName({ userId: "oid-1", displayName: "Ada" })).rejects.toThrow(
       "connection reset",
     );
-    expect(fake.state.updated).toEqual([]);
   });
 });

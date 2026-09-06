@@ -149,7 +149,7 @@ export function HealthDashboard({
 }) {
   const db = useProbe("db", indicatorError);
   const scch = useProbe("scch", indicatorError);
-  const sqlHost = useProbe("sql-host", hostError);
+  const dbHost = useProbe("db-host", hostError);
   const scchHost = useProbe("scch-host", hostError);
 
   return (
@@ -188,8 +188,8 @@ export function HealthDashboard({
             </dd>
           </div>
           <div className={ROW}>
-            <dt className={TERM}>SQL server host</dt>
-            <HostValue state={sqlHost} testId="health-sql-host" />
+            <dt className={TERM}>Database host</dt>
+            <HostValue state={dbHost} testId="health-db-host" />
           </div>
           <div className={ROW}>
             <dt className={TERM}>SCCH host</dt>

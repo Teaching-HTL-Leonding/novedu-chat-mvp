@@ -21,16 +21,6 @@ export interface RecentCode {
   lastUsed: Date;
 }
 
-// Mirrors isDuplicateKeyError in code-store: mssql 2627/2601 wrapped in a
-// DrizzleQueryError's `cause` chain.
-function isDuplicateKeyError(error: unknown): boolean {
-  for (let e = error; typeof e === "object" && e !== null; e = (e as { cause?: unknown }).cause) {
-    const number = (e as { number?: unknown }).number;
-    if (number === 2627 || number === 2601) return true;
-  }
-  return false;
-}
-
 /**
  * The user's most recently used codes, newest first — joined with `novedu_codes`
  * for the note, so deleted codes drop out of the list by themselves (inner join).
@@ -42,11 +32,11 @@ export async function listRecentCodes(userId: string): Promise<RecentCode[]> {
   try {
     return await getDb()
       .select({ code: recentCodes.code, note: codes.note, lastUsed: recentCodes.lastUsed })
-      .top(MAX_RECENT_CODES)
       .from(recentCodes)
       .innerJoin(codes, eq(recentCodes.code, codes.code))
       .where(eq(recentCodes.userId, userId))
-      .orderBy(desc(recentCodes.lastUsed));
+      .orderBy(desc(recentCodes.lastUsed))
+      .limit(MAX_RECENT_CODES);
   } catch (error) {
     console.error("recent-code-store: listing recent codes failed", error);
     return [];
@@ -54,31 +44,30 @@ export async function listRecentCodes(userId: string): Promise<RecentCode[]> {
 }
 
 /**
- * Records that the user opened a chat with this code: upsert (insert, fall
- * back to refreshing `last_used` on duplicate), then prune everything beyond
- * the newest MAX_RECENT_CODES rows for this user.
+ * Records that the user opened a chat with this code: an `ON CONFLICT` upsert
+ * (insert, or refresh `last_used` on the `(user_id, code)` conflict), then
+ * prune everything beyond the newest MAX_RECENT_CODES rows for this user.
  */
 export async function recordRecentCode(userId: string, code: string): Promise<void> {
   const db = getDb();
+  const now = new Date();
   try {
-    try {
-      await db.insert(recentCodes).values({ userId, code, lastUsed: new Date() });
-    } catch (error) {
-      if (!isDuplicateKeyError(error)) throw error;
-      await db
-        .update(recentCodes)
-        .set({ lastUsed: new Date() })
-        .where(and(eq(recentCodes.userId, userId), eq(recentCodes.code, code)));
-    }
+    await db
+      .insert(recentCodes)
+      .values({ userId, code, lastUsed: now })
+      .onConflictDoUpdate({
+        target: [recentCodes.userId, recentCodes.code],
+        set: { lastUsed: now },
+      });
 
-    // Prune: keep only the newest MAX_RECENT_CODES per user. TOP needs an
-    // ORDER BY-stable subselect, so read the survivors and delete the rest.
+    // Prune: keep only the newest MAX_RECENT_CODES per user — read the survivors
+    // (the ORDER BY + LIMIT), then delete everything else for this user.
     const keep = await db
       .select({ code: recentCodes.code })
-      .top(MAX_RECENT_CODES)
       .from(recentCodes)
       .where(eq(recentCodes.userId, userId))
-      .orderBy(desc(recentCodes.lastUsed));
+      .orderBy(desc(recentCodes.lastUsed))
+      .limit(MAX_RECENT_CODES);
     await db.delete(recentCodes).where(
       and(
         eq(recentCodes.userId, userId),

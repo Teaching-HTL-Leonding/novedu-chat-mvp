@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { files } from "@/lib/db/schema";
 import { sortOrder } from "@/lib/db/sort-order";
 
-// Real schema columns — `lib/db/schema.ts` imports only `drizzle-orm/mssql-core`,
+// Real schema columns — `lib/db/schema.ts` imports only `drizzle-orm/pg-core`,
 // so this opens no connection.
 const COLUMNS = { name: files.name, updated: files.validFrom };
 const FALLBACK = [desc(files.validFrom)];
@@ -34,7 +34,7 @@ describe("sortOrder", () => {
     ]);
   });
 
-  it("always closes with the tiebreaker — the OFFSET/FETCH stability guarantee", () => {
+  it("always closes with the tiebreaker — the LIMIT/OFFSET stability guarantee", () => {
     for (const sort of [undefined, { key: "name", dir: "desc" } as const]) {
       const order = sortOrder(sort, COLUMNS, FALLBACK, TIEBREAK);
       expect(order.at(-1)).toBe(TIEBREAK);

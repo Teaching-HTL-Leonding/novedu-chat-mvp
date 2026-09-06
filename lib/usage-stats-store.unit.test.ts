@@ -3,16 +3,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Behavior-level tests for the dashboard read seam. The one I/O seam — the Drizzle
-// handle (`@/lib/db`) — is faked; the real logic under test is the recordset
-// shaping (zero-fill, module/code folding, top-9) and the never-throws contract.
-// The SQL text itself is left to the @live-db e2e (same split as code-stats-store).
+// handle (`@/lib/db`) — is faked; the real logic under test is the row shaping
+// (zero-fill, module/code folding, top-9) and the never-throws contract. The SQL
+// text itself is left to the @live-db e2e (same split as code-stats-store).
 
 const fake = vi.hoisted(() => {
-  const state = { recordset: [] as Record<string, unknown>[], executeError: undefined as unknown };
+  const state = { rows: [] as Record<string, unknown>[], executeError: undefined as unknown };
   const db = {
     execute: async () => {
       if (state.executeError) throw state.executeError;
-      return { recordset: state.recordset };
+      return { rows: state.rows };
     },
   };
   return { state, db };
@@ -32,7 +32,7 @@ import {
 const NOW = new Date("2026-07-04T14:30:00Z");
 
 beforeEach(() => {
-  fake.state.recordset = [];
+  fake.state.rows = [];
   fake.state.executeError = undefined;
 });
 
@@ -42,9 +42,7 @@ describe("getTokenTimeSeries", () => {
     const lastKey = buckets[23]?.key ?? "";
     // The store re-keys each row's SQL Date via bucketKeyOf, so a Date at the
     // current hour lands on the last bucket. Numbers may arrive as strings (bigint).
-    fake.state.recordset = [
-      { bucket: new Date(lastKey), inputNew: "10", inputCached: 20, output: "5" },
-    ];
+    fake.state.rows = [{ bucket: new Date(lastKey), inputNew: "10", inputCached: 20, output: "5" }];
     const series = await getTokenTimeSeries({ range: "24h", now: NOW });
     expect(series).toHaveLength(24);
     expect(series?.[23]).toMatchObject({ inputNew: 10, inputCached: 20, output: 5 });
@@ -55,7 +53,7 @@ describe("getTokenTimeSeries", () => {
     // The day/month grains group in SQL, but the store re-floors each returned
     // bucket Date via `bucketKeyOf(new Date(row.bucket), grain)`. Feed a Date at a
     // non-midnight instant to prove it still lands on the right day bucket.
-    fake.state.recordset = [
+    fake.state.rows = [
       { bucket: new Date("2026-07-04T14:30:00Z"), inputNew: 7, inputCached: 0, output: 0 },
     ];
     const series = await getTokenTimeSeries({ range: "7d", now: NOW });
@@ -65,7 +63,7 @@ describe("getTokenTimeSeries", () => {
   });
 
   it("accepts a single-code scope (the reuse seam) and shapes the same way", async () => {
-    fake.state.recordset = [];
+    fake.state.rows = [];
     const series = await getTokenTimeSeries({ range: "24h", now: NOW, code: "abc" });
     expect(series).toHaveLength(24);
     expect(series?.every((b) => b.inputNew === 0 && b.inputCached === 0 && b.output === 0)).toBe(
@@ -81,7 +79,7 @@ describe("getTokenTimeSeries", () => {
 
 describe("getUsageBreakdown", () => {
   it("sums by module and labels codes (note, falling back to the code)", async () => {
-    fake.state.recordset = [
+    fake.state.rows = [
       { code: "c1", module: "quiz", note: "Quiz One", total: 100 },
       { code: "c2", module: "quiz", note: null, total: 50 },
       { code: "c3", module: "tutor", note: "  ", total: 30 },
@@ -104,7 +102,7 @@ describe("getUsageBreakdown", () => {
     // A writing-save-only or quiz-answer-only code has a usage_by_code row with all
     // three token columns 0, so its windowed SUM is 0. Such categories must not
     // appear in a "tokens per module/code" pie, and must not fold into "Other: 0".
-    fake.state.recordset = [
+    fake.state.rows = [
       { code: "c1", module: "tutor", note: "T", total: 100 },
       { code: "c2", module: "writing", note: "W", total: 0 },
     ];
@@ -114,7 +112,7 @@ describe("getUsageBreakdown", () => {
   });
 
   it("folds codes beyond the top 9 into Other", async () => {
-    fake.state.recordset = Array.from({ length: 11 }, (_, i) => ({
+    fake.state.rows = Array.from({ length: 11 }, (_, i) => ({
       code: `c${i}`,
       module: "tutor",
       note: null,
@@ -133,7 +131,7 @@ describe("getUsageBreakdown", () => {
 
 describe("getTokensByModel", () => {
   it("labels rows by model, renders NULL as (unknown), drops zero totals, folds top 9", async () => {
-    fake.state.recordset = [
+    fake.state.rows = [
       { model: "gpt-5.4-mini", total: "500" },
       { model: null, total: 200 },
       { model: "idle-model", total: 0 },
@@ -146,7 +144,7 @@ describe("getTokensByModel", () => {
   });
 
   it("folds models beyond the top 9 into Other", async () => {
-    fake.state.recordset = Array.from({ length: 11 }, (_, i) => ({
+    fake.state.rows = Array.from({ length: 11 }, (_, i) => ({
       model: `m${i}`,
       total: 100 - i,
     }));
@@ -166,7 +164,7 @@ describe("getTokensByProvider", () => {
     // The provider split is its own GROUP BY, not a re-reading of the model pie:
     // two providers may serve the same model id, so only this column is the cost
     // split (docs/usage-metering.md).
-    fake.state.recordset = [
+    fake.state.rows = [
       { provider: "SCCH", total: "500" },
       { provider: "Azure Foundry", total: 200 },
       { provider: null, total: 40 },
@@ -181,7 +179,7 @@ describe("getTokensByProvider", () => {
   });
 
   it("folds providers beyond the top 9 into Other", async () => {
-    fake.state.recordset = Array.from({ length: 11 }, (_, i) => ({
+    fake.state.rows = Array.from({ length: 11 }, (_, i) => ({
       provider: `p${i}`,
       total: 100 - i,
     }));
@@ -198,7 +196,7 @@ describe("getTokensByProvider", () => {
 
 describe("getDashboardKpis", () => {
   it("maps the single aggregate row, coercing string counts", async () => {
-    fake.state.recordset = [{ chats: "3", quizAnswers: 12 }];
+    fake.state.rows = [{ chats: "3", quizAnswers: 12 }];
     await expect(getDashboardKpis({ range: "24h", now: NOW })).resolves.toEqual({
       chats: 3,
       quizAnswers: 12,
@@ -206,7 +204,7 @@ describe("getDashboardKpis", () => {
   });
 
   it("defaults to zero when the row is absent", async () => {
-    fake.state.recordset = [];
+    fake.state.rows = [];
     await expect(getDashboardKpis({ range: "24h", now: NOW })).resolves.toEqual({
       chats: 0,
       quizAnswers: 0,

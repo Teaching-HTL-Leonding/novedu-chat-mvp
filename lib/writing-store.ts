@@ -23,17 +23,6 @@ export interface WritingSubmission {
   textUpdatedAt: Date;
 }
 
-// Mirrors isDuplicateKeyError in code-store: mssql 2627/2601 wrapped in a
-// DrizzleQueryError's `cause` chain — the signal a row already exists, so the
-// upsert falls back to an UPDATE.
-function isDuplicateKeyError(error: unknown): boolean {
-  for (let e = error; typeof e === "object" && e !== null; e = (e as { cause?: unknown }).cause) {
-    const number = (e as { number?: unknown }).number;
-    if (number === 2627 || number === 2601) return true;
-  }
-  return false;
-}
-
 /**
  * The student's saved text for a code, or `null` if they have not saved one (or
  * on a database error). Used by the render component to prefill the editor.
@@ -55,33 +44,30 @@ export async function getSubmission(
 }
 
 /**
- * Saves a student's text for a code: upsert (insert, fall back to UPDATE on a
- * duplicate primary key), stamping `textUpdatedAt = now`. The PK `(code, userId)`
- * means a student can only ever write their own single row.
+ * Saves a student's text for a code: one INSERT .. ON CONFLICT DO UPDATE,
+ * stamping `textUpdatedAt = now`. The PK `(code, userId)` means a student can
+ * only ever write their own single row. Throws on a database error — the
+ * caller surfaces the failure to the student (an unsaved edit must not look
+ * saved).
  */
 export async function saveSubmission(input: {
   code: string;
   userId: string;
   text: string;
 }): Promise<void> {
-  const db = getDb();
   const now = new Date();
-  try {
-    await db.insert(writingSubmissions).values({
+  await getDb()
+    .insert(writingSubmissions)
+    .values({
       code: input.code,
       userId: input.userId,
       text: input.text,
       textUpdatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [writingSubmissions.code, writingSubmissions.userId],
+      set: { text: input.text, textUpdatedAt: now },
     });
-  } catch (error) {
-    if (!isDuplicateKeyError(error)) throw error;
-    await db
-      .update(writingSubmissions)
-      .set({ text: input.text, textUpdatedAt: now })
-      .where(
-        and(eq(writingSubmissions.code, input.code), eq(writingSubmissions.userId, input.userId)),
-      );
-  }
 }
 
 /** A student who has saved text for a code — one row of the teacher's savers list. */
@@ -120,12 +106,12 @@ export async function listSavers(code: string, opts?: { search?: string }): Prom
         displayName: users.displayName,
         textUpdatedAt: writingSubmissions.textUpdatedAt,
         conversationCount: sql<number>`(
-          SELECT COUNT(*) FROM mastra_threads t
+          SELECT COUNT(*) FROM mastra.mastra_threads t
           JOIN novedu_user_chats uc ON uc.thread_id = t.id
-          WHERE t.resourceId = ${writingSubmissions.code}
+          WHERE t."resourceId" = ${writingSubmissions.code}
             AND uc.user_id = ${writingSubmissions.userId}
             AND EXISTS (
-              SELECT 1 FROM mastra_messages m
+              SELECT 1 FROM mastra.mastra_messages m
               WHERE m.thread_id = t.id AND m.role = 'user'
             )
         )`.mapWith(Number),

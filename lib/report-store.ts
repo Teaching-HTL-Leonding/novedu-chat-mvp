@@ -204,7 +204,7 @@ export async function countQuizReports(
  * so OPEN `holysh` (urgent) reports float to the top, then newest first. Returns
  * `undefined` on a database error. Never throws.
  *
- * `paging` makes the SKIP and the LIMIT part of the SQL too (`OFFSET … FETCH`,
+ * `paging` makes the SKIP and the LIMIT part of the SQL too (`LIMIT/OFFSET`,
  * with a COUNT for the total), and `sort` the ORDER BY — an explicit sort REPLACES
  * the urgent-first default, and spans the whole filtered set rather than one page.
  * Omitting both returns every match in the default order, which is what the bearer
@@ -290,9 +290,10 @@ const URGENT_FIRST = sql`CASE WHEN ${reports.reaction} = 'holysh' AND ${reports.
 /**
  * The `/reports` list's sortable columns (ORDER BY map + `parseSort` allow-list).
  * `code` and `student` order by the JOINED columns the rows lead with; a report
- * whose code row is gone, or whose reporter has no `novedu_users` row, is NULL there
- * and sorts first ascending (mssql orders NULLs first ASC, last DESC). `status` is
- * `resolved_at`, NULL while open — so ascending reads as "open first".
+ * whose code row is gone, or whose reporter has no `novedu_users` row, is NULL
+ * there and sorts LAST ascending (Postgres puts NULLs last on ASC, first on DESC).
+ * `status` is `resolved_at`, NULL while open — so ascending puts open reports
+ * LAST ("resolved first, open last"); `?sort=status:desc` reads open-first.
  */
 export const REPORT_SORT_COLUMNS = {
   reaction: reports.reaction,
@@ -337,7 +338,7 @@ export async function listReports(opts: {
               asc(reports.id),
             ),
           );
-        const rows = await (window ? query.offset(window.offset).fetch(window.limit) : query);
+        const rows = await (window ? query.limit(window.limit).offset(window.offset) : query);
         return rows.map(toListRow);
       },
     });

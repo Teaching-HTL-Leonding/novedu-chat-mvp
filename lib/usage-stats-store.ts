@@ -14,7 +14,7 @@ import {
 // Read-side aggregates behind the usage dashboard (docs/dashboard.md). One query
 // per chart/KPI, each grouping in SQL so only small result sets cross the wire.
 // Mirrors lib/code-stats-store.ts: raw by-value `sql` (the KPI query joins Mastra's
-// `mastra_messages`, which Drizzle never declares), reading `res.recordset`, and
+// `mastra_messages`, which Drizzle never declares), reading `res.rows`, and
 // the never-throws contract — every function returns `undefined` on a DB error and
 // logs it, so a failed panel degrades to "unavailable" instead of a page crash.
 //
@@ -26,13 +26,14 @@ import {
 //
 // SERVER-ONLY: uses the database. Never import from client components.
 
-// Day/month buckets both use DATEADD/DATEDIFF (returning datetime2 at the bucket
-// start) rather than CAST(... AS date), so the driver never maps a bare SQL `date`
-// and every bucket comes back as a plain UTC instant we can re-key in JS.
+// Day/month buckets use Postgres' date_trunc('day' | 'month', u.hour) on the
+// timestamptz `hour` column; the pool pins the session TimeZone to UTC, so the
+// truncation happens in UTC and every bucket comes back as a timestamptz
+// instant we can re-key in JS.
 function bucketExpr(grain: "hour" | "day" | "month") {
   if (grain === "hour") return sql`u.hour`;
-  if (grain === "day") return sql`DATEADD(day, DATEDIFF(day, 0, u.hour), 0)`;
-  return sql`DATEADD(month, DATEDIFF(month, 0, u.hour), 0)`;
+  if (grain === "day") return sql`date_trunc('day', u.hour)`;
+  return sql`date_trunc('month', u.hour)`;
 }
 
 /**
@@ -57,15 +58,15 @@ export async function getTokenTimeSeries(opts: {
       output: number | string;
     }>(sql`
       SELECT ${expr} AS bucket,
-             SUM(u.input_tokens_new) AS inputNew,
-             SUM(u.input_tokens_cached) AS inputCached,
+             SUM(u.input_tokens_new) AS "inputNew",
+             SUM(u.input_tokens_cached) AS "inputCached",
              SUM(u.output_tokens) AS output
       FROM novedu_usage_by_code u
       WHERE u.hour >= ${start}${codeFilter}
       GROUP BY ${expr}
     `);
     const byKey = new Map<string, TokenSums>();
-    for (const row of res.recordset) {
+    for (const row of res.rows) {
       byKey.set(bucketKeyOf(new Date(row.bucket), grain), {
         inputNew: Number(row.inputNew),
         inputCached: Number(row.inputCached),
@@ -112,7 +113,7 @@ export async function getUsageBreakdown(opts: {
     `);
     const moduleTotals = new Map<string, number>();
     const codeSlices: Slice[] = [];
-    for (const row of res.recordset) {
+    for (const row of res.rows) {
       const total = Number(row.total);
       moduleTotals.set(row.module, (moduleTotals.get(row.module) ?? 0) + total);
       const note = (row.note ?? "").trim();
@@ -163,7 +164,7 @@ export async function getTokensByModel(opts: {
       WHERE u.hour >= ${start}
       GROUP BY u.model
     `);
-    const slices: Slice[] = res.recordset
+    const slices: Slice[] = res.rows
       .map((row) => {
         const model = row.model ?? "(unknown)";
         return { key: model, label: model, total: Number(row.total) };
@@ -200,7 +201,7 @@ export async function getTokensByProvider(opts: {
       WHERE u.hour >= ${start}
       GROUP BY u.provider
     `);
-    const slices: Slice[] = res.recordset
+    const slices: Slice[] = res.rows
       .map((row) => {
         const provider = row.provider ?? "(unknown)";
         return { key: provider, label: provider, total: Number(row.total) };
@@ -242,16 +243,17 @@ export async function getDashboardKpis(opts: {
     const res = await getDb().execute<{ chats: number | string; quizAnswers: number | string }>(sql`
       SELECT
         (SELECT COUNT(*)
-           FROM mastra_threads t
+           FROM mastra.mastra_threads t
           WHERE EXISTS (
-            SELECT 1 FROM mastra_messages m
-            WHERE m.thread_id = t.id AND m.role = 'user' AND m.createdAt >= ${start}
+            SELECT 1 FROM mastra.mastra_messages m
+            WHERE m.thread_id = t.id AND m.role = 'user'
+              AND COALESCE(m."createdAtZ", m."createdAt" AT TIME ZONE 'UTC') >= ${start}
           )) AS chats,
         (SELECT COALESCE(SUM(u.quiz_answers), 0)
            FROM novedu_usage_by_code u
-          WHERE u.module = 'quiz' AND u.hour >= ${start}) AS quizAnswers
+          WHERE u.module = 'quiz' AND u.hour >= ${start}) AS "quizAnswers"
     `);
-    const row = res.recordset[0];
+    const row = res.rows[0];
     return { chats: Number(row?.chats ?? 0), quizAnswers: Number(row?.quizAnswers ?? 0) };
   } catch (error) {
     console.error("usage-stats-store: dashboard KPIs failed", error);

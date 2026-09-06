@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fake = vi.hoisted(() => {
   const state = {
     rows: [] as unknown[],
-    // What the paginated list's COUNT(*) reports, plus every OFFSET/FETCH window
+    // What the paginated list's COUNT(*) reports, plus every LIMIT/OFFSET window
     // the store asked for (so a test can pin the SQL-side paging). The small
     // count helpers keep resolving `rows` — only the LIST's count reads `total`.
     total: 0,
@@ -52,12 +52,12 @@ const fake = vi.hoisted(() => {
       // How the shared `countRows` helper applies its joins in a loop.
       $dynamic: () => builder,
       // `orderBy` returns a builder (not a promise) because the paged list query
-      // continues with `.offset(…).fetch(…)`; it stays awaitable for the unpaged call.
+      // continues with `.limit(…).offset(…)`; it stays awaitable for the unpaged call.
       orderBy: (...order: unknown[]) => {
         state.order = order;
         return {
-          offset: (offset: number) => ({
-            fetch: (limit: number) => {
+          limit: (limit: number) => ({
+            offset: (offset: number) => {
               state.windows.push({ offset, limit });
               return run();
             },
@@ -248,7 +248,7 @@ describe("listReports", () => {
         codeCreatedBy: "teacher-1",
       }),
     ).resolves.toEqual(expected);
-    // Unpaged: no COUNT, no OFFSET/FETCH.
+    // Unpaged: no COUNT, no LIMIT/OFFSET.
     expect(fake.state.windows).toEqual([]);
   });
 
