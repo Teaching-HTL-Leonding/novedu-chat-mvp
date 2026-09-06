@@ -215,8 +215,12 @@ grant on tables it doesn't own, is locked out of them until ownership is
 reassigned. `scripts/db/reassign-ownership.sql` is the documented remedy: an
 idempotent `DO` block that `ALTER … OWNER TO`s every table/view/sequence in
 `public` and `mastra` not already owned by `novedu-chat-mvp-at`, skipping
-sequences that belong to a table (those move with it). Run it as the Entra
-admin after any such local-first boot.
+sequences that belong to a table (those move with it), plus a second block for
+functions — Mastra's boot also runs `CREATE OR REPLACE FUNCTION
+mastra.trigger_set_timestamps()`, which only the function's owner may do (a
+foreign-owned function fails with `42501`; the app still boots, but every
+restart logs the exception). Run the script as the Entra admin after any such
+local-first boot.
 
 ## App-owned schema (`novedu_*`) & Drizzle workflow
 

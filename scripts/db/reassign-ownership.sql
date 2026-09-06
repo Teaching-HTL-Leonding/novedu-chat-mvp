@@ -1,9 +1,11 @@
--- Hand every table and sequence in the app's two schemas to the app role.
+-- Hand every table, sequence and function in the app's two schemas to the app role.
 --
 -- Under the privilege model in docs/database.md the web app's Managed Identity
--- `novedu-chat-mvp-at` must OWN the tables it works with: Postgres lets only the
--- owner ALTER a table, and Mastra's `init()` runs `ALTER TABLE ... ADD COLUMN IF NOT
--- EXISTS` on every boot. The database is shared by dev and prod, so whenever a
+-- `novedu-chat-mvp-at` must OWN the objects it works with: Postgres lets only the
+-- owner ALTER a table or REPLACE a function, and Mastra's `init()` runs `ALTER TABLE
+-- ... ADD COLUMN IF NOT EXISTS` on every table plus `CREATE OR REPLACE FUNCTION
+-- mastra.trigger_set_timestamps()` on every boot (a function it does not own fails
+-- with 42501 — the boot still completes, but every restart logs the exception). The database is shared by dev and prod, so whenever a
 -- developer's own `az login` identity is the first to boot a new migration (or a
 -- Mastra upgrade) against it, the new objects belong to that developer — and the
 -- production identity is locked out of them until this script has run.
@@ -37,5 +39,22 @@ BEGIN
     ELSE
       EXECUTE format('ALTER TABLE %I.%I OWNER TO %I', r.nspname, r.relname, 'novedu-chat-mvp-at');
     END IF;
+  END LOOP;
+END $$;
+
+-- Functions (Mastra's trigger function lives in `mastra`; `public` has none today).
+DO $$
+DECLARE
+  r record;
+BEGIN
+  FOR r IN
+    SELECT n.nspname, p.oid::regprocedure AS signature
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname IN ('public', 'mastra')
+      AND p.prokind = 'f'
+      AND pg_get_userbyid(p.proowner) <> 'novedu-chat-mvp-at'
+  LOOP
+    EXECUTE format('ALTER FUNCTION %s OWNER TO %I', r.signature, 'novedu-chat-mvp-at');
   END LOOP;
 END $$;
