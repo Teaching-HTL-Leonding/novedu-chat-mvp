@@ -1,7 +1,7 @@
 import type { Instrumentation } from "next";
 
 // Runs ONCE per server instance, before the first request is served (Next.js
-// instrumentation file convention). Two startup duties:
+// instrumentation file convention). Three startup duties:
 //
 //   1. Bring up telemetry (Azure Monitor / Application Insights via OpenTelemetry)
 //      FIRST, so its auto-instrumentation can patch the HTTP and `pg` modules
@@ -15,9 +15,8 @@ import type { Instrumentation } from "next";
 //      reads those tables directly, so on a database where no agent has run yet
 //      the teacher's stats panels would break first. Same fail-loud policy as (2).
 //
-// (There used to be a third duty here — hourly garbage collection of expired
-// tutor codes. It was removed: codes and their conversation data now live until
-// a teacher deletes them explicitly, so their stats stay reachable.)
+// Expired codes are NOT garbage-collected: codes and their conversation data live
+// until a teacher deletes them explicitly, so their stats stay reachable.
 //
 // Needs Node.js (database driver + OTEL SDK); the edge/browser builds of this
 // file do nothing. The dynamic imports keep those modules out of edge bundles.

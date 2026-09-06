@@ -157,6 +157,7 @@ Read before touching: `components/data-list.tsx`, `components/list-*.tsx`, `lib/
 Read before touching: Mastra storage (`app/mastra/index.ts`), `lib/db/`, migrations, `instrumentation.ts`.
 
 - Every consumer takes the ONE pool from `getPool()` (`lib/db/pool.ts`) — the one auth seam; app tables use the `novedu_` prefix in `public`, Mastra's live in schema `mastra`; **no foreign keys** between `novedu_*` and `mastra_*`.
+- Dev and prod share ONE server, and the app role owns its objects instead of holding grants. Whenever your own `az login` identity is the first to boot a new migration or a Mastra upgrade against it, the new tables/functions belong to you and production is locked out of them: run `scripts/db/reassign-ownership.sql` as the Entra admin afterwards (`docs/database.md`, ownership hazard).
 
 ### Telemetry → `docs/telemetry.md`
 

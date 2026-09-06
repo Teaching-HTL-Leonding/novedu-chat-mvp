@@ -104,7 +104,7 @@ describe("teacher", () => {
     expect(html).not.toContain("Access denied");
     expect(html).toContain("Dana Student");
     expect(html).toContain("My Class");
-    // The description is no longer a list column (it can be long) — it lives only
+    // The description is not a list column (it can be long) — it lives only
     // in the detail dialog now.
     expect(html).not.toContain("Something went wrong here");
   });

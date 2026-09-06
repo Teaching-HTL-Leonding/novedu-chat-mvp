@@ -75,7 +75,7 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
   pattern), shared by the GET route, the create action, AND the client-safe
   `@/lib/yaml-files` facade (which must not import the DB-bound store).
 - `listFiles({ search?, createdBy? })` — active rows, newest first, **without**
-  `content` (kept cheap). Optional filters are applied **in SQL** (a `WHERE`/`LIKE`
+  `content` (kept cheap). Optional filters are applied **in SQL** (a `WHERE`/`ILIKE`
   over name/title/description for `search`, `createdBy` for the owner dropdown) —
   never in memory; see `docs/filtered-lists.md`. The rows carry the owner's display
   name from a LEFT JOIN on `novedu_users`; `listFileOwners()` is the dropdown's

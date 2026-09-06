@@ -255,7 +255,7 @@ The reference consumer, in its own repo:
    and commit the lock. URL construction from `novedu-base-url` is unchanged.
 4. Call sites read `{{< quiz welcome title="Welcome" >}}`.
 
-New-activity flow after that migration: write YAML → `validate` → push → add one
+New-activity flow with that consumer pattern: write YAML → `validate` → push → add one
 registry line → `codes sync` → reference it by key.
 
 ## Testing
