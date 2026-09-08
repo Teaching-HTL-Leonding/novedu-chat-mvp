@@ -1,8 +1,8 @@
 "use server";
 
 import { after } from "next/server";
-import { auth } from "@/auth";
 import { type CodeRejection, checkCode } from "@/lib/code-store";
+import { getSession } from "@/lib/session";
 import { recordWritingSave } from "@/lib/usage-store";
 import { loadWriting } from "@/lib/writing-fetch";
 import { saveSubmission } from "@/lib/writing-store";
@@ -12,7 +12,7 @@ import { saveSubmission } from "@/lib/writing-store";
 // with `module: "writing"`) is what authorizes the activity, and it is
 // RE-VERIFIED on every save (so a code outside its window stops accepting saves
 // mid-session). A student may write ONLY their own `(code, user_id)` row — the
-// row key is the session `oid`, never client-supplied.
+// row key is the session user id, never client-supplied.
 //
 // Writing DEFAULTS `anonymous: false` (the writing divergence): saving needs
 // attribution. As defense in depth this action re-reads the privacy flag LIVE
@@ -36,7 +36,7 @@ const CODE_REJECTION_MESSAGES: Record<CodeRejection, string> = {
 
 /**
  * Saves a student's writing text for a code. Re-verifies the code is valid and in
- * its window, resolves the authenticated session `oid` as the row owner, re-reads
+ * its window, resolves the authenticated session user id as the row owner, re-reads
  * the activity's `anonymous` flag LIVE (rejecting an anonymous activity), then
  * upserts the student's single row. Nothing is graded or echoed back.
  */
@@ -52,7 +52,7 @@ export async function saveWriting(input: SaveWritingInput): Promise<SaveWritingR
     return { ok: false, message: "This code is not a writing activity." };
   }
 
-  const session = await auth();
+  const session = await getSession();
   const userId = session?.user?.id;
   if (!userId) return { ok: false, message: "Please sign in to continue." };
 

@@ -59,7 +59,7 @@ const fake = vi.hoisted(() => {
     const tail = { leftJoin: () => tail, where: () => queryTail(fields) };
     return tail;
   };
-  // `.from(...)` accepts the row query's `.leftJoin(users, …)` (the owner name) as
+  // `.from(...)` accepts the row query's `.leftJoin(authUsers, …)` (the owner name) as
   // well as the count's `$dynamic()`; both tails resolve through `queryTail`.
   const fromTail = (fields?: Record<string, unknown>) => {
     const tail = {

@@ -25,7 +25,7 @@ a pure server concern later.
 | Store query | `lib/*-store.ts` | the actual SQL filter (see below) |
 | `DataList<T>` | `components/data-list.tsx` (**server**) | the full list page body: `PageBody` shell + toolbar + empty/no-match + the pagination seam around a `ListTable` |
 | `ListTable<T>` | `components/data-list.tsx` (**server**) | the bare column-driven table; owns ALL table chrome incl. the per-column `kind` recipes — embedded tables (the per-code `ConversationStats`) render through it directly |
-| `studentColumn<T>()` | `components/student-column.tsx` (**server-safe**) | the shared **Student** cell recipe — display name with the `oid` fallback + hover title, width-capped monospace — one entry in the `columns` of the per-code teacher lists (writing savers, coding issued keys), the same shape as `ownerColumn` |
+| `studentColumn<T>()` | `components/student-column.tsx` (**server-safe**) | the shared **Student** cell recipe — display name with the user-id fallback + hover title, width-capped monospace — one entry in the `columns` of the per-code teacher lists (writing savers, coding issued keys), the same shape as `ownerColumn` |
 | `ListFilterBar` | `components/list-filter-bar.tsx` (**client**) | the only interactive bit: controls + **Apply** → push a new query string; exports `OwnerFilter` (the owner dropdown) and `FilterCheckbox` (the `/reports` "Only my codes" toggle) |
 | ui primitives | `components/ui/` (`Button`/`buttonVariants`, `Input`, `Badge`, `IconButton`) | the "New …" action, the search input, kind/status chips, row action buttons |
 
@@ -155,18 +155,18 @@ subsystems repeat it.
 | `lib/db/owners.ts` | shared, server-only | `listOwners(table, createdByColumn, conditions)` — the one DISTINCT query — plus the `ownerJoin` / `ownerLabel` SQL fragments every store reuses |
 | store | `lib/{code,file,image}-store.ts` | `list*Owners()` + the `ownerName` LEFT JOIN + the `owner` sort key |
 | `OwnerFilter` | `components/list-filter-bar.tsx` (**client**) | the `<select>`: me, all owners, then an `<optgroup>` of the rest |
-| `ownerColumn<T>()` | `components/owner-column.tsx` (**server-safe**) | the Owner cell recipe, one entry in a page's `columns` — the same shape as `selectionColumn`; width-capped and ellipsised, because the oid fallback is a 36-character GUID that would otherwise widen every table |
+| `ownerColumn<T>()` | `components/owner-column.tsx` (**server-safe**) | the Owner cell recipe, one entry in a page's `columns` — the same shape as `selectionColumn`; width-capped and ellipsised, because the raw-id fallback can be a 36-character Entra GUID (for an id that predates `novedu_user`) that would otherwise widen every table |
 
 ### The URL grammar makes "Clear" free
 
 `?owner=` absent (or empty) = **the signed-in teacher**, `all` = every owner, anything
-else = that oid verbatim. Two existing `ListFilterBar` behaviors then do the work:
+else = that user id verbatim. Two existing `ListFilterBar` behaviors then do the work:
 the serializer drops empty `<select>` values, so the default view has NO query string,
 and "Clear" is a bare `router.push(pathname)` — which therefore lands back on the
 teacher's own items with no code of its own. (The old `?mine=0` checkbox is gone from
 these three pages; the bearer API routes keep their own `mine` param — `docs/api.md`.)
 
-An oid outside the option list — a stale bookmark, or an owner whose last item was
+A user id outside the option list — a stale bookmark, or an owner whose last item was
 deleted — is **kept**, not silently swapped for the default: it filters (and finds
 nothing) and `OwnerFilter` appends it as its own option, so the control can never
 claim a filter the query is not applying. That is the opposite of `parseSort`, whose
@@ -175,13 +175,13 @@ hide that the URL asked for something.
 
 ### The two queries
 
-The row query LEFT-JOINs `novedu_users` **by value** for `ownerName` (`null` → the
-page shows the raw oid), exactly like `lib/report-store.ts` does for a reporter. The
-join is on that table's primary key, and **no list condition reaches into `users`** —
+The row query LEFT-JOINs `novedu_user` **by value** for `ownerName` (`null` → the
+page shows the raw user id), exactly like `lib/report-store.ts` does for a reporter. The
+join is on that table's primary key, and **no list condition reaches into `novedu_user`** —
 the search term deliberately does not match owner names — so `countRows` stays
 join-free and the COUNT can never drift from the rows.
 
-`listOwners` is a `SELECT DISTINCT created_by, COALESCE(display_name, created_by)`.
+`listOwners` is a `SELECT DISTINCT created_by, COALESCE(name, created_by)`.
 Two things are load-bearing:
 
 - It gets the list's **base conditions only** (`isNull(validUntil)`, the known-module
@@ -189,19 +189,19 @@ Two things are load-bearing:
   picked could vanish from the control that picked them.
 - The ORDER BY repeats the **selected** COALESCE expression: Postgres requires every
   `ORDER BY` term of a `SELECT DISTINCT` to appear in the select list. Ordering by
-  the coalesced label (not by `display_name`) is also what keeps an owner without a
-  `novedu_users` row inside the alphabet instead of leading it as a NULL.
+  the coalesced label (not by `name`) is also what keeps an owner without a
+  `novedu_user` row inside the alphabet instead of leading it as a NULL.
 
 The same COALESCE is the `owner` entry of each store's `*_SORT_COLUMNS`, so the
 column sorts by what it displays — which is why it is the shared `ownerLabel()`
 rather than an expression each store spells out. (`/reports` sorts its `student`
 column by the bare joined name — a missing name sorts last ascending — because that
-list has no oid fallback in its ORDER BY.)
+list has no raw-id fallback in its ORDER BY.)
 
 A page therefore adds the whole feature with three lines: `parseOwner(sp, userId)`,
 `ownerColumn<Row>()` in its `columns`, and `<OwnerFilter>` in its filter bar. A
-selected oid equal to the signed-in teacher's is treated as the empty default, so
-`?owner=<my oid>` and no param at all render the same control.
+selected user id equal to the signed-in teacher's is treated as the empty default, so
+`?owner=<my user id>` and no param at all render the same control.
 
 ## Multi-delete (row selection + "Delete Selected")
 

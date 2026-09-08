@@ -61,9 +61,12 @@ export async function performApiRequest(options: {
     return { ok: false, error: value, ...extra };
   };
 
+  // The server first: sessions are stored per server, so the token lookup needs
+  // to know which one the request is going to.
+  const server = resolveServerUrl(options.server);
   let token: string;
   try {
-    token = await getAccessToken();
+    token = await getAccessToken(server);
   } catch (error) {
     if (error instanceof NotSignedInError) {
       // No status: this never reached the server. Marked as an auth failure so a
@@ -73,7 +76,6 @@ export async function performApiRequest(options: {
     throw error;
   }
 
-  const server = resolveServerUrl(options.server);
   let response: Response;
   try {
     response = await fetch(new URL(options.path, server), {

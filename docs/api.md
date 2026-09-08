@@ -1,76 +1,110 @@
 # CLI / API bearer authentication & management API
 
 Deep reference for the app's second auth channel: CLI commands (and any other
-non-browser client, e.g. a future MCP server) calling app API routes with an
-Entra **bearer token** instead of a session cookie. Read it before touching
+non-browser client, e.g. a future MCP server) calling app API routes with a
+**session token as a bearer** instead of a session cookie. Read it before touching
 `lib/api-auth.ts`, `app/api/me/**`, `app/api/codes/**`, `app/api/files/**`
 (the bearer handlers), `app/api/images/**`, `app/api/reports/**`,
 `app/api/eval/**` (grade, judge and respond), the public `app/api/version/route.ts` (listed here because the
 CLI reads it), the services
 they share with the web actions (`lib/code-service.ts`, `lib/file-service.ts`,
 `lib/image-service.ts`), the CLI commands (`cli/src/auth.ts`, `cli/src/api.ts`,
-`cli/src/commands/{login,logout,whoami,codes,files,images,reports,eval}.ts`), or when
-adding a bearer-protected endpoint. Cookie sessions, teacher roles and student
-mode live in `docs/auth.md`.
+`cli/src/commands/{login,logout,whoami,codes,files,images,reports,eval}.ts`), `app/device/page.tsx`,
+`lib/device-actions.ts`, or when adding a bearer-protected endpoint. Cookie sessions,
+teacher roles and student mode live in `docs/auth.md`.
 
 ## The model
 
-The CLI is a **public client of the same "Novedu Chat MVP" app registration**
-the web app signs in with. It requests tokens for the app's own exposed
-delegated scope and sends them as `Authorization: Bearer` headers. The server
-validates each token cryptographically against the tenant's published keys —
-no session, no cookie, no server-side login state.
+The CLI is not a separate credential system — it authenticates as a **better-auth
+session**, obtained through the app's own OAuth **device authorization** flow
+(the `deviceAuthorization` plugin on the `auth` instance, `auth.ts`) instead of the
+browser's cookie-based sign-in. `login` asks the server for a device code, a human
+approves it at `/device` in a browser that already has a session, and the CLI polls
+until the server hands back the resulting **session token** — the very same token
+value the browser carries in its cookie. Every later command sends that token as
+`Authorization: Bearer <token>`; the server resolves it with `auth.api.getSession`,
+so a signed-out or expired session stops working on this channel immediately, with
+no separate token-refresh machinery to reason about.
 
-- One human-assisted `novedu-cli login` caches a refresh token; every later
-  command acquires access tokens silently. The primary CLI user is a coding
-  agent (see `.claude/skills/novedu-tutor-cli`), so non-interactive operation
-  after the single login is a design requirement.
+These are the same **fixed 30-day sessions** the browser gets (`docs/auth.md`): a session
+is never extended by use, so a machine that has been signed in for 30 days runs `login`
+again. That also means resolving a bearer emits no session `Set-Cookie` for
+`nextCookies()` to write into a bearer route's response.
+
+- One human-assisted `novedu-cli login` stores the session token in
+  `~/.novedu/sessions.json`; every later command sends it non-interactively. The
+  primary CLI user is a coding agent (see `.agents/skills/novedu-tutor-cli`), so
+  non-interactive operation after the single login is a design requirement.
 - **Student mode does not exist on the bearer path** (it is a cookie): the
-  token always reflects the caller's real role.
-- `logout` is purely local (cache removal); issued access tokens stay valid
-  until expiry (~1 h). Acceptable for this teaching context.
+  session always reflects the caller's real role.
+- `logout` revokes the session server-side (best effort — `auth.api.signOut`
+  over the bearer, JSON-only) and always removes the local token, so it
+  succeeds even when the server is unreachable or nothing was stored.
+- Only the `Authorization` header is forwarded to `auth.api.getSession`
+  (`lib/api-auth.ts`), so a browser cookie can never authenticate this channel.
 
-## Entra configuration (record)
+## The device flow
 
-App registration **Novedu Chat MVP**, client id
-`4d44fc4b-0434-4981-9765-62e2074ceecb`, in the login tenant (`AZURE_TENANT_ID`).
-Configured in the portal by the tenant admin:
+`POST /api/auth/device/code` (JSON `{ client_id: "novedu-cli" }`, no cookie sent so
+no Origin check applies) starts a sign-in attempt and returns:
 
-- **Application ID URI** `api://4d44fc4b-0434-4981-9765-62e2074ceecb` with the
-  delegated scope **`cli.access`** (id `5144d598-d08d-4563-81b9-2fa52d15da19`,
-  "Admins and users" may consent).
-- **`requestedAccessTokenVersion: 2`** — access tokens are v2 with issuer
-  `https://login.microsoftonline.com/<tenant>/v2.0` (the same issuer `auth.ts`
-  trusts) and the client-id GUID as audience.
-- **Public client flow enabled** (`isFallbackPublicClient`) with the
-  **`http://localhost` redirect URI** (Entra matches any localhost port) for
-  the CLI's loopback sign-in; the `groups` optional claim is emitted into
-  **access tokens** (`groupMembershipClaims: All`), so the teacher role is
-  derivable server-side.
-- **Consent is per-user:** no tenant-wide admin grant. Each user sees a one-time
-  consent prompt for `cli.access` during their first device-code login.
+```
+{ device_code, user_code, verification_uri, verification_uri_complete, expires_in: 1800, interval: 5 }
+```
+
+`user_code` is an 8-character code (charset `ABCDEFGHJKLMNPQRSTUVWXYZ23456789`, no
+dash — ambiguous characters excluded) that a person types or, via
+`verification_uri_complete`, follows as a link straight to `/device?user_code=…`.
+Codes are normalized on lookup (non-alphanumerics stripped, uppercased), so pasting
+`abcd-efgh` still works.
+
+Approving requires a **claim step first**: visiting `/device?user_code=…` while
+signed in calls `auth.api.deviceVerify({ query: { user_code }, headers })`, which
+binds the code to that signed-in user — `deviceApprove`/`deviceDeny` refuse a code
+nobody has claimed yet, and a *different* signed-in user opening the same link sees
+only `{ user_code, status }` (no `client_id`), so the `/device` page renders no
+buttons for them. `app/device/page.tsx` calls `deviceVerify` server-side before
+rendering, which is also why the plugin's per-IP rate limit on that GET (5 per 30
+min, production only) never bites a legitimate approval.
+
+`POST /api/auth/device/token` is **JSON-only** (415 on form-encoded bodies). The CLI
+polls it with
+`{ grant_type: "urn:ietf:params:oauth:grant-type:device_code", device_code, client_id: "novedu-cli" }`
+every `interval` seconds. Every error response is HTTP 400 with either
+`{ error, error_description }` (OAuth-shaped: `authorization_pending` while waiting,
+`slow_down` when polling faster than `interval` — bump the interval, don't reset the
+timer — `expired_token` and `access_denied`, both one-shot: the `novedu_device_code`
+row is deleted, so a later poll answers `invalid_grant` instead) or `{ message, code:
+"VALIDATION_ERROR" }` for a malformed request (wrong `grant_type`, missing fields) —
+the CLI's error parser tolerates both shapes. On success:
+`{ access_token, token_type: "Bearer", expires_in, scope }` — `access_token` **is**
+the raw better-auth session token, there is no separate refresh token; the session's
+`user_agent`/`ip_address` are taken from this poll request.
+
+`client_id` is always the literal `novedu-cli`, validated server-side by
+`validateClient` in the `deviceAuthorization` plugin config; `verification_uri` is
+always `/device`.
 
 ## Server: `lib/api-auth.ts` — the one seam
 
 Every bearer route gates itself through this module and nothing else (the
 analogue of `checkCode()` for codes):
 
-- **`requireBearerUser(request)`** validates the `Authorization: Bearer` JWT:
-  signature via the tenant JWKS
-  (`https://login.microsoftonline.com/<AZURE_TENANT_ID>/discovery/v2.0/keys`,
-  jose `createRemoteJWKSet` — key caching built in), issuer (v2.0), audience
-  (`AZURE_CLIENT_ID`), expiry, `scp` containing `cli.access`, and a non-empty
-  `oid`. Returns `{ userId, name, isTeacher }` where `userId` is the **`oid`**
-  claim (the app-wide stable user key — never `sub`, see `docs/auth.md`) and
-  `isTeacher` comes from the token's `groups` claim via the same
-  `resolveTeacher` (`lib/teacher.ts`) used at sign-in; a groups **overage fails
-  closed** (not a teacher).
+- **`requireBearerUser(request)`** reads the `Authorization` header, rejects
+  anything that isn't `Bearer <token>` shaped, then forwards **only that
+  header** — nothing else the request carried, a session cookie above all — to
+  `auth.api.getSession({ headers: new Headers({ authorization: header }) })`.
+  A `null` result (missing/expired/unknown token) throws. On success it returns
+  `{ userId, name, isTeacher }`, where `userId` is `novedu_user.id` (the same
+  stable user id every other surface keys on — `docs/auth.md`) and `isTeacher`
+  is the server-owned `novedu_user.is_teacher` column, recomputed from the ID
+  token's `groups` claim at sign-in time — never anything the caller supplies,
+  and a groups **overage fails closed** (not a teacher).
 - **`requireBearerTeacher(request)`** additionally requires the teacher role —
   the gate for teacher-only endpoints.
 - Every rejection throws a typed **`ApiAuthError`** (`status` 401 or 403) with
-  a deliberately generic message; the underlying jose reason goes to telemetry
-  (`recordError`, never token content). Route handlers return the error status
-  with a `WWW-Authenticate: Bearer` header and the generic
+  a deliberately generic message. Route handlers return the error status with a
+  `WWW-Authenticate: Bearer` header and the generic
   `{ message: "Unauthorized" | "Forbidden" }` body — the same `{ message }` key
   as every other failure on this channel; validation detail never reaches the
   client.
@@ -111,8 +145,8 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
 - **`GET /api/codes?q=&mine=&module=`** (`app/api/codes/route.ts`,
   teacher-only) — the `/codes` list's filters, with the bearer channel's OWN
   ownership param: `q` contains-matches note/code, `mine` defaults **on**
-  (`mine=0` widens to all teachers; `createdBy` = the token `oid`), `module`
-  optional. The web page spells the same narrowing `?owner=` (an oid, or `all`)
+  (`mine=0` widens to all teachers; `createdBy` = the token's user id), `module`
+  optional. The web page spells the same narrowing `?owner=` (a user id, or `all`)
   and has no `mine` — `docs/filtered-lists.md`. Bare JSON
   array, newest first, of
   `{ code, url, module, note, fileUrl, anonymous, validFrom, validUntil, llm, createdBy, createdAt }`
@@ -165,17 +199,17 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   (`app/api/images/[name]/confirm/route.ts`, teacher-only) — step 3:
   `confirmImageUploadForUser` (`lib/image-service.ts`) inspects the landed blob
   (size/MIME re-derived, never trusted from the client; a present-but-bad blob
-  is deleted best-effort) and writes the `novedu_images` row as the token
-  `oid`. Body `{ blobPath, mime, credit? }` (`credit` trimmed, clamped to 512
+  is deleted best-effort) and writes the `novedu_images` row as the token's
+  user id. Body `{ blobPath, mime, credit? }` (`credit` trimmed, clamped to 512
   chars). `201` with `{ name, mimeType, byteSize, credit }`; a missing or
   off-policy blob is `400`, a name race `409`, storage trouble `503`.
 - **`GET /api/reports?status=&reaction=&q=&mine=`** (`app/api/reports/route.ts`,
   teacher-only) — the `/reports` inbox's exact filters and defaults over
   `listReports`: `status` `open` (default) | `resolved` | `all`; `reaction` one
   of `good` | `omg` | `bad` | `holysh` (optional); `q` the inbox's DB-side
-  contains-search (description, reporter oid + display name, code, code note);
+  contains-search (description, reporter user id + name, code, code note);
   `mine` defaults **on** (`mine=0` widens to all teachers; `codeCreatedBy` = the
-  token `oid`). An unknown `status` or `reaction` is rejected **`400 { message }`**
+  token's user id). An unknown `status` or `reaction` is rejected **`400 { message }`**
   — scripts fail loudly where the forgiving web UI silently ignores. Bare JSON
   array in the inbox order (open `holysh` first, then newest first) of the full
   `ReportListRow` parity shape
@@ -198,7 +232,7 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   teacher-only) — bulk resolve by id. JSON body `{ ids: ["<uuid>", …] }` —
   non-empty, every entry UUID-shaped (the web bulk actions' guard); anything
   else → **`400 { message }`**. Stamps `resolved_at = now` + `resolved_by` = the
-  token `oid` via `setReportsResolved(ids, true, oid)`; unknown / already-resolved
+  token's user id via `setReportsResolved(ids, true, userId)`; unknown / already-resolved
   ids are silent no-ops (the blanket update). `200` with `{ ok: true }`; store
   failure → `503`. **Resolve is the only mutation on this channel — reopen and
   delete stay web-only** (an agent should never destroy a student's report;
@@ -301,11 +335,23 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
 
 ## CLI: `cli/src/auth.ts` + commands
 
-- `@azure/msal-node` (pure JS; requires Node ≥ 20 — the package `engines`
-  reflect that). Tenant and client id are baked-in public identifiers,
-  overridable via `NOVEDU_TENANT_ID` / `NOVEDU_CLIENT_ID` for other
-  deployments of this teaching repo. Requested scope:
-  `api://<client-id>/cli.access` (msal-node adds the OIDC scopes itself).
+- The CLI knows nothing about Entra — it only ever talks to the Novedu server's
+  own device-flow endpoints and stores what they return (plain `fetch`, no auth
+  package dependency). Sessions are stored **per server origin** in
+  `~/.novedu/sessions.json` (`{ [origin]: { token, name } }`, directory `0700`,
+  file `0600` — the token is a live credential): `http://localhost:3000/` and
+  `http://localhost:3000/x` share one entry, while production and a dev server
+  stay separate. `serverOrigin`/`readSessions`/`writeSessions`/`storedSession`/
+  `rememberSession`/`forgetSession` in `cli/src/auth.ts` are the whole seam;
+  writing the file also removes an obsolete `~/.novedu/token-cache.json` if one
+  is still there.
+- **`NOVEDU_TOKEN`** short-circuits the session file with a caller-supplied
+  bearer token, checked by `getAccessToken` before the stored session. It
+  exists for tests and CI/agent environments with no browser to approve a
+  device code — the token is still validated by the server on every request,
+  so this weakens nothing; it is not a substitute for `login`, and `logout`
+  deliberately ignores it (it only ever revokes the *stored* session, never one
+  injected through the environment).
 - **Management commands** (`cli/src/commands/codes.ts`, `files.ts`,
   `images.ts`, `reports.ts`; shared plumbing in `cli/src/api.ts`):
   `codes create/list`, `files upload/list`, `images upload/list`,
@@ -366,19 +412,38 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   exit 1. It is also the one command that probes **`GET /api/version`** (public, no
   token) before grading, warning on stderr when the server's `cliVersion` is not this
   CLI's or cannot be read — advisory only, never an exit code. See `docs/cli-eval.md`.
-- **Token cache** `~/.novedu/token-cache.json` — plain JSON via an MSAL
-  `ICachePlugin` (az-CLI model), directory `0700`, file `0600`. It holds the
-  refresh token; treat it like a credential.
-- **`login`** tries silent acquisition first (`Already signed in as …`, exit 0
-  — an agent re-running it never blocks), else runs the interactive
-  **authorization-code + PKCE flow with a loopback redirect** (opens the
-  system browser; the az-CLI model). `login --device-code` uses the device
-  code flow instead — needed on browserless machines, but tenants commonly
-  **block it by Conditional Access policy** (error 53003; the HTBLA tenant
-  does), which is why the browser flow is the default. **`logout`** removes
-  the cached accounts and deletes the cache file (idempotent). **`whoami`**
-  calls `GET <server>/api/me` — server base from `--server`, then
-  `NOVEDU_SERVER`, then the production default (`cli/src/server-url.ts`).
+- **`login [--server <url>]`** tries a silent identity check first (`GET
+  /api/me` with any stored token — `{ status: "already-signed-in", name, server }`,
+  exit 0, so an agent re-running it never blocks). Otherwise it starts the device flow:
+  `requestDeviceCode` prints the verification link and the 8-character code
+  (on **stderr** — stdout stays JSON-only), tries to open the link in the
+  system browser (`openBrowser`/`browserCommand`, ignored on failure — the
+  link was already printed), then `pollDeviceToken` waits for the human to
+  approve it at `/device`, honoring the server's `interval`/`slow_down`
+  back-off and giving up once the code's `expires_in` window passes. The
+  resulting session token is **stored first** via `rememberSession`, keyed by server
+  origin, and only then probed for the display name with a follow-up `/api/me`
+  call — the session already exists server-side, so discarding the token over a
+  hiccup in that probe would orphan a 30-day row and force another human
+  approval. A failed probe prints `name: null` plus a one-line stderr hint and
+  still exits 0. A stored session that cannot be checked at all because the
+  server is UNREACHABLE aborts with exit 1 instead of starting a second device
+  flow (`fetchIdentity` separates "rejected" from "unreachable" — see below).
+- **`logout [--server <url>]`** calls `POST /api/auth/sign-out` with the
+  **stored** bearer (best effort — 3 s timeout, JSON body `{}` since the
+  endpoint is JSON-only, errors swallowed) and always removes the local
+  session afterward via `forgetSession`, printing `{ status: "signed-out", server }` even when
+  nothing was stored or the server could not be reached — sign-out must never
+  leave a stale local credential behind just because the network is down.
+- **`whoami [--server <url>]`** resolves the token via `getAccessToken` and calls
+  `GET /api/me` through the shared `fetchIdentity`, printing
+  `{ name, userId, isTeacher, server }` on stdout. Every failure — nothing
+  stored, a rejected token, an unreachable server — is `{ message }` on stderr
+  with exit 1.
+- **`fetchIdentity` (`cli/src/auth.ts`)** is the one `/api/me` caller, and it keeps the
+  two failures apart because `login` acts on them differently: `null` means the server
+  REJECTED the token (401/403 — the device flow has to run), while an unreachable server,
+  a 5xx or a body that is not an identity THROWS with a message naming the server.
 - Not-signed-in state is the typed `NotSignedInError` →
   `Not signed in — run "novedu-cli login".`, exit 1. `performApiRequest` reports it
   back as a failure carrying `authFailed: true` (and NO `status`, since nothing was
@@ -388,15 +453,12 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
 
 ## Testing (hermetic; validation stays real)
 
-The JWKS source honors a **test-only** override: `API_AUTH_JWKS_PATH` (a local
-JWKS JSON file), applied **only when `NODE_ENV !== "production"`** so a stray
-env var can never weaken a real deployment. Issuer and audience are NOT
-overridable — tests mint tokens carrying the real env values and substitute
-only the signing key (the same strategy as the e2e session-cookie minting).
-
-- **Unit:** `lib/api-auth.unit.test.ts` generates a keypair and runs the full
-  verdict matrix (signature, issuer, audience, expiry, scope, oid, teacher
-  groups, overage) through the REAL `jwtVerify`.
+- **Unit:** `lib/api-auth.unit.test.ts` mocks `@/auth` (`tests/mock-auth-session.ts`'s
+  `bearerSession` builds the `{ session, user }` shape `auth.api.getSession`
+  resolves to) and runs the verdict matrix — no/malformed `Authorization` header
+  → 401 without calling `getSession` at all, a header but a `null` session → 401,
+  a valid session → `{ userId, name, isTeacher }`, the teacher gate's 403, and
+  that a cookie-only request (no `Authorization` header) never authenticates.
 - **Route unit tests** (`app/api/codes/route.unit.test.ts`,
   `app/api/files/route.unit.test.ts`, the PUT cases in
   `app/api/files/[name]/route.unit.test.ts`, the three images routes —
@@ -405,58 +467,64 @@ only the signing key (the same strategy as the e2e session-cookie minting).
   `app/api/images/[name]/confirm/route.unit.test.ts` — and the three reports
   routes — `app/api/reports/route.unit.test.ts`,
   `app/api/reports/[id]/route.unit.test.ts`,
-  `app/api/reports/resolve/route.unit.test.ts`) keep the auth gate REAL the same
-  way (local JWKS, minted tokens) and mock the services/stores: the 401/403
-  matrix, filter parsing + the `mine` default, naive-timestamp rejection, the
-  400/409/503 mapping, and the wire shapes. The reports specs additionally mock
-  `lib/report-store` + `getConversationMessages` and assert the 400 on unknown
-  enum values / malformed `ids`, the 404 cases, the chat-embeds-`messages` /
-  quiz-doesn't / deleted-code → `[]` shapes, and that resolve passes the token
-  `oid` as `teacherId`. `app/api/eval/grade/route.unit.test.ts` keeps the gate real
-  the same way and mocks `@/app/mastra` (like `lib/quiz-actions.unit.test.ts`): the
-  401/403 matrix, the 400 matrix (bad body, unknown provider, unavailable provider,
+  `app/api/reports/resolve/route.unit.test.ts`) keep the auth gate REAL by
+  mocking `@/auth`'s `auth.api.getSession` the same way and mock the
+  services/stores underneath: the 401/403 matrix, filter parsing + the `mine`
+  default, naive-timestamp rejection, the 400/409/503 mapping, and the wire
+  shapes. The reports specs additionally mock `lib/report-store` +
+  `getConversationMessages` and assert the 400 on unknown enum values /
+  malformed `ids`, the 404 cases, the chat-embeds-`messages` / quiz-doesn't /
+  deleted-code → `[]` shapes, and that resolve passes the token's user id as
+  `teacherId`. `app/api/eval/grade/route.unit.test.ts` mirrors this and mocks
+  `@/app/mastra` (like `lib/quiz-actions.unit.test.ts`): the 401/403 matrix, the
+  400 matrix (bad body, unknown provider, unavailable provider,
   empty-after-trim answer), the 413 cap, the 200 wire shape, the 502s, and — the
-  production-parity assertion — that the agent receives `buildAnswerMessage` of the
-  TRIMMED answer plus the `QUIZ_EVAL_*` and usage-sentinel RequestContext values.
-  `app/api/eval/judge/route.unit.test.ts` mirrors it for the feedback judge, adding the
-  `criteria` bounds/regex matrix and the kind-agnostic assertion: the structured-output
-  schema handed to the agent accepts exactly the CALLER's criteria and rejects everything
-  else. `app/api/eval/respond/route.unit.test.ts` mirrors both for the tutor generator,
-  adding the message-shape matrix, the terminal 400 on an unknown tool name, and the
-  production-parity assertion that the scripted turns reach the agent verbatim and in
-  order alongside the `EVAL_TUTOR_*` and usage-sentinel RequestContext values.
-- **e2e:** `e2e/api-auth.setup.ts` generates the keypair once into the
-  gitignored `e2e/.auth/` (once, not per run — the server caches the JWKS
-  after the first bearer request); `playwright.config.ts` injects
-  `API_AUTH_JWKS_PATH` into the dev-server env; `e2e/api-me.spec.ts`,
-  `e2e/api-codes.spec.ts`, `e2e/api-images.spec.ts` and `e2e/api-reports.spec.ts`
-  exercise the routes over
-  HTTP with an empty cookie state, which also proves the proxy-matcher
-  exclusions (a regression turns the expected 401 into a sign-in redirect);
-  `e2e/api-gate.spec.ts` covers the two exclusions no per-feature spec owns —
-  `/api/eval/{grade,judge,respond}` and the public `/api/coding/v1/*` — table-driven,
-  one row per route, so a bearer route added without a gate spec is visible rather
-  than silently uncovered (add the row with the route); every spec here mints its
-  token through the single `e2e/api-auth.utils.ts` helper; the
-  @live-db `e2e/api-management.live.spec.ts` runs the full file-upsert → list →
-  code-create → list lifecycle against the real database, and the @live-db
-  `e2e/api-reports.live.spec.ts` files a chat report through the real UI (a
-  zero-message thread, no LLM) then drives `GET /api/reports` → `GET
-  /api/reports/<id>` (with `messages`) → `POST /api/reports/resolve` → the
-  `status=resolved` listing. Local caveat: a reused dev server started without
-  the env var fails these specs — restart it with the var or let Playwright
-  start its own.
-- **CLI unit tests** mock `@azure/msal-node` and `fetch`; the cache plugin is
-  tested against the real filesystem (permission modes included). `codes sync`
-  additionally has offline integration coverage against a fake `/api/codes` in
-  `test-fixtures/serve.mjs`, reached with the **test-only `NOVEDU_TOKEN`**
-  override in `cli/src/auth.ts` (checked before the MSAL cache — it only skips
-  the interactive login; the server still validates the token on every request).
-  See `docs/registry.md`. The
-  `codes`/`files` command tests pin the flag→request mapping, stdin/--file
-  reading, and the stdout/stderr JSON split; `cli/src/commands/reports.unit.test.ts`
-  does the same for `reports list/show/resolve` (the defaults, `--all` →
-  `mine=0`, the multi-id resolve body, and the exit codes), and
-  `cli/src/commands/images.unit.test.ts` pins the 3-step upload order (raw SAS
-  PUT with the pinned content type and NO bearer header), the short-circuit on
-  each step's failure, and the extension→MIME rejection with zero fetches.
+  production-parity assertion — that the agent receives `buildAnswerMessage` of
+  the TRIMMED answer plus the `QUIZ_EVAL_*` and usage-sentinel RequestContext
+  values. `app/api/eval/judge/route.unit.test.ts` mirrors it for the feedback
+  judge, adding the `criteria` bounds/regex matrix and the kind-agnostic
+  assertion: the structured-output schema handed to the agent accepts exactly
+  the CALLER's criteria and rejects everything else.
+  `app/api/eval/respond/route.unit.test.ts` mirrors both for the tutor
+  generator, adding the message-shape matrix, the terminal 400 on an unknown
+  tool name, and the production-parity assertion that the scripted turns reach
+  the agent verbatim and in order alongside the `EVAL_TUTOR_*` and
+  usage-sentinel RequestContext values.
+- **e2e:** `e2e/api-me.spec.ts`, `e2e/api-codes.spec.ts`, `e2e/api-images.spec.ts`
+  and `e2e/api-reports.spec.ts` exercise the routes over HTTP with an empty
+  cookie state, which also proves the proxy-matcher exclusions (a regression
+  turns the expected 401 into a sign-in redirect); `e2e/api-gate.spec.ts`
+  covers the two exclusions no per-feature spec owns — `/api/eval/{grade,judge,respond}`
+  and the public `/api/coding/v1/*` — table-driven, one row per route, so a
+  bearer route added without a gate spec is visible rather than silently
+  uncovered (add the row with the route); every spec here mints its token
+  through `mintSessionToken` in the single `e2e/api-auth.utils.ts` helper — it
+  upserts a `novedu_user` row and inserts a matching `novedu_session` row (an
+  `expired: true` option backdates `expires_at` for the expiry cases) and
+  returns the raw token, so there is no keypair or JWKS setup anywhere in this
+  path. The @live-db `e2e/api-management.live.spec.ts` runs the full
+  file-upsert → list → code-create → list lifecycle against the real database,
+  and the @live-db `e2e/api-reports.live.spec.ts` files a chat report through
+  the real UI (a zero-message thread, no LLM) then drives `GET /api/reports` →
+  `GET /api/reports/<id>` (with `messages`) → `POST /api/reports/resolve` → the
+  `status=resolved` listing.
+- **CLI unit tests** (`cli/src/auth.unit.test.ts`) exercise the device-flow
+  request shape, the pending→success and `slow_down`/expired/denied poll
+  outcomes, and the sessions-file round trip (mode `0600`, per-origin keys,
+  `NOVEDU_TOKEN` precedence, the legacy cache file being removed) against a
+  fake `fetchImpl`/`sleep` — no real network or timers.
+  `login.unit.test.ts`/`logout.unit.test.ts` mock `../auth` and assert the
+  already-signed-in short-circuit, the printed link/code, and that `logout`
+  ignores a failing server-side sign-out. `codes sync` additionally has
+  offline integration coverage against a fake `/api/codes` in
+  `test-fixtures/serve.mjs`, reached with the test-only `NOVEDU_TOKEN`
+  override (checked before the session file — it only skips the interactive
+  login; the server still validates the token on every request). See
+  `docs/registry.md`. The `codes`/`files` command tests pin the flag→request
+  mapping, stdin/--file reading, and the stdout/stderr JSON split;
+  `cli/src/commands/reports.unit.test.ts` does the same for
+  `reports list/show/resolve` (the defaults, `--all` → `mine=0`, the multi-id
+  resolve body, and the exit codes), and `cli/src/commands/images.unit.test.ts`
+  pins the 3-step upload order (raw SAS PUT with the pinned content type and NO
+  bearer header), the short-circuit on each step's failure, and the
+  extension→MIME rejection with zero fetches.

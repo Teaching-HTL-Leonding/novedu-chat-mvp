@@ -16,12 +16,10 @@ import { requireTeacherUserId } from "@/lib/student-mode";
 // No DB row exists until that confirm — an abandoned upload leaves at most an
 // orphan blob, never a half-written record.
 
-// Maps the shared teacher-gate failure to a message for these image actions —
-// only the verb (upload/delete) differs between the call sites.
-function gateMessage(reason: "not-teacher" | "no-user-id", verb: string): string {
-  return reason === "not-teacher"
-    ? `Only teachers can ${verb} images.`
-    : "Your session carries no user id — sign in again.";
+// The shared teacher-gate refusal for these image actions — only the verb
+// (upload/delete) differs between the call sites.
+function gateMessage(verb: string): string {
+  return `Only teachers can ${verb} images.`;
 }
 
 /**
@@ -36,7 +34,7 @@ export async function requestImageUpload(
   size: number,
 ): Promise<{ ok: true; uploadUrl: string; blobPath: string } | { ok: false; error: string }> {
   const gate = await requireTeacherUserId();
-  if (!gate.ok) return { ok: false, error: gateMessage(gate.reason, "upload") };
+  if (!gate.ok) return { ok: false, error: gateMessage("upload") };
 
   const result = await prepareImageUpload({ name, mime, byteSize: size });
   if (!result.ok) return { ok: false, error: result.message };
@@ -56,7 +54,7 @@ export async function confirmImageUpload(
   credit?: string,
 ): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
   const gate = await requireTeacherUserId();
-  if (!gate.ok) return { ok: false, error: gateMessage(gate.reason, "upload") };
+  if (!gate.ok) return { ok: false, error: gateMessage("upload") };
 
   const result = await confirmImageUploadForUser(gate.userId, { name, blobPath, mime, credit });
   if (!result.ok) return { ok: false, error: result.message };

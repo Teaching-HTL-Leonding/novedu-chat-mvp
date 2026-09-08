@@ -6,7 +6,7 @@ import { authErrorResponse, json, UUID_PATTERN } from "../shared";
 // CLI/API bearer route for RESOLVING reports in bulk (docs/api.md,
 // docs/reports.md). Self-gates with requireBearerTeacher (excluded from the
 // proxy.ts session gate). Resolution is attributed like the web: `resolved_by`
-// is always the authenticated teacher's oid — an agent resolves under the
+// is always the authenticated teacher's session user id — an agent resolves under the
 // teacher who ran `novedu-cli login`. Reopen + delete stay web-only by design;
 // this channel only ever resolves.
 export const dynamic = "force-dynamic";
@@ -24,7 +24,7 @@ function isReportIdList(value: unknown): value is string[] {
 /**
  * Marks the given reports resolved. JSON body `{ ids: [uuid…] }` — non-empty,
  * every entry UUID-shaped; anything else → 400. Stamps `resolved_at = now` +
- * `resolved_by` = the token oid via `setReportsResolved`. Already-resolved or
+ * `resolved_by` = the token's user id via `setReportsResolved`. Already-resolved or
  * unknown ids are silent no-ops (the web action's blanket update). 200
  * `{ ok: true }`; store failure → 503.
  */

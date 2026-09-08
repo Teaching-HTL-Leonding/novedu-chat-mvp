@@ -5,11 +5,10 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { iconButtonVariants } from "@/components/ui/icon-button";
 import { MENU_ITEM, MENU_PANEL } from "@/components/ui/menu";
+import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { rememberedListHref } from "./list-filter-memory";
 import { usePopover } from "./use-popover";
-
-const BRAND = "HTBLA Leonding - Novedu";
 
 // Single source of truth for both the burger menu items and the per-route page
 // heading shown after the brand in the status bar. Teacher-only items are hidden

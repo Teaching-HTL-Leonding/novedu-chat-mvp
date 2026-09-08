@@ -8,10 +8,10 @@ import { beforeEach, expect, it, vi } from "vitest";
 // a genuine HMAC and the assertions below prove the actual binding: the token
 // works for (code, session user, new thread) and for nothing else.
 
-const auth = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth }));
+vi.mock("@/lib/session", () => ({ getSession }));
 vi.mock("@/lib/code-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/code-store")>()),
   checkCode,
@@ -31,7 +31,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.AUTH_SECRET = "unit-test-secret";
   resetThreadTokenSecretForTests();
-  auth.mockResolvedValue({ user: { id: USER } });
+  getSession.mockResolvedValue({ user: { id: USER } });
   checkCode.mockResolvedValue({ ok: true, entry: { code: CODE, module: "tutor" } });
 });
 
@@ -84,7 +84,7 @@ it("binds the token to the SESSION user, not the caller", async () => {
 });
 
 it("refuses without a signed-in user", async () => {
-  auth.mockResolvedValue(null);
+  getSession.mockResolvedValue(null);
 
   expect(await startNewTutorThread({ code: CODE })).toEqual({
     ok: false,

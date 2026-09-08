@@ -2,13 +2,14 @@ import { randomInt } from "node:crypto";
 import { and, asc, desc, eq, getTableColumns, inArray, type SQL } from "drizzle-orm";
 import { CODE_MODULES, type CodeModule, isCodeModule } from "@/lib/code-modules/types";
 import { getDb } from "@/lib/db";
+import { authUsers } from "@/lib/db/auth-schema";
 import { countRows } from "@/lib/db/count";
 import { isUniqueViolation } from "@/lib/db/errors";
 import type { OwnerOption } from "@/lib/db/owner-filter";
 import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
 import { affectedRows } from "@/lib/db/result";
-import { codes, users } from "@/lib/db/schema";
+import { codes } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
@@ -232,7 +233,7 @@ export interface CodeEntry {
   code: string;
   /** Which shareable-activity module this code dispatches to. */
   module: CodeModule;
-  /** Session user id (Entra `oid`) of the creating teacher. */
+  /** Session user id (`novedu_user.id`) of the creating teacher. */
   createdBy: string;
   /** Public URL of the activity-definition YAML (normalized via `URL.href`). */
   fileUrl: string;
@@ -266,9 +267,9 @@ export interface CodeEntry {
 
 /**
  * A code as the `/codes` LIST shows it: the stored entry plus its owner's display
- * name, LEFT-JOINed from `novedu_users` by value — `null` when that teacher has
+ * name, LEFT-JOINed from `novedu_user` by value — `null` when that teacher has
  * never signed in through the web app, in which case the page falls back to the raw
- * `createdBy` oid. A superset of `CodeEntry`, so every `CodeEntry` consumer (the
+ * `createdBy` user id. A superset of `CodeEntry`, so every `CodeEntry` consumer (the
  * bearer route's wire shape included) is unaffected.
  */
 export type CodeListRow = CodeEntry & { ownerName: string | null };
@@ -520,9 +521,9 @@ export async function listCodes(opts?: {
         const query = getDb()
           // The stored columns spread rather than restated, plus the joined owner
           // name — so a schema change reaches the list without an edit here.
-          .select({ ...getTableColumns(codes), ownerName: users.displayName })
+          .select({ ...getTableColumns(codes), ownerName: authUsers.name })
           .from(codes)
-          .leftJoin(users, JOIN_OWNER)
+          .leftJoin(authUsers, JOIN_OWNER)
           .where(and(...conditions))
           .orderBy(
             ...sortOrder(opts?.sort, CODE_SORT_COLUMNS, [desc(codes.createdAt)], asc(codes.code)),

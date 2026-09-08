@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
-import type { Session } from "next-auth";
-import { auth, requireTeacher } from "@/auth";
+import { getSession, requireTeacher, type Session } from "@/lib/session";
 import { STUDENT_MODE_COOKIE } from "@/lib/student-mode-constants";
 
 // "Student mode": a teacher temporarily views the app as a student would see
@@ -13,8 +12,9 @@ import { STUDENT_MODE_COOKIE } from "@/lib/student-mode-constants";
 // already are, so it needs no signing. Only entering the mode is gated (see
 // lib/student-mode-actions.ts).
 //
-// Kept OUT of auth.ts on purpose: proxy.ts imports auth.ts into the Next proxy
-// runtime, where next/headers' cookies() is not available.
+// Kept OUT of auth.ts on purpose: auth.ts is the auth INSTANCE (provider, tables,
+// hooks). The student-mode rule is app policy layered on top of a session, and
+// every consumer of it already goes through lib/session.ts.
 
 // Re-exported so the rule and the cookie name stay one import for server callers.
 export { STUDENT_MODE_COOKIE };
@@ -24,7 +24,7 @@ export async function isStudentMode(): Promise<boolean> {
 }
 
 export interface TeacherView {
-  /** The session's actual role (the JWT claim). */
+  /** The session's actual role (the server-owned `is_teacher` column). */
   realTeacher: boolean;
   /** True while a real teacher is simulating a student. */
   studentMode: boolean;
@@ -36,13 +36,13 @@ export interface TeacherView {
  * THE rule — "real teacher AND not simulating a student" — computed for a
  * session the caller ALREADY has. Every other export in this file derives from
  * it, so the rule has exactly one definition, and this is the only function that
- * reads the raw `session.user.isTeacher` claim on the student-mode-aware path.
- * (`auth.ts`'s `requireTeacher()` reads the claim too, for the channels that have
+ * reads the raw `session.user.isTeacher` flag on the student-mode-aware path.
+ * (`lib/session.ts`'s `requireTeacher()` reads it too, for the channels that have
  * no student mode at all — the CLI/API bearer routes; see `docs/api.md`.)
  *
- * Prefer this overload on a hot path that already called `auth()` (the chat
+ * Prefer this overload on a hot path that already called `getSession()` (the chat
  * runtime route, which gates reasoning display on it — `docs/chat.md`) so the
- * session JWT is decoded once per request instead of twice. Everywhere else,
+ * session is looked up once per request instead of twice. Everywhere else,
  * prefer `getTeacherView()` / `isEffectiveTeacher()`.
  */
 export async function teacherViewForSession(session: Session | null): Promise<TeacherView> {
@@ -63,7 +63,7 @@ export async function effectiveTeacherForSession(session: Session | null): Promi
  * from `session.user.isTeacher` directly, which ignores student mode.
  */
 export async function getTeacherView(): Promise<TeacherView> {
-  return teacherViewForSession(await auth());
+  return teacherViewForSession(await getSession());
 }
 
 /** Shorthand for gating teacher features. */
@@ -83,26 +83,21 @@ export async function requireEffectiveTeacher() {
   return session;
 }
 
-export type TeacherGate =
-  | { ok: true; userId: string }
-  | { ok: false; reason: "not-teacher" | "no-user-id" };
+export type TeacherGate = { ok: true; userId: string } | { ok: false };
 
 /**
- * The standard server-action teacher gate: requires an EFFECTIVE teacher AND a
- * session user id (Entra `oid`). Returns a discriminated result so each action
- * maps the failure to its OWN message and result shape — the security check
+ * The standard server-action teacher gate: requires an EFFECTIVE teacher and
+ * hands back the session user id. Returns a result rather than throwing so each
+ * action words its OWN refusal in its OWN result shape — the security check
  * lives in one place (a missed copy of the gate is a real authz hole) while the
  * wording stays per-action. Callers must `return` on `ok: false` before any
  * privileged work.
  */
 export async function requireTeacherUserId(): Promise<TeacherGate> {
-  let session: Awaited<ReturnType<typeof requireEffectiveTeacher>>;
   try {
-    session = await requireEffectiveTeacher();
+    const session = await requireEffectiveTeacher();
+    return { ok: true, userId: session.user.id };
   } catch {
-    return { ok: false, reason: "not-teacher" };
+    return { ok: false };
   }
-  const userId = session.user?.id;
-  if (!userId) return { ok: false, reason: "no-user-id" };
-  return { ok: true, userId };
 }

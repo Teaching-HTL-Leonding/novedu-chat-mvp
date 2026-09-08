@@ -13,7 +13,8 @@ export function json(body: unknown, status: number): Response {
 }
 
 export function authErrorResponse(error: ApiAuthError): Response {
-  // Generic body; the validation detail stays server-side (telemetry).
+  // Generic body: which check failed (no header, no live session, no teacher
+  // role) stays server-side.
   // `{ message }` is the ONE failure key on the bearer channel (docs/api.md).
   return Response.json(
     { message: error.message },

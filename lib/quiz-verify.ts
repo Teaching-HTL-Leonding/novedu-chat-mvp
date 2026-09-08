@@ -1,8 +1,8 @@
-import { auth } from "@/auth";
 import { type CodeRejection, checkCode, effectiveLlm } from "@/lib/code-store";
 import type { LlmProvider, ReasoningLevel } from "@/lib/llm/provider";
 import { loadQuiz } from "@/lib/quiz-fetch";
 import type { Quiz, QuizQuestion } from "@/lib/quiz-yaml";
+import { getSession } from "@/lib/session";
 
 // The shared quiz-verification preamble — SERVER-ONLY, but deliberately WITHOUT a
 // `"use server"` directive. It is imported by the `"use server"` file
@@ -44,7 +44,7 @@ export const CODE_REJECTION_MESSAGES: Record<CodeRejection, string> = {
 export async function verifyAndLoadQuestion(
   input: QuizCodeInput & { questionId: string },
 ): Promise<LoadedQuestion | { ok: false; message: string }> {
-  const session = await auth();
+  const session = await getSession();
   const userId = session?.user?.id;
   if (!userId) return { ok: false, message: "Please sign in to continue." };
 

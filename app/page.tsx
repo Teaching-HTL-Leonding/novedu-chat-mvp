@@ -1,6 +1,6 @@
-import { auth } from "@/auth";
 import { Main } from "@/components/page-main";
 import { listRecentCodes } from "@/lib/recent-code-store";
+import { getSession } from "@/lib/session";
 import { CodeEntryForm } from "./code-entry";
 
 // The entry page: an activity is always opened through a code (`/<code>`), so the
@@ -8,7 +8,7 @@ import { CodeEntryForm } from "./code-entry";
 // codes (from `novedu_recent_codes`, recorded server-side on every successful
 // open) as one-click shortcuts.
 export default async function Home() {
-  const session = await auth();
+  const session = await getSession();
   const userId = session?.user?.id;
   const recent = userId ? await listRecentCodes(userId) : [];
 

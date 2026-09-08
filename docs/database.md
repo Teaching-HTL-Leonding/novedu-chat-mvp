@@ -224,11 +224,18 @@ local-first boot.
 
 ## App-owned schema (`novedu_*`) & Drizzle workflow
 
-- Schema lives in **`lib/db/schema.ts`** (`drizzle-orm/pg-core`); SQL
-  migrations are generated with **`npm run db:generate`** (drizzle-kit, no DB
-  connection needed) into the committed **`drizzle/`** folder — one baseline
-  folder today (`migration.sql` + `snapshot.json`, drizzle-kit v1 layout; no
-  `meta/_journal.json`).
+- Schema lives in **two files**, both listed in `drizzle.config.ts`'s `schema`
+  array and migrated together: **`lib/db/schema.ts`** (`drizzle-orm/pg-core`,
+  the app's own `novedu_*` tables) and **`lib/db/auth-schema.ts`** (the
+  hand-maintained mirror of better-auth's five tables — its header comment
+  explains how to re-check it after a better-auth upgrade). SQL migrations are
+  generated with **`npm run db:generate`** (drizzle-kit, no DB connection
+  needed) into the committed **`drizzle/`** folder (`migration.sql` +
+  `snapshot.json` per folder, drizzle-kit v1 layout; no `meta/_journal.json`).
+  Creating and dropping a table in the same generate run needs an explicit
+  `--hints` argument naming the create (drizzle-kit otherwise cannot tell that
+  apart from a rename); `npx drizzle-kit generate --help` documents the flag's
+  shape.
 - Migrations are applied **automatically at server startup**
   (`instrumentation.ts` → `lib/db/migrate.ts`, `drizzle-orm/node-postgres/migrator`),
   bookkept in **`novedu_drizzle_migrations`**. `migrationsSchema` is pinned to
@@ -237,6 +244,15 @@ local-first boot.
   runs `CREATE SCHEMA IF NOT EXISTS "public"` on every boot, which is why the
   app role holds `CREATE` on the database (see "Privilege model"). A failed
   migration aborts startup on purpose.
+- Applying migrations seeds `novedu_user` and `novedu_account` from every user
+  id already referenced across the app's other tables (`created_by`, `user_id`,
+  `resolved_by`, `closed_by`, …), so every row that predates the auth tables
+  still resolves: each seeded `novedu_user.id` is the id already in use by that
+  row (the former Entra `oid` for a pre-existing user), and its matching
+  `novedu_account` row (`provider_id = 'microsoft'`, `account_id` = that same
+  id) is what lets that identity's first sign-in through better-auth link back
+  to the seeded row instead of minting a second one. A user signing in for the
+  first time gets a random id instead.
 - Startup then calls **`initMastraStorage()`** (`app/mastra/index.ts`) to
   create Mastra's own `mastra.*` tables. `PostgresStore` does that itself, but
   only **lazily** — on the store's first use, i.e. the first agent run — and
@@ -254,13 +270,17 @@ local-first boot.
   Mastra owns its data model; relationships are by-value (see `docs/codes.md`
   for the join model). There is also deliberately no FK `novedu_user_chats →
   novedu_codes` and none for `novedu_recent_codes` (shortcuts join at read
-  time).
+  time). The only foreign keys anywhere in the `novedu_*` space are the two
+  among the auth tables — `novedu_session.user_id` and `novedu_account.user_id`,
+  both `→ novedu_user.id ON DELETE CASCADE` (`docs/auth.md`); every other
+  `user_id`/`created_by` column joins `novedu_user` by value, like everything
+  else here.
 
 ### Type mapping
 
 `lib/db/schema.ts` maps its columns as follows: bounded/key columns are
 `varchar(n)`; unbounded free text (YAML bodies, report snapshots, saved
-student texts, `note`, `description`, `title`, `credit`, `display_name`,
+student texts, `note`, `description`, `title`, `credit`,
 `llm_model`, `model`, `file_url`, `origin`) is `text` (Postgres stores it
 exactly like a `varchar`, with no length ceiling — the cap on a bounded column
 documents the value's shape and is enforced by the database, not only by the
@@ -283,8 +303,11 @@ optimistic-concurrency guard.
 ### Upserts and duplicate-key handling
 
 Increment/overwrite writes are single `INSERT … ON CONFLICT … DO UPDATE`
-statements: `user-name-store`, `recent-code-store`, and `writing-store` each
-upsert one row; both `usage-store` increments add onto existing counters
+statements: `recent-code-store` and `writing-store` each
+upsert one row (the display name shown everywhere is better-auth's own
+`novedu_user.name`, overwritten from the Entra profile on every sign-in by
+better-auth itself — there is no app-level upsert-on-sign-in step, see
+`docs/auth.md`); both `usage-store` increments add onto existing counters
 (`col = table.col + excluded.col`) and COALESCE-fill the nullable
 `provider`/`model` columns (`provider = COALESCE(table.provider,
 excluded.provider)`) so the first writer with that knowledge wins.
@@ -311,14 +334,18 @@ Tables (details in `docs/codes.md`):
 | `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only when the activity opts out of anonymity) |
 | `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (entry-page shortcuts) |
 | `novedu_writing_submissions` | PK (`code`, `user_id`) | a student's saved writing text — one upserted row per student per code, non-anonymous codes only (details in `docs/writing.md`) |
-| `novedu_reports` | PK `id` | student-submitted reports on an AI interaction, always attributed to the reporter's oid even under an anonymous code (details in `docs/reports.md`) |
+| `novedu_reports` | PK `id` | student-submitted reports on an AI interaction, always attributed to the reporter's user id even under an anonymous code (details in `docs/reports.md`) |
 | `novedu_coding_keys` | PK (`code`, `user_id`); unique index on `api_key` | the coding module's per-user API keys — one stable `nvk-…` key per student per coding code, the second sanctioned user↔code attribution (details in `docs/coding.md`) |
-| `novedu_users` | PK `user_id` | Entra `oid` → display name, upserted on sign-in; LEFT-JOINed by value to resolve a shown user id to a name (details in `docs/auth.md`) |
 | `novedu_files` | PK `id` (per-version); partial UK `name WHERE valid_until IS NULL` | App-hosted YAML files, **temporal/append-only** (details in `docs/files.md`) |
 | `novedu_images` | PK `id` (per-version); partial UK `name WHERE valid_until IS NULL` | App-hosted image metadata (bytes in Blob Storage), **temporal/append-only** (details in `docs/images.md`) |
 | `novedu_usage_by_code` | PK (`code`, `hour`) | per-hour token/tool/activity counts by code, no user (details in `docs/usage-metering.md`) |
 | `novedu_usage_by_user` | PK (`user_id`, `hour`) | per-hour token/tool/activity counts by user, no code (details in `docs/usage-metering.md`) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping (schema `public`) |
+| `novedu_user` | PK `id` | one row per signed-in person: display name, email, `is_teacher`; the id every `user_id`/`created_by` column across the tables above stores by value (details in `docs/auth.md`) |
+| `novedu_session` | PK `id`; unique `token`; FK `user_id → novedu_user.id` cascade | one row per live session, shared by the cookie and bearer channels (details in `docs/auth.md`) |
+| `novedu_account` | PK `id`; FK `user_id → novedu_user.id` cascade | the link to the identity provider — `account_id` holds the Entra `oid` (details in `docs/auth.md`) |
+| `novedu_verification` | PK `id` | better-auth's short-lived sign-in state, transient (details in `docs/auth.md`) |
+| `novedu_device_code` | PK `id`; unique `device_code`, `user_code` | one row per CLI sign-in attempt via the device-authorization flow; `user_id` has no foreign key (details in `docs/api.md`) |
 
 Mastra's own tables live in schema `mastra` (`mastra_threads`, `mastra_messages`,
 `mastra_resources`, `mastra_workflow_snapshot`, `mastra_evals`, `mastra_traces`,

@@ -19,7 +19,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export interface ThreadTokenPayload {
   /** The tutor code the chat was opened under. */
   code: string;
-  /** Session user id (Entra `oid`) of the signed-in student. */
+  /** Session user id (`novedu_user.id`) of the signed-in student. */
   userId: string;
   /** The server-generated Mastra thread id. */
   threadId: string;

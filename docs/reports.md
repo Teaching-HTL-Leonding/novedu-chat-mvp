@@ -16,8 +16,8 @@ this file has the full mechanics. Read it before touching `lib/report-types.ts`,
 
 ## The decision that shapes everything: always attributed
 
-A report is **always attributed to the reporting student** — the reporter's Entra
-`oid` is stored on the row **even under an anonymous code**. This is a deliberate,
+A report is **always attributed to the reporting student** — the reporter's user id
+is stored on the row **even under an anonymous code**. This is a deliberate,
 student-initiated **waiver of anonymity**, not a leak: the report button carries a
 **mandatory, visually prominent notice** — "Reports are not anonymous — your name
 and this conversation/answer will be shared with your teacher." — so a student only
@@ -27,9 +27,9 @@ by that explicit action, never implicitly.
 This is one of **two sanctioned exceptions** to the "`novedu_user_chats` is the
 only user↔chat link" invariant (`AGENTS.md`, `docs/codes.md`, `docs/auth.md`) —
 the sibling is `novedu_coding_keys`, where requesting a coding activity's personal
-API key stores the requester's oid behind an explicit on-page notice
+API key stores the requester's user id behind an explicit on-page notice
 (`docs/coding.md`). The discipline that keeps reports honest: the store surfaces
-**only the reporter's own** identity. It LEFT-JOINs `novedu_users` (for the
+**only the reporter's own** identity. It LEFT-JOINs `novedu_user` (for the
 reporter's display name) and `novedu_codes` (for the note/creator), but **never
 joins `novedu_user_chats`** or any path that would reveal a *different* student
 behind a reported thread — the anonymity promise for everyone but the reporter
@@ -50,7 +50,7 @@ code-delete path drops it explicitly (it does — see **Lifecycle**).
 | `id` | `varchar(36)` PK | surrogate `randomUUID` |
 | `kind` | `varchar(16)` | `"chat"` \| `"quiz-answer"` — picks which snapshot columns are populated |
 | `code` | `varchar(32)` | the reported activity's code (= `novedu_codes.code`, same width) |
-| `user_id` | `varchar(64)` | the reporting student's Entra `oid` — **ALWAYS set** |
+| `user_id` | `varchar(64)` | the reporting student's session user id — **ALWAYS set** |
 | `reaction` | `varchar(16)` | one of the four reactions (below), stored verbatim |
 | `description` | `text` | optional free text; empty string when none |
 | `created_at` | `timestamptz` | when filed, UTC |
@@ -62,7 +62,7 @@ code-delete path drops it explicitly (it does — see **Lifecycle**).
 | `verdict` | `varchar(16)` | **quiz only** — `correct` \| `partial` \| `incorrect` |
 | `had_images` | `boolean` | **quiz only** — whether the graded answer carried photos; flagged, **never stored** |
 | `resolved_at` | `timestamptz` | resolution timestamp — **resolved ⇔ NOT NULL** (single source of truth) |
-| `resolved_by` | `varchar(64)` | the resolving teacher's oid (null while open) |
+| `resolved_by` | `varchar(64)` | the resolving teacher's user id (null while open) |
 
 Indexes: `ix_novedu_reports_code` (the per-code drill-down) and
 `ix_novedu_reports_resolved_at` (open vs. resolved — the open rows are the working
@@ -80,11 +80,11 @@ the **urgent tier**, styled distinctly. Teacher-UI badge tones (`report-detail-b
 ## Submit flow — chat reports
 
 `submitChatReport({ code, threadId, threadToken, reaction, description })` in
-`lib/report-actions.ts` (`"use server"`). The whole app is behind the Entra gate, so
-the caller is authenticated; the reporter's oid comes from the **session, never from
+`lib/report-actions.ts` (`"use server"`). The whole app is behind the sign-in gate, so
+the caller is authenticated; the reporter's user id comes from the **session, never from
 input**. Steps:
 
-1. `auth()` → the session `userId` (no session → "Please sign in").
+1. `getSession()` → the session `userId` (no session → "Please sign in").
 2. `isReportReaction` narrows the reaction; the description is trimmed and capped at
    `REPORT_DESCRIPTION_MAX`; `threadId` must match `/^[A-Za-z0-9-]{1,64}$/`.
 3. `checkCode(code)` re-verifies the code is valid and in-window (same rejection
@@ -167,14 +167,14 @@ error.
 - `listReports({ status, reaction?, search?, codeCreatedBy? })` → `ReportListRow[] |
   undefined` — the inbox query, filtered **in the database** (`docs/filtered-lists.md`)
   by resolution status (`open` = `resolved_at IS NULL`, `resolved` = NOT NULL, `all`),
-  reaction, a `containsAny` free-text search (description, reporter oid + display name,
+  reaction, a `containsAny` free-text search (description, reporter user id + name,
   code, code note), and — for "Only my codes" — the code's creating teacher. LEFT-JOINs
-  `novedu_users` (reporter name, oid fallback) and `novedu_codes` (note/creator) **by
+  `novedu_user` (reporter name, user-id fallback) and `novedu_codes` (note/creator) **by
   value**; a report whose code was deleted still lists (both joins yield `null`). It
   **NEVER joins `novedu_user_chats`**. Ordered so open `holysh` reports float to the
   top (a raw `sql` CASE), then newest first.
 - `getReportById(id)` → `ReportListRow | null | undefined` — the **single-row twin
-  of `listReports`**, with the same `novedu_users` / `novedu_codes` LEFT JOINs by
+  of `listReports`**, with the same `novedu_user` / `novedu_codes` LEFT JOINs by
   value and the same `novedu_user_chats` prohibition; `null` = not found,
   `undefined` = DB error, never throws. Backs the bearer `GET /api/reports/<id>`
   (below).
@@ -195,10 +195,10 @@ sibling `loading.tsx`.
   owner-gated** (any effective teacher can review any code's reports), and honors
   student mode: a teacher "viewing as student" is denied like a student.
 - **Params** — `status` (default `open`), `reaction`, `q`, `mine` (default ON →
-  `codeCreatedBy` = the session oid).
+  `codeCreatedBy` = the session user id).
 - **Columns** — the multi-select `selectionColumn` (key = **report id**), Reaction
   badge, Kind badge, Code (note‖code, link to `/codes/<code>`), Student (display name
-  ?? oid, oid as hover title), Created (`LocalTime`), Status badge (open=orange /
+  ?? user id, user id as hover title), Created (`LocalTime`), Status badge (open=orange /
   resolved=green). The **description is not a list column** (it can be long) — it lives
   only in the detail dialog; the `q` search still matches it DB-side. Actions: chat rows
   link to the existing transcript `/codes/<code>/c/<threadId>?from=reports` — the
@@ -235,8 +235,8 @@ reports-specific invariants:
   never destroy a student's report, and a mis-resolution is corrected by a human in
   the `/reports` inbox. There is no report-submission route either — reports are
   filed only by authenticated students in the app, never by the CLI.
-- **`resolved_by` is the token oid.** `POST /api/reports/resolve` calls the existing
-  `setReportsResolved(ids, true, oid)` with the verified token `oid`, so a report an
+- **`resolved_by` is the token's user id.** `POST /api/reports/resolve` calls the existing
+  `setReportsResolved(ids, true, userId)` with the verified token's user id, so a report an
   agent resolves is attributed exactly like the web action — to the teacher who ran
   `novedu-cli login`. Unknown / already-resolved ids are silent no-ops (the same
   blanket update the inbox uses).
@@ -278,7 +278,7 @@ Reports-specifics:
   `docs/testing.md`) and signs genuine tokens with a test secret. Covers: missing /
   invalid / wrong-user token, unknown reaction, over-cap description, soft cap,
   expired code; and for quiz — the server-authoritative question text (client copy
-  ignored), unknown question, invalid verdict rejected, session-oid attribution,
+  ignored), unknown question, invalid verdict rejected, session user-id attribution,
   content-free telemetry; plus the teacher bulk actions (resolve / reopen / delete,
   non-teacher blocked, non-uuid id list rejected).
 - **`lib/report-store.unit.test.ts`** — the insert shapes (chat vs. quiz snapshot),

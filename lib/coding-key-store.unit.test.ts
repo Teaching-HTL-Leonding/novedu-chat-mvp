@@ -341,7 +341,7 @@ describe("listCodingKeys", () => {
         displayName: "Alex Muster",
         createdAt: new Date("2026-08-20T09:00:00Z"),
       },
-      // A user with no `novedu_users` row yet; the page falls back to the oid.
+      // A user with no `novedu_user` row yet; the page falls back to the oid.
       { userId: "oid-student-2", displayName: null, createdAt: new Date("2026-08-19T09:00:00Z") },
     ];
     fake.state.rows = rows;

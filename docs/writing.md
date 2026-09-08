@@ -142,7 +142,7 @@ texts outlive a deleted code unless the code-delete path drops them explicitly
 | column | type | meaning |
 | --- | --- | --- |
 | `code` | `varchar(32)` | the writing code (= `novedu_codes.code`, same width) |
-| `user_id` | `varchar(64)` | the student's Entra `oid` |
+| `user_id` | `varchar(64)` | the student's session user id |
 | `text` | `text` | the saved Markdown |
 | `text_updated_at` | `timestamptz` | last save time, UTC |
 
@@ -166,8 +166,8 @@ surfaces the error to its action.
 - `listSavers(code, { search? })` — the students who saved, **newest save first**,
   each with a count of their qualifying conversations (a correlated subquery joining
   the Mastra tables by value — one round trip, no N+1) and their **display name**
-  (a LEFT JOIN on `novedu_users`, `null` ⇒ the caller shows the `oid`; see
-  `docs/auth.md`). The optional DB-side `search` matches the name **or** the oid. It
+  (a LEFT JOIN on `novedu_user`, `null` ⇒ the caller shows the raw user id; see
+  `docs/auth.md`). The optional DB-side `search` matches the name **or** the user id. It
   carries **no text bodies** (the list never loads essay content); the student page
   loads one student's text on demand. Anonymous codes hold no rows, so the list is
   empty.
@@ -179,15 +179,15 @@ There is **no delete here**: a code's saved texts are dropped inline by
 ## Save action — `lib/writing-actions.ts` (`"use server"`)
 
 `saveWriting({ code, text })` is the student's only writing server action. The whole
-app is behind the Entra gate, so any caller is authenticated; the writing **code**
+app is behind the sign-in gate, so any caller is authenticated; the writing **code**
 authorizes the activity and is **re-verified on every save** (`checkCode`), so a
 code outside its window stops accepting saves mid-session. A student may write
-**only their own** `(code, user_id)` row — the row key is the session `oid`, never
+**only their own** `(code, user_id)` row — the row key is the session user id, never
 client-supplied. The action:
 
 1. trims the text and `checkCode`s the code (rejection → a human-readable message);
 2. confirms `entry.module === "writing"`;
-3. resolves the session `oid` (no session → "Please sign in");
+3. resolves the session user id (no session → "Please sign in");
 4. **re-reads the `anonymous` flag LIVE from the YAML** (`loadWriting`) and
    **rejects** the save when the activity is anonymous — defense in depth, so an
    anonymous writing code never accumulates attributed rows even if a client tries;
@@ -203,7 +203,7 @@ message }`.
 (`app/[code]/render-writing.tsx`, a server component). It loads the YAML (uncached,
 so edits show immediately), ships **only** the `WritingPublic` projection to the
 client, and — when the activity is **not** anonymous — prefills the student's
-previously saved text from `getSubmission(code, oid)` so a reload restores work.
+previously saved text from `getSubmission(code, userId)` so a reload restores work.
 
 The client surface is `app/[code]/_writing/**` (the `_writing` underscore keeps it
 out of routing). `WritingSurface` is a **split screen filling the viewport** — both
@@ -319,10 +319,10 @@ functions**, so no JSX lives in the server-only `.ts` descriptor.
 
 - **Savers list** — `WritingSaversList` calls `listSavers(code, { search })` and
   renders a filtered `DataList` (newest save first): the shared `studentColumn`
-  showing the display name (`listSavers` LEFT-JOINs `novedu_users`; the raw Entra
-  `oid` is the fallback and stays the hover `title` — see `docs/auth.md`), a
+  showing the display name (`listSavers` LEFT-JOINs `novedu_user`; the raw user id
+  is the fallback and stays the hover `title` — see `docs/auth.md`), a
   **Saved** time, a **Conversations** count, and a **View** link to the student's
-  page. A `ListFilterBar` search filters by name OR oid in the DB. There is **no saved-text length column** — that
+  page. A `ListFilterBar` search filters by name OR user id in the DB. There is **no saved-text length column** — that
   would load every essay body; length lives on the student page instead.
 - **Student page** — `/codes/[code]/s/[userId]`
   (`app/codes/[code]/s/[userId]/page.tsx`) is the reading view: it loads the code

@@ -16,14 +16,19 @@ RUN npm ci
 FROM node:24-alpine AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-# auth.ts validates these at module load, which also runs during build-time
-# page-data collection. Server code re-reads process.env at runtime, so these
-# placeholders are never baked into the output and never reach the final stage.
+# auth.ts (the better-auth instance) and the database pool are both constructed
+# at module load, which also runs during build-time page-data collection: the
+# drizzle adapter needs a DATABASE_URL to construct, and auth.ts validates the
+# AZURE_*/TEACHER_GROUP_ID/AUTH_SECRET vars the same way. The pool itself never
+# connects during a build — no query runs — so a placeholder connection string
+# is enough. Server code re-reads process.env at runtime, so none of these
+# placeholders are baked into the output or reach the final stage.
 ENV AZURE_CLIENT_ID=build-placeholder \
     AZURE_CLIENT_SECRET=build-placeholder \
     AZURE_TENANT_ID=build-placeholder \
     TEACHER_GROUP_ID=build-placeholder \
-    AUTH_SECRET=build-placeholder
+    AUTH_SECRET=build-placeholder \
+    DATABASE_URL=postgresql://build:placeholder@localhost:5432/build
 COPY --from=deps /app/node_modules ./node_modules
 # npm cannot hoist EVERY workspace dep to the root — a package whose root slot is
 # already taken by an incompatible version lands in the workspace's own
@@ -48,10 +53,7 @@ WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
-    HOSTNAME=0.0.0.0 \
-    # Auth.js self-hosted: trust the Host / x-forwarded-* headers set by the
-    # reverse proxy in front of the container (Azure App Service, local Docker).
-    AUTH_TRUST_HOST=true
+    HOSTNAME=0.0.0.0
 
 # Build identity, surfaced at runtime by /api/version and the /health dashboard
 # (lib/version.ts) for deployment triage. Fed by docker-publish.yml --build-arg;

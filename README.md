@@ -33,7 +33,7 @@ Azure Database for PostgreSQL (authenticated via Entra — no password required)
 | **Images** (`app/images/**`, `lib/image-*.ts`) | Teacher-uploaded images stored in Azure Blob Storage, addressed by passwordless **User-Delegation SAS** (account keys disabled); retrieval is direct-to-blob (no app route serves the bytes). See [`docs/images.md`](docs/images.md). |
 | **Usage metering** (`lib/usage-store.ts`, `app/mastra/usage-exporter.ts`) | Per-hour token / tool-call / activity counts written off the response path into two anonymity-preserving tables (`novedu_usage_by_code`, `novedu_usage_by_user`), surfaced on the teacher `/usage` dashboard. See [`docs/usage-metering.md`](docs/usage-metering.md) and [`docs/dashboard.md`](docs/dashboard.md). |
 | **LLM providers** (`lib/llm/`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | Three OpenAI-compatible upstreams behind one server-only seam: a self-hosted vLLM GPU server ("SCCH", the default) plus two optional ones — **Azure Foundry** when `AZURE_FOUNDRY_ENDPOINT` is set (passwordless Entra auth, no API key) and **OpenRouter** when `OPENROUTER_API_KEY` is set. The activity YAML's `llm:` block picks provider + model + an optional reasoning level, and a code can override the whole block; endpoints, keys, and tokens stay server-side. See [`docs/ai-models.md`](docs/ai-models.md). |
-| **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | Auth.js (NextAuth v5) Microsoft Entra ID gate (Next 16 renamed `middleware` → `proxy.ts`). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). JWT sessions, no DB adapter. See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: Entra **bearer tokens** (the CLI is a public client of the same app registration), validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
+| **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | **better-auth** with Microsoft Entra ID as the sign-in provider (Next 16 renamed `middleware` → `proxy.ts`, which checks only for a session cookie). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). Sessions are database-backed (`novedu_session`, no cookie cache). See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: the same **session token as a bearer**, obtained by the CLI's own OAuth device flow, validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
 | **Teacher docs** (`teacher-docs/`) | The teacher-facing guide as a **hand-maintained Markdown corpus** (`teacher-docs/src/content/docs/` — human-owned chapters, kept current from code changes by hand or via the `novedu-teacher-docs` skill) and an **Astro Starlight site** that renders it (the rest of `teacher-docs/`, an npm workspace) — as HTML pages plus an [llms.txt](https://llmstxt.org) surface for AI agents (`/docs/llms.txt`, `/docs/llms-full.txt`, and a `.md` twin of every chapter). Served **publicly at `/docs`** inside this app — built into `public/docs/` by the Docker image build, deliberately excluded from the Entra gate. `npm run docs:dev` for local authoring; the corpus-contract test + site build are the consistency checks. See [`docs/teacher-docs.md`](docs/teacher-docs.md). |
 | **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` + `coding/v1/models` (**public** OpenAI-compatible endpoints, per-user API key auth), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text; **bearer** PUT: upsert for `novedu-cli files upload`), `files` + `codes` (**bearer**, teacher-only: list/create/sync for the CLI — see [`docs/api.md`](docs/api.md)), `images` + `images/<name>` (**bearer**, teacher-only: image upload/list for the CLI), `eval/grade` + `eval/judge` + `eval/respond` (**bearer**, teacher-only: stateless one-shot grading / judging / tutor turns for `novedu-cli eval`), `reports` + `reports/<id>` + `reports/resolve` (**bearer**, teacher-only: report triage for the CLI; a chat report's detail embeds the conversation transcript), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
 
@@ -97,12 +97,13 @@ OPENROUTER_API_KEY=your-openrouter-api-key
 # gateway). It already includes /v1. Default: https://openrouter.ai/api/v1
 # OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
-# --- Microsoft Entra ID sign-in (Auth.js / NextAuth v5) ---
+# --- Microsoft Entra ID sign-in (better-auth) ---
 AZURE_TENANT_ID=your-entra-tenant-id
 AZURE_CLIENT_ID=your-entra-app-client-id
 AZURE_CLIENT_SECRET=your-entra-app-client-secret
 
-# Secret used by Auth.js to sign JWT session tokens. Generate one with:
+# Signs the session cookie/token and derives the thread-ownership HMAC key
+# (lib/thread-token.ts). Generate one with:
 #   openssl rand -base64 32
 AUTH_SECRET=your-generated-secret
 
@@ -170,8 +171,7 @@ OTEL_SERVICE_NAME=novedu-chat
 Notes:
 
 - The app **fails fast at startup** if any required sign-in variable is missing — the
-  `AZURE_*` Entra credentials and `TEACHER_GROUP_ID` (`auth.ts`). (`AUTH_SECRET` is
-  likewise enforced by Auth.js itself.)
+  `AZURE_*` Entra credentials, `TEACHER_GROUP_ID`, and `AUTH_SECRET` (`auth.ts`).
 - If `SCCH_BASE_URL` / `SCCH_API_KEY` are unset, the app still starts but no SCCH chat
   models are available (a warning is logged).
 - `AZURE_FOUNDRY_ENDPOINT` and `OPENROUTER_API_KEY` are **optional**: the app boots
@@ -195,7 +195,7 @@ Notes:
   until a teacher deletes it on `/codes`. An expired code stays listed (its activity no
   longer opens, but its stats remain reachable). See `docs/codes.md`.
 - In your Entra app registration, add the redirect URI
-  `http://localhost:3000/api/auth/callback/microsoft-entra-id` (and the equivalent for any
+  `http://localhost:3000/api/auth/callback/microsoft` (and the equivalent for any
   deployed origin).
 
 ### Changing the public domain
@@ -206,7 +206,7 @@ things. Moving to a new domain therefore means touching all of them:
 
 | Where | What it controls |
 | --- | --- |
-| `AUTH_URL` — production app setting, **not in the repo** | Pins the sign-in host and overrides `AUTH_TRUST_HOST`. Sign-in breaks if it still names the old domain. |
+| `AUTH_URL` — production app setting, **not in the repo** | better-auth's `baseURL` and trusted origin (unset locally — better-auth infers the base URL from the request instead). Also what makes the session cookie carry the `__Secure-` prefix under https (`__Secure-novedu.session_token`). Sign-in breaks if it still names the old domain. |
 | Entra app registration redirect URI | The callback URL for the new origin (see the bullet above). |
 | `CODE_ORIGIN` — env / app setting | Origin shown in generated code URLs (`https://<origin>/<code>`) and in the coding endpoint's connection snippet; read by `lib/app-origin.ts` (legacy name `TUTOR_CODE_ORIGIN` still honored). Display-only — falls back to the request's `x-forwarded-host`. |
 | `cli/src/server-url.ts` → `DEFAULT_SERVER` | The CLI's default server. A *default* only: `--server` and `NOVEDU_SERVER` override it per invocation. |
@@ -257,7 +257,7 @@ automatically; a plain local build without staging simply 404s on `/docs`.)
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
 | `npm run qa` | `check` + `typecheck` + `test` + `build` + `docs:build`. (`qa:e2e` adds the e2e suite.) |
 | `npm run docs:dev` | Serve the teacher guide locally at `:4321/docs/` (Astro Starlight; `docs:build` / `docs:preview` for the static build, `docs:stage` to stage it into `public/docs` so the app serves `/docs` locally). |
-| `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, `prompts` to dump the exact LLM prompts an activity produces, `eval` to run quiz/tutor evals, `login` / `logout` / `whoami` for Entra ID sign-in, and the teacher management commands `codes create/list/sync`, `files upload/list`, `images upload/list`, and `reports list/show/resolve` (JSON in/out) against the app's bearer-protected APIs. |
+| `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, `prompts` to dump the exact LLM prompts an activity produces, `eval` to run quiz/tutor evals, `login` / `logout` / `whoami` to sign in, and the teacher management commands `codes create/list/sync`, `files upload/list`, `images upload/list`, and `reports list/show/resolve` (JSON in/out) against the app's bearer-protected APIs. |
 
 > Use the `dev` / `build` npm scripts rather than invoking `next` or `mastra` directly.
 
@@ -272,7 +272,8 @@ The `activities/` directory contains sample YAML for each module — `tutors/`, 
 [`activities/README.md`](activities/README.md)). The `@novedu/cli` package (`cli/`) validates
 an activity file with the exact checks the app enforces, dumps the prompts an activity
 produces (`prompts`), runs evals against golden answers or scripted conversations
-(`eval`), signs in with Entra ID (`login` / `logout` / `whoami`), and lets teachers
+(`eval`), signs in (`login` / `logout` / `whoami` — `login` prints a link to open and
+approve in the browser), and lets teachers
 manage the app over its bearer-protected APIs — `codes create/list/sync`,
 `files upload/list`, `images upload/list`, and
 `reports list/show/resolve`, JSON in/out
@@ -340,7 +341,7 @@ teacher guide corpus + docs site ([`teacher-docs.md`](docs/teacher-docs.md)).
   `docs/database.md`.
 - **Anonymity & metering** — usage is metered into two independent hourly tables that
   never link a user to a code (`usage_by_code` has no user, `usage_by_user` has no code),
-  so the anonymity invariant holds even though the runtime knows the `oid`. See
+  so the anonymity invariant holds even though the runtime knows the user id. See
   `docs/usage-metering.md`.
 - **SSRF** — validating an activity (saving a file, minting a code) fetches
   teacher-supplied URLs server-side. The prototype only restricts the scheme to

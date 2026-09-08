@@ -10,14 +10,14 @@
 // the tables are append-only, so the active row's `created_by` is whoever saved
 // the item LAST. One word, defined for teachers in the guide.
 
-/** The `?owner=` value that means "every owner" — the only non-oid one. */
+/** The `?owner=` value that means "every owner" — the only non-user-id one. */
 export const ALL_OWNERS = "all";
 
-/** One entry of an owner dropdown: the oid to filter by and what to show for it. */
+/** One entry of an owner dropdown: the user id to filter by and what to show for it. */
 export interface OwnerOption {
-  /** The Entra `oid` stored in the list table's `created_by`. */
+  /** The session user id (`novedu_user.id`) stored in the list table's `created_by`. */
   userId: string;
-  /** `novedu_users.display_name`, or the raw oid when that user has no row yet. */
+  /** `novedu_user.name`, or the raw user id when that user has no row yet. */
   label: string;
 }
 
@@ -35,7 +35,7 @@ export type OwnerParams = { owner?: string | string[] };
  * USER, so the default view has no query string at all — and "Clear"
  * (`router.push(pathname)`) therefore returns to the signed-in teacher's own items
  * without a line of code. `ALL_OWNERS` drops the filter; anything else is taken as
- * an oid VERBATIM — an unknown one simply matches nothing, and the caller renders it
+ * a user id VERBATIM — an unknown one simply matches nothing, and the caller renders it
  * as its own option so the control never disagrees with the URL. A repeated param is
  * first-wins, like `parseSort` and `parsePaging`.
  */

@@ -67,12 +67,12 @@ failure modes and the cost/safety notes that decide whether a run is correct.
 - **The auth split**: `validate` and `prompts` run fully offline — no server, no
   DB, no LLM call. Everything else, `eval` included (it runs the model), needs a
   signed-in **teacher**. A non-teacher gets a generic 403, so check `whoami` for
-  `Teacher: yes` before blaming the command.
+  `"isTeacher": true` before blaming the command.
 - **JSON I/O contract** for `codes` / `files` / `images` / `reports`: success
   objects verbatim on stdout, exit 0; every failure a JSON `{ message }` or
   `{ errors: [...] }` on stderr, exit 1. Read the stderr JSON and act on it — the
-  server's structured detail names the exact problem. (`whoami` prints
-  human-readable lines, and `validate`, `codes sync` and `eval` have their own
+  server's structured detail names the exact problem. (`login`, `logout` and
+  `whoami` follow it too; `validate`, `codes sync` and `eval` have their own
   report formats plus `--json`, but their hard failures still follow this.)
 - **The server validates, not the CLI.** Don't pre-validate before
   `codes create` / `files upload` — the server runs the identical pipeline as the
@@ -92,21 +92,26 @@ failure modes and the cost/safety notes that decide whether a run is correct.
 
 ## Signing in: the human must finish `login`
 
-`login` opens the system browser for the Microsoft sign-in (printing the URL as a
-fallback) and **blocks until the human completes it** (5-minute timeout). So run
-it in the background or keep reading its output, and tell the user a browser
-window opened — relay the printed URL if none appeared. First-time users must
-accept a one-time consent prompt ("Access Novedu APIs from the CLI").
+`login` prints a verification link and a short code (and tries to open the link
+in the system browser as a convenience) and **blocks until the human approves it
+there** while signed in to Novedu — a 30-minute window. So run it in the
+background or keep reading its output, and relay the printed link to the user if
+a browser didn't open for them.
 
-`Signed in as <name>.` means done; everything afterwards is non-interactive (the
-refresh token is cached in `~/.novedu/token-cache.json`, mode 0600, and renews
-silently). Re-running while signed in prints `Already signed in as <name>.` and
-exits 0, so running it defensively is safe. A command failing with
-`Not signed in — run "novedu-cli login".` means exactly that.
-`login --device-code` (verification URL + code, for browserless machines) is
-often blocked by tenant Conditional Access policy (error 53003) — prefer the
-browser flow. `whoami` verifies the whole chain (cache → token → server) and
-shows name, user id and teacher status; `logout` is purely local.
+`{"status": "signed-in", "name": …}` on stdout means done; everything afterwards
+is non-interactive (the session token is stored in `~/.novedu/sessions.json`,
+mode 0600, keyed by server — one entry per server you sign in to). Re-running
+while signed in prints `{"status": "already-signed-in", …}` and exits 0, so
+running it defensively is safe. A command failing with
+`Not signed in — run "novedu-cli login".` means exactly that. `whoami` verifies
+the whole chain (stored token → server) and prints
+`{ name, userId, isTeacher, server }`; `logout` revokes the session server-side
+(best effort) and always removes the local token.
+
+`NOVEDU_TOKEN` overrides the stored session with a bearer token from the
+environment — useful in CI or an agent sandbox with no browser to approve a
+device code, but not a substitute for `login`: the server still validates the
+token on every request.
 
 ## Where to start, by what the user is asking
 

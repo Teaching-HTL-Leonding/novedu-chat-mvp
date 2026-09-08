@@ -9,7 +9,7 @@ import { authErrorResponse, json, parseReaction, parseStatus, toWire } from "./s
 // requireBearerTeacher — reviewing reports is role-gated, not owner-gated, and
 // there is no "view as student" on the bearer channel. A report is
 // non-anonymous toward teachers (the sanctioned waiver, docs/reports.md), so the
-// reporter's oid + display name ride the wire shape.
+// reporter's user id + display name ride the wire shape.
 export const dynamic = "force-dynamic";
 
 /**

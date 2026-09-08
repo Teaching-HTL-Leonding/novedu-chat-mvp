@@ -1,16 +1,17 @@
-import { auth } from "@/auth";
+import { getSession } from "@/lib/session";
 import { getTeacherView } from "@/lib/student-mode";
 import { NavMenu } from "./nav-menu";
 import { UserMenu } from "./user-menu";
 
 // Persistent top chrome. Server component so it can read the session directly and
-// pass the user down to the (client) user menu.
+// pass the user down to the (client) user menu. The avatar is always the name's
+// initials — `user.image` is never populated (docs/auth.md).
 //
 // The whole bar acts on the EFFECTIVE teacher status: a real teacher in student
 // mode sees student navigation and no teacher badge — only the "Student mode"
 // pill (with its exit control) gives the simulation away.
 export async function StatusBar() {
-  const session = await auth();
+  const session = await getSession();
   const { studentMode, effectiveTeacher } = await getTeacherView();
 
   return (

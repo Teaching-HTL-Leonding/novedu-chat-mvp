@@ -14,7 +14,7 @@
 export const USAGE_CODE = "usageCode";
 
 /**
- * The student's Entra `oid` (drives `usage_by_user`). Absent ⇒ only `usage_by_code`
+ * The student's session user id (`novedu_user.id`, drives `usage_by_user`). Absent ⇒ only `usage_by_code`
  * is metered. Set for ALL codes incl.
  * anonymous ones — it is only ever stored against an hour bucket, never linked to
  * the code, so the anonymity invariant is unchanged (docs/codes.md).

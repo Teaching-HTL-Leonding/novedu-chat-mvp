@@ -131,25 +131,31 @@ export function mintTutorCode(
   });
 }
 
+/** The names `auth.setup.ts` gives the two e2e principals — what `resetUserName` restores. */
+const SETUP_USER_NAMES: Record<string, string> = {
+  "e2e-student": "E2E Student",
+  "e2e-teacher": "E2E Teacher",
+};
+
 /**
- * Upserts a display name into `novedu_users` for a user id (the Entra `oid`, or the
- * `sub` fallback the e2e sessions use — the minted teacher token carries no `oid`,
- * so its id is `"e2e-teacher"`). Lets a @live-db review spec assert the savers list /
- * student page resolve an opaque id to a NAME, not just the oid fallback. Mirrors
- * lib/user-name-store.ts' upsert as a single INSERT … ON CONFLICT. Pair with
- * `deleteUserName` so the shared row never leaks to another spec.
+ * Renames an existing `novedu_user` row (the auth setup creates one per e2e
+ * principal). Lets a @live-db review spec assert that the savers list / student page
+ * resolve an opaque user id to a NAME, not just the raw-id fallback. Pair with
+ * `resetUserName` so the renamed principal never leaks into another spec.
  */
-export async function setUserName(userId: string, displayName: string): Promise<void> {
-  await query(
-    `INSERT INTO novedu_users (user_id, display_name) VALUES ($1, $2)
-     ON CONFLICT (user_id) DO UPDATE SET display_name = excluded.display_name`,
-    [userId, displayName],
-  );
+export async function setUserName(userId: string, name: string): Promise<void> {
+  await query(`UPDATE novedu_user SET name = $2, updated_at = now() WHERE id = $1`, [userId, name]);
 }
 
-/** Removes a `novedu_users` row — cleanup for `setUserName`. */
-export async function deleteUserName(userId: string): Promise<void> {
-  await query(`DELETE FROM novedu_users WHERE user_id = $1`, [userId]);
+/**
+ * Puts an e2e principal's name back to what `auth.setup.ts` created it with —
+ * cleanup for `setUserName`. The row itself is never deleted: it is the target of
+ * the session rows' foreign key.
+ */
+export async function resetUserName(userId: string): Promise<void> {
+  const name = SETUP_USER_NAMES[userId];
+  if (!name) throw new Error(`resetUserName: no setup name known for "${userId}"`);
+  await setUserName(userId, name);
 }
 
 /** Removes a `novedu_codes` row — cleanup for codes a spec created via the API. */

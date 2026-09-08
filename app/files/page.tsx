@@ -1,6 +1,5 @@
 import type { VariantProps } from "class-variance-authority";
 import Link from "next/link";
-import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
 import { EditIcon, ExternalLinkIcon, LayoutIcon, ShareIcon } from "@/components/icons";
@@ -23,12 +22,13 @@ import { parseSort, type SortParams } from "@/lib/db/sorting";
 import { FILE_SORT_COLUMNS, listFileOwners, listFiles } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
 import { deleteSelectedFilesAction } from "@/lib/files-actions";
+import { getSession } from "@/lib/session";
 import { LocalTime } from "../local-time";
 
 // One active file as shown in the list (no content). `updatedSeconds` is the
-// active version's write time as unix seconds; `createdBy` is the OWNER's oid —
+// active version's write time as unix seconds; `createdBy` is the OWNER's user id —
 // here the last writer, since the table is append-only — which drives the owner
-// filter, applied in the DB. `ownerName` is its `novedu_users` resolution, `null`
+// filter, applied in the DB. `ownerName` is its `novedu_user` resolution, `null`
 // for a teacher who has never signed in through the web app.
 interface FileRow {
   id: string;
@@ -66,7 +66,7 @@ export default async function FilesPage({
   const denied = await requireTeacherPage();
   if (denied) return denied;
 
-  const session = await auth();
+  const session = await getSession();
   const currentUserId = session?.user?.id ?? "";
 
   const sp = await searchParams;

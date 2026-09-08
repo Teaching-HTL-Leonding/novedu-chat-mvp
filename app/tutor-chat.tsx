@@ -119,7 +119,7 @@ export function TutorChat({
 
       {/* The chat toolbar. "Start over" mints a fresh thread server-side and we
           swap it in here; the report always targets the CURRENT conversation,
-          and its server action re-verifies the token over (code, oid, threadId). */}
+          and its server action re-verifies the token over (code, userId, threadId). */}
       <div className="mx-5 mb-2 flex shrink-0 items-center justify-end gap-2">
         <StartOverButton
           code={code}

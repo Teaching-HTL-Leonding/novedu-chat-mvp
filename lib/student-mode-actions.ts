@@ -1,7 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
-import { requireTeacher } from "@/auth";
+import { requireTeacher } from "@/lib/session";
 import { STUDENT_MODE_COOKIE } from "./student-mode";
 
 // Server actions toggling student mode. Setting a cookie in a server action

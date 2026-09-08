@@ -1,6 +1,6 @@
 import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
-import { TEACHER_STORAGE_STATE } from "./auth.constants";
+import { E2E_TEACHER, TEACHER_STORAGE_STATE } from "./auth.constants";
 
 // Read the dev server's .env the way Next does, so the optional-provider
 // assertions below mirror exactly what the server sees (AZURE_FOUNDRY_ENDPOINT /
@@ -46,7 +46,9 @@ test.describe("as a teacher", () => {
 
     // Shell facts (session-derived, no probe round-trip) are correct at once.
     await expect(page.getByRole("heading", { name: "Health" })).toBeVisible();
-    await expect(page.getByTestId("health-user")).toContainText("E2E Teacher");
+    await expect(page.getByTestId("health-user")).toHaveText(
+      `${E2E_TEACHER.name} — ${E2E_TEACHER.email}`,
+    );
     await expect(page.getByTestId("health-teacher")).toHaveText("Yes");
 
     // Probe rows resolve asynchronously. DB and SCCH hit the real dependencies

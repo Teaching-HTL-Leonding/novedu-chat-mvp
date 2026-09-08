@@ -14,7 +14,7 @@ import { KeyUnavailableNotice } from "./_coding/key-unavailable-notice";
 // shows how to connect. The teacher's system prompt and the real model are NEVER
 // sent here (the proxy applies them server-side); only the student-facing `title`
 // is read from the YAML. Invoked by the module switch in app/[code]/page.tsx, which
-// always passes the session's real oid (no student-mode substitution here).
+// always passes the session's real user id (no student-mode substitution here).
 export async function RenderCoding({
   entry,
   code,

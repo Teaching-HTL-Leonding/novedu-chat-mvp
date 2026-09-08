@@ -1,62 +1,60 @@
-import { readFile } from "node:fs/promises";
-import { loadEnvConfig } from "@next/env";
-import { importJWK, SignJWT } from "jose";
-import { API_AUTH_KID, API_AUTH_PRIVATE_JWK_PATH } from "./api-auth.constants";
+import { randomBytes, randomUUID } from "node:crypto";
+import { query } from "./db";
 
-// Mints the bearer tokens the CLI/API specs drive `lib/api-auth.ts` with. Seven
-// specs used to carry their own copy of this; the copies drifted only in the
-// claims, never in the mechanics, so the shape below is the union of what they
-// asked for and nothing more.
+// Mints the bearer credentials the CLI/API specs drive `lib/api-auth.ts` with.
+// The credential IS a better-auth session token — the same string the device
+// flow hands the CLI — so these specs exercise the real gate
+// (`auth.api.getSession` over `novedu_session`) rather than a stub: there is no
+// test seam anywhere on this channel.
 //
-// The token carries the REAL env-configured issuer/audience — only the signing
-// key is the e2e one from api-auth.setup.ts, which the dev server trusts via
-// API_AUTH_JWKS_PATH (injected by playwright.config.ts). That is what keeps
-// these specs a test of the real validator rather than of a stub.
+// The rows are written straight into `novedu_user` / `novedu_session` through
+// `e2e/db.ts`, exactly like `auth.setup.ts` does for the browser principals, so
+// a token minted here needs the database (every spec using it is `@live-db` or
+// fails inside the gate before any store call).
 
-export interface MintTokenOptions {
-  /** Add the configured teacher group to `groups`, so the token passes `requireBearerTeacher`. */
+export interface MintSessionOptions {
+  /** Give the principal the teacher role (`novedu_user.is_teacher`). */
   teacher?: boolean;
-  /** Extra group ids, on top of `teacher`. Defaults to none — i.e. a valid NON-teacher token. */
-  groups?: string[];
-  /** The Entra object id, which is the session user id (`oid`, never `sub`). */
-  oid?: string;
+  /**
+   * The `novedu_user.id` the token resolves to. Teacher and non-teacher default
+   * to DIFFERENT ids on purpose: the row's `is_teacher` is shared state, so a
+   * teacher spec and a non-teacher spec running in parallel would otherwise
+   * flip the flag under each other. `email` is derived from the id (it is
+   * unique), so a spec that needs its own principal only passes a new id.
+   */
+  userId?: string;
   name?: string;
-  /** Lifetime in seconds. Ignored when `expired` is set. */
-  ttlSeconds?: number;
-  /** Mint a token that already expired, to prove the validator rejects it. */
+  /** Mint a token whose session already expired, to prove the gate rejects it. */
   expired?: boolean;
 }
 
-/** The group id that makes a bearer principal a teacher. Throws rather than silently minting a student. */
-export function teacherGroupId(): string {
-  loadEnvConfig(process.cwd());
-  const id = process.env.TEACHER_GROUP_ID;
-  if (!id) throw new Error("TEACHER_GROUP_ID missing in env");
-  return id;
-}
-
-export async function mintToken({
+/**
+ * Upserts the principal, gives it a fresh session row and returns the RAW
+ * session token (what goes into `Authorization: Bearer …`).
+ */
+export async function mintSessionToken({
   teacher = false,
-  groups = [],
-  oid = "e2e-api-oid",
-  name = "E2E Api User",
-  ttlSeconds = 300,
+  userId = teacher ? "e2e-api-teacher" : "e2e-api-user",
+  name = teacher ? "E2E Api Teacher" : "E2E Api User",
   expired = false,
-}: MintTokenOptions = {}): Promise<string> {
-  loadEnvConfig(process.cwd());
-  const tenantId = process.env.AZURE_TENANT_ID;
-  const clientId = process.env.AZURE_CLIENT_ID;
-  if (!tenantId || !clientId) throw new Error("AZURE_TENANT_ID / AZURE_CLIENT_ID missing in env");
+}: MintSessionOptions = {}): Promise<string> {
+  await query(
+    `INSERT INTO novedu_user (id, name, email, email_verified, is_teacher, created_at, updated_at)
+     VALUES ($1, $2, $3, true, $4, now(), now())
+     ON CONFLICT (id) DO UPDATE
+       SET name = EXCLUDED.name,
+           email = EXCLUDED.email,
+           is_teacher = EXCLUDED.is_teacher,
+           updated_at = now()`,
+    [userId, name, `${userId}@example.com`, teacher],
+  );
 
-  const allGroups = teacher ? [...groups, teacherGroupId()] : groups;
-  const privateJwk = JSON.parse(await readFile(API_AUTH_PRIVATE_JWK_PATH, "utf8"));
-  const key = await importJWK(privateJwk, "RS256");
-  const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ scp: "cli.access", oid, name, groups: allGroups })
-    .setProtectedHeader({ alg: "RS256", kid: API_AUTH_KID })
-    .setIssuer(`https://login.microsoftonline.com/${tenantId}/v2.0`)
-    .setAudience(clientId)
-    .setIssuedAt(expired ? now - 600 : now)
-    .setExpirationTime(expired ? now - 300 : now + ttlSeconds)
-    .sign(key);
+  const token = randomBytes(24).toString("base64url"); // 32 chars
+  await query(
+    `INSERT INTO novedu_session (id, token, user_id, expires_at, created_at, updated_at)
+     VALUES ($1, $2, $3, now() + ($4)::interval, now(), now())`,
+    [randomUUID(), token, userId, expired ? "-1 hour" : "1 hour"],
+  );
+
+  return token;
 }

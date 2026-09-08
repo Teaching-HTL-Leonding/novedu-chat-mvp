@@ -1,4 +1,3 @@
-import { auth } from "@/auth";
 import { type ListColumn, ListTable } from "@/components/data-list";
 import { Notice } from "@/components/notice";
 import { studentColumn } from "@/components/student-column";
@@ -13,6 +12,7 @@ import {
   listCodingKeys,
   type StoredCodingKey,
 } from "@/lib/coding-key-store";
+import { getSession } from "@/lib/session";
 import { LocalTime } from "../../local-time";
 import { CODE_PANEL } from "./code-panel";
 import { CodingConnection } from "./coding-connection";
@@ -39,7 +39,7 @@ const seconds = (date: Date) => Math.floor(date.getTime() / 1000);
 // so the button is never offered when the answer "you have no key" is unproven.
 //
 // SERVER COMPONENT: reads the coding YAML via `loadCoding`, the session via
-// `auth()`, and the key store. The descriptor calls it as a plain function so no
+// `getSession()`, and the key store. The descriptor calls it as a plain function so no
 // JSX lives in the server-only registry .ts file. The page mounting this already
 // gates on `requireTeacherPage()`, which uses the effective-teacher discipline.
 export async function CodingDetail({ entry }: { entry: CodeEntry }) {
@@ -49,9 +49,9 @@ export async function CodingDetail({ entry }: { entry: CodeEntry }) {
     loadCoding(entry.fileUrl),
     resolveAppOriginOr(""),
     (async () => {
-      const teacherId = (await auth())?.user?.id;
+      const teacherId = (await getSession())?.user?.id;
       // Both reads now (nothing is written here), so they overlap too. A session
-      // with no oid can hold no key and cannot be attributed one either — the same
+      // with no user id can hold no key and cannot be attributed one either — the same
       // "unavailable" state as a failed read.
       const [stored, issuances] = await Promise.all([
         teacherId

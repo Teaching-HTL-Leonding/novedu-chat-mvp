@@ -40,7 +40,7 @@ export function parseReaction(
 
 // The wire shape of one report — the full `ReportListRow` parity shape with
 // Date fields as ISO 8601 UTC strings (or `null` for an open resolution). Field
-// names match the /reports inbox (docs/api.md). The reporter's `userId` (oid) +
+// names match the /reports inbox (docs/api.md). The reporter's `userId` +
 // `displayName` are surfaced deliberately: a report is non-anonymous toward
 // teachers (the sanctioned waiver, docs/reports.md) on this teacher-only channel.
 export function toWire(row: ReportListRow) {

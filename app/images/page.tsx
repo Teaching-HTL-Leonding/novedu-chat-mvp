@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { auth } from "@/auth";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { DataList, type ListColumn } from "@/components/data-list";
 import { ListFilterBar, OwnerFilter } from "@/components/list-filter-bar";
@@ -18,15 +17,16 @@ import { parseSort, type SortParams } from "@/lib/db/sorting";
 import { mintReadSas } from "@/lib/image-blob";
 import { IMAGE_SORT_COLUMNS, listImageOwners, listImages } from "@/lib/image-store";
 import { deleteSelectedImagesAction } from "@/lib/images-actions";
+import { getSession } from "@/lib/session";
 import { LocalTime } from "../local-time";
 import { ViewImageButton } from "./view-image-button";
 
 // One active image as shown in the list. `viewUrl` is a short-lived read SAS
 // minted on the server (no app route serves image bytes) — the "View" button
 // opens it in the lightbox; `updatedSeconds` is the active version's write time as
-// unix seconds; `createdBy` is the OWNER's oid — here the last writer, since the
+// unix seconds; `createdBy` is the OWNER's user id — here the last writer, since the
 // table is append-only — which drives the owner filter, applied in the DB.
-// `ownerName` is its `novedu_users` resolution, `null` for a teacher who has never
+// `ownerName` is its `novedu_user` resolution, `null` for a teacher who has never
 // signed in through the web app.
 interface ImageRow {
   id: string;
@@ -67,7 +67,7 @@ export default async function ImagesPage({
   const denied = await requireTeacherPage();
   if (denied) return denied;
 
-  const session = await auth();
+  const session = await getSession();
   const currentUserId = session?.user?.id ?? "";
 
   const sp = await searchParams;

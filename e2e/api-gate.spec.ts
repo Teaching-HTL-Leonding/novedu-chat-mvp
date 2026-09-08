@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mintToken } from "./api-auth.utils";
+import { mintSessionToken } from "./api-auth.utils";
 
 // The proxy-matcher exclusions that had NO hermetic HTTP coverage: `/api/eval`
 // and `/api/coding`. Both are listed in the `matcher` in `proxy.ts` so the
@@ -14,12 +14,9 @@ import { mintToken } from "./api-auth.utils";
 // (AGENTS.md: a bearer endpoint = gate + path-bounded exclusion + docs entry).
 //
 // Everything here fails INSIDE the gate — `requireBearerTeacher` for eval,
-// `parseBearerKey` for coding, both before any store, LLM or blob call — so the
-// spec stays hermetic and runs in CI.
-//
-// CAVEAT (local runs): reuseExistingServer means a dev server started without
-// API_AUTH_JWKS_PATH in its env fails the 403 cases with 401 — restart it with
-// the var exported, or let Playwright start the server.
+// `parseBearerKey` for coding, both before any store, LLM or blob call. The
+// eval token is a real better-auth session token minted straight into
+// `novedu_session` (api-auth.utils.ts) — there is no test seam on this channel.
 
 // No cookies: these must succeed or fail on the bearer credential ALONE. With a
 // session cookie present, a matcher regression would be invisible; with an empty
@@ -47,7 +44,7 @@ for (const { path, body } of EVAL_ROUTES) {
 
   test(`valid non-teacher token → 403 on POST ${path}`, async ({ request }) => {
     const response = await request.post(path, {
-      headers: { authorization: `Bearer ${await mintToken()}` },
+      headers: { authorization: `Bearer ${await mintSessionToken()}` },
       data: body,
     });
 

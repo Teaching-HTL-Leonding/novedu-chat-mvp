@@ -60,6 +60,7 @@ describe("prompt-dump purity invariant", () => {
         s.startsWith("@/app/") ||
         s.startsWith("../app/") ||
         s === "@/auth" ||
+        s === "@/lib/session" ||
         s.startsWith("@/lib/db") ||
         s === "@/lib/llm/model" ||
         s === "@/lib/file-store" ||

@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
-import { users, writingSubmissions } from "@/lib/db/schema";
+import { authUsers } from "@/lib/db/auth-schema";
+import { writingSubmissions } from "@/lib/db/schema";
 import { containsAny } from "@/lib/db/text-filter";
 
 // Persistence for writing submissions in the `novedu_writing_submissions` SQL
@@ -15,7 +16,7 @@ import { containsAny } from "@/lib/db/text-filter";
 /** A student's saved writing text, as read back from `novedu_writing_submissions`. */
 export interface WritingSubmission {
   code: string;
-  /** The student's Entra `oid`. */
+  /** The student's session user id (`novedu_user.id`). */
   userId: string;
   /** The saved Markdown. */
   text: string;
@@ -72,11 +73,11 @@ export async function saveSubmission(input: {
 
 /** A student who has saved text for a code — one row of the teacher's savers list. */
 export interface Saver {
-  /** The student's Entra `oid`. */
+  /** The student's session user id (`novedu_user.id`). */
   userId: string;
   /**
-   * The student's display name (resolved from `novedu_users`), or `null` when no
-   * name has been recorded yet — the caller falls back to the `oid` then.
+   * The student's display name (resolved from `novedu_user`), or `null` when no
+   * name has been recorded yet — the caller falls back to the `userId` then.
    */
   displayName: string | null;
   /** Last save time, UTC. */
@@ -89,10 +90,10 @@ export interface Saver {
  * Students who saved text for a code, newest save first, each with a count of
  * their qualifying conversations (threads with ≥ 1 user message). Backs the
  * teacher's savers list; the optional `search` filters by the student's display
- * name OR oid IN THE DATABASE (docs/filtered-lists.md). The display name is resolved
- * by a LEFT JOIN on `novedu_users` (BY VALUE, no FK — the sanctioned cross-table
+ * name OR user id IN THE DATABASE (docs/filtered-lists.md). The display name is resolved
+ * by a LEFT JOIN on `novedu_user` (BY VALUE, no FK — the sanctioned cross-table
  * pattern), so a student with no recorded name simply comes back with
- * `displayName: null` and the caller falls back to the oid. NO text bodies are read
+ * `displayName: null` and the caller falls back to the `userId`. NO text bodies are read
  * — the list never loads essay content. The conversation count is a correlated
  * subquery joining the Mastra tables BY VALUE in ONE round trip — no N+1. Anonymous
  * codes have no rows, so the list is empty for them. Never throws: an unreachable
@@ -103,7 +104,7 @@ export async function listSavers(code: string, opts?: { search?: string }): Prom
     return await getDb()
       .select({
         userId: writingSubmissions.userId,
-        displayName: users.displayName,
+        displayName: authUsers.name,
         textUpdatedAt: writingSubmissions.textUpdatedAt,
         conversationCount: sql<number>`(
           SELECT COUNT(*) FROM mastra.mastra_threads t
@@ -117,11 +118,11 @@ export async function listSavers(code: string, opts?: { search?: string }): Prom
         )`.mapWith(Number),
       })
       .from(writingSubmissions)
-      .leftJoin(users, eq(users.userId, writingSubmissions.userId))
+      .leftJoin(authUsers, eq(authUsers.id, writingSubmissions.userId))
       .where(
         and(
           eq(writingSubmissions.code, code),
-          containsAny(opts?.search ?? "", [writingSubmissions.userId, users.displayName]),
+          containsAny(opts?.search ?? "", [writingSubmissions.userId, authUsers.name]),
         ),
       )
       .orderBy(desc(writingSubmissions.textUpdatedAt));

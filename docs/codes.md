@@ -25,7 +25,7 @@ A **code** is a `[a-z0-9-]` string (1–32 chars; `generateCode()` mints 10 rand
 | --- | --- |
 | `code` (PK) | the code, `varchar(32)` (sized for future teacher-defined memorable codes) |
 | `module` | the dispatch discriminator — `tutor` \| `quiz` \| `writing` \| `coding`, picks the renderer + agent (the `coding` module has no in-app agent — it is an OpenAI-compatible endpoint; see `docs/coding.md`) |
-| `created_by` | session user id (Entra `oid`) of the creating teacher |
+| `created_by` | session user id (`novedu_user.id`) of the creating teacher |
 | `file_url` | public URL of the activity YAML (normalized via `URL.href`) |
 | `valid_from` / `valid_until` | availability window, UTC `timestamptz`, **both bounds inclusive**. Each is **nullable** — a null `valid_from` opens the code immediately, a null `valid_until` never expires it (both null = always valid). `checkCode` / `windowStatus` coalesce a null bound to `DISTANT_PAST` / `DISTANT_FUTURE` |
 | `note` | teacher's label, shown in their code list and as the recents label (≤ 200 chars) |
@@ -292,7 +292,7 @@ signed-in teacher by default — and a **module** `<select>`) happens **in the
 database** through URL search params, never in memory — the shared filtered-list
 concept (`docs/filtered-lists.md`).
 Each row: a **Module** badge, note (fallback code, `file_url` tooltip), the
-**owner** (the creating teacher's `novedu_users` display name, the raw oid when
+**owner** (the creating teacher's `novedu_user.name`, the raw user id when
 they have none), window in local time (an open bound shows as **"No start"** /
 **"No end"**), an
 **interaction** count (qualifying Mastra threads under
@@ -326,10 +326,10 @@ Drizzle- and Mastra-owned tables are **by value — never foreign keys**
 ```
 novedu_codes.code        = novedu_user_chats.code = mastra_threads.resourceId
 novedu_user_chats.thread_id = mastra_threads.id   = mastra_messages.thread_id
-novedu_user_chats.user_id   = Entra oid (the student)
-novedu_codes.created_by     = Entra oid (the teacher)
+novedu_user_chats.user_id   = novedu_user.id (the student)
+novedu_codes.created_by     = novedu_user.id (the teacher)
 novedu_reports.code         = novedu_codes.code   (the reported activity)
-novedu_reports.user_id      = Entra oid (the reporting student — see below)
+novedu_reports.user_id      = novedu_user.id (the reporting student — see below)
 ```
 
 - **All chats/discussions for a code**: `SELECT * FROM mastra_threads WHERE
@@ -339,9 +339,9 @@ novedu_reports.user_id      = Entra oid (the reporting student — see below)
 
 `novedu_user_chats` is the ONLY place tying users to chats — with **two
 sanctioned exceptions**: `novedu_reports`, where a student who files a report
-voluntarily waives anonymity (their oid is stored even under an anonymous code,
+voluntarily waives anonymity (their user id is stored even under an anonymous code,
 behind an explicit on-form notice; `docs/reports.md`), and `novedu_coding_keys`,
-where requesting a coding activity's personal API key stores the requester's oid
+where requesting a coding activity's personal API key stores the requester's user id
 behind an explicit on-page notice (`docs/coding.md`). It is
 privacy-gated by the activity YAML's **`anonymous` flag, whose default is
 module-specific** (tutor/quiz default `true`; **writing defaults `false`** —
@@ -400,7 +400,7 @@ isolation and is unaffected.
   (the frozen `anonymous` flag) the number of distinct students; then a table of every
   interaction (first/last message time, the student when recorded, user-message count),
   each row linking to the viewer. The student is shown by **display name** —
-  `getCodeStats` LEFT-JOINs `novedu_users` and the cell falls back to the raw `oid`
+  `getCodeStats` LEFT-JOINs `novedu_user` and the cell falls back to the raw user id
   (kept as the hover `title`) when no name is recorded yet (see `docs/auth.md`).
   "Interaction" = a Mastra thread with ≥ 1 `role = 'user'` message (opened-but-silent
   threads do not count). **Writing** renders its savers list instead

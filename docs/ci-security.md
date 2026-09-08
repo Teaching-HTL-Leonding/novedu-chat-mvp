@@ -30,10 +30,14 @@ run untrusted PR code.**
   production **Docker image build**). It runs untrusted fork code, so it is
   **secret-free by construction**: it references no `secrets.*`, sets
   `permissions: contents: read`, and feeds only **test-only dummy values** in its
-  `env:` block. Those dummies exist because `auth.ts` calls `required()` for the
-  `AZURE_*` vars and `TEACHER_GROUP_ID` at module load (also during `next build`),
-  and `AUTH_SECRET` only has to *match* between the e2e helpers and the dev server —
-  e2e tests mint Auth.js session cookies directly, so no real Entra round-trip
+  `env:` block. Those dummies exist because `auth.ts` — the better-auth instance —
+  calls `required()` for the `AZURE_*` vars, `TEACHER_GROUP_ID`, and `AUTH_SECRET`
+  at module load (also during `next build`), and its drizzle adapter is
+  constructed from `DATABASE_URL` at that same module load, so a placeholder
+  connection string is needed too — the pool never actually connects during a
+  build. `AUTH_SECRET` only has to *match* between the e2e helpers and the dev
+  server — e2e tests mint session cookies directly (rows in the database plus a
+  hand-signed cookie value, `docs/testing.md`), so no real Entra round-trip
   happens. There is nothing real in this environment to steal.
   - The `e2e` job runs an **ephemeral `postgres:18` service container** so the
     DB-backed `@live-db` tests run on every PR. This stays secret-free: the

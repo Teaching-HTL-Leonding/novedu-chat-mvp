@@ -4,7 +4,7 @@ import path from "node:path";
 import { expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { sendAndExpectReply } from "./chat.utils";
-import { deleteUserName, mintCode, setUserName, VALID_WRITING_URL } from "./code.utils";
+import { mintCode, resetUserName, setUserName, VALID_WRITING_URL } from "./code.utils";
 import { query } from "./db";
 
 // End-to-end coverage for the Writing module: a `novedu_codes` row with
@@ -72,12 +72,12 @@ async function deleteFile(page: Page, name: string): Promise<void> {
 }
 
 // write → save → reload restores → teacher review shows the saved text, with the
-// student shown by display NAME (resolved from novedu_users). No LLM.
+// student shown by display NAME (resolved from novedu_user). No LLM.
 //
-// The minted teacher session carries no `oid`, so its id falls back to `sub` —
-// "e2e-teacher" is therefore the saver's user_id. Seeding a novedu_users row for it
-// before the review exercises the real `listSavers` LEFT JOIN end to end (the name
-// resolves and renders), not just the oid fallback the un-seeded flow would show.
+// The teacher principal drives this spec, so "e2e-teacher" is the saver's user_id.
+// Renaming its `novedu_user` row before the review exercises the real `listSavers`
+// LEFT JOIN end to end (the name resolves and renders) with a name unique to this
+// spec, rather than the one every other spec sees.
 const SAVER_ID = "e2e-teacher";
 const SAVER_NAME = "Reviewed E2E Student";
 
@@ -103,24 +103,26 @@ test("write → save → reload restores → teacher review", {
       timeout: 30_000,
     });
 
-    // Record a display name for the saver so the review resolves the oid to a NAME.
+    // Record a display name for the saver so the review resolves the user id to a NAME.
     await setUserName(SAVER_ID, SAVER_NAME);
 
     // 4. Teacher review on /codes/[code] is the savers list — one student saved,
-    //    shown by display name (NOT the raw oid).
+    //    shown by display name (NOT the raw user id). Scoped to the Student cell,
+    //    whose tooltip carries the id: the header renders the same principal's
+    //    name too, because it is the signed-in one.
     await page.goto(`/codes/${code}`);
     const saver = page.getByTestId("saver-link");
     await expect(saver).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText(SAVER_NAME)).toBeVisible();
+    await expect(page.getByTitle(SAVER_ID)).toHaveText(SAVER_NAME);
 
     // 5. Opening that student's page shows the saved text (rendered markdown) and the
     //    resolved name in the header.
     await saver.click();
     await expect(page).toHaveURL(new RegExp(`/codes/${code}/s/`), { timeout: 30_000 });
     await expect(page.getByTestId("student-text")).toContainText("first draft about linked lists");
-    await expect(page.getByText(SAVER_NAME)).toBeVisible();
+    await expect(page.getByTitle(SAVER_ID)).toHaveText(SAVER_NAME);
   } finally {
-    await deleteUserName(SAVER_ID).catch(() => {});
+    await resetUserName(SAVER_ID).catch(() => {});
     await deleteFile(page, name);
   }
 });

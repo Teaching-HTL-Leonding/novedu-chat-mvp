@@ -19,7 +19,7 @@ export default defineConfig({
     "@": fileURLToPath(new URL("..", import.meta.url)),
   },
   deps: {
-    neverBundle: ["commander", "yaml", "zod", "handlebars", "@azure/msal-node"],
+    neverBundle: ["commander", "yaml", "zod", "handlebars"],
   },
   dts: false,
   clean: true,

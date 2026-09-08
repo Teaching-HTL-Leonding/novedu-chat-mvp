@@ -23,7 +23,7 @@ import { WritingChat } from "./writing-chat";
 //
 // Saving (only for an ATTRIBUTED activity — anonymous gets no Save button, no
 // prefill, no unsaved-changes warning) goes through the `saveWriting` action,
-// which re-verifies the code + the session oid and re-rejects anonymous codes
+// which re-verifies the code + the session user id and re-rejects anonymous codes
 // server-side. Both lightboxes (the formatted draft preview and the full activity
 // prompt) render Markdown through the sanitized MarkdownRenderer (no rehype-raw) —
 // student Markdown is untrusted.

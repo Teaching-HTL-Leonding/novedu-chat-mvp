@@ -58,17 +58,10 @@ beforeEach(() => {
 
 describe("requestImageUpload", () => {
   it("rejects a non-teacher before any validation or minting", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await requestImageUpload("diagram", "image/png", 100);
     expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/teachers/i) });
     expect(mocks.getActiveImage).not.toHaveBeenCalled();
-    expect(mocks.mintWriteSas).not.toHaveBeenCalled();
-  });
-
-  it("reports a missing session user id", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "no-user-id" });
-    const result = await requestImageUpload("diagram", "image/png", 100);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/sign in/i) });
     expect(mocks.mintWriteSas).not.toHaveBeenCalled();
   });
 
@@ -136,7 +129,7 @@ describe("requestImageUpload", () => {
 
 describe("confirmImageUpload", () => {
   it("rejects a non-teacher before inspecting the blob or storing", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await confirmImageUpload("diagram", "abc.png", "image/png");
     expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/teachers/i) });
     expect(mocks.getBlobProperties).not.toHaveBeenCalled();
@@ -266,7 +259,7 @@ describe("confirmImageUpload", () => {
 // teacher gate and the `softDeleteImages` store primitive.
 describe("deleteSelectedImagesAction", () => {
   it("rejects a non-teacher and never touches the store", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await deleteSelectedImagesAction(["a", "b"]);
     expect(result).toEqual({ ok: false, deleted: 0 });
     expect(mocks.softDeleteImages).not.toHaveBeenCalled();

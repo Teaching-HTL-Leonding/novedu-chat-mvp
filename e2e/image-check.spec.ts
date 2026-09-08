@@ -62,7 +62,7 @@ test.describe("signed out", () => {
   test("the photo check page requires sign-in like every other page", async ({ page }) => {
     await page.goto("/image-check");
 
-    await expect(page).toHaveURL(/\/api\/auth\/signin/);
+    await expect(page).toHaveURL("/sign-in?callbackURL=%2Fimage-check");
   });
 });
 

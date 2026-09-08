@@ -25,8 +25,8 @@ export type MintCodingKeyResult = { ok: true } | { ok: false; message: string };
  * revalidates the detail page so the re-render shows the connection block.
  *
  * GATE: `requireTeacherUserId()` — an EFFECTIVE teacher (student mode is refused)
- * plus the session `oid`, which is also the attribution the key row stores. One
- * gate yields both, so there is no second `auth()` round trip.
+ * plus the session user id, which is also the attribution the key row stores. One
+ * gate yields both, so there is no second `getSession()` round trip.
  *
  * VALIDATION: `getCode` must find a real `novedu_codes` row whose module is
  * `coding` — an unknown, deleted, or non-coding code is rejected WITHOUT touching
@@ -44,10 +44,7 @@ export async function mintCodingKeyAction(code: string): Promise<MintCodingKeyRe
   if (!gate.ok) {
     return {
       ok: false,
-      message:
-        gate.reason === "not-teacher"
-          ? "Only teachers can request a key here."
-          : "Your session carries no user id — sign in again.",
+      message: "Only teachers can request a key here.",
     };
   }
 

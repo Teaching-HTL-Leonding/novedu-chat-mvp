@@ -58,8 +58,8 @@ Mirrors `novedu_files` (see `docs/files.md`). Each row is **one version** of one
 image; the row holds **metadata only** — the bytes live in Blob Storage,
 addressed by `blob_path`. The image's stable identity is its **`name`** (the
 surrogate `id` is per-version); the **active** version is the single row with
-`valid_until IS NULL`. `created_by` is the oid of whoever wrote a version,
-`closed_by` the oid of whoever ended it.
+`valid_until IS NULL`. `created_by` is the user id of whoever wrote a version,
+`closed_by` the user id of whoever ended it.
 
 | Column | Meaning |
 | --- | --- |
@@ -91,7 +91,7 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
   apply **in SQL** (a case-insensitive contains-match over `name` for `search`,
   `createdBy` for the owner dropdown) — never in memory; see
   `docs/filtered-lists.md`. The rows carry the owner's display name from a LEFT JOIN
-  on `novedu_users`; `listImageOwners()` is the dropdown's option set. **"Owner"
+  on `novedu_user`; `listImageOwners()` is the dropdown's option set. **"Owner"
   here is the LAST WRITER** — `created_by` belongs to the active version.
 - `getActiveImage(name)` — the active row; `null` = malformed name or no active
   version (unknown/deleted), `undefined` = DB error. Backs the resolver and the
@@ -157,7 +157,7 @@ image is **5 MB** (`MAX_IMAGE_BYTES`); only `image/png` / `image/jpeg` /
 `lib/images-actions.ts` (`"use server"`) is the thin web shell, mirroring
 `lib/files-actions.ts`: **every** action
 gates with **`requireTeacherUserId()`** (an *effective* teacher — student mode is
-denied — plus the session `oid`); never `session.user.isTeacher`. It maps the
+denied — plus the session user id); never `session.user.isTeacher`. It maps the
 service failures to `{ ok: false, error }` form messages and revalidates
 `/images` on success (`revalidatePath` stays OUT of the service — the bearer
 routes share it).

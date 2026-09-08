@@ -1,20 +1,16 @@
-import { readFile } from "node:fs/promises";
-import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
-import { importJWK, SignJWT } from "jose";
-import { API_AUTH_KID, API_AUTH_PRIVATE_JWK_PATH } from "./api-auth.constants";
+import { mintSessionToken } from "./api-auth.utils";
 
 // GET /api/me — the CLI/API bearer channel end-to-end: proxy-matcher exclusion
-// (401, not a sign-in redirect), lib/api-auth.ts validation and the teacher
-// flag, over real HTTP against the dev server. Tokens carry the REAL
-// env-configured issuer/audience; only the signing key is the e2e one from
-// api-auth.setup.ts (the server trusts it via API_AUTH_JWKS_PATH, injected by
-// playwright.config.ts).
+// (401, not a sign-in redirect), the `lib/api-auth.ts` gate and the teacher
+// flag, over real HTTP against the dev server.
 //
-// CAVEAT (local runs): reuseExistingServer means a dev server you started
-// yourself is reused as-is — without API_AUTH_JWKS_PATH in its env these
-// specs fail with 401. Restart it with the var exported (pointing at
-// e2e/.auth/jwks.json) or let Playwright start the server.
+// The credential is a REAL better-auth session token: `mintSessionToken` writes
+// the principal into `novedu_user` and a session row into `novedu_session` (the
+// same rows a browser sign-in or the device flow would produce), and the server
+// resolves it through `auth.api.getSession` with no test seam anywhere. The
+// teacher role comes from the server-owned `is_teacher` column, never from
+// anything the caller sends.
 
 // No cookies: these requests must succeed on the bearer token ALONE. With the
 // default (minted session) storage state, a proxy-matcher regression that put
@@ -22,56 +18,26 @@ import { API_AUTH_KID, API_AUTH_PRIVATE_JWK_PATH } from "./api-auth.constants";
 // turns the expected 401 into a sign-in redirect and fails the specs.
 test.use({ storageState: { cookies: [], origins: [] } });
 
-interface MintOptions {
-  groups?: string[];
-  expired?: boolean;
-}
-
-async function mint({ groups = [], expired = false }: MintOptions = {}): Promise<string> {
-  loadEnvConfig(process.cwd());
-  const tenantId = process.env.AZURE_TENANT_ID;
-  const clientId = process.env.AZURE_CLIENT_ID;
-  if (!tenantId || !clientId) throw new Error("AZURE_TENANT_ID / AZURE_CLIENT_ID missing in env");
-
-  const privateJwk = JSON.parse(await readFile(API_AUTH_PRIVATE_JWK_PATH, "utf8"));
-  const key = await importJWK(privateJwk, "RS256");
-  const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({ scp: "cli.access", oid: "e2e-api-oid", name: "E2E Api User", groups })
-    .setProtectedHeader({ alg: "RS256", kid: API_AUTH_KID })
-    .setIssuer(`https://login.microsoftonline.com/${tenantId}/v2.0`)
-    .setAudience(clientId)
-    .setIssuedAt(expired ? now - 600 : now)
-    .setExpirationTime(expired ? now - 300 : now + 300)
-    .sign(key);
-}
-
-function teacherGroupId(): string {
-  loadEnvConfig(process.cwd());
-  const id = process.env.TEACHER_GROUP_ID;
-  if (!id) throw new Error("TEACHER_GROUP_ID missing in env");
-  return id;
-}
-
-test("teacher token → identity with isTeacher: true", async ({ request }) => {
+test("teacher session token → identity with isTeacher: true", async ({ request }) => {
   const response = await request.get("/api/me", {
-    headers: { authorization: `Bearer ${await mint({ groups: [teacherGroupId()] })}` },
+    headers: { authorization: `Bearer ${await mintSessionToken({ teacher: true })}` },
   });
   expect(response.status()).toBe(200);
   expect(await response.json()).toEqual({
-    name: "E2E Api User",
-    userId: "e2e-api-oid",
+    name: "E2E Api Teacher",
+    userId: "e2e-api-teacher",
     isTeacher: true,
   });
 });
 
-test("non-teacher token → identity with isTeacher: false", async ({ request }) => {
+test("non-teacher session token → identity with isTeacher: false", async ({ request }) => {
   const response = await request.get("/api/me", {
-    headers: { authorization: `Bearer ${await mint()}` },
+    headers: { authorization: `Bearer ${await mintSessionToken()}` },
   });
   expect(response.status()).toBe(200);
   expect(await response.json()).toEqual({
     name: "E2E Api User",
-    userId: "e2e-api-oid",
+    userId: "e2e-api-user",
     isTeacher: false,
   });
 });
@@ -86,15 +52,18 @@ test("no token → 401 with WWW-Authenticate, not a sign-in redirect", async ({ 
 
 test("garbage token → 401", async ({ request }) => {
   const response = await request.get("/api/me", {
-    headers: { authorization: "Bearer not-a-jwt" },
+    headers: { authorization: "Bearer not-a-session-token" },
     maxRedirects: 0,
   });
   expect(response.status()).toBe(401);
 });
 
-test("expired token → 401", async ({ request }) => {
+test("expired session → 401", async ({ request }) => {
+  // The row exists and the token is well-formed — only `expires_at` is in the
+  // past, so this proves the gate reads the session's lifetime, not merely its
+  // existence.
   const response = await request.get("/api/me", {
-    headers: { authorization: `Bearer ${await mint({ expired: true })}` },
+    headers: { authorization: `Bearer ${await mintSessionToken({ expired: true })}` },
     maxRedirects: 0,
   });
   expect(response.status()).toBe(401);

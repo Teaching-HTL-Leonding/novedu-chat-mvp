@@ -760,7 +760,7 @@ or the code keeps serving the old rubric (or the old tutor prompt). Likewise, an
 ## Usage metering
 
 Eval gradings, tutor generations **and** judge calls are metered under the pseudo-code
-**`cli-eval`** and the module **`eval`**, with the teacher's `oid` as the user
+**`cli-eval`** and the module **`eval`**, with the teacher's user id as the user
 (`docs/usage-metering.md`) — the same three sentinel RequestContext keys set by all three
 routes, landing in the same buckets on purpose. No pipeline change was needed.
 `cli-eval` is not a `novedu_codes` row (minted codes are 10 random characters,

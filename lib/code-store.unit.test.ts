@@ -60,7 +60,7 @@ const fake = vi.hoisted(() => {
     const tail = { leftJoin: () => tail, where: () => queryTail(fields) };
     return tail;
   };
-  // `.from(...)` accepts the row query's `.leftJoin(users, …)` (the owner name) as
+  // `.from(...)` accepts the row query's `.leftJoin(authUsers, …)` (the owner name) as
   // well as the count's `$dynamic()`; both tails resolve through `queryTail`.
   const fromTail = (fields?: Record<string, unknown>) => {
     const tail = {
@@ -578,7 +578,7 @@ describe("listCodes", () => {
     fake.state.rows = [
       { ...toRow(named), ownerName: "Alex Muster" },
       // A teacher who has never signed in through the web app has no
-      // `novedu_users` row; the page falls back to the raw oid.
+      // `novedu_user` row; the page falls back to the raw oid.
       { ...toRow(unnamed), ownerName: null },
     ];
     const result = await listCodes();
