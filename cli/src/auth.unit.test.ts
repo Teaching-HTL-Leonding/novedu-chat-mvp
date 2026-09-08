@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +11,7 @@ import {
   forgetSession,
   getAccessToken,
   NotSignedInError,
+  openBrowser,
   pollDeviceToken,
   readSessions,
   rememberSession,
@@ -22,7 +24,15 @@ import {
 
 // Everything here is offline: the device flow runs against a fake `fetchImpl`
 // and a fake clock, and the session file is written into a temp dir so the real
-// permission modes are actually checked without touching ~/.novedu.
+// permission modes are actually checked without touching ~/.novedu. `spawn` is
+// mocked so `openBrowser` never launches anything — no test opens a browser.
+
+const { spawnMock } = vi.hoisted(() => ({ spawnMock: vi.fn() }));
+
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:child_process")>()),
+  spawn: spawnMock,
+}));
 
 const SERVER = "http://localhost:3000";
 
@@ -348,5 +358,31 @@ describe("browserCommand", () => {
     const commandLine = args.join(" ");
     expect(commandLine).toContain(`"${URL_WITH_AMP}"`);
     expect(commandLine.split("&")[0]).toBe(`/c start "" "${URL_WITH_AMP.split("&")[0]}`);
+  });
+});
+
+describe("openBrowser", () => {
+  // A container without an opener (`spawn xdg-open ENOENT`) reports the failure
+  // ASYNCHRONOUSLY through the child's `error` event — a try/catch never sees
+  // it, and unhandled it would take the CLI down right after the link was
+  // printed. The event must be swallowed so the device flow keeps polling.
+  it("survives an opener that fails after the spawn call returned", async () => {
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+    spawnMock.mockReturnValue(child);
+    const uncaught = vi.fn();
+    process.on("uncaughtException", uncaught);
+    try {
+      expect(() => openBrowser("http://localhost:3000/device?user_code=ABCD2345")).not.toThrow();
+      expect(child.unref).toHaveBeenCalledTimes(1);
+      // Attached before the event can fire — otherwise `emit("error")` throws.
+      expect(child.listenerCount("error")).toBeGreaterThan(0);
+      setImmediate(() => {
+        child.emit("error", Object.assign(new Error("spawn xdg-open ENOENT"), { code: "ENOENT" }));
+      });
+      await new Promise((resolve) => setImmediate(() => setImmediate(resolve)));
+      expect(uncaught).not.toHaveBeenCalled();
+    } finally {
+      process.off("uncaughtException", uncaught);
+    }
   });
 });

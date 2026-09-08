@@ -371,11 +371,17 @@ export function browserCommand(
 export function openBrowser(url: string): void {
   const { command, args, verbatim } = browserCommand(url);
   try {
-    spawn(command, args, {
+    const child = spawn(command, args, {
       stdio: "ignore",
       detached: true,
       windowsVerbatimArguments: verbatim,
-    }).unref();
+    });
+    // A missing opener (headless container, no xdg-open) surfaces ASYNCHRONOUSLY
+    // as an `error` event, which the try/catch below cannot see — unhandled, it
+    // would kill the CLI mid-flow. The link is already on stderr, so the person
+    // can open it by hand: swallow the event and keep polling.
+    child.on("error", () => {});
+    child.unref();
   } catch {
     // The URL was already printed — opening it is a convenience.
   }
