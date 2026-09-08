@@ -123,7 +123,9 @@ describe("databaseHost", () => {
   });
 
   it("returns null for an unset or unparseable URL", () => {
+    vi.stubEnv("DATABASE_URL", "");
     expect(databaseHost(undefined)).toBeNull();
+    vi.unstubAllEnvs();
     expect(databaseHost("not a url")).toBeNull();
   });
 });
