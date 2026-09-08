@@ -198,11 +198,18 @@ Finer-grained access is by Entra **group** membership, but the result is a plain
 
 ## Sign-out
 
+The Microsoft provider in `auth.ts` sets `prompt: "login"`, so every new browser
+sign-in requests fresh Entra authentication even when a Microsoft SSO session is
+already active. This protects the shared-computer flow: after a teacher signs out,
+clicking sign-in must not silently sign the next person in as that teacher. Existing
+Novedu sessions retain their fixed 30-day lifetime.
+
 `lib/auth-actions.ts`'s `signOutAction` (a server action, wired to the sign-out button
 in the user menu) deletes the student-mode cookie first — student mode must not outlive
 the session, or the next person signing in on the same browser would silently start in
 it — then calls `auth.api.signOut({ headers: await headers() })`, which deletes the
-session row and clears the cookie, and redirects to `/sign-in`.
+session row and clears the cookie, and redirects to `/sign-in`. This ends the Novedu
+session only; it does not sign the browser out of Microsoft.
 
 ## `/device`
 

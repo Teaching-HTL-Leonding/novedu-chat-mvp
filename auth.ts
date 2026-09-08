@@ -79,6 +79,9 @@ export const auth = betterAuth({
       clientId: required("AZURE_CLIENT_ID"),
       clientSecret: required("AZURE_CLIENT_SECRET"),
       tenantId: required("AZURE_TENANT_ID"),
+      // Require fresh Entra authentication when starting a session on a shared
+      // computer, even if the previous user's Microsoft SSO session is still active.
+      prompt: "login",
       // The Entra profile is authoritative for the display name and email: both
       // are overwritten on every sign-in.
       overrideUserInfoOnSignIn: true,
