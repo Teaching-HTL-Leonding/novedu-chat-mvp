@@ -107,16 +107,10 @@ const FRAGMENT = { name: "my-file", kind: "fragment", content: "id: f\n" };
 
 describe("createFileAction", () => {
   it("rejects a non-teacher before any work", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await createFileAction(FRAGMENT);
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
     expect(mocks.createFile).not.toHaveBeenCalled();
-  });
-
-  it("reports a missing session user id", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "no-user-id" });
-    const result = await createFileAction(FRAGMENT);
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/sign in/i) });
   });
 
   it("maps a service message failure to the form's message shape", async () => {
@@ -148,7 +142,7 @@ describe("createFileAction", () => {
 
 describe("updateFileAction", () => {
   it("rejects a non-teacher before any work", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await updateFileAction("my-file", "id: f\n");
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
     expect(mocks.updateFile).not.toHaveBeenCalled();
@@ -210,7 +204,7 @@ describe("validateNewFileAction", () => {
   });
 
   it("rejects a non-teacher before validating", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await validateNewFileAction(FRAGMENT);
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
     expect(mocks.loadAndCheckFragmentFile).not.toHaveBeenCalled();
@@ -282,7 +276,7 @@ describe("validateExistingFileAction", () => {
   });
 
   it("rejects a non-teacher before any work", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await validateExistingFileAction("my-file", "id: f\n");
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
     expect(mocks.getActiveFile).not.toHaveBeenCalled();
@@ -316,16 +310,9 @@ describe("validateExistingFileAction", () => {
 // teacher gate, the `softDeleteFiles` store primitive, and the list revalidation.
 describe("deleteSelectedFilesAction", () => {
   it("rejects a non-teacher and never touches the store", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await deleteSelectedFilesAction(["a", "b"]);
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
-    expect(mocks.softDeleteFiles).not.toHaveBeenCalled();
-  });
-
-  it("reports a missing session user id", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "no-user-id" });
-    const result = await deleteSelectedFilesAction(["a"]);
-    expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/sign in/i) });
     expect(mocks.softDeleteFiles).not.toHaveBeenCalled();
   });
 
@@ -352,7 +339,7 @@ describe("deleteSelectedFilesAction", () => {
 // read for the edit flow. Both are teacher-gated.
 describe("loadYamlFromUrlAction", () => {
   it("rejects a non-teacher before fetching", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await loadYamlFromUrlAction({ url: "https://example.com/f.yaml" });
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
     expect(mocks.defaultFetcher).not.toHaveBeenCalled();
@@ -422,7 +409,7 @@ describe("loadFileFromDbAction", () => {
   });
 
   it("rejects a non-teacher", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     expect(await loadFileFromDbAction("my-file")).toEqual({ ok: false, reason: "error" });
     expect(mocks.getActiveFile).not.toHaveBeenCalled();
   });

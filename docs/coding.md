@@ -81,11 +81,11 @@ samples (the coding YAML under `activities/examples/`).
   Entra sign-in.
 - **Attribution**: `novedu_coding_keys` is the **second sanctioned exception** to
   "`novedu_user_chats` is the only user↔chat link" (alongside `novedu_reports`,
-  `docs/reports.md`) — key issuance always records the requesting user's oid,
+  `docs/reports.md`) — key issuance always records the requesting user's id,
   disclosed by an explicit, visually prominent notice on **both** issuing surfaces:
   the student connection page (`render-coding.tsx`) and, beside the teacher's own
   "Get my API key" button, the detail page (`_coding/coding-detail.tsx`). Neither
-  surface stores an oid without the notice: a teacher who only reads the detail
+  surface stores a user id without the notice: a teacher who only reads the detail
   page is never listed. Coding conversations themselves are still never stored —
   there is no in-app chat to attribute, and `novedu_user_chats` stays untouched.
   The `anonymous` flag stays frozen `true` and keeps its narrower meaning (no
@@ -258,7 +258,7 @@ values; the system prompt + real model never reach it.
   the connection block under the activity title, above an explicit **attribution
   notice** ("Requesting this activity's API key is recorded with your name for
   your teacher. Your coding conversations are not stored."). In view-as-student
-  mode the key is minted under the teacher's **real** oid — testing never
+  mode the key is minted under the teacher's **real** user id — testing never
   fabricates a student row.
 - **Teacher `/codes/[code]`** (`_coding/coding-detail.tsx`, the module's
   `renderDetail`): the resolved config (pinned model + the server-only system
@@ -274,7 +274,7 @@ values; the system prompt + real model never reach it.
     have no key". The button is the only client component here
     (`_coding/mint-key-button.tsx`), calling the `mintCodingKeyAction` server
     action (`lib/coding-key-actions.ts`): `requireTeacherUserId()` gates it and
-    supplies the attributed oid, `getCode` must find a real row whose module is
+    supplies the attributed user id, `getCode` must find a real row whose module is
     `coding` (an unknown / deleted / non-coding code is refused WITHOUT touching
     the key table — deliberately not `checkCode`, since the window gates USE of a
     key, which the proxy re-verifies anyway, not whether a teacher may prepare one
@@ -284,7 +284,7 @@ values; the system prompt + real model never reach it.
   - The issued-keys list (`listCodingKeys`) uses the shared `studentColumn` under
     the header **"User"** (writing's savers list keeps "Student" — here a teacher
     who minted their own key legitimately appears): display name LEFT-JOINed from
-    `novedu_users`, raw `oid` fallback and hover title. "Requested" renders through
+    `novedu_user`, raw user-id fallback and hover title. "Requested" renders through
     the shared `LocalTime` leaf — the viewer's own timezone, exactly like every
     sibling teacher list (reports, writing savers, files, codes).
 - **Create/edit `/codes/edit/[code]`**: no per-module override exists — the page
@@ -342,7 +342,7 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   connection block across all three read states — key present, the button + its
   attribution notice, the unavailable notice — asserting the render NEVER calls
   `getOrCreateCodingKey`; plus the issued-keys list (the "User" header, join shape,
-  `oid` fallback, the `LocalTime` leaf).
+  user-id fallback, the `LocalTime` leaf).
 - **`lib/coding-key-actions.unit.test.ts`**: the mint action's shell — the teacher
   gate (both failure reasons), an unknown / non-coding code refused without an
   insert, the happy path's mint + `revalidatePath`, and that no key value is

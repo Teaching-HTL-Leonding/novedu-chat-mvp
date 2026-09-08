@@ -16,7 +16,7 @@ import type { CodeModuleDef } from "./registry";
 // model come from the writing YAML at the code's `file_url` (re-loaded
 // server-side, never trusted from the client). The agent has no write/edit tool,
 // so it can never mutate the student's text — the only persistence is the
-// student's own Save (lib/writing-actions.ts), gated by the code + session oid.
+// student's own Save (lib/writing-actions.ts), gated by the code + session user id.
 //
 // The teacher detail inverts the usual emphasis: for an attributed code it is the
 // SAVERS LIST (WritingSaversList — saved text first, chat second); an anonymous

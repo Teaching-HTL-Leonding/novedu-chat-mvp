@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { MENU_ITEM, MENU_PANEL } from "@/components/ui/menu";
 import { signOutAction } from "@/lib/auth-actions";
 import { enterStudentModeAction, exitStudentModeAction } from "@/lib/student-mode-actions";
@@ -11,7 +13,6 @@ const MENU_ACTION = cn(MENU_ITEM, "w-full text-left");
 
 type StatusBarUser = {
   name?: string | null;
-  image?: string | null;
   isTeacher?: boolean;
 };
 
@@ -36,7 +37,18 @@ export function UserMenu({
   studentMode?: boolean;
 }) {
   const { open, setOpen, ref } = usePopover<HTMLDivElement>();
-  if (!user) return null;
+  // Signed out where the proxy let the request through: it only checks that a
+  // session cookie is PRESENT, so a garbage cookie — or a genuine one whose
+  // session row is gone — reaches the page and resolves no session. Without this
+  // the bar would be empty and the only way back would be typing /sign-in. No
+  // callbackURL — the visitor is already where they wanted to be, and the
+  // sign-in page defaults to "/".
+  if (!user)
+    return (
+      <Link href="/sign-in" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+        Sign in
+      </Link>
+    );
   const name = user.name?.trim() || "Signed in";
 
   return (
@@ -86,25 +98,12 @@ export function UserMenu({
         <span className="max-w-56 overflow-hidden text-ellipsis whitespace-nowrap font-semibold text-sm">
           {name}
         </span>
-        {user.image ? (
-          // Avatar URLs are external (Entra/Graph); a plain <img> avoids
-          // configuring next/image remote patterns for a tiny 28px avatar.
-          // biome-ignore lint/performance/noImgElement: external avatar, not worth next/image config
-          <img
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground/65 object-cover"
-            src={user.image}
-            alt=""
-            width={28}
-            height={28}
-          />
-        ) : (
-          <span
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground/65 font-semibold text-background text-xs"
-            aria-hidden="true"
-          >
-            {initials(name)}
-          </span>
-        )}
+        <span
+          className="inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-foreground/65 font-semibold text-background text-xs"
+          aria-hidden="true"
+        >
+          {initials(name)}
+        </span>
       </button>
       {open && (
         <div className={cn(MENU_PANEL, "right-0 min-w-40")} role="menu">

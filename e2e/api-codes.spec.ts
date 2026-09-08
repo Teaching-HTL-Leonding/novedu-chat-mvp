@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mintToken } from "./api-auth.utils";
+import { mintSessionToken } from "./api-auth.utils";
 
 // The /api/codes bearer channel's ACCESS CONTROL over real HTTP: the
 // proxy-matcher exclusion (a bare request gets 401 from the route, not a
@@ -7,13 +7,10 @@ import { mintToken } from "./api-auth.utils";
 // token) — for GET and POST alike. The bearer PUT on the public /api/files
 // prefix is probed too: the GET being public must never extend to writes.
 // Everything DB-backed (actually listing/creating) lives in the @live-db
-// lifecycle spec (api-management.live.spec.ts); these assertions fail before
-// any store call, so this spec stays hermetic. Token minting mirrors
-// api-me.spec.ts (real env issuer/audience, e2e signing key).
-//
-// CAVEAT (local runs): reuseExistingServer means a dev server started without
-// API_AUTH_JWKS_PATH in its env fails these specs with 401-for-everything —
-// restart it with the var exported or let Playwright start the server.
+// lifecycle spec (api-management.live.spec.ts); every assertion here fails
+// inside the gate, before any code store call. The bearer credential is a real
+// better-auth session token minted straight into `novedu_session`
+// (api-auth.utils.ts) — there is no test seam on this channel.
 
 // No cookies: these requests must succeed or fail on the bearer token ALONE. A
 // proxy-matcher regression would turn the expected 401 into a sign-in redirect.
@@ -36,7 +33,7 @@ test("bare POST /api/codes → 401, not a sign-in redirect", async ({ request })
 });
 
 test("valid non-teacher token → 403 on GET and POST /api/codes", async ({ request }) => {
-  const token = await mintToken();
+  const token = await mintSessionToken();
   const list = await request.get("/api/codes", {
     headers: { authorization: `Bearer ${token}` },
   });

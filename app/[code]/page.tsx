@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
-import { auth } from "@/auth";
 import { Notice } from "@/components/notice";
 import { Main } from "@/components/page-main";
 import { checkCode } from "@/lib/code-store";
 import { recordRecentCode, removeRecentCode } from "@/lib/recent-code-store";
+import { getSession } from "@/lib/session";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
 import { CodeError } from "../code-error";
 import { RenderCoding } from "./render-coding";
@@ -25,7 +25,7 @@ import { RenderWriting } from "./render-writing";
 // (`/files`, `/codes`, …) take precedence over this segment.
 export default async function CodePage({ params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
-  const session = await auth();
+  const session = await getSession();
   const userId = session?.user?.id;
 
   const verification = await checkCode(code);
@@ -86,9 +86,9 @@ export default async function CodePage({ params }: { params: Promise<{ code: str
       // No thread: the coding module has no in-app chat — this page mints (or
       // re-displays) the student's personal API key and shows how to connect an
       // external OpenAI-compatible coding agent to /api/coding/v1. No student-mode
-      // logic here: `userId` is always the real session oid, which is exactly the
+      // logic here: `userId` is always the real session user id, which is exactly the
       // design's view-as-student behavior (a teacher testing this page mints a key
-      // under their own oid, never a fabricated student row).
+      // under their own user id, never a fabricated student row).
       return <RenderCoding entry={entry} code={code} userId={userId} />;
     default: {
       const exhaustive: never = entry.module;

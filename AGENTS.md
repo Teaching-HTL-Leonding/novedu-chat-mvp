@@ -21,12 +21,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 The highest-cost rules to break. They always apply, regardless of subsystem; the linked doc has the full mechanics.
 
 - Teacher-only server actions / route handlers: **`requireEffectiveTeacher()`** (or `requireTeacherUserId()` in the file/CRUD actions) — **never** `session.user.isTeacher` or `requireTeacher()`, which ignore "view as student" mode.
-- The session user id is the Entra **`oid`**, not `sub`.
+- The session user id is **`novedu_user.id`** — rows that predate the table carry the former Entra `oid` as their id; the `oid` itself lives in `novedu_account.account_id`.
 - Student access to any activity = **`checkCode()`** on the stored `novedu_codes` row + the **stateless-HMAC `x-thread-token`** over `(code, userId, threadId)`, both re-verified on **every** server touch. No signed links (`docs/codes.md`).
 - The activity YAML's `anonymous` default is module-specific: tutor/quiz `true`, **writing `false`**, coding always anonymous (`docs/writing.md`).
 - The quiz grader **`quizEvaluator`**, the eval judge **`evalJudge`** and the eval tutor **`evalTutor`** are **never web-reachable by students** (the runtime route 404s every agent id but the code module's own). Besides `submitAnswer`, their only callers are the teacher-only `POST /api/eval/grade` / `POST /api/eval/judge` / `POST /api/eval/respond`, which supply their system prompts client-side — the server-only quiz `evaluation` prompts never leave the server (`docs/codes.md`, `docs/cli-eval.md`).
-- Exactly **two public, non-Entra API surfaces**: `GET /api/files/<name>` (raw YAML) and the coding routes `POST /api/coding/v1/chat/completions` + `GET /api/coding/v1/models`, both authenticated by a per-user API key from `novedu_coding_keys` under one identical gate (key row + code row re-verified every request — `docs/files.md`, `docs/coding.md`). The only other public surface is the static teacher guide under `/docs`, public by intent (`docs/teacher-docs.md`).
-- All other CLI/API routes are **Entra-bearer**: proxy-excluded per-path and gated **only** by `requireBearerUser`/`requireBearerTeacher` (`lib/api-auth.ts`) — token validated on every request, groups overage fails closed, **no student mode on this channel**; auth never enters the `lib/*-service.ts` pipelines. `docs/api.md` lists every route.
+- Besides better-auth's own `/api/auth/*` endpoints (sign-in, OAuth callback, device code/token, sign-out), exactly **two public, non-Entra API surfaces**: `GET /api/files/<name>` (raw YAML) and the coding routes `POST /api/coding/v1/chat/completions` + `GET /api/coding/v1/models`, both authenticated by a per-user API key from `novedu_coding_keys` under one identical gate (key row + code row re-verified every request — `docs/files.md`, `docs/coding.md`). The only other public surface is the static teacher guide under `/docs`, public by intent (`docs/teacher-docs.md`).
+- All other CLI/API routes are **session-token bearer**: proxy-excluded per-path and gated **only** by `requireBearerUser`/`requireBearerTeacher` (`lib/api-auth.ts`) over `auth.api.getSession` — the session resolved on every request, the role is the server-owned `novedu_user.is_teacher`, **no student mode on this channel**; auth never enters the `lib/*-service.ts` pipelines. `docs/api.md` lists every route.
 - **LLM connectivity is server-only** behind `lib/llm/` — the provider branch exists ONLY in `resolveLanguageModel`, `resolveChatEndpoint`, and `providerUnavailableReason`; endpoints, keys, and Entra tokens never reach the browser. Foundry auth is passwordless Entra — never `DefaultAzureCredential`, never an API key. A code's **LLM override pair** is both-or-nothing via `effectiveLlm`, availability-gated on the effective provider (`docs/ai-models.md`).
 - A thinking model's **reasoning is teacher-only on the live chat**: the `/api/copilotkit` route picks `ReasoningStrippingRunner` unless `effectiveTeacherForSession()` proves an effective teacher, so `REASONING_*` frames are never written to a student's stream. **Fails closed**; view-as-student gets a student's stream (`docs/chat.md`).
 - Image bytes use passwordless **User-Delegation-SAS** — no app route ever serves bytes; SVG renders only via `<img src>` on the blob origin, never inline markup (`docs/images.md`).
@@ -41,9 +41,9 @@ Deep reference lives in `docs/` — those docs are **not** auto-loaded, so read 
 
 ### Auth, teacher roles & student mode → `docs/auth.md`
 
-Read before touching: `auth.ts`, `proxy.ts`, sessions, teacher gating, student mode.
+Read before touching: `auth.ts`, `lib/session.ts`, `lib/db/auth-schema.ts`, `proxy.ts`, `app/sign-in/**`, `app/device/**`, `lib/device-actions.ts`, sessions, teacher gating, student mode.
 
-- Entra ID via Auth.js v5; the gate is `proxy.ts` at the repo root (Next 16's rename of `middleware`, Node.js runtime). Teacher gating: see the security block.
+- Entra ID via better-auth; the gate is `proxy.ts` at the repo root (Next 16's rename of `middleware`, Node.js runtime; a session-cookie presence check). Every page/action/route re-validates the session itself. Teacher gating: see the security block.
 
 ### CLI / API bearer auth → `docs/api.md`
 
@@ -51,6 +51,7 @@ Read before touching: `lib/api-auth.ts`, the bearer handlers under `app/api/**`,
 
 - Adding a bearer endpoint = `requireBearer*` gate + its own path-bounded `proxy.ts` exclusion + a `docs/api.md` entry.
 - CLI commands are JSON-only (success on stdout, failures on stderr, exit 1); the sanctioned exceptions (`codes sync`, `eval`) print human reports and keep JSON behind `--json`.
+- The CLI signs in through the app's own OAuth device flow (`cli/src/auth.ts`, `app/device/**`): `login` requests a device code, the person approves it at `/device`, and the CLI stores the resulting session token per server origin in `~/.novedu/sessions.json`.
 
 ### Activity registry & `codes sync` → `docs/registry.md`
 
@@ -65,13 +66,13 @@ Read before touching: `app/[code]/**`, `app/codes/**`, `app/api/copilotkit/**`, 
 - `checkCode()` gates THREE sites that must stay in sync: the `/[code]` dispatcher, the CopilotKit route, and the public coding route.
 - Fixed layering: **FileKind** → validator (`lib/file-validators.ts`) → **CodeModule** descriptor; adding a module touches only the documented seams.
 - Editing a code changes only note + window + the LLM override pair — never the module, `file_url`, or the frozen `anonymous`.
-- `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities. TWO sanctioned exceptions: `novedu_reports` stores the reporter's oid even on anonymous codes behind an explicit on-form notice (`docs/reports.md`), and `novedu_coding_keys` stores the requester's oid behind an explicit on-page notice (`docs/coding.md`).
+- `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities. TWO sanctioned exceptions: `novedu_reports` stores the reporter's user id even on anonymous codes behind an explicit on-form notice (`docs/reports.md`), and `novedu_coding_keys` stores the requester's user id behind an explicit on-page notice (`docs/coding.md`).
 
 ### Reports → `docs/reports.md`
 
 Read before touching: `lib/report-*.ts`, `lib/quiz-verify.ts`, `components/report-button.tsx` + its mounts, `app/reports/**`, `app/api/reports/**`, `cli/src/commands/reports.ts`, `novedu_reports`.
 
-- Reports are ALWAYS attributed to the reporter's oid (the sanctioned exception above); the store never joins `novedu_user_chats`; telemetry stays content-free.
+- Reports are ALWAYS attributed to the reporter's user id (the sanctioned exception above); the store never joins `novedu_user_chats`; telemetry stays content-free.
 - **`lib/quiz-verify.ts` must never gain `"use server"`** — it would mint an endpoint leaking the quiz `evaluation` prompts.
 
 ### Prompt fragments → `docs/prompt-fragments.md`
@@ -141,10 +142,11 @@ Read before touching: `app/files/gui/**`, `lib/yaml-files.ts`.
 
 ### Styling → `docs/styling.md`
 
-Read before touching: `app/globals.css`, `components/ui/**`, `lib/utils.ts`, or any non-trivial `className` work.
+Read before touching: `app/globals.css`, `components/ui/**`, `lib/utils.ts`, `app/layout.tsx`, `components/app-chrome.tsx`, or any non-trivial `className` work.
 
 - Tailwind v4, CSS-first: all config in `app/globals.css`; light-only. App CSS stays inside the declared layers — an unlayered rule silently breaks CopilotKit's utilities.
 - A recipe used in ≥2 places becomes a cva primitive in `components/ui/`, consumed via `cn()`; no `@apply`.
+- The status bar is rendered by the root layout through `AppChrome`, which drops it on the bare routes `/sign-in` and `/device`.
 
 ### Filtered lists → `docs/filtered-lists.md`
 

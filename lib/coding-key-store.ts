@@ -1,8 +1,9 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { generateCodingKey, KEY_PATTERN } from "@/lib/coding-key";
 import { type DbExecutor, getDb } from "@/lib/db";
+import { authUsers } from "@/lib/db/auth-schema";
 import { isUniqueViolation } from "@/lib/db/errors";
-import { codingKeys, users } from "@/lib/db/schema";
+import { codingKeys } from "@/lib/db/schema";
 
 // Persistence for the coding module's per-user API keys in the
 // `novedu_coding_keys` SQL table: one STABLE key per `(code, user)`, handed back
@@ -26,7 +27,7 @@ import { codingKeys, users } from "@/lib/db/schema";
 // coding conversations themselves are never stored.
 //
 // Key VALUES are secrets: they are never logged, never put in an error message,
-// and never emitted to telemetry — the log lines below carry the code/oid only.
+// and never emitted to telemetry — the log lines below carry the code/user id only.
 // The key FORMAT itself (`KEY_PATTERN`, `generateCodingKey`) lives in the pure
 // lib/coding-key.ts, which the e2e harness shares.
 //
@@ -42,7 +43,7 @@ import { codingKeys, users } from "@/lib/db/schema";
 /** A user's stored key for one coding code, as read back from `novedu_coding_keys`. */
 export interface CodingKeyRow {
   code: string;
-  /** The requesting user's Entra `oid`. */
+  /** The requesting user's session user id (`novedu_user.id`). */
   userId: string;
   /** The bearer secret the coding tool authenticates with. */
   apiKey: string;
@@ -186,11 +187,11 @@ export async function lookupCodingKey(apiKey: string): Promise<CodingKeyLookup> 
 
 /** One row of the teacher's issued-keys list for a coding code. */
 export interface CodingKeyIssuance {
-  /** The requesting user's Entra `oid`. */
+  /** The requesting user's session user id (`novedu_user.id`). */
   userId: string;
   /**
-   * The user's display name (resolved from `novedu_users`), or `null` when no
-   * name has been recorded yet — the caller falls back to the `oid` then.
+   * The user's display name (resolved from `novedu_user`), or `null` when no
+   * name has been recorded yet — the caller falls back to the `userId` then.
    */
   displayName: string | null;
   /** Issuance time, UTC. */
@@ -199,7 +200,7 @@ export interface CodingKeyIssuance {
 
 /**
  * Who requested a key for a coding code, newest first — the teacher's read-only
- * issuance list. The display name is resolved by a LEFT JOIN on `novedu_users`
+ * issuance list. The display name is resolved by a LEFT JOIN on `novedu_user`
  * (BY VALUE, no FK — the sanctioned cross-table pattern, as in `listSavers`), so
  * a user with no recorded name comes back with `displayName: null`. The KEY
  * VALUES are deliberately not selected: a teacher sees WHO holds a key, never
@@ -211,11 +212,11 @@ export async function listCodingKeys(code: string): Promise<CodingKeyIssuance[]>
     return await getDb()
       .select({
         userId: codingKeys.userId,
-        displayName: users.displayName,
+        displayName: authUsers.name,
         createdAt: codingKeys.createdAt,
       })
       .from(codingKeys)
-      .leftJoin(users, eq(users.userId, codingKeys.userId))
+      .leftJoin(authUsers, eq(authUsers.id, codingKeys.userId))
       .where(eq(codingKeys.code, code))
       .orderBy(desc(codingKeys.createdAt));
   } catch (error) {

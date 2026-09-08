@@ -10,12 +10,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // output; no DB, runs in CI. (The module render components are tested separately;
 // the valid path that loads the real activity stays @live.)
 
-const auth = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
 const recordRecentCode = vi.hoisted(() => vi.fn());
 const removeRecentCode = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth }));
+vi.mock("@/lib/session", () => ({ getSession }));
 vi.mock("@/lib/code-store", () => ({ checkCode }));
 vi.mock("@/lib/recent-code-store", () => ({ recordRecentCode, removeRecentCode }));
 // Stub the module render components — dispatch is what this test asserts.
@@ -57,7 +57,7 @@ async function renderPage(code = CODE) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  auth.mockResolvedValue({ user: { id: USER_ID } });
+  getSession.mockResolvedValue({ user: { id: USER_ID } });
 });
 
 describe("rejection branches", () => {

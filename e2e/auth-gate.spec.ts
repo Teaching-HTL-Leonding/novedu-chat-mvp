@@ -5,36 +5,26 @@ import { expect, test } from "@playwright/test";
 // cookie (see auth.setup.ts); here we override storageState to empty so the
 // browser arrives logged out, overriding the chromium project's default. If the
 // proxy matcher ever stops gating a protected path, this test fails.
+//
+// The redirect carries the wanted path as `callbackURL`, which is what makes a
+// bounced visitor land where they were going after signing in — so each case
+// asserts the exact query string, not merely that /sign-in was reached.
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test("unauthenticated users are redirected to the sign-in page", async ({ page }) => {
-  await page.goto("/");
-
-  await expect(page).toHaveURL(/\/api\/auth\/signin/);
-});
-
-test("unauthenticated users cannot reach the files page", async ({ page }) => {
-  await page.goto("/files");
-
-  await expect(page).toHaveURL(/\/api\/auth\/signin/);
-});
-
-test("unauthenticated users cannot reach the new-code page", async ({ page }) => {
-  await page.goto("/codes/new");
-
-  await expect(page).toHaveURL(/\/api\/auth\/signin/);
-});
-
-test("unauthenticated users cannot reach the codes list page", async ({ page }) => {
-  await page.goto("/codes");
-
-  await expect(page).toHaveURL(/\/api\/auth\/signin/);
-});
-
-test("a code URL still requires sign-in", async ({ page }) => {
+const GATED_PATHS = [
+  "/",
+  "/files",
+  "/codes/new",
+  "/codes",
   // Anonymous users cannot use the app even with a genuine code (any module) —
   // the code only authorizes the activity + window, never the user.
-  await page.goto("/a1b2c3d4e5");
+  "/a1b2c3d4e5",
+] as const;
 
-  await expect(page).toHaveURL(/\/api\/auth\/signin/);
-});
+for (const path of GATED_PATHS) {
+  test(`unauthenticated users are redirected to sign in from ${path}`, async ({ page }) => {
+    await page.goto(path);
+
+    await expect(page).toHaveURL(`/sign-in?callbackURL=${encodeURIComponent(path)}`);
+  });
+}

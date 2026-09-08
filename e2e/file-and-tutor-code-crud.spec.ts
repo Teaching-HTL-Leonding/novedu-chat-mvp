@@ -175,8 +175,8 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   );
 
   // TUTOR LINK — stats detail: opening /codes/<code> renders ConversationStats,
-  // which runs getCodeStats' RAW SQL (the `LEFT JOIN novedu_users` + `GROUP BY
-  // un.display_name` added for name resolution — untyped, so unit tests can't catch
+  // which runs getCodeStats' RAW SQL (the `LEFT JOIN novedu_user` + `GROUP BY
+  // un.name` added for name resolution — untyped, so unit tests can't catch
   // a malformed query). A freshly created code has no conversations, so the page
   // must show the empty state — NOT the "stats temporarily unavailable" notice that
   // getCodeStats returns when the query throws — which proves the join is valid SQL.

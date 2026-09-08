@@ -7,7 +7,7 @@ import {
   FEEDBACK_JUDGE_SYSTEM,
 } from "@/lib/quiz-feedback-judge";
 import { buildTutorJudgeSubject, TUTOR_JUDGE_SYSTEM, tutorJudgeCriteria } from "@/lib/tutor-judge";
-import { mintToken } from "./api-auth.utils";
+import { mintSessionToken } from "./api-auth.utils";
 
 // @live-llm PROBE spec for `POST /api/eval/judge` (docs/cli-eval.md): does a REAL judge
 // model actually catch bad model output, and does it leave good output alone? Covers
@@ -34,8 +34,8 @@ import { mintToken } from "./api-auth.utils";
 // one-probe Foundry leg here if a judge ever runs on Foundry in anger.
 //
 // The teacher token is minted exactly like `e2e/api-management.live.spec.ts` /
-// `api-me.spec.ts`: the REAL env issuer/audience, the e2e signing key from
-// `api-auth.setup.ts` (the server trusts it via API_AUTH_JWKS_PATH).
+// `api-me.spec.ts`: a real better-auth session token minted straight into
+// `novedu_session` (`api-auth.utils.ts`), under its own principal id.
 
 // No cookies: this is the bearer channel, and it must succeed on the token ALONE.
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -324,7 +324,7 @@ async function runProbes(
   llm: { provider: string; model: string },
 ): Promise<void> {
   const headers = {
-    authorization: `Bearer ${await mintToken({ teacher: true, oid: "e2e-judge-oid", name: "E2E Judge Teacher", ttlSeconds: 900 })}`,
+    authorization: `Bearer ${await mintSessionToken({ teacher: true, userId: "e2e-judge-user", name: "E2E Judge Teacher" })}`,
   };
 
   for (const entry of probes) {

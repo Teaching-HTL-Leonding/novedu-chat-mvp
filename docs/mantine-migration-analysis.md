@@ -21,7 +21,7 @@ CopilotChat.
 Adopting Mantine is a **presentation-layer refactor, not a rebuild**. It is
 **additive** — there is no competing component system to tear out — and it does
 **not** touch the parts that are genuinely expensive to change: data layer
-(Drizzle / Mastra), auth (`proxy.ts` / Auth.js), the AG-UI chat runtime, server
+(Drizzle / Mastra), auth (`proxy.ts` / better-auth), the AG-UI chat runtime, server
 actions, validation, or business logic.
 
 It can be **rolled out incrementally and shipped in stages.** That is the

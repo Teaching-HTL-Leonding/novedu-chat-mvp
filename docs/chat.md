@@ -134,7 +134,7 @@ restart moves them together.
 `app/_tutor/start-over-button.tsx` is an `IconButton` (`aria-label` + `title` —
 the app has no tooltip component) that opens a `DialogShell` confirmation, then
 calls **`startNewTutorThread`** (`lib/tutor-actions.ts`). That action re-runs the
-full gate — session `oid`, `checkCode`, `module === "tutor"` — and returns a fresh
+full gate — session user id, `checkCode`, `module === "tutor"` — and returns a fresh
 `(threadId, threadToken)` pair. `TutorChat` swaps it in, the `providerKey` changes,
 the provider remounts, and CopilotKit's in-browser message list is discarded.
 

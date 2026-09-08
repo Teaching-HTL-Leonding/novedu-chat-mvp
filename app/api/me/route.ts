@@ -15,7 +15,8 @@ export async function GET(request: Request) {
     return Response.json({ name: user.name, userId: user.userId, isTeacher: user.isTeacher });
   } catch (error) {
     if (error instanceof ApiAuthError) {
-      // Generic body; the validation detail stays server-side (telemetry).
+      // Generic body: which check failed (no header, no live session) stays
+      // server-side.
       // `{ message }` is the ONE failure key on the bearer channel (docs/api.md).
       return Response.json(
         { message: error.message },

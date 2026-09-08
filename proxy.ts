@@ -1,19 +1,39 @@
+import { getSessionCookie } from "better-auth/cookies";
+import { type NextRequest, NextResponse } from "next/server";
+
 // The access gate. In Next.js 16 the `middleware` convention was renamed to
-// `proxy`, so the classic Auth.js `export { auth as middleware }` becomes
-// `export { auth as proxy }`. Auth.js's `auth` wrapper runs the `authorized`
-// callback from `auth.ts` and redirects unauthenticated requests to the sign-in
-// page.
-export { auth as proxy } from "@/auth";
+// `proxy` (Node.js runtime). It checks that a session cookie is PRESENT — no
+// signature check, no database call — so an unauthenticated visitor is bounced
+// to `/sign-in` cheaply.
+//
+// The cookie prefix is repeated from `auth.ts` rather than imported: importing
+// `auth.ts` here would pull the database pool and the provider credentials into
+// the gate. Keep the two literals in sync.
+//
+// It is NOT the authorization boundary. Every page, server action and route
+// handler behind it re-establishes the session itself — `getSession()` /
+// `requireEffectiveTeacher()` on the cookie channel, `requireBearerUser()` on the
+// CLI/API channel. A garbage or expired cookie therefore reaches the page, which
+// renders signed-out with the status bar's "Sign in" button as the way back
+// (`getSession()` returns null).
+export function proxy(request: NextRequest) {
+  if (getSessionCookie(request, { cookiePrefix: "novedu" })) return NextResponse.next();
+  const url = new URL("/sign-in", request.url);
+  url.searchParams.set("callbackURL", request.nextUrl.pathname + request.nextUrl.search);
+  return NextResponse.redirect(url);
+}
 
 export const config = {
   // Protect everything (pages + /api/copilotkit) EXCEPT the
-  // Auth.js endpoints (needed to complete sign-in), the public /api/version
+  // better-auth endpoints (needed to sign in, and to run the device flow the CLI
+  // polls), the /sign-in page itself (redirecting it to itself would loop), the
+  // public /api/version
   // build-identity probe (CD triage — see app/api/version/route.ts), the public
   // /api/files YAML-hosting endpoint (served without a session so the tutor-code
   // loader can fetch it — see app/api/files/[name]/route.ts), and static assets.
   // The public /api/coding OpenAI-compatible coding routes (chat/completions and
   // models) are gated by the per-user API key (key row + code row re-checked every
-  // request), not by an Entra session — an external coding agent has none — so they
+  // request), not by a session — an external coding agent has none — so they
   // are excluded here too (see app/api/coding/v1/**/route.ts). The one entry is
   // anchored with a path boundary (`api/coding(?:/|$)`) so the exclusion covers the
   // routes under `/api/coding/` without silently widening to a future, unrelated
@@ -25,7 +45,7 @@ export const config = {
   // list/upload/confirm endpoints (all teacher-only; unlike /api/files there
   // is NO public GET under that prefix) are
   // CLI/API bearer-token routes: they self-gate via requireBearerUser /
-  // requireBearerTeacher (lib/api-auth.ts) and a CLI has no Entra session
+  // requireBearerTeacher (lib/api-auth.ts) and a CLI has no session
   // cookie, so they must not hit the cookie gate (see docs/api.md). Every future
   // bearer route gets its own explicit, path-bounded exclusion like these —
   // never a blanket prefix. (The bearer PUT /api/files/<name> and GET /api/files
@@ -40,6 +60,6 @@ export const config = {
   // /api/files-export must NOT ride the /api/files exclusion past the cookie
   // gate).
   matcher: [
-    "/((?!api/auth(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|api/reports(?:/|$)|api/images(?:/|$)|api/eval(?:/|$)|docs(?:/|$)|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth(?:/|$)|sign-in(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|api/reports(?:/|$)|api/images(?:/|$)|api/eval(?:/|$)|docs(?:/|$)|_next/static|_next/image|favicon.ico).*)",
   ],
 };

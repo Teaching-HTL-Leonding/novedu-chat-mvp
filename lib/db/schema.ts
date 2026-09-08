@@ -29,9 +29,9 @@ import {
 //   novedu_codes.code = novedu_user_chats.code = mastra_threads.resourceId
 //   novedu_user_chats.thread_id = mastra_threads.id = mastra_messages.thread_id
 //   novedu_reports.code = novedu_codes.code (report → code note/creator)
-//   novedu_reports.user_id = novedu_users.user_id (report → reporter name)
+//   novedu_reports.user_id = novedu_user.id (report → reporter name)
 //   novedu_coding_keys.code = novedu_codes.code (key → coding activity)
-//   novedu_coding_keys.user_id = novedu_users.user_id (key → requester name)
+//   novedu_coding_keys.user_id = novedu_user.id (key → requester name)
 //
 // so user → user-chat → chat-history joins work in plain SQL without FKs.
 
@@ -39,7 +39,7 @@ import {
 // future) is the dispatch discriminator: the student entry route and the runtime
 // route read it off the row to pick the renderer/agent. `file_url` is the
 // activity YAML the code hands out. The creating teacher is `created_by` (the
-// session user id = Entra `oid`). The validity window is inclusive in both
+// session user id, `novedu_user.id`). The validity window is inclusive in both
 // directions, stored as UTC `timestamptz`; each bound is OPTIONAL — a null
 // `valid_from` opens the code immediately, a null `valid_until` never expires it
 // (both null = always valid). `origin` documents where the code was
@@ -121,25 +121,6 @@ export const userChats = pgTable(
   ],
 );
 
-// One row per signed-in user: the Entra `oid` mapped to the display name the app
-// shows in its nav bar (the Entra `name` claim). Upserted on every interactive
-// sign-in (lib/user-name-store.ts, called from the auth `jwt` callback), so the
-// stored name tracks the user's current Entra display name. Its sole purpose is to
-// resolve the otherwise-opaque `oid` to a human name wherever a student id is shown
-// to a teacher — the writing savers list, the student text page, and the
-// conversation-stats table each LEFT-JOIN this table BY VALUE and fall back to the
-// raw oid when no row exists yet (a user who has not signed in since this table was
-// introduced). No history (the upsert overwrites), never garbage-collected, and no
-// foreign keys (same rule as the other novedu_* tables).
-export const users = pgTable("novedu_users", {
-  // The Entra `oid` — the same stable user key stored as `user_id` in the tables
-  // above. PK doubles as the lookup index for the joins.
-  userId: varchar("user_id", { length: 64 }).primaryKey(),
-  // The Entra `name` claim. Never blank: the upsert skips an empty name, so an
-  // absent name leaves no row and the oid is shown as the fallback instead.
-  displayName: text("display_name").notNull(),
-});
-
 // A user's recently used codes, backing the shortcuts on the chat entry page
 // (`/`). Pure convenience bookkeeping: the displayed label (the teacher's note)
 // is NOT duplicated here — the entry page joins novedu_codes, so codes whose row
@@ -162,7 +143,7 @@ export const recentCodes = pgTable(
 // save time. Rows exist only for non-anonymous writing codes (anonymous writing
 // disables saving); the teacher review reads them back. `code` is widened to match
 // novedu_codes.code so a real writing code stores by value; `user_id` is the
-// student's Entra `oid`.
+// student's session user id (`novedu_user.id`).
 //
 // No foreign keys (same rule as the other novedu_* tables): no FK to novedu_codes,
 // so saved texts outlive a deleted code unless the code-delete path drops them
@@ -188,7 +169,7 @@ export const writingSubmissions = pgTable(
 // costs only nullable snapshot columns.
 //
 // SECOND user↔activity link, sanctioned: `user_id` (the reporting student's
-// Entra `oid`) is ALWAYS set, even under an anonymous code. This is the ONE
+// session user id, `novedu_user.id`) is ALWAYS set, even under an anonymous code. This is the ONE
 // deliberate exception to the "novedu_user_chats is the only user↔chat link"
 // invariant — a voluntary waiver of anonymity, created only by an explicit
 // student action behind an on-form "reports are not anonymous" notice, never
@@ -203,7 +184,7 @@ export const writingSubmissions = pgTable(
 // on the row; photos are flagged (`had_images`) but NEVER stored.
 //
 // `resolved_at` is the single source of truth for resolution (resolved ⇔ NOT
-// NULL); `resolved_by` is the oid of the teacher who resolved it. Surrogate
+// NULL); `resolved_by` is the session user id of the teacher who resolved it. Surrogate
 // uuid PK like novedu_files/novedu_images; NO foreign keys (same rule as the
 // other novedu_* tables) — reports are dropped explicitly when their code is
 // deleted (lib/code-stats-store.ts).
@@ -216,7 +197,7 @@ export const reports = pgTable(
     kind: varchar("kind", { length: 16 }).notNull(),
     // The reported activity's code (by value; widened to match novedu_codes.code).
     code: varchar("code", { length: 32 }).notNull(),
-    // The reporting student's Entra `oid` — ALWAYS set (see the block above).
+    // The reporting student's session user id (`novedu_user.id`) — ALWAYS set (see the block above).
     userId: varchar("user_id", { length: 64 }).notNull(),
     reaction: varchar("reaction", { length: 16 }).notNull(),
     // Optional free text; empty string when the student gave none.
@@ -234,7 +215,7 @@ export const reports = pgTable(
     verdict: varchar("verdict", { length: 16 }),
     // Whether the graded answer carried photos — flagged, never stored.
     hadImages: boolean("had_images").notNull().default(false),
-    // Resolution: resolved ⇔ resolved_at IS NOT NULL; resolved_by = teacher oid.
+    // Resolution: resolved ⇔ resolved_at IS NOT NULL; resolved_by = teacher's session user id.
     resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
     resolvedBy: varchar("resolved_by", { length: 64 }),
   },
@@ -256,8 +237,8 @@ export const reports = pgTable(
 // on EVERY request, and a closed window or a deleted code kills all its keys on
 // the next one (docs/coding.md).
 //
-// SECOND user↔code link, sanctioned: `user_id` (the requesting user's Entra
-// `oid`) is ALWAYS stored, even though coding codes are frozen `anonymous: true`.
+// SECOND user↔code link, sanctioned: `user_id` (the requesting user's session
+// user id, `novedu_user.id`) is ALWAYS stored, even though coding codes are frozen `anonymous: true`.
 // Alongside `novedu_reports` this is the second deliberate exception to the
 // "novedu_user_chats is the only user↔code link" invariant — issuance is a
 // deliberate action behind an explicit on-page attribution notice on BOTH issuing
@@ -279,7 +260,7 @@ export const codingKeys = pgTable(
   {
     // The coding code this key belongs to (by value; widened to match novedu_codes.code).
     code: varchar("code", { length: 32 }).notNull(),
-    // The requesting user's Entra `oid` — ALWAYS set (see the block above).
+    // The requesting user's session user id (`novedu_user.id`) — ALWAYS set (see the block above).
     userId: varchar("user_id", { length: 64 }).notNull(),
     // The bearer secret handed to the student's coding tool (see the block above).
     apiKey: varchar("api_key", { length: 64 }).notNull(),
@@ -312,9 +293,9 @@ export const codingKeys = pgTable(
 //           active row — i.e. a soft-delete of the old version + a fresh version.
 //   delete: close the active row (soft delete) and INSERT nothing.
 //
-// `created_by` is the oid of whoever wrote a version; `closed_by` is the oid of
-// whoever ended it (the updater OR the deleter), so logical deletions are
-// attributed too. The active row's `created_by` is therefore the file's "last
+// `created_by` is the session user id of whoever wrote a version; `closed_by` is
+// the session user id of whoever ended it (the updater OR the deleter), so
+// logical deletions are attributed too. The active row's `created_by` is therefore the file's "last
 // writer". "At most one active row per name" is enforced at the DATABASE level
 // by a PARTIAL UNIQUE index (`name` WHERE `valid_until IS NULL`), so two
 // concurrent creates of the same name cannot both succeed — the conditional
@@ -337,13 +318,13 @@ export const files = pgTable(
     description: text("description"),
     // The ENTIRE YAML for this version (unbounded `text`).
     content: text("content").notNull(),
-    // oid of the writer who created this version.
+    // Session user id of the writer who created this version.
     createdBy: varchar("created_by", { length: 64 }).notNull(),
     // When this version became active.
     validFrom: timestamp("valid_from", { withTimezone: true, mode: "date" }).notNull(),
     // When this version was closed; NULL = currently active.
     validUntil: timestamp("valid_until", { withTimezone: true, mode: "date" }),
-    // oid of whoever set valid_until (updater or deleter); NULL while active.
+    // Session user id of whoever set valid_until (updater or deleter); NULL while active.
     closedBy: varchar("closed_by", { length: 64 }),
   },
   (t) => [
@@ -367,8 +348,8 @@ export const files = pgTable(
 // TEMPORAL / append-only versioning, mirroring novedu_files: each row is ONE
 // version of one image. The image's identity is its `name`; the ACTIVE version is
 // the single row with `valid_until IS NULL`, every other row is history.
-// `created_by` is the oid of whoever wrote a version; `closed_by` is the oid of
-// whoever ended it. "At most one active row per name" is enforced at the DATABASE
+// `created_by` is the session user id of whoever wrote a version; `closed_by` is
+// the session user id of whoever ended it. "At most one active row per name" is enforced at the DATABASE
 // level by a PARTIAL UNIQUE index (`name` WHERE `valid_until IS NULL`). There
 // are NO foreign keys (same rule as the other novedu_* tables).
 export const images = pgTable(
@@ -387,13 +368,13 @@ export const images = pgTable(
     // Optional attribution / "Content Credentials" (e.g. a CC BY notice) shown
     // below the image wherever it is rendered. NULL when the teacher gave none.
     credit: text("credit"),
-    // oid of the writer who created this version.
+    // Session user id of the writer who created this version.
     createdBy: varchar("created_by", { length: 64 }).notNull(),
     // When this version became active.
     validFrom: timestamp("valid_from", { withTimezone: true, mode: "date" }).notNull(),
     // When this version was closed; NULL = currently active.
     validUntil: timestamp("valid_until", { withTimezone: true, mode: "date" }),
-    // oid of whoever set valid_until; NULL while active.
+    // Session user id of whoever set valid_until; NULL while active.
     closedBy: varchar("closed_by", { length: 64 }),
   },
   (t) => [
@@ -408,7 +389,7 @@ export const images = pgTable(
 // (code × user) cross. `usage_by_code` has no user; `usage_by_user` has no code (and
 // no module), so metering never recreates the user↔code link the anonymity
 // invariant forbids for an anonymous code (docs/codes.md). The runtime knows the
-// oid even for anonymous codes, but here it is only ever stored against an hour
+// session user id even for anonymous codes, but here it is only ever stored against an hour
 // bucket, never alongside the code. Written OFF the response path by
 // lib/usage-store.ts via an increment-UPSERT; read via SQL / Log Analytics (there
 // is no in-app read surface this iteration). No foreign keys (same rule as the
@@ -452,7 +433,7 @@ export const usageByCode = pgTable(
 // Per-user hourly usage — the substrate a future per-student quota will `SUM` over a
 // rolling window. NO `code` and NO `module`: this table must never reveal WHICH
 // activity a student did, only how much they used in an hour. `user_id` is the
-// student's Entra `oid`.
+// student's session user id (`novedu_user.id`).
 export const usageByUser = pgTable(
   "novedu_usage_by_user",
   {

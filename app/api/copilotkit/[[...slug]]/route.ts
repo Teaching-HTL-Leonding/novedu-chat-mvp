@@ -4,10 +4,10 @@ import { after } from "next/server";
 import { ReasoningStrippingRunner } from "@/app/api/copilotkit/reasoning-runner";
 import { RunErrorReportingRunner } from "@/app/api/copilotkit/run-error-runner";
 import { mastra } from "@/app/mastra";
-import { auth } from "@/auth";
 import { codeModules } from "@/lib/code-modules/registry";
 import { type CodeRejection, checkCode } from "@/lib/code-store";
 import { RUNTIME_CODE_HEADER, RUNTIME_THREAD_TOKEN_HEADER } from "@/lib/runtime-headers";
+import { getSession } from "@/lib/session";
 import { effectiveTeacherForSession } from "@/lib/student-mode";
 import { getThreadTokenSecret, verifyThreadToken } from "@/lib/thread-token";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
@@ -223,7 +223,7 @@ async function resolveThreadOwnership(
 // RequestContext (built by the module; headers carry the code, not a query
 // string, because CopilotKit appends sub-paths like `/info`).
 async function handler(req: Request): Promise<Response> {
-  const session = await auth();
+  const session = await getSession();
   const userId = session?.user?.id;
   if (!userId) {
     return Response.json({ error: "Authentication required" }, { status: 401 });

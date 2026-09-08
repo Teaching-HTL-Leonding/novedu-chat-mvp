@@ -1,12 +1,12 @@
 import { and, asc, eq, type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn, AnyPgTable } from "drizzle-orm/pg-core";
 import { getDb } from "@/lib/db";
+import { authUsers } from "@/lib/db/auth-schema";
 import type { OwnerOption } from "@/lib/db/owner-filter";
-import { users } from "@/lib/db/schema";
 
 // The options behind a list's OWNER dropdown (see `docs/filtered-lists.md`): the
 // DISTINCT `created_by` values of one list table, resolved to display names through
-// `novedu_users` — the same by-value LEFT JOIN with an oid fallback that
+// `novedu_user` — the same by-value LEFT JOIN with a user-id fallback that
 // `lib/report-store.ts` and `lib/code-stats-store.ts` use for a student id. Every
 // list runs the identical query, so it lives here once, next to the COUNT half in
 // `lib/db/count.ts`.
@@ -15,24 +15,24 @@ import { users } from "@/lib/db/schema";
 // DB-free `lib/db/owner-filter.ts`, which the client filter bar imports.
 
 /**
- * A list table's owner join: `novedu_users` BY VALUE on its `created_by`. The join
- * is DISPLAY-ONLY — no list condition may reach into `users`, or the joinless COUNT
- * would stop describing the same set as the rows.
+ * A list table's owner join: `novedu_user` BY VALUE on its `created_by`. The join
+ * is DISPLAY-ONLY — no list condition may reach into `novedu_user`, or the joinless
+ * COUNT would stop describing the same set as the rows.
  */
 export function ownerJoin(createdBy: AnyPgColumn): SQL {
-  return eq(users.userId, createdBy);
+  return eq(authUsers.id, createdBy);
 }
 
 /**
- * The owner's label as SQL: the display name, or the raw oid for a teacher who has
+ * The owner's label as SQL: the display name, or the raw user id for a teacher who has
  * never signed in through the web app. Declared once because it does double duty —
  * it is what the dropdown shows AND what the `owner` sort key orders by, so the
  * column always sorts by exactly what it displays. Ordering by the coalesced label
- * (rather than by `display_name`) is also what keeps an oid-only owner inside the
+ * (rather than by `novedu_user.name`) is also what keeps a user-id-only owner inside the
  * alphabet instead of leading the list as a NULL.
  */
 export function ownerLabel(createdBy: AnyPgColumn): SQL<string> {
-  return sql<string>`COALESCE(${users.displayName}, ${createdBy})`;
+  return sql<string>`COALESCE(${authUsers.name}, ${createdBy})`;
 }
 
 /**
@@ -54,13 +54,13 @@ export async function listOwners(
 ): Promise<OwnerOption[]> {
   // Postgres requires every ORDER BY term of a SELECT DISTINCT to appear in the
   // select list, which is why the ORDER BY repeats this exact expression rather
-  // than ordering by `users.display_name`.
+  // than ordering by `novedu_user.name`.
   const label = ownerLabel(createdBy);
   try {
     const rows = await getDb()
       .selectDistinct({ userId: createdBy, label })
       .from(table)
-      .leftJoin(users, ownerJoin(createdBy))
+      .leftJoin(authUsers, ownerJoin(createdBy))
       .where(and(...conditions))
       .orderBy(asc(label));
     return rows.map((row) => ({ userId: String(row.userId), label: String(row.label) }));

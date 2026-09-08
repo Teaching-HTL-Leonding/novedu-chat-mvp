@@ -30,15 +30,12 @@ export async function createCodeAction(
   formData: FormData,
 ): Promise<CodeFormState> {
   // One gate yields both "is an effective teacher" and the user id, so no
-  // second auth() round trip (each auth() call re-decrypts the session cookie).
+  // second getSession() round trip (each call is another session lookup).
   const gate = await requireTeacherUserId();
   if (!gate.ok) {
     return {
       status: "error",
-      message:
-        gate.reason === "not-teacher"
-          ? "Only teachers can create codes."
-          : "Your session carries no user id — sign in again.",
+      message: "Only teachers can create codes.",
     };
   }
 
@@ -79,10 +76,7 @@ export async function deleteSelectedCodesAction(codes: string[]): Promise<Delete
   if (!gate.ok) {
     return {
       ok: false,
-      message:
-        gate.reason === "not-teacher"
-          ? "Only teachers can delete codes."
-          : "Your session carries no user id — sign in again.",
+      message: "Only teachers can delete codes.",
     };
   }
 
@@ -114,10 +108,7 @@ export async function updateCodeAction(
   if (!gate.ok) {
     return {
       status: "error",
-      message:
-        gate.reason === "not-teacher"
-          ? "Only teachers can edit codes."
-          : "Your session carries no user id — sign in again.",
+      message: "Only teachers can edit codes.",
     };
   }
 

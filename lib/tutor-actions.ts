@@ -1,8 +1,8 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { auth } from "@/auth";
 import { type CodeRejection, checkCode } from "@/lib/code-store";
+import { getSession } from "@/lib/session";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
 
 // The student-facing tutor server action: "start over", i.e. abandon the current
@@ -40,7 +40,7 @@ export type StartOverResult =
  * provider remounts on the new thread (see `providerKey` in app/module-chat.tsx).
  */
 export async function startNewTutorThread(input: { code: string }): Promise<StartOverResult> {
-  const session = await auth();
+  const session = await getSession();
   const userId = session?.user?.id;
   if (!userId) return { ok: false, message: "Please sign in to continue." };
 

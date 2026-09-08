@@ -8,7 +8,8 @@ and Node 20 is end-of-life). It covers two jobs:
   activities, coding activities, and eval files — with the app's exact
   validation pipeline, offline and without signing in. `prompts` dumps the exact
   system prompts an activity produces, the same way.
-- **Manage the app as a teacher** — sign in with Microsoft Entra ID, then mint
+- **Manage the app as a teacher** — sign in (`login` prints a link to approve in
+  your browser), then mint
   activity codes, upload app-hosted YAML files and images, triage student
   reports, and **measure what an activity's model really does** (`eval`), straight from the
   terminal (or from a coding agent, see below).
@@ -271,35 +272,36 @@ npx @novedu/cli eval ./loops-tutor.eval.yaml --report loops.md
 
 ## Authentication
 
-Commands that talk to the running app authenticate with Microsoft Entra ID:
+Commands that talk to the running app sign in through the app's own device
+authorization flow — the CLI never handles your Microsoft credentials itself:
 
 ```bash
-npx @novedu/cli login    # opens your browser for the Microsoft sign-in
+npx @novedu/cli login    # prints a link + code; approve it in your browser
 npx @novedu/cli whoami   # verify: calls the app's GET /api/me with your token
-npx @novedu/cli logout   # remove the cached credentials from this machine
+npx @novedu/cli logout   # revoke the session and remove the stored token
 ```
 
-- `login` opens a browser window for the Microsoft sign-in (and prints the URL
-  as a fallback). **First-time users see a one-time consent prompt** ("Access
-  Novedu APIs from the CLI") — accept it once and it never reappears. When
-  already signed in, `login` just says so and exits.
-- On a machine without a browser, `login --device-code` prints a verification
-  URL and a code to enter from any other device. Note that tenants commonly
-  block the device code flow by Conditional Access policy (error 53003) — the
-  default browser flow is not affected.
-- Credentials are cached in `~/.novedu/token-cache.json` (directory `0700`,
-  file `0600`). The cache holds a refresh token, so after the one sign-in every
-  command runs non-interactively; treat the file like a credential. `logout`
-  is purely local — issued tokens expire on their own (~1 h).
-- `whoami` proves the full round-trip and shows your display name, user id, and
-  whether the account is a teacher (`Teacher: yes/no`) — the management
-  commands below need a teacher account.
+- `login` prints a verification link and a short code (and tries to open the
+  link in your default browser as a convenience), then waits while you approve
+  it there — signed in to Novedu already, or prompted to sign in with your
+  school Microsoft account first. When already signed in, `login` just says so
+  and exits.
+- The resulting session token is stored in `~/.novedu/sessions.json`
+  (directory `0700`, file `0600`), keyed by server — one entry per server
+  you've signed in to. After the one approval every command runs
+  non-interactively; treat the file like a credential. `logout` revokes the
+  session server-side (best effort) and always removes the stored token.
+- `whoami` proves the full round-trip, printing
+  `{ name, userId, isTeacher, server }` — the management commands below need a
+  teacher account (`"isTeacher": true`).
 - The server defaults to the production app; override per command with
   `--server <url>` or the `NOVEDU_SERVER` env var (e.g.
-  `http://localhost:3000` for development). Other deployments of the app can
-  point the CLI at their own tenant/app registration via `NOVEDU_TENANT_ID` /
-  `NOVEDU_CLIENT_ID`.
-- Not signed in (or the cached token expired for good)? Commands exit 1 with
+  `http://localhost:3000` for development).
+- `NOVEDU_TOKEN` overrides the stored session with a bearer token from the
+  environment — for CI or an agent sandbox with no browser to approve a code;
+  the server still validates it on every request, and `logout` never revokes a
+  token supplied this way.
+- Not signed in (or the stored session no longer valid)? Commands exit 1 with
   `Not signed in — run "novedu-cli login".`
 
 ## Managing codes, files & images (teacher account required)

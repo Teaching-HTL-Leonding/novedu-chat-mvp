@@ -14,7 +14,7 @@ import { recordError } from "@/lib/telemetry";
 // Anonymity: `usage_by_code` carries no user and `usage_by_user` carries no code —
 // neither table ever links a student to an activity (docs/codes.md,
 // docs/usage-metering.md). A caller with a `userId` meters BOTH tables (even for an
-// anonymous code — the oid is only ever stored against an hour bucket); a caller
+// anonymous code — the user id is only ever stored against an hour bucket); a caller
 // without one (the coding proxy) meters `usage_by_code` alone.
 //
 // SERVER-ONLY: uses the database. Never import from client components.

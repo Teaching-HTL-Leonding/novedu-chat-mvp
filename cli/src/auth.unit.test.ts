@@ -1,305 +1,352 @@
 // @vitest-environment node
-import { existsSync, mkdtempSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AuthenticationResult, PublicClientApplication } from "@azure/msal-node";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  acquireByDeviceCode,
-  acquireInteractive,
-  acquireSilent,
   browserCommand,
-  buildCachePlugin,
-  buildPca,
-  displayName,
+  type DeviceCode,
+  fetchIdentity,
+  forgetSession,
   getAccessToken,
   NotSignedInError,
+  pollDeviceToken,
+  readSessions,
+  rememberSession,
+  requestDeviceCode,
+  revokeSession,
+  serverOrigin,
+  storedSession,
+  writeSessions,
 } from "./auth";
 
-// The PCA is mocked (no Entra traffic) — but only the PCA: the real
-// CryptoProvider stays so PKCE generation in acquireInteractive is genuine.
-// The cache plugin runs against the real filesystem in a temp dir so the
-// permission modes are actually checked.
-const mockPca = {
-  getTokenCache: vi.fn(),
-  acquireTokenSilent: vi.fn(),
-  acquireTokenByDeviceCode: vi.fn(),
-  getAuthCodeUrl: vi.fn(),
-  acquireTokenByCode: vi.fn(),
-};
-vi.mock("@azure/msal-node", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@azure/msal-node")>()),
-  // A function expression (not an arrow) so `new PublicClientApplication(...)` works.
-  PublicClientApplication: vi.fn(function constructMock() {
-    return mockPca;
-  }),
-}));
+// Everything here is offline: the device flow runs against a fake `fetchImpl`
+// and a fake clock, and the session file is written into a temp dir so the real
+// permission modes are actually checked without touching ~/.novedu.
 
-function accountsInCache(accounts: unknown[]): void {
-  mockPca.getTokenCache.mockReturnValue({ getAllAccounts: vi.fn().mockResolvedValue(accounts) });
+const SERVER = "http://localhost:3000";
+
+function tempSessionsPath(): string {
+  // The .novedu segment does not exist yet — writeSessions must create it.
+  return join(mkdtempSync(join(tmpdir(), "novedu-cli-test-")), ".novedu", "sessions.json");
 }
 
-const RESULT = {
-  accessToken: "token-123",
-  account: { name: "Jane Teacher", username: "jane@example.org" },
-} as unknown as AuthenticationResult;
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+const CODE: DeviceCode = {
+  device_code: "dev-code-1",
+  user_code: "ABCD2345",
+  verification_uri: "http://localhost:3000/device",
+  verification_uri_complete: "http://localhost:3000/device?user_code=ABCD2345",
+  expires_in: 1800,
+  interval: 5,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("buildCachePlugin", () => {
-  function tempCachePath(): string {
-    // The .novedu segment does not exist yet — afterCacheAccess must create it.
-    return join(mkdtempSync(join(tmpdir(), "novedu-cli-test-")), ".novedu", "token-cache.json");
-  }
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
-  it("loads an existing cache file into the token cache", async () => {
-    const cachePath = tempCachePath();
-    const plugin = buildCachePlugin(cachePath);
-    const deserialize = vi.fn();
-    await plugin.afterCacheAccess({
-      cacheHasChanged: true,
-      tokenCache: { serialize: () => '{"cached":"state"}' },
-    } as never);
-
-    await plugin.beforeCacheAccess({ tokenCache: { deserialize } } as never);
-    expect(deserialize).toHaveBeenCalledWith('{"cached":"state"}');
-  });
-
-  it("treats a missing cache file as an empty cache", async () => {
-    const plugin = buildCachePlugin(tempCachePath());
-    const deserialize = vi.fn();
-    await plugin.beforeCacheAccess({ tokenCache: { deserialize } } as never);
-    expect(deserialize).not.toHaveBeenCalled();
-  });
-
-  it("writes the cache with restrictive modes (dir 0700, file 0600)", async () => {
-    const cachePath = tempCachePath();
-    const plugin = buildCachePlugin(cachePath);
-    await plugin.afterCacheAccess({
-      cacheHasChanged: true,
-      tokenCache: { serialize: () => "serialized" },
-    } as never);
-
-    expect(readFileSync(cachePath, "utf8")).toBe("serialized");
-    expect(statSync(cachePath).mode & 0o777).toBe(0o600);
-    expect(statSync(join(cachePath, "..")).mode & 0o777).toBe(0o700);
-  });
-
-  it("does not write when the cache is unchanged", async () => {
-    const cachePath = tempCachePath();
-    const plugin = buildCachePlugin(cachePath);
-    await plugin.afterCacheAccess({
-      cacheHasChanged: false,
-      tokenCache: { serialize: () => "serialized" },
-    } as never);
-    expect(existsSync(cachePath)).toBe(false);
+describe("serverOrigin", () => {
+  it("keys sessions by origin, ignoring path and trailing slash", () => {
+    expect(serverOrigin("http://localhost:3000")).toBe("http://localhost:3000");
+    expect(serverOrigin("http://localhost:3000/")).toBe("http://localhost:3000");
+    expect(serverOrigin("https://novedu.at/codes?x=1")).toBe("https://novedu.at");
   });
 });
 
-describe("acquireSilent", () => {
-  const pca = mockPca as unknown as PublicClientApplication;
-
-  it("returns null when no account is cached", async () => {
-    accountsInCache([]);
-    expect(await acquireSilent(pca)).toBeNull();
-    expect(mockPca.acquireTokenSilent).not.toHaveBeenCalled();
-  });
-
-  it("acquires a token for the cached account", async () => {
-    const account = { homeAccountId: "acc-1" };
-    accountsInCache([account]);
-    mockPca.acquireTokenSilent.mockResolvedValue(RESULT);
-
-    expect(await acquireSilent(pca)).toBe(RESULT);
-    expect(mockPca.acquireTokenSilent).toHaveBeenCalledWith(
-      expect.objectContaining({ account, scopes: [expect.stringMatching(/\/cli\.access$/)] }),
-    );
-  });
-
-  it("returns null when silent acquisition fails (expired refresh token)", async () => {
-    accountsInCache([{ homeAccountId: "acc-1" }]);
-    mockPca.acquireTokenSilent.mockRejectedValue(new Error("interaction_required"));
-    expect(await acquireSilent(pca)).toBeNull();
-  });
-});
-
-describe("acquireByDeviceCode", () => {
-  const pca = mockPca as unknown as PublicClientApplication;
-
-  it("surfaces the device-code message before the flow completes", async () => {
-    const events: string[] = [];
-    mockPca.acquireTokenByDeviceCode.mockImplementation(
-      async ({ deviceCodeCallback }: { deviceCodeCallback: (r: { message: string }) => void }) => {
-        deviceCodeCallback({ message: "go to https://microsoft.com/devicelogin, code ABC" });
-        events.push("flow-completed");
-        return RESULT;
+describe("the session file", () => {
+  it("round-trips sessions per origin with restrictive modes (dir 0700, file 0600)", () => {
+    const path = tempSessionsPath();
+    writeSessions(
+      {
+        "http://localhost:3000": { token: "local-token", name: "Jane Teacher" },
+        "https://novedu.at": { token: "prod-token", name: "Jane Prod" },
       },
+      path,
     );
 
-    const result = await acquireByDeviceCode(pca, (message) => events.push(message));
-    expect(result).toBe(RESULT);
-    expect(events).toEqual(["go to https://microsoft.com/devicelogin, code ABC", "flow-completed"]);
-  });
-
-  it("throws when the flow yields no token", async () => {
-    mockPca.acquireTokenByDeviceCode.mockResolvedValue(null);
-    await expect(acquireByDeviceCode(pca, () => {})).rejects.toThrow(/did not return a token/);
-  });
-});
-
-describe("acquireInteractive", () => {
-  const pca = mockPca as unknown as PublicClientApplication;
-
-  function redirectUriFromAuthCodeCall(): string {
-    const [request] = mockPca.getAuthCodeUrl.mock.calls[0] as [{ redirectUri: string }];
-    return request.redirectUri;
-  }
-
-  it("exchanges the loopback auth code for a token (PKCE round-trip)", async () => {
-    mockPca.getAuthCodeUrl.mockResolvedValue("https://login.example/authorize");
-    mockPca.acquireTokenByCode.mockResolvedValue(RESULT);
-    const urls: string[] = [];
-    const opened: string[] = [];
-
-    const pending = acquireInteractive(
-      pca,
-      (url) => urls.push(url),
-      (url) => {
-        opened.push(url);
-        // Simulate the browser: Entra redirects back to the loopback server.
-        const redirectUri = redirectUriFromAuthCodeCall();
-        void fetch(`${redirectUri}/?code=auth-code-1`);
-      },
-    );
-
-    expect(await pending).toBe(RESULT);
-    expect(urls).toEqual(["https://login.example/authorize"]);
-    expect(opened).toEqual(["https://login.example/authorize"]);
-
-    // The code exchange carries the SAME redirectUri and the PKCE verifier
-    // matching the challenge sent in the authorize request.
-    const [authRequest] = mockPca.getAuthCodeUrl.mock.calls[0] as [
-      { redirectUri: string; codeChallenge: string; codeChallengeMethod: string },
-    ];
-    const [tokenRequest] = mockPca.acquireTokenByCode.mock.calls[0] as [
-      { code: string; redirectUri: string; codeVerifier: string },
-    ];
-    expect(authRequest.codeChallengeMethod).toBe("S256");
-    expect(authRequest.codeChallenge).toBeTruthy();
-    expect(tokenRequest).toMatchObject({
-      code: "auth-code-1",
-      redirectUri: authRequest.redirectUri,
+    expect(readSessions(path)).toEqual({
+      "http://localhost:3000": { token: "local-token", name: "Jane Teacher" },
+      "https://novedu.at": { token: "prod-token", name: "Jane Prod" },
     });
-    expect(tokenRequest.codeVerifier).toBeTruthy();
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+    expect(statSync(join(path, "..")).mode & 0o777).toBe(0o700);
+    expect(JSON.parse(readFileSync(path, "utf8"))["https://novedu.at"].token).toBe("prod-token");
   });
 
-  it("rejects when Entra redirects back with an error", async () => {
-    mockPca.getAuthCodeUrl.mockResolvedValue("https://login.example/authorize");
+  it("treats a missing or corrupt file as no sessions", () => {
+    const path = tempSessionsPath();
+    expect(readSessions(path)).toEqual({});
 
-    const pending = acquireInteractive(
-      pca,
-      () => {},
-      () => {
-        const redirectUri = redirectUriFromAuthCodeCall();
-        void fetch(`${redirectUri}/?error=access_denied&error_description=blocked+by+policy`);
-      },
-    );
+    writeSessions({}, path);
+    writeFileSync(path, "{ not json");
+    expect(readSessions(path)).toEqual({});
 
-    await expect(pending).rejects.toThrow(/blocked by policy/);
-    expect(mockPca.acquireTokenByCode).not.toHaveBeenCalled();
+    writeFileSync(path, JSON.stringify({ "http://x": { name: "no token" } }));
+    expect(readSessions(path)).toEqual({});
+  });
+
+  it("remembers and forgets one server without disturbing the others", () => {
+    const path = tempSessionsPath();
+    rememberSession(SERVER, { token: "local-token", name: "Jane" }, path);
+    rememberSession("https://novedu.at/", { token: "prod-token", name: "Jane" }, path);
+
+    expect(storedSession("http://localhost:3000/anything", path)?.token).toBe("local-token");
+
+    forgetSession(SERVER, path);
+    expect(storedSession(SERVER, path)).toBeUndefined();
+    expect(storedSession("https://novedu.at", path)?.token).toBe("prod-token");
+  });
+
+  it("deletes the obsolete token-cache.json next to it", () => {
+    const path = tempSessionsPath();
+    writeSessions({}, path);
+    const legacy = join(path, "..", "token-cache.json");
+    writeFileSync(legacy, "{}");
+
+    rememberSession(SERVER, { token: "t", name: "n" }, path);
+
+    expect(existsSync(legacy)).toBe(false);
   });
 });
 
 describe("getAccessToken", () => {
-  it("returns the silently acquired access token", async () => {
-    accountsInCache([{ homeAccountId: "acc-1" }]);
-    mockPca.acquireTokenSilent.mockResolvedValue(RESULT);
-    expect(await getAccessToken()).toBe("token-123");
+  it("returns the stored token for the server", async () => {
+    const path = tempSessionsPath();
+    rememberSession(SERVER, { token: "local-token", name: "Jane" }, path);
+    expect(await getAccessToken(SERVER, path)).toBe("local-token");
   });
 
-  it("throws NotSignedInError when no account is cached", async () => {
-    accountsInCache([]);
-    await expect(getAccessToken()).rejects.toBeInstanceOf(NotSignedInError);
+  it("throws NotSignedInError when no session is stored for that server", async () => {
+    const path = tempSessionsPath();
+    rememberSession("https://novedu.at", { token: "prod-token", name: "Jane" }, path);
+    await expect(getAccessToken(SERVER, path)).rejects.toBeInstanceOf(NotSignedInError);
+  });
+
+  it("lets NOVEDU_TOKEN take precedence over the session file", async () => {
+    const path = tempSessionsPath();
+    rememberSession(SERVER, { token: "local-token", name: "Jane" }, path);
+    vi.stubEnv("NOVEDU_TOKEN", "  env-token  ");
+    expect(await getAccessToken(SERVER, path)).toBe("env-token");
   });
 });
 
-describe("buildPca", () => {
-  it("configures the public client with the baked-in tenant and client id", async () => {
-    const { PublicClientApplication } = await import("@azure/msal-node");
-    buildPca();
-    expect(vi.mocked(PublicClientApplication)).toHaveBeenCalledWith(
-      expect.objectContaining({
-        auth: expect.objectContaining({
-          clientId: "4d44fc4b-0434-4981-9765-62e2074ceecb",
-          authority: expect.stringContaining("91fc072c-edef-4f97-bdc5-cfb67718ae3a"),
-        }),
-      }),
-    );
+describe("requestDeviceCode", () => {
+  it("posts the client id as JSON and returns the code pair", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(CODE));
+
+    expect(await requestDeviceCode(SERVER, fetchImpl)).toEqual(CODE);
+
+    const [url, init] = fetchImpl.mock.calls[0] as [URL, RequestInit];
+    expect(url.href).toBe("http://localhost:3000/api/auth/device/code");
+    expect(init.method).toBe("POST");
+    const headers = init.headers as Record<string, string>;
+    expect(headers["content-type"]).toBe("application/json");
+    expect(headers["user-agent"]).toMatch(/^novedu-cli\//);
+    expect(JSON.parse(init.body as string)).toEqual({ client_id: "novedu-cli" });
   });
 
-  it("honors the NOVEDU_TENANT_ID / NOVEDU_CLIENT_ID overrides", async () => {
-    vi.stubEnv("NOVEDU_TENANT_ID", "other-tenant");
-    vi.stubEnv("NOVEDU_CLIENT_ID", "other-client");
-    try {
-      const { PublicClientApplication } = await import("@azure/msal-node");
-      buildPca();
-      expect(vi.mocked(PublicClientApplication)).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          auth: expect.objectContaining({
-            clientId: "other-client",
-            authority: "https://login.microsoftonline.com/other-tenant",
-          }),
-        }),
+  it("reports the server's error description", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ error: "invalid_client", error_description: "unknown client" }, 400),
       );
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    await expect(requestDeviceCode(SERVER, fetchImpl)).rejects.toThrow(/unknown client/);
+  });
+
+  it("tolerates the validation error shape", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ message: "client_id is required", code: "VALIDATION_ERROR" }, 400),
+      );
+    await expect(requestDeviceCode(SERVER, fetchImpl)).rejects.toThrow(/client_id is required/);
   });
 });
 
-describe("displayName", () => {
-  it("prefers the account name, falls back to username, then a placeholder", () => {
-    expect(displayName(RESULT)).toBe("Jane Teacher");
-    expect(
-      displayName({ account: { username: "jane@example.org" } } as unknown as AuthenticationResult),
-    ).toBe("jane@example.org");
-    expect(displayName({ account: null } as unknown as AuthenticationResult)).toBe(
-      "(unknown account)",
+describe("pollDeviceToken", () => {
+  /** A fake clock the fake sleeper advances, so no test waits in real time. */
+  function fakeClock() {
+    let millis = 0;
+    return {
+      now: () => millis,
+      sleep: vi.fn(async (ms: number) => {
+        millis += ms;
+      }),
+    };
+  }
+
+  it("polls at the interval until the code is approved", async () => {
+    const clock = fakeClock();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "authorization_pending" }, 400))
+      .mockResolvedValueOnce(jsonResponse({ error: "authorization_pending" }, 400))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "session-token", token_type: "Bearer" }));
+
+    expect(await pollDeviceToken(SERVER, CODE, { fetchImpl, ...clock })).toBe("session-token");
+
+    expect(clock.sleep.mock.calls.map((c) => c[0])).toEqual([5000, 5000, 5000]);
+    const [url, init] = fetchImpl.mock.calls[0] as [URL, RequestInit];
+    expect(url.href).toBe("http://localhost:3000/api/auth/device/token");
+    expect(JSON.parse(init.body as string)).toEqual({
+      grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+      device_code: "dev-code-1",
+      client_id: "novedu-cli",
+    });
+    expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
+  });
+
+  it("backs off by five seconds on slow_down", async () => {
+    const clock = fakeClock();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "slow_down" }, 400))
+      .mockResolvedValueOnce(jsonResponse({ error: "slow_down" }, 400))
+      .mockResolvedValueOnce(jsonResponse({ access_token: "session-token" }));
+
+    await pollDeviceToken(SERVER, CODE, { fetchImpl, ...clock });
+
+    expect(clock.sleep.mock.calls.map((c) => c[0])).toEqual([5000, 10_000, 15_000]);
+  });
+
+  it.each([
+    ["access_denied", /denied/i],
+    ["expired_token", /expired/i],
+    ["invalid_grant", /no longer valid/i],
+  ])("throws on %s", async (error, matcher) => {
+    const clock = fakeClock();
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ error }, 400));
+    await expect(pollDeviceToken(SERVER, CODE, { fetchImpl, ...clock })).rejects.toThrow(matcher);
+  });
+
+  it("tolerates the validation error shape", async () => {
+    const clock = fakeClock();
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(
+        jsonResponse({ message: "grant_type is invalid", code: "VALIDATION_ERROR" }, 400),
+      );
+    await expect(pollDeviceToken(SERVER, CODE, { fetchImpl, ...clock })).rejects.toThrow(
+      /grant_type is invalid/,
     );
+  });
+
+  it("gives up once the code's lifetime has passed", async () => {
+    const clock = fakeClock();
+    // A fresh Response per call — a body can only be read once.
+    const fetchImpl = vi
+      .fn()
+      .mockImplementation(async () => jsonResponse({ error: "authorization_pending" }, 400));
+
+    await expect(
+      pollDeviceToken(SERVER, { ...CODE, expires_in: 12 }, { fetchImpl, ...clock }),
+    ).rejects.toThrow(/expired/i);
+
+    // Two polls fit into the 12-second window; the third wake-up is past it.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("fetchIdentity", () => {
+  it("sends the bearer token and returns the identity", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ name: "Jane Teacher", userId: "u1", isTeacher: true }));
+
+    expect(await fetchIdentity(SERVER, "session-token", fetchImpl)).toEqual({
+      name: "Jane Teacher",
+      userId: "u1",
+      isTeacher: true,
+    });
+    const [url, init] = fetchImpl.mock.calls[0] as [URL, RequestInit];
+    expect(url.href).toBe("http://localhost:3000/api/me");
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer session-token");
+  });
+
+  it("returns null when the server REJECTS the token", async () => {
+    expect(
+      await fetchIdentity(SERVER, "t", vi.fn().mockResolvedValue(jsonResponse({}, 401))),
+    ).toBeNull();
+    expect(
+      await fetchIdentity(SERVER, "t", vi.fn().mockResolvedValue(jsonResponse({}, 403))),
+    ).toBeNull();
+  });
+
+  it("throws, naming the server, when it is unreachable or answers with an error", async () => {
+    // Distinct from a rejection: the caller must not conclude "sign in again"
+    // — and `login` must not start a second device flow — over an outage.
+    await expect(
+      fetchIdentity(SERVER, "t", vi.fn().mockRejectedValue(new Error("ECONNREFUSED"))),
+    ).rejects.toThrow(/localhost:3000.*ECONNREFUSED/);
+    await expect(
+      fetchIdentity(SERVER, "t", vi.fn().mockResolvedValue(jsonResponse({}, 502))),
+    ).rejects.toThrow(/localhost:3000.*502/);
+    await expect(
+      fetchIdentity(SERVER, "t", vi.fn().mockResolvedValue(jsonResponse({ nope: true }))),
+    ).rejects.toThrow(/no identity/);
+  });
+});
+
+describe("revokeSession", () => {
+  it("posts an empty JSON body with the bearer token", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ success: true }));
+
+    await revokeSession(SERVER, "session-token", fetchImpl);
+
+    const [url, init] = fetchImpl.mock.calls[0] as [URL, RequestInit];
+    expect(url.href).toBe("http://localhost:3000/api/auth/sign-out");
+    expect(init.method).toBe("POST");
+    // The endpoint is JSON-only: both the header and the `{}` body are required.
+    expect((init.headers as Record<string, string>)["content-type"]).toBe("application/json");
+    expect((init.headers as Record<string, string>).authorization).toBe("Bearer session-token");
+    expect(init.body).toBe("{}");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("swallows a failing sign-out", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+    await expect(revokeSession(SERVER, "t", fetchImpl)).resolves.toBeUndefined();
   });
 });
 
 describe("browserCommand", () => {
-  // A realistic authorize URL: every parameter after the first sits behind an
-  // `&`, which cmd treats as a command separator unless the URL is quoted.
-  const AUTH_URL =
-    "https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize?client_id=abc&scope=api%3A%2F%2Fabc%2Fcli.access&redirect_uri=http%3A%2F%2Flocalhost%3A1234";
+  // A realistic verification URL: the query parameter sits behind a `?`, and a
+  // longer link behind an `&`, which cmd treats as a command separator unless
+  // the URL is quoted.
+  const URL_WITH_AMP = "http://localhost:3000/device?user_code=ABCD2345&client=novedu-cli";
 
   it("passes the URL untouched to the POSIX openers", () => {
-    expect(browserCommand(AUTH_URL, "darwin")).toEqual({
+    expect(browserCommand(URL_WITH_AMP, "darwin")).toEqual({
       command: "open",
-      args: [AUTH_URL],
+      args: [URL_WITH_AMP],
       verbatim: false,
     });
-    expect(browserCommand(AUTH_URL, "linux")).toEqual({
+    expect(browserCommand(URL_WITH_AMP, "linux")).toEqual({
       command: "xdg-open",
-      args: [AUTH_URL],
+      args: [URL_WITH_AMP],
       verbatim: false,
     });
   });
 
   it("quotes the URL for cmd on Windows so `&` cannot truncate it", () => {
-    const { command, args, verbatim } = browserCommand(AUTH_URL, "win32");
+    const { command, args, verbatim } = browserCommand(URL_WITH_AMP, "win32");
     expect(command).toBe("cmd");
     // Verbatim: Node must not re-quote, so the quotes have to be ours.
     expect(verbatim).toBe(true);
-    expect(args).toEqual(["/c", "start", '""', `"${AUTH_URL}"`]);
-    // The command line cmd actually parses keeps the whole query string in one
-    // quoted token — an unquoted URL would lose `scope` (AADSTS900144).
+    expect(args).toEqual(["/c", "start", '""', `"${URL_WITH_AMP}"`]);
     const commandLine = args.join(" ");
-    expect(commandLine).toContain(`"${AUTH_URL}"`);
-    expect(commandLine.split("&")[0]).toBe(`/c start "" "${AUTH_URL.split("&")[0]}`);
+    expect(commandLine).toContain(`"${URL_WITH_AMP}"`);
+    expect(commandLine.split("&")[0]).toBe(`/c start "" "${URL_WITH_AMP.split("&")[0]}`);
   });
 });

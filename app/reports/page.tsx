@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { auth } from "@/auth";
 import { DataList, type ListColumn } from "@/components/data-list";
 import { ExternalLinkIcon } from "@/components/icons";
 import { FilterCheckbox, ListFilterBar } from "@/components/list-filter-bar";
@@ -28,6 +27,7 @@ import {
   REPORT_REACTIONS,
   type ReportReaction,
 } from "@/lib/report-types";
+import { getSession } from "@/lib/session";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 import { LocalTime } from "../local-time";
 import { ReactionBadge, type ReportDetail, ReportDetailButton } from "./report-detail-button";
@@ -80,7 +80,7 @@ export default async function ReportsPage({
     );
   }
 
-  const session = await auth();
+  const session = await getSession();
   const currentUserId = session?.user?.id ?? "";
 
   const sp = await searchParams;

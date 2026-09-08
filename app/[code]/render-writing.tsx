@@ -1,8 +1,8 @@
-import { auth } from "@/auth";
 import { Notice } from "@/components/notice";
 import { Main } from "@/components/page-main";
 import type { CodeEntry } from "@/lib/code-store";
 import { buildRuntimeHeaders } from "@/lib/runtime-headers";
+import { getSession } from "@/lib/session";
 import { loadWriting } from "@/lib/writing-fetch";
 import { getSubmission } from "@/lib/writing-store";
 import { toPublicWriting } from "@/lib/writing-yaml";
@@ -40,11 +40,11 @@ export async function RenderWriting({
 
   // `anonymous` is read LIVE from the loaded YAML (writing DEFAULTS to false).
   // Only an attributed activity prefills + saves; an anonymous one stores nothing
-  // and shows no Save button. The session user id is the Entra `oid`.
+  // and shows no Save button. The session user id is `novedu_user.id`.
   const { anonymous } = loaded.writing;
   let initialText = "";
   if (!anonymous) {
-    const session = await auth();
+    const session = await getSession();
     const userId = session?.user?.id;
     if (userId) {
       const submission = await getSubmission(code, userId);

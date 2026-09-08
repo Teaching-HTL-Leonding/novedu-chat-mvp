@@ -51,9 +51,9 @@ export interface ReportDetail {
   reaction: ReportReaction;
   resolved: boolean;
   createdSeconds: number;
-  /** The reporter's display name (falls back to the oid). */
+  /** The reporter's display name (falls back to the user id). */
   reporter: string;
-  /** The reporter's Entra oid — shown as a hover title on the name. */
+  /** The reporter's session user id — shown as a hover title on the name. */
   reporterId: string;
   description: string;
   code: string;

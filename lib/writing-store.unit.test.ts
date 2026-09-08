@@ -102,7 +102,7 @@ describe("listSavers", () => {
         textUpdatedAt: new Date(0),
         conversationCount: 3,
       },
-      // No `novedu_users` row yet — the caller falls back to the raw oid.
+      // No `novedu_user` row yet — the caller falls back to the raw oid.
       { userId: "student-2", displayName: null, textUpdatedAt: new Date(0), conversationCount: 0 },
     ];
     await expect(listSavers("a1b2c3d4e5")).resolves.toEqual([

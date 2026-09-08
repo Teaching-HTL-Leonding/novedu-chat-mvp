@@ -1,15 +1,11 @@
 // @vitest-environment node
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // GET is the only UNAUTHENTICATED surface of the YAML Files feature; PUT on the
 // same URL is a bearer-teacher upsert. The GET tests pin its status mapping:
 // malformed name → 404 (no DB hit), DB error → 503 (transient, not "missing"),
 // no active version → 404, active version → 200 raw YAML with no-store. The
-// PUT tests pin the 401/403 matrix (real auth gate, local-JWKS-minted tokens),
+// PUT tests pin the 401/403 matrix (real auth gate over a stubbed `getSession`),
 // the body checks, and the upsert-reason → status mapping. The pure
 // validateFileName stays real; getActiveFile and the file service are mocked.
 
@@ -27,47 +23,22 @@ vi.mock("@/lib/file-store", async (importOriginal) => {
 vi.mock("@/lib/file-service", () => ({ upsertFileForUser: mocks.upsertFileForUser }));
 vi.mock("@/lib/app-origin", () => ({ resolveAppOriginOr: mocks.resolveAppOriginOr }));
 
-import { resetApiAuthForTests } from "@/lib/api-auth";
+vi.mock("@/auth", () => ({ auth: { api: { getSession: vi.fn() } } }));
+
+import { auth } from "@/auth";
+import { bearerSession } from "@/tests/mock-auth-session";
 import { GET, PUT } from "./route";
+
+const getSession = vi.mocked(auth.api.getSession);
 
 const req = () => new Request("http://localhost/api/files/whatever");
 const call = (name: string) => GET(req(), { params: Promise.resolve({ name }) });
 
-const TENANT_ID = "11111111-2222-3333-4444-555555555555";
-const CLIENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-const TEACHER_GROUP_ID = "99999999-8888-7777-6666-555555555555";
-const KID = "test-signing-key";
-
-let privateKey: CryptoKey;
-
-beforeAll(async () => {
-  const pair = await generateKeyPair("RS256");
-  privateKey = pair.privateKey;
-  const jwk = await exportJWK(pair.publicKey);
-  const jwksPath = join(mkdtempSync(join(tmpdir(), "api-file-put-test-")), "jwks.json");
-  writeFileSync(jwksPath, JSON.stringify({ keys: [{ ...jwk, kid: KID, alg: "RS256" }] }));
-
-  vi.stubEnv("API_AUTH_JWKS_PATH", jwksPath);
-  vi.stubEnv("AZURE_TENANT_ID", TENANT_ID);
-  vi.stubEnv("AZURE_CLIENT_ID", CLIENT_ID);
-  vi.stubEnv("TEACHER_GROUP_ID", TEACHER_GROUP_ID);
-  resetApiAuthForTests();
-});
-
 async function mint(teacher = true): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({
-    scp: "cli.access",
-    oid: "teacher-oid-1",
-    name: "Test Teacher",
-    groups: teacher ? [TEACHER_GROUP_ID] : [],
-  })
-    .setProtectedHeader({ alg: "RS256", kid: KID })
-    .setIssuer(`https://login.microsoftonline.com/${TENANT_ID}/v2.0`)
-    .setAudience(CLIENT_ID)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 300)
-    .sign(privateKey);
+  getSession.mockResolvedValue(
+    bearerSession({ id: "teacher-oid-1", name: "Test Teacher", isTeacher: teacher }),
+  );
+  return "session-token";
 }
 
 async function putRequest(name: string, body: unknown, token?: string): Promise<Response> {
@@ -86,6 +57,8 @@ async function putRequest(name: string, body: unknown, token?: string): Promise<
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getSession.mockReset();
+  getSession.mockResolvedValue(null);
   mocks.upsertFileForUser.mockResolvedValue({
     ok: true,
     action: "created",

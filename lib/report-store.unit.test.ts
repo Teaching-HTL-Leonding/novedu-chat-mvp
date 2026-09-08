@@ -98,7 +98,8 @@ const fake = vi.hoisted(() => {
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
-import { codes, reports, userChats, users } from "@/lib/db/schema";
+import { authUsers } from "@/lib/db/auth-schema";
+import { codes, reports, userChats } from "@/lib/db/schema";
 import {
   countChatReports,
   countQuizReports,
@@ -285,10 +286,10 @@ describe("listReports", () => {
     );
   });
 
-  it("LEFT-JOINs novedu_users + novedu_codes and NEVER novedu_user_chats", async () => {
+  it("LEFT-JOINs novedu_user + novedu_codes and NEVER novedu_user_chats", async () => {
     fake.state.rows = [rawRow];
     await listReports({ status: "open" });
-    expect(fake.state.joins).toContain(users);
+    expect(fake.state.joins).toContain(authUsers);
     expect(fake.state.joins).toContain(codes);
     // The sanctioned-exception discipline: the only identity surfaced is the
     // reporter's own — a `novedu_user_chats` join would reveal a different
@@ -334,10 +335,10 @@ describe("getReportById", () => {
     await expect(getReportById(REPORT_ID)).resolves.toBeUndefined();
   });
 
-  it("LEFT-JOINs novedu_users + novedu_codes and NEVER novedu_user_chats", async () => {
+  it("LEFT-JOINs novedu_user + novedu_codes and NEVER novedu_user_chats", async () => {
     fake.state.rows = [chatRow];
     await getReportById(REPORT_ID);
-    expect(fake.state.joins).toContain(users);
+    expect(fake.state.joins).toContain(authUsers);
     expect(fake.state.joins).toContain(codes);
     expect(fake.state.joins).not.toContain(userChats);
   });

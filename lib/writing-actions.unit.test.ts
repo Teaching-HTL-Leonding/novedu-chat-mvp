@@ -7,16 +7,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // `oid` is the row owner (a student writes ONLY their own row), and — the writing
 // divergence — the action re-reads the `anonymous` flag LIVE from the YAML and
 // REJECTS the save for an anonymous activity (defense in depth). The I/O seams
-// (auth, the code check, the YAML load, the store) are mocked; the test asserts
+// (the session, the code check, the YAML load, the store) are mocked; the test asserts
 // the GATING, not the persistence.
 
-const auth = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
 const loadWriting = vi.hoisted(() => vi.fn());
 const saveSubmission = vi.hoisted(() => vi.fn());
 const recordWritingSave = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth }));
+vi.mock("@/lib/session", () => ({ getSession }));
 vi.mock("@/lib/code-store", () => ({ checkCode }));
 vi.mock("@/lib/writing-fetch", () => ({ loadWriting }));
 vi.mock("@/lib/writing-store", () => ({ saveSubmission }));
@@ -44,7 +44,7 @@ function validEntry(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  auth.mockResolvedValue({ user: { id: USER_ID } });
+  getSession.mockResolvedValue({ user: { id: USER_ID } });
   checkCode.mockResolvedValue(validEntry());
   loadWriting.mockResolvedValue({ ok: true, writing: { anonymous: false } });
   saveSubmission.mockResolvedValue(undefined);
@@ -78,12 +78,12 @@ describe("saveWriting — the gates", () => {
     checkCode.mockResolvedValue({ ok: false, reason: "unknown-code" });
     const res = await saveWriting({ code: CODE, text: "x" });
     expect(res.ok).toBe(false);
-    expect(auth).not.toHaveBeenCalled();
+    expect(getSession).not.toHaveBeenCalled();
     expect(saveSubmission).not.toHaveBeenCalled();
   });
 
   it("rejects when there is no session user (no oid)", async () => {
-    auth.mockResolvedValue(null);
+    getSession.mockResolvedValue(null);
     const res = await saveWriting({ code: CODE, text: "x" });
     expect(res.ok).toBe(false);
     expect(saveSubmission).not.toHaveBeenCalled();

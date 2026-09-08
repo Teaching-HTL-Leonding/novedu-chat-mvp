@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { auth } from "@/auth";
 import { DataList, type ListColumn } from "@/components/data-list";
 import {
   CodeIcon,
@@ -38,6 +37,7 @@ import {
 import { type OwnerParams, parseOwner } from "@/lib/db/owner-filter";
 import { type PagingParams, parsePaging } from "@/lib/db/paging";
 import { parseSort, type SortParams } from "@/lib/db/sorting";
+import { getSession } from "@/lib/session";
 import { isEffectiveTeacher } from "@/lib/student-mode";
 import { LocalTime } from "../local-time";
 import { CopyCodeButton } from "./copy-code-button";
@@ -67,9 +67,9 @@ interface CodeRow {
   module: CodeModule;
   note: string;
   fileUrl: string;
-  /** The creating teacher's oid — the OWNER, immutable for a code. */
+  /** The creating teacher's session user id — the OWNER, immutable for a code. */
   createdBy: string;
-  /** Its `novedu_users` resolution; `null` for a teacher with no row yet. */
+  /** Its `novedu_user` resolution; `null` for a teacher with no row yet. */
   ownerName: string | null;
   validFromSeconds: number | null;
   validUntilSeconds: number | null;
@@ -140,7 +140,7 @@ export default async function CodesPage({
     );
   }
 
-  const session = await auth();
+  const session = await getSession();
   const currentUserId = session?.user?.id ?? "";
 
   const sp = await searchParams;

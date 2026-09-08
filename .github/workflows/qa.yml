@@ -39,17 +39,23 @@ permissions:
 # reviewer-gated environment). See docker-publish.yml for the secret-bearing
 # main-only path.
 #
-# auth.ts requires the AZURE_* vars and TEACHER_GROUP_ID at module load (also
-# during `next build`); AUTH_SECRET only needs to match between the e2e helpers
-# and the dev server (e2e tests mint Auth.js session cookies directly, so no
-# real Entra round-trip happens). Next's loadEnvConfig never overrides existing
-# process.env, so no .env file is needed here.
+# auth.ts (the better-auth instance) requires the AZURE_* vars and
+# TEACHER_GROUP_ID at module load (also during `next build`), and its drizzle
+# adapter is constructed from DATABASE_URL at that same module load — the pool
+# never connects during a build, so a placeholder connection string is enough.
+# AUTH_SECRET only needs to match between the e2e helpers and the dev server
+# (e2e tests mint session cookies directly, so no real Entra round-trip
+# happens). Next's loadEnvConfig never overrides existing process.env, so no
+# .env file is needed here. The `e2e` job below sets its own DATABASE_URL at
+# job level, which overrides this workflow-level placeholder with the
+# ephemeral Postgres container's real connection string.
 env:
   AUTH_SECRET: ci-e2e-auth-secret
   AZURE_CLIENT_ID: ci-placeholder
   AZURE_CLIENT_SECRET: ci-placeholder
   AZURE_TENANT_ID: ci-placeholder
   TEACHER_GROUP_ID: ci-placeholder
+  DATABASE_URL: postgresql://build:placeholder@localhost:5432/build
 
 jobs:
   qa:

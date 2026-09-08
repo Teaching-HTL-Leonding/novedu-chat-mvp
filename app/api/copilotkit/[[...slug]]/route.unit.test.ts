@@ -16,7 +16,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // lookup, the module registry, and everything downstream of a passed gate (the
 // CopilotKit runtime, the Mastra agent factory, the attribution write).
 
-const auth = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
 const recordUserChat = vi.hoisted(() => vi.fn());
 const recordUserMessage = vi.hoisted(() => vi.fn());
@@ -43,7 +43,7 @@ const CopilotRuntime = vi.hoisted(() => vi.fn());
 // own suite uses (tests/mocks/student-mode-cookies.ts).
 const cookies = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth, requireTeacher: vi.fn() }));
+vi.mock("@/lib/session", () => ({ getSession, requireTeacher: vi.fn() }));
 vi.mock("next/headers", () => ({ cookies }));
 vi.mock("@/lib/code-store", () => ({ checkCode }));
 vi.mock("@/lib/user-chat-store", () => ({ recordUserChat }));
@@ -139,7 +139,7 @@ beforeEach(() => {
   resetThreadTokenSecretForTests();
   // Default: an authenticated student with a valid tutor-module code. Individual
   // tests override as needed.
-  auth.mockResolvedValue({ user: { id: USER_ID } });
+  getSession.mockResolvedValue({ user: { id: USER_ID } });
   // No student-mode cookie by default.
   cookies.mockResolvedValue(studentModeCookies(false));
   checkCode.mockResolvedValue({
@@ -153,7 +153,7 @@ beforeEach(() => {
 
 describe("authentication gate", () => {
   it("401s a request without a session user", async () => {
-    auth.mockResolvedValue(null);
+    getSession.mockResolvedValue(null);
     const res = await POST(runRequest({ threadId: crypto.randomUUID() }));
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "Authentication required" });
@@ -276,7 +276,7 @@ describe("info endpoint (auth-only metadata)", () => {
   });
 
   it("401s GET /info without a session (auth still required)", async () => {
-    auth.mockResolvedValue(null);
+    getSession.mockResolvedValue(null);
     const res = await GET(new Request(`${BASE}/info`));
     expect(res.status).toBe(401);
   });
@@ -330,7 +330,7 @@ describe("reasoning gate (teacher-only, fail-closed)", () => {
 
   /** Drive one authorized run as `session` and report the runner it produced. */
   async function runnerFor(session: unknown): Promise<unknown> {
-    auth.mockResolvedValue(session);
+    getSession.mockResolvedValue(session);
     const threadId = crypto.randomUUID();
     const res = await POST(runRequest({ threadId, token: token(threadId) }));
     expect(res.status).toBe(200);
@@ -377,7 +377,7 @@ describe("reasoning gate (teacher-only, fail-closed)", () => {
   });
 
   it("applies to the connect path as well as run (both feed the SSE writer)", async () => {
-    auth.mockResolvedValue({ user: { id: USER_ID } });
+    getSession.mockResolvedValue({ user: { id: USER_ID } });
     const threadId = crypto.randomUUID();
     const res = await POST(
       new Request(`${BASE}/agent/tutor/connect`, {

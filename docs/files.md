@@ -48,7 +48,7 @@ row is history. The transitions (all in a transaction) live in `lib/file-store.t
 - **delete** — close the active row and `INSERT` nothing (so no active version
   remains; the GET 404s and the list drops it, while the history stays).
 
-`created_by` is the oid of whoever wrote a version; `closed_by` is the oid of
+`created_by` is the user id of whoever wrote a version; `closed_by` is the user id of
 whoever ended it (updater **or** deleter), so logical deletions are attributed too.
 The active row's `created_by` is therefore the file's "last writer".
 
@@ -78,7 +78,7 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
   `content` (kept cheap). Optional filters are applied **in SQL** (a `WHERE`/`ILIKE`
   over name/title/description for `search`, `createdBy` for the owner dropdown) —
   never in memory; see `docs/filtered-lists.md`. The rows carry the owner's display
-  name from a LEFT JOIN on `novedu_users`; `listFileOwners()` is the dropdown's
+  name from a LEFT JOIN on `novedu_user`; `listFileOwners()` is the dropdown's
   option set. **"Owner" here is the LAST WRITER** — `created_by` belongs to the
   active version, so saving someone else's file makes you its owner.
 - `getActiveFile(name)` — the active row **with** `content`; `null` = malformed
@@ -109,7 +109,7 @@ structurally valid activity naming an LLM provider this server has not configure
 
 `lib/files-actions.ts` (`"use server"`) is the web channel's thin auth shell.
 **Every** action gates with **`requireTeacherUserId()`** (an *effective* teacher —
-student mode is denied — plus the session `oid`); never `session.user.isTeacher`.
+student mode is denied — plus the session user id); never `session.user.isTeacher`.
 
 - `createFileAction` → `createFileForUser`, then `redirect("/files/edit/<name>")`.
 - `updateFileAction(name, content)` → `updateFileForUser` (re-validates against the **stored** kind), stores a new version.
@@ -184,7 +184,7 @@ this resolution at a call site.
 ## Public GET endpoint & the access gate
 
 `app/api/files/[name]/route.ts` is **PUBLIC and unauthenticated** — deliberately
-excluded from the Auth.js gate so the tutor-code loader can fetch it server-side
+excluded from the proxy gate so the tutor-code loader can fetch it server-side
 with no cookies and teachers may share it. `proxy.ts` must keep `api/files` in its
 negative-lookahead matcher (alongside `api/auth`, `api/version`) — **keep the route
 and the matcher in sync**. The handler is `force-dynamic` with `Cache-Control: no-store`

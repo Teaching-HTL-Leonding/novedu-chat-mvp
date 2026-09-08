@@ -15,10 +15,10 @@ import { LocalTime } from "../../local-time";
 // page. Saved-text LENGTH is not a column: it would mean loading every essay body
 // just to render the list, so it is shown on the student page instead.
 //
-// Each row shows the student's display name (resolved from `novedu_users` via
+// Each row shows the student's display name (resolved from `novedu_user` via
 // `listSavers`' LEFT JOIN) through the shared `studentColumn`, falling back to the
-// raw Entra `oid` when no name has been recorded yet; the oid is always the `title`
-// so a teacher can still read it on hover. The search box filters by name OR oid IN
+// raw user id when no name has been recorded yet; the user id is always the `title`
+// so a teacher can still read it on hover. The search box filters by name OR user id IN
 // THE DATABASE.
 //
 // SERVER COMPONENT: reads the database via `listSavers`. The writing descriptor in

@@ -6,16 +6,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // `app/reports/page.tsx` is the teacher gate + the filtered reports inbox. A
 // non-teacher (incl. a teacher in student mode) must get "Access denied" WITHOUT
-// any list query; a teacher gets the rows rendered. The store, auth, the server
+// any list query; a teacher gets the rows rendered. The store, the session, the server
 // bulk actions, and the client detail dialog are mocked — this pins the gating,
 // the default filter params passed to the store, and that rows render. No DB.
 
 const isEffectiveTeacher = vi.hoisted(() => vi.fn());
-const auth = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
 const listReports = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/student-mode", () => ({ isEffectiveTeacher }));
-vi.mock("@/auth", () => ({ auth }));
+vi.mock("@/lib/session", () => ({ getSession }));
 // The page also imports the store's sort-key allow-list (the ONE declaration of
 // which columns `/reports` can sort by) and hands it to `parseSort`.
 vi.mock("@/lib/report-store", () => ({
@@ -83,7 +83,7 @@ async function renderPage(sp: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  auth.mockResolvedValue({ user: { id: OID } });
+  getSession.mockResolvedValue({ user: { id: OID } });
   listReports.mockResolvedValue(unpagedResult([row()]));
 });
 

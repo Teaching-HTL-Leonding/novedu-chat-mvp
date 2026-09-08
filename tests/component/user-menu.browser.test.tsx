@@ -10,6 +10,17 @@ const { enterStudentMode, exitStudentMode } = vi.hoisted(() => ({
   exitStudentMode: vi.fn(async () => {}),
 }));
 
+// next/link reads Next-server globals that don't exist in the browser test
+// runner — a plain anchor preserves what the signed-out case asserts (the href).
+vi.mock("next/link", () => ({
+  __esModule: true,
+  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
 vi.mock("@/lib/auth-actions", () => ({ signOutAction: vi.fn(async () => {}) }));
 vi.mock("@/lib/student-mode-actions", () => ({
   enterStudentModeAction: enterStudentMode,
@@ -46,6 +57,16 @@ test("in student mode the badge is gone and the pill offers the exit", async () 
   await expect.element(screen.getByText("Student mode")).toBeVisible();
   await screen.getByRole("button", { name: "Exit" }).click();
   await vi.waitFor(() => expect(exitStudentMode).toHaveBeenCalledTimes(1));
+});
+
+test("with no session the bar offers the way back to sign in", async () => {
+  // The proxy passes a correctly signed cookie whose session row is gone; the
+  // page then renders signed-out, and this link is the only way back.
+  const screen = await render(<UserMenu user={null} />);
+
+  const link = screen.getByRole("link", { name: "Sign in" });
+  await expect.element(link).toBeVisible();
+  await expect.element(link).toHaveAttribute("href", "/sign-in");
 });
 
 test("a real student gets neither badge, pill, nor toggle", async () => {

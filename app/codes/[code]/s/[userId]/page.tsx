@@ -79,7 +79,7 @@ export default async function StudentTextPage({
   const prev = idx > 0 ? savers[idx - 1] : undefined;
   const next = idx >= 0 && idx < savers.length - 1 ? savers[idx + 1] : undefined;
   // The savers row already carries the resolved display name; fall back to the raw
-  // oid when none has been recorded yet (the oid stays the hover title either way).
+  // user id when none has been recorded yet (the user id stays the hover title either way).
   const displayName = (idx >= 0 ? savers[idx]?.displayName : null) ?? userId;
 
   return (

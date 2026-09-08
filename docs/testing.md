@@ -13,15 +13,27 @@ database, the SCCH LLM, or real Azure Blob Storage — not merely because the co
 path happens to sit behind one. If the logic short-circuits before the runtime is
 built (the chat gate) or is pure-prop rendering, it belongs in a fast test.
 
-Four kinds of e2e, by the external infra they need:
+Postgres is implied at every tier, not just `@live-db`: sessions are
+database-backed (`novedu_session`), so the `setup` project
+(`e2e/auth.setup.ts`) and every spec's bearer-session minting
+(`mintSessionToken`, `e2e/api-auth.utils.ts`) write `novedu_user`/`novedu_session`
+rows against whichever database the dev server under test is booted with — that
+happens on every run, hermetic specs included. `@live-db` marks specs that need
+the database for something **beyond** that baseline: seeding or inspecting the
+app's own tables through `e2e/db.ts` (tutor-code minting, file CRUD, the
+password-auth path) rather than merely resolving a session.
 
-- **Hermetic e2e** — no external infra (the auth gate, routing, teacher/student
-  permissions, client-side validation). Untagged. **Run in CI.**
-- **`@live-db` e2e** — need a real Postgres database but NOT the LLM (tutor-code
-  minting, file CRUD, the password-auth path). **Run in CI** against an
-  ephemeral `postgres:18` service container reached with password auth (see
-  "DB-backed `@live-db` in CI" below), and locally against real Azure Database
-  for PostgreSQL.
+Four kinds of e2e, by the external infra they need beyond that baseline:
+
+- **Hermetic e2e** — no infra beyond the dev server (and the session rows every
+  spec's auth setup already writes): the sign-in gate, routing, device-flow
+  wire shapes, teacher/student permissions, client-side validation. Untagged.
+  **Run in CI.**
+- **`@live-db` e2e** — read or write the app's own tables through `e2e/db.ts`
+  beyond session minting (tutor-code minting, file CRUD, the password-auth
+  path). **Run in CI** against an ephemeral `postgres:18` service container
+  reached with password auth (see "DB-backed `@live-db` in CI" below), and
+  locally against real Azure Database for PostgreSQL.
 - **`@live-llm` e2e** — also need a real LLM endpoint (chat round-trips, vision,
   the health probe, the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`,
   the **coding-agent** round-trip in `e2e/coding-agent.spec.ts`, which drives
@@ -78,8 +90,8 @@ credentials (Azure Postgres / SCCH / Azure Blob Storage) must never run on a for
 | Component | Vitest `component` | `**/*.browser.test.tsx` | Playwright Chromium (real browser) | ✅ |
 | CLI unit | Vitest `unit` | `cli/src/**/*.unit.test.ts` | jsdom — colocated, rides the root `unit` glob | ✅ |
 | CLI integration | Vitest (`cli/vitest.config.mts`) | `cli/test/*.test.ts` | the built binary + the offline fixtures server | ✅ |
-| Hermetic e2e | Playwright | `e2e/*.spec.ts` (untagged) | dev server, no infra | ✅ |
-| `@live-db` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-db` | Postgres (container in CI / Azure Postgres local) | ✅ |
+| Hermetic e2e | Playwright | `e2e/*.spec.ts` (untagged) | dev server + the Postgres it boots against (session minting only) | ✅ |
+| `@live-db` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-db` | same Postgres, read/written beyond session minting (container in CI / Azure Postgres local) | ✅ |
 | `@live-llm` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-llm` | real DB + SCCH LLM | ❌ local only |
 | `@live-storage` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-storage` | real DB + Azure Blob Storage | ❌ local only |
 
@@ -197,7 +209,10 @@ Flow: the service container starts (the `postgres:18` image creates
 `pg_isready`) → `scripts/ci/wait-and-create-db.mjs` polls for readiness and runs
 `CREATE SCHEMA IF NOT EXISTS mastra` (idempotent — the app's own boot sequence
 creates the `novedu_*` tables and the rest of `mastra.*`) → `npm run
-test:e2e:ci` runs hermetic + `@live-db`; the Playwright `webServer` boots `npm
+test:e2e:ci` runs hermetic + `@live-db` against the **same** dev server and
+container — the hermetic specs' session minting (`e2e/auth.setup.ts`,
+`mintSessionToken`) writes `novedu_user`/`novedu_session` rows here too, it just
+never touches any other app table; the Playwright `webServer` boots `npm
 run dev`, which applies the `novedu_*` migrations and lets Mastra create the
 rest of `mastra.*`. SCCH is intentionally unset — the app boots without models
 and the DB-only specs never call the LLM. The `db-auth` Entra test detects the
@@ -239,8 +254,10 @@ runtime is built, and the page maps a check result to a view. The pattern (see
 `app/[code]/page.unit.test.tsx`):
 
 1. `// @vitest-environment node`.
-2. `vi.mock` the I/O seams — `@/auth`, the `novedu_*` stores, `@/app/mastra`,
-   and (past the gate) the CopilotKit runtime / Mastra agent factory.
+2. `vi.mock` the I/O seams — `@/lib/session` (the cookie-session gate), the
+   `novedu_*` stores, `@/app/mastra`, and (past the gate) the CopilotKit
+   runtime / Mastra agent factory. Bearer routes mock `@/auth` instead — see
+   `docs/api.md`.
 3. Keep the **security-critical pure module REAL** — e.g. `lib/thread-token.ts`
    (the HMAC), so the test exercises the actual check, not a stub of it.
 4. Drive real `Request` objects through the exported handler, or call the
@@ -249,6 +266,39 @@ runtime is built, and the page maps a check result to a view. The pattern (see
 
 This is how the thread-ownership, window-enforcement, and rejection-rendering
 behaviors run in CI without infra.
+
+## Auth session minting
+
+Nothing here signs a real JWT or generates a keypair — every test-side session is
+a row in the database plus, for the cookie channel, a signed cookie value derived
+from that row:
+
+- **e2e cookie sessions** (`e2e/auth.setup.ts`, the Playwright `setup` project)
+  writes a fresh `novedu_user` + `novedu_session` row for each of the two test
+  principals on every run (first sweeping any expired `e2e-%` sessions), then
+  mints the cookie value with better-auth's own `makeSignature`
+  (`better-auth/crypto`, via `e2e/session-cookie.ts`): `${token}.${sig}`
+  URL-encoded, under the `novedu.session_token` cookie name. Playwright's
+  `storageState` injects it exactly like a real sign-in would have set it. See
+  `docs/auth.md`.
+- **e2e bearer sessions** — `mintSessionToken({ teacher, userId, name, expired })`
+  in `e2e/api-auth.utils.ts` does the same user-plus-session-row write (default
+  ids `e2e-api-teacher` / `e2e-api-user`; `expired: true` backdates
+  `expires_at`) and returns the raw token for use as a `Bearer` header — no
+  cookie, no signing, since the bearer channel accepts the raw token directly.
+  `e2e/api-me.spec.ts`, `api-gate`, `api-codes`, `api-images`, and
+  `api-reports` stay in the **hermetic** tier despite this write — it only ever
+  touches the auth tables, never the app's own — as do the cookie-free
+  `e2e/sign-in.spec.ts`; the claim/approve/poll round trip in
+  `e2e/device.spec.ts` is tagged `@live @live-db` instead, because it drives a
+  real device-authorization row through the server to completion rather than
+  only minting a session.
+- **Route unit tests** for both channels mock `@/auth`'s `auth.api.getSession`
+  directly (`tests/mock-auth-session.ts`'s `bearerSession` builds the `{ session,
+  user }` shape it resolves to) rather than minting anything real; cookie-side
+  unit tests instead mock `@/lib/session` (`getSession`/`requireTeacher`) — see
+  "Testing the chat gate" above. There is no keypair or JWKS file anywhere in
+  this repo's test setup.
 
 ## CI
 

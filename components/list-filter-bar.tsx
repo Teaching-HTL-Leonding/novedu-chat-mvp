@@ -117,7 +117,7 @@ export function ListFilterBar({
 // "Clear" land back on their own items with no extra logic.
 //
 // `options` are the owners the list actually has (`lib/db/owners.ts`). The current
-// user is dropped from them — they are the first option already — and a selected oid
+// user is dropped from them — they are the first option already — and a selected user id
 // that is not among them (a stale bookmark, or an owner whose last item was deleted)
 // is appended so the control can never disagree with the URL.
 export function OwnerFilter({
@@ -131,7 +131,7 @@ export function OwnerFilter({
   /** What the list holds, for the first option's text: `My codes (Alex Muster)`. */
   noun: string;
   options: OwnerOption[];
-  /** `""` = me, `ALL_OWNERS`, or an oid — from `parseOwner`. */
+  /** `""` = me, `ALL_OWNERS`, or a user id — from `parseOwner`. */
   value: string;
   currentUserId: string;
   /** The signed-in teacher's display name, when the session carries one. */
@@ -139,7 +139,7 @@ export function OwnerFilter({
   className?: string;
 }) {
   const others = options.filter((option) => option.userId !== currentUserId);
-  // A URL that names MY oid explicitly is the same filter as the empty default, so
+  // A URL that names MY user id explicitly is the same filter as the empty default, so
   // it selects the first option rather than appending me as a nameless stranger.
   const selected = value === currentUserId ? "" : value;
   if (selected !== "" && selected !== ALL_OWNERS && !others.some((o) => o.userId === selected)) {

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mintToken } from "./api-auth.utils";
+import { mintSessionToken } from "./api-auth.utils";
 
 // The /api/images bearer channel's ACCESS CONTROL over real HTTP: the
 // proxy-matcher exclusion (a bare request gets 401 from the route, not a
@@ -7,12 +7,9 @@ import { mintToken } from "./api-auth.utils";
 // token) — for the list, upload-request and confirm routes alike. Everything
 // Blob-Storage-backed (actually uploading) lives with the @live-storage image
 // lifecycle spec; these assertions fail inside requireBearerTeacher, before
-// any store or blob call, so this spec stays hermetic. Token minting mirrors
-// api-me.spec.ts (real env issuer/audience, e2e signing key).
-//
-// CAVEAT (local runs): reuseExistingServer means a dev server started without
-// API_AUTH_JWKS_PATH in its env fails these specs with 401-for-everything —
-// restart it with the var exported or let Playwright start the server.
+// any store or blob call. The bearer credential is a real better-auth session
+// token minted straight into `novedu_session` (api-auth.utils.ts) — there is no
+// test seam on this channel.
 
 // No cookies: these requests must succeed or fail on the bearer token ALONE. A
 // proxy-matcher regression would turn the expected 401 into a sign-in redirect.
@@ -46,7 +43,7 @@ test("bare POST /api/images/<name>/confirm → 401, not a sign-in redirect", asy
 });
 
 test("valid non-teacher token → 403 on all three /api/images routes", async ({ request }) => {
-  const token = await mintToken();
+  const token = await mintSessionToken();
   const headers = { authorization: `Bearer ${token}` };
 
   const list = await request.get("/api/images", { headers });

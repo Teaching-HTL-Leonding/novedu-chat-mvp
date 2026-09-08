@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 // The component owns the DialogShell open state (it is the shell's caller) and
 // dispatches to the right server action on `target.kind`. It uses no CopilotKit
 // hooks, so mounting it as a `ModuleChat` child (writing) is safe. The server
-// actions re-derive the reporter's oid from the session and re-verify the
+// actions re-derive the reporter's user id from the session and re-verify the
 // thread-ownership token / re-load the quiz question — the client is never
 // trusted (see lib/report-actions.ts).
 

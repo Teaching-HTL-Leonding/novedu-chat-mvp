@@ -7,17 +7,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // prompt), the teacher's OWN connection block once they hold a personal key, and
 // the read-only issued-keys list. The key read is READ-ONLY — viewing the page
 // must never mint — so the no-key state offers the "Get my API key" button plus
-// its attribution notice instead. `auth`, the key store, and `loadCoding` are
+// its attribution notice instead. The session, the key store, and `loadCoding` are
 // mocked; `codingConnectionProps` is the real, pure derivation. Invoked directly
 // (an async server component); runs in CI, no DB.
 
-const auth = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
 const getStoredCodingKey = vi.hoisted(() => vi.fn());
 const getOrCreateCodingKey = vi.hoisted(() => vi.fn());
 const listCodingKeys = vi.hoisted(() => vi.fn());
 const loadCoding = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth }));
+vi.mock("@/lib/session", () => ({ getSession }));
 vi.mock("@/lib/coding-key-store", () => ({
   getStoredCodingKey,
   // Exported here only so the component can be caught calling it: the mint path
@@ -57,7 +57,7 @@ const teacherKey = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  auth.mockResolvedValue({ user: { id: "teacher-oid-1" } });
+  getSession.mockResolvedValue({ user: { id: "teacher-oid-1" } });
   loadCoding.mockResolvedValue({
     ok: true,
     coding: { title: "My Coding Activity", instructions: "Be a helpful coding tutor." },
@@ -96,7 +96,7 @@ describe("the teacher's own connection block", () => {
   });
 
   it("renders the unavailable notice when there is no session oid", async () => {
-    auth.mockResolvedValue(null);
+    getSession.mockResolvedValue(null);
     const html = await render();
     expect(getStoredCodingKey).not.toHaveBeenCalled();
     expect(html).toContain("Connection details temporarily unavailable");

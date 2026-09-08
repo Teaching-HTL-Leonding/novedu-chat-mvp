@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // genuine HMAC over a genuinely-signed token. The quiz snapshot is asserted to
 // use the SERVER's question text, and the telemetry payload to carry no content.
 
-const auth = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
 const verifyAndLoadQuestion = vi.hoisted(() => vi.fn());
 const insertChatReport = vi.hoisted(() => vi.fn());
@@ -21,7 +21,7 @@ const deleteReports = vi.hoisted(() => vi.fn());
 const emitEvent = vi.hoisted(() => vi.fn());
 const requireTeacherUserId = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth }));
+vi.mock("@/lib/session", () => ({ getSession }));
 vi.mock("@/lib/code-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/code-store")>()),
   checkCode,
@@ -97,7 +97,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.AUTH_SECRET = "unit-test-secret";
   resetThreadTokenSecretForTests();
-  auth.mockResolvedValue({ user: { id: USER } });
+  getSession.mockResolvedValue({ user: { id: USER } });
   checkCode.mockResolvedValue({ ok: true, entry: { code: CODE } });
   countChatReports.mockResolvedValue(0);
   countQuizReports.mockResolvedValue(0);
@@ -183,7 +183,7 @@ describe("submitChatReport", () => {
   });
 
   it("requires a signed-in session", async () => {
-    auth.mockResolvedValue(null);
+    getSession.mockResolvedValue(null);
     const result = await submitChatReport(chatInput());
     expect(result).toMatchObject({ ok: false });
     expect(insertChatReport).not.toHaveBeenCalled();
@@ -278,7 +278,7 @@ describe("teacher bulk actions", () => {
   });
 
   it("blocks a non-teacher", async () => {
-    requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await markSelectedReportsResolvedAction([REPORT_ID]);
     expect(result).toEqual({ ok: false, message: "Only teachers can manage reports." });
     expect(setReportsResolved).not.toHaveBeenCalled();

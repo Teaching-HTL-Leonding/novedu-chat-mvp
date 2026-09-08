@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AppChrome } from "@/components/app-chrome";
 import { StatusBar } from "@/components/status-bar";
+import { BRAND } from "@/lib/brand";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -15,8 +17,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HTBLA Leonding - Novedu",
-  description: "HTBLA Leonding - Novedu",
+  title: BRAND,
+  description: BRAND,
 };
 
 export default function RootLayout({
@@ -27,7 +29,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
-        <StatusBar />
+        <AppChrome>
+          <StatusBar />
+        </AppChrome>
         {children}
       </body>
     </html>

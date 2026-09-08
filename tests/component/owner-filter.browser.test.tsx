@@ -44,7 +44,7 @@ test("lists me first, then all owners, then the other owners once each", async (
     "My codes (Alex Muster)",
     "All owners",
     "Birgit Schröder",
-    // No `novedu_users` row: the oid is the label, which is the accepted fallback.
+    // No `novedu_user` row: the user id is the label, which is the accepted fallback.
     "oid-cli",
   ]);
   expect(select.value).toBe("");
@@ -56,9 +56,9 @@ test("falls back to a nameless label when the session carries no display name", 
   expect(optionTexts(select)[0]).toBe("My codes");
 });
 
-test("a URL naming my own oid selects the first option, not a nameless stranger", async () => {
-  // `?owner=<my oid>` is the same filter as the empty default, so it must not fall
-  // into the append branch and show me twice (once named, once as a bare oid).
+test("a URL naming my own user id selects the first option, not a nameless stranger", async () => {
+  // `?owner=<my user id>` is the same filter as the empty default, so it must not fall
+  // into the append branch and show me twice (once named, once as a bare user id).
   const screen = await render(filter({ value: ME }));
   const select = screen.getByLabelText("Filter by owner").element() as HTMLSelectElement;
 
@@ -71,7 +71,7 @@ test("a URL naming my own oid selects the first option, not a nameless stranger"
   ]);
 });
 
-test("a selected oid that owns nothing any more is appended, not silently dropped", async () => {
+test("a selected user id that owns nothing any more is appended, not silently dropped", async () => {
   // A stale bookmark: the URL filters by an owner the list no longer knows. The
   // control must still show it, or it would claim a filter that is not applied.
   const screen = await render(filter({ options: [BIRGIT], value: "oid-gone" }));

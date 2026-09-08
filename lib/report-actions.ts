@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auth } from "@/auth";
 import { checkCode } from "@/lib/code-store";
 import type { QuizVerdict } from "@/lib/quiz-types";
 import { CODE_REJECTION_MESSAGES, verifyAndLoadQuestion } from "@/lib/quiz-verify";
@@ -18,6 +17,7 @@ import {
   MAX_REPORTS_PER_TARGET,
   REPORT_DESCRIPTION_MAX,
 } from "@/lib/report-types";
+import { getSession } from "@/lib/session";
 import { requireTeacherUserId } from "@/lib/student-mode";
 import { emitEvent } from "@/lib/telemetry";
 import { getThreadTokenSecret, verifyThreadToken } from "@/lib/thread-token";
@@ -25,7 +25,7 @@ import { getThreadTokenSecret, verifyThreadToken } from "@/lib/thread-token";
 // The report server actions (GH issue #24). Two student-facing submit actions —
 // one per reportable surface — and three teacher-only bulk actions for the
 // `/reports` inbox. The whole app sits behind the Entra gate, so every caller is
-// authenticated; the reporting student's oid always comes from the SESSION, never
+// authenticated; the reporting student's user id always comes from the SESSION, never
 // from input (it is stored on the row — the sanctioned waiver of anonymity, see
 // docs/reports.md / the `novedu_reports` schema block).
 //
@@ -70,7 +70,7 @@ function isQuizVerdict(value: unknown): value is QuizVerdict {
 
 /**
  * Files a report on a chat conversation (any of the three chat surfaces). The
- * reporter's oid is the session's; ownership of the thread is proven by the HMAC
+ * reporter's user id is the session's; ownership of the thread is proven by the HMAC
  * token over `(code, userId, threadId)` — a leaked token+threadId is useless to
  * anyone but its owner. A soft per-`(thread, user)` cap keeps a single student
  * from flooding the inbox. On success emits a content-free telemetry event.
@@ -82,7 +82,7 @@ export async function submitChatReport(input: {
   reaction: string;
   description: string;
 }): Promise<SubmitReportResult> {
-  const session = await auth();
+  const session = await getSession();
   const userId = session?.user?.id;
   if (!userId) return { ok: false, message: "Please sign in to continue." };
 
@@ -215,10 +215,7 @@ async function requireReportsTeacher(): Promise<
   if (!gate.ok) {
     return {
       ok: false,
-      message:
-        gate.reason === "not-teacher"
-          ? "Only teachers can manage reports."
-          : "Your session carries no user id — sign in again.",
+      message: "Only teachers can manage reports.",
     };
   }
   return { ok: true, userId: gate.userId };

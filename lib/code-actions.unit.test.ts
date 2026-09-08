@@ -156,7 +156,7 @@ describe("createCodeAction", () => {
   });
 
   it("rejects non-teachers", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const state = await createCodeAction({ status: "idle" }, formData());
     expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/teachers/i) });
     expect(mocks.createCode).not.toHaveBeenCalled();
@@ -179,12 +179,6 @@ describe("createCodeAction", () => {
       errors: [{ code: "TUTOR_SCHEMA_ERROR", zodIssues: { errors: ['Unrecognized key: "nae"'] } }],
     });
     expect(mocks.createCode).not.toHaveBeenCalled();
-  });
-
-  it("errors when no session user id is available", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "no-user-id" });
-    const state = await createCodeAction({ status: "idle" }, formData());
-    expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/sign in/i) });
   });
 });
 
@@ -257,7 +251,7 @@ describe("updateCodeAction", () => {
   });
 
   it("rejects non-teachers and never writes", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const state = await updateCodeAction("a1b2c3d4e5", { status: "idle" }, formData());
     expect(state).toMatchObject({ status: "error", message: expect.stringMatching(/teachers/i) });
     expect(mocks.updateCode).not.toHaveBeenCalled();
@@ -299,7 +293,7 @@ describe("deleteSelectedCodesAction", () => {
   });
 
   it("rejects non-teachers and never touches the data", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await deleteSelectedCodesAction(["a1b2c3d4e5"]);
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/teachers/i) });
     expect(mocks.deleteCodesAndData).not.toHaveBeenCalled();

@@ -12,14 +12,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // session, the code gate, the quiz load, the Mastra agent + memory, and the
 // usage counter.
 
-const auth = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
 const loadQuiz = vi.hoisted(() => vi.fn());
 const generate = vi.hoisted(() => vi.fn());
 const createThread = vi.hoisted(() => vi.fn());
 const saveMessages = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth }));
+vi.mock("@/lib/session", () => ({ getSession }));
 vi.mock("@/lib/code-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/code-store")>()),
   checkCode,
@@ -96,7 +96,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // `startDiscussion` signs a real thread token (lib/thread-token stays real).
   process.env.AUTH_SECRET = "unit-test-secret";
-  auth.mockResolvedValue({ user: { id: "student-1" } });
+  getSession.mockResolvedValue({ user: { id: "student-1" } });
   checkCode.mockResolvedValue({ ok: true, entry });
   loadQuiz.mockResolvedValue({ ok: true, quiz });
   generate.mockResolvedValue({ object: { result: "correct", feedback: "Well done." } });

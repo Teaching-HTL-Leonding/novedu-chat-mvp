@@ -275,7 +275,7 @@ registry line → `codes sync` → reference it by key.
   against the fixtures server's fake `/api/codes`
   (`test-fixtures/serve.mjs`: GET lists, POST mints deterministic `synced0001…`
   codes, any bearer accepted) with the test-only `NOVEDU_TOKEN` override
-  (`cli/src/auth.ts`, checked before the MSAL cache): first run mints and writes
+  (`cli/src/auth.ts`, checked before the stored session): first run mints and writes
   the lock, second run reports all-reused and leaves the lock byte-identical, and
   the committed broken fixture
   (`test-fixtures/activities/registry/broken-activities.yaml`) exits 1 with the

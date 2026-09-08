@@ -82,16 +82,16 @@ export interface Interaction {
   /** Number of `role = 'user'` messages — always ≥ 1 (that is what qualifies). */
   userMessageCount: number;
   /**
-   * The student's session user id (Entra `oid`), if recorded AND the code is non-anonymous.
+   * The student's session user id (`novedu_user.id`), if recorded AND the code is non-anonymous.
    * `getCodeStats` forces this to `null` for anonymous codes (see there),
    * so a thread is attributable here only for an `anonymous: false` activity.
    */
   userId: string | null;
   /**
-   * The student's display name (resolved from `novedu_users`) under the same
+   * The student's display name (resolved from `novedu_user`) under the same
    * conditions as `userId`, or `null` when the code is anonymous, the thread is
    * unattributed, or no name has been recorded yet. The UI shows this in place of
-   * the oid, falling back to `userId`.
+   * the user id, falling back to `userId`.
    */
   userName: string | null;
 }
@@ -148,13 +148,13 @@ export async function getCodeStats(
         MAX(m."createdAtZ") AS "lastAt",
         SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) AS "userMessageCount",
         uc.user_id AS "userId",
-        un.display_name AS "userName"
+        un.name AS "userName"
       FROM mastra.mastra_threads t
       JOIN mastra.mastra_messages m ON m.thread_id = t.id
       LEFT JOIN novedu_user_chats uc ON uc.thread_id = t.id
-      LEFT JOIN novedu_users un ON un.user_id = uc.user_id
+      LEFT JOIN novedu_user un ON un.id = uc.user_id
       WHERE t."resourceId" = ${code}
-      GROUP BY t.id, uc.user_id, un.display_name
+      GROUP BY t.id, uc.user_id, un.name
       HAVING SUM(CASE WHEN m.role = 'user' THEN 1 ELSE 0 END) >= 1
       ORDER BY MAX(m."createdAtZ") DESC
     `);

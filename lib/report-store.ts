@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
+import { authUsers } from "@/lib/db/auth-schema";
 import { countRows } from "@/lib/db/count";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
-import { codes, reports, users } from "@/lib/db/schema";
+import { codes, reports } from "@/lib/db/schema";
 import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
@@ -18,10 +19,10 @@ import type { ReportKind, ReportReaction } from "@/lib/report-types";
 // in `deleteCodeRows` (lib/code-stats-store.ts) so the delete stays in the bulk
 // transaction.
 //
-// The reporting student's oid is ALWAYS stored (even under an anonymous code) —
+// The reporting student's session user id is ALWAYS stored (even under an anonymous code) —
 // the one sanctioned second user↔activity link (docs/reports.md, docs/codes.md).
 // This store surfaces ONLY the reporter's own, voluntarily-waived identity: it
-// LEFT-JOINs `novedu_users` for the reporter's display name and `novedu_codes`
+// LEFT-JOINs `novedu_user` for the reporter's display name and `novedu_codes`
 // for the note/creator, but NEVER joins `novedu_user_chats` or any path that
 // would reveal a DIFFERENT student behind a reported thread — the anonymity
 // promise for everyone but the reporter stays intact.
@@ -32,7 +33,7 @@ import type { ReportKind, ReportReaction } from "@/lib/report-types";
 /** A chat report to persist — proves thread ownership via the HMAC token upstream. */
 export interface ChatReportInput {
   code: string;
-  /** The reporting student's Entra `oid`. */
+  /** The reporting student's session user id (`novedu_user.id`). */
   userId: string;
   threadId: string;
   reaction: ReportReaction;
@@ -42,7 +43,7 @@ export interface ChatReportInput {
 /** A quiz-answer report to persist — carries its own snapshot (grading persists nothing). */
 export interface QuizReportInput {
   code: string;
-  /** The reporting student's Entra `oid`. */
+  /** The reporting student's session user id (`novedu_user.id`). */
   userId: string;
   questionId: string;
   /** The SERVER's authoritative question text — never a client copy. */
@@ -62,9 +63,9 @@ export interface ReportListRow {
   code: string;
   /** The code's teacher note (LEFT JOIN `novedu_codes`), or `null` if the code is gone. */
   codeNote: string | null;
-  /** The reporting student's Entra `oid`. */
+  /** The reporting student's session user id (`novedu_user.id`). */
   userId: string;
-  /** The reporter's display name (LEFT JOIN `novedu_users`); the caller falls back to the oid. */
+  /** The reporter's display name (LEFT JOIN `novedu_user`); the caller falls back to the user id. */
   displayName: string | null;
   reaction: ReportReaction;
   description: string;
@@ -78,7 +79,7 @@ export interface ReportListRow {
   feedbackText: string | null;
   verdict: QuizVerdict | null;
   hadImages: boolean;
-  /** Resolved ⇔ `resolvedAt !== null`; `resolvedBy` is the resolving teacher's oid. */
+  /** Resolved ⇔ `resolvedAt !== null`; `resolvedBy` is the resolving teacher's session user id. */
   resolvedAt: Date | null;
   resolvedBy: string | null;
 }
@@ -197,7 +198,7 @@ export async function countQuizReports(
  * The reports for the teacher inbox, filtered IN THE DATABASE (docs/filtered-lists.md)
  * by resolution status, reaction, a free-text search, and — for the "only my codes"
  * toggle — the code's creating teacher. The reporter's display name comes from a
- * LEFT JOIN on `novedu_users` (BY VALUE, oid fallback is the caller's) and the code
+ * LEFT JOIN on `novedu_user` (BY VALUE, user-id fallback is the caller's) and the code
  * note/creator from a LEFT JOIN on `novedu_codes`; a report whose code was deleted
  * still lists (both joins yield `null`). NEVER joins `novedu_user_chats` — the only
  * identity surfaced is the reporter's own (see the module header). By default ordered
@@ -215,7 +216,7 @@ export async function countQuizReports(
 // (and the "NEVER `novedu_user_chats`" invariant is stated in exactly one place).
 // Both join keys are primary keys, so a LEFT JOIN can't multiply rows — which is
 // also what keeps the list's `COUNT(*)` exact.
-const JOIN_REPORTER = eq(users.userId, reports.userId);
+const JOIN_REPORTER = eq(authUsers.id, reports.userId);
 const JOIN_CODE = eq(codes.code, reports.code);
 
 const REPORT_ROW_SELECTION = {
@@ -224,7 +225,7 @@ const REPORT_ROW_SELECTION = {
   code: reports.code,
   codeNote: codes.note,
   userId: reports.userId,
-  displayName: users.displayName,
+  displayName: authUsers.name,
   reaction: reports.reaction,
   description: reports.description,
   createdAt: reports.createdAt,
@@ -274,7 +275,7 @@ function listConditions(opts: {
   const match = containsAny(opts.search ?? "", [
     reports.description,
     reports.userId,
-    users.displayName,
+    authUsers.name,
     reports.code,
     codes.note,
   ]);
@@ -297,7 +298,7 @@ const STATUS_RANK = sql`CASE WHEN ${reports.resolvedAt} IS NULL THEN 0 ELSE 1 EN
 /**
  * The `/reports` list's sortable columns (ORDER BY map + `parseSort` allow-list).
  * `code` and `student` order by the JOINED columns the rows lead with; a report
- * whose code row is gone, or whose reporter has no `novedu_users` row, is NULL
+ * whose code row is gone, or whose reporter has no `novedu_user` row, is NULL
  * there and sorts LAST ascending (Postgres puts NULLs last on ASC, first on DESC).
  * `status` orders by `STATUS_RANK` (open = 0, resolved = 1), so ascending reads
  * open-first and `?sort=-status` resolved-first, matching the badge.
@@ -306,7 +307,7 @@ export const REPORT_SORT_COLUMNS = {
   reaction: reports.reaction,
   kind: reports.kind,
   code: codes.note,
-  student: users.displayName,
+  student: authUsers.name,
   created: reports.createdAt,
   status: STATUS_RANK,
 } satisfies SortColumns;
@@ -325,7 +326,7 @@ export async function listReports(opts: {
       paging: opts.paging,
       count: () =>
         countRows(reports, conditions, [
-          { table: users, on: JOIN_REPORTER },
+          { table: authUsers, on: JOIN_REPORTER },
           { table: codes, on: JOIN_CODE },
         ]),
       // A FRESH builder per call — drizzle builders are stateful and `paginate`
@@ -334,7 +335,7 @@ export async function listReports(opts: {
         const query = getDb()
           .select(REPORT_ROW_SELECTION)
           .from(reports)
-          .leftJoin(users, JOIN_REPORTER)
+          .leftJoin(authUsers, JOIN_REPORTER)
           .leftJoin(codes, JOIN_CODE)
           .where(and(...conditions))
           .orderBy(
@@ -357,7 +358,7 @@ export async function listReports(opts: {
 
 /**
  * A single report by id — the single-row twin of `listReports`, with the SAME
- * LEFT JOINs (`novedu_users` for the reporter's display name, `novedu_codes` for
+ * LEFT JOINs (`novedu_user` for the reporter's display name, `novedu_codes` for
  * the note, both BY VALUE) and, like every read here, NEVER a `novedu_user_chats`
  * join (the only identity surfaced is the reporter's own). Backs the bearer-channel
  * report detail (`GET /api/reports/<id>`, docs/api.md). Returns `null` when no
@@ -368,7 +369,7 @@ export async function getReportById(id: string): Promise<ReportListRow | null | 
     const rows = await getDb()
       .select(REPORT_ROW_SELECTION)
       .from(reports)
-      .leftJoin(users, JOIN_REPORTER)
+      .leftJoin(authUsers, JOIN_REPORTER)
       .leftJoin(codes, JOIN_CODE)
       .where(eq(reports.id, id));
     const row = rows[0];

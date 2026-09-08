@@ -25,7 +25,7 @@ link the anonymity invariant forbids. Storing "user X used N tokens **this hour*
 (no code) meters the student for future quotas **without** revealing which activity
 they did. So `usage_by_code` carries no user and `usage_by_user` carries no code (and
 no module) — neither table ever links a student to an activity, even though the
-runtime knows the `oid` for anonymous codes (it is only ever stored against an hour
+runtime knows the student's user id for anonymous codes (it is only ever stored against an hour
 bucket). Trade-off: "student X's usage on code Y" is unanswerable, by design.
 
 Columns: `input_tokens_new` / `input_tokens_cached` / `output_tokens` are `bigint`
@@ -89,7 +89,7 @@ set for **all** codes including anonymous ones (it only ever reaches `usage_by_u
 
 **CLI grader evals** (`novedu-cli eval`, `docs/cli-eval.md`) ride the identical
 pipeline with a **sentinel attribution**: `usageCode = "cli-eval"`,
-`usageModule = "eval"`, `usageUserId` = the teacher's `oid`. No pipeline change was
+`usageModule = "eval"`, `usageUserId` = the teacher's user id. No pipeline change was
 needed — the route just sets the three keys like every other agent seam. `cli-eval`
 is deliberately **not** a `novedu_codes` row: minted codes are 10 random characters,
 so a collision is impossible, and a teacher's eval spend lands in its own

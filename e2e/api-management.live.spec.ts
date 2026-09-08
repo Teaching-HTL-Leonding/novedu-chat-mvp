@@ -1,15 +1,15 @@
 import { randomInt } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { mintToken } from "./api-auth.utils";
+import { mintSessionToken } from "./api-auth.utils";
 import { deleteCode, hardDeleteFile, VALID_TUTOR_URL } from "./code.utils";
 
 // @live-db lifecycle of the CLI/API management channel over real HTTP against
 // the real database: PUT an app-hosted file (create → update → kind-mismatch),
 // list it via GET /api/files, mint a code via POST /api/codes (the full
 // validation pipeline against the fixtures tutor), list it via GET /api/codes.
-// The teacher token is minted like in api-me.spec.ts (real env
-// issuer/audience, e2e signing key); rows are uniquely named and cleaned up
-// directly in the DB afterwards.
+// The teacher token is minted like in api-me.spec.ts (a real better-auth
+// session row); rows are uniquely named and cleaned up directly in the DB
+// afterwards.
 
 test.use({ storageState: { cookies: [], origins: [] } });
 // Dev compilation of the routes + fixture fetch + DB round-trips.
@@ -42,7 +42,7 @@ test("file upsert → file list → code create → code list, over real HTTP", 
   tag: ["@live", "@live-db"],
 }, async ({ request }) => {
   const headers = {
-    authorization: `Bearer ${await mintToken({ teacher: true, name: "E2E Api Teacher", ttlSeconds: 600 })}`,
+    authorization: `Bearer ${await mintSessionToken({ teacher: true })}`,
   };
   let mintedCode: string | undefined;
 
@@ -91,7 +91,7 @@ test("file upsert → file list → code create → code list, over real HTTP", 
     expect(fileList[0]).toMatchObject({
       name: FILE_NAME,
       kind: "fragment",
-      createdBy: "e2e-api-oid",
+      createdBy: "e2e-api-teacher",
     });
 
     // CREATE a code: the full pipeline (window conversion, tutor validation
@@ -115,7 +115,7 @@ test("file upsert → file list → code create → code list, over real HTTP", 
       module: "tutor",
       note: CODE_NOTE,
       fileUrl: VALID_TUTOR_URL,
-      createdBy: "e2e-api-oid",
+      createdBy: "e2e-api-teacher",
       validUntil: null,
     });
     expect(codeBody.url).toContain(`/${codeBody.code}`);

@@ -48,19 +48,10 @@ export type SaveFileResult = { ok: true } | FileActionFailure;
 // as a rejected save (a short message or the full structured error list).
 export type ValidateFileResult = { ok: true; warnings: ValidationWarning[] } | FileActionFailure;
 
-// Maps the shared teacher-gate failure to a message for these file actions —
-// only the verb (create/edit/delete) differs between the call sites.
-function gateFailure(
-  reason: "not-teacher" | "no-user-id",
-  verb: string,
-): { ok: false; message: string } {
-  return {
-    ok: false,
-    message:
-      reason === "not-teacher"
-        ? `Only teachers can ${verb} files.`
-        : "Your session carries no user id — sign in again.",
-  };
+// The shared teacher-gate refusal for these file actions — only the verb
+// (create/edit/delete) differs between the call sites.
+function gateFailure(verb: string): { ok: false; message: string } {
+  return { ok: false, message: `Only teachers can ${verb} files.` };
 }
 
 // Collapses the service's failure discriminants to the two shapes the forms
@@ -82,7 +73,7 @@ export async function createFileAction(input: {
   content: string;
 }): Promise<FileActionFailure> {
   const gate = await requireTeacherUserId();
-  if (!gate.ok) return gateFailure(gate.reason, "create");
+  if (!gate.ok) return gateFailure("create");
 
   const result = await createFileForUser(gate.userId, input);
   if (!result.ok) return toActionFailure(result);
@@ -101,7 +92,7 @@ export async function createFileAction(input: {
  */
 export async function updateFileAction(name: string, content: string): Promise<SaveFileResult> {
   const gate = await requireTeacherUserId();
-  if (!gate.ok) return gateFailure(gate.reason, "edit");
+  if (!gate.ok) return gateFailure("edit");
 
   const result = await updateFileForUser(gate.userId, name, content);
   if (!result.ok) return toActionFailure(result);
@@ -124,7 +115,7 @@ export async function validateNewFileAction(input: {
   content: string;
 }): Promise<ValidateFileResult> {
   const gate = await requireTeacherUserId();
-  if (!gate.ok) return gateFailure(gate.reason, "validate");
+  if (!gate.ok) return gateFailure("validate");
 
   const nameValidation = validateFileName(input.name);
   if (!nameValidation.ok) return { ok: false, message: nameValidation.message };
@@ -155,7 +146,7 @@ export async function validateExistingFileAction(
   content: string,
 ): Promise<ValidateFileResult> {
   const gate = await requireTeacherUserId();
-  if (!gate.ok) return gateFailure(gate.reason, "validate");
+  if (!gate.ok) return gateFailure("validate");
 
   if (typeof content !== "string" || content.trim() === "") {
     return { ok: false, message: "The file is empty — add some YAML before validating." };
@@ -184,7 +175,7 @@ export type DeleteSelectedResult = { ok: true; deleted: number } | { ok: false; 
  */
 export async function deleteSelectedFilesAction(names: string[]): Promise<DeleteSelectedResult> {
   const gate = await requireTeacherUserId();
-  if (!gate.ok) return gateFailure(gate.reason, "delete");
+  if (!gate.ok) return gateFailure("delete");
   const userId = gate.userId;
 
   const result = await softDeleteFiles(names, userId);
@@ -217,7 +208,7 @@ export async function loadYamlFromUrlAction(input: {
   baseUrl?: string;
 }): Promise<{ ok: true; content: string; resolvedUrl: string } | { ok: false; message: string }> {
   const gate = await requireTeacherUserId();
-  if (!gate.ok) return gateFailure(gate.reason, "load");
+  if (!gate.ok) return gateFailure("load");
 
   let resolvedUrl: string;
   try {

@@ -1,106 +1,350 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import {
-  type AuthenticationResult,
-  CryptoProvider,
-  type ICachePlugin,
-  PublicClientApplication,
-} from "@azure/msal-node";
+import { cliVersion } from "./version";
 
-// Entra ID authentication for the CLI (docs/api.md). The CLI is a public
-// client of the same "Novedu Chat MVP" app registration the web app signs in
-// with; tokens are requested for the app's own exposed `cli.access` scope and
-// sent as `Authorization: Bearer` to the app's API routes.
+// Authentication for the CLI (docs/api.md). The Novedu app is the identity
+// provider: `login` runs the app's own OAuth device authorization flow
+// (`/api/auth/device/*`) and stores the resulting session token, which every
+// later command sends as `Authorization: Bearer` to the app's API routes. The
+// CLI knows nothing about Entra — the browser half of the flow signs in against
+// the app, which owns the Entra integration.
 //
-// The primary user is a coding agent: `login` (browser sign-in, or the device
-// code flow via --device-code) is the one human-assisted step; the MSAL cache
-// below holds the refresh token, so every later command acquires tokens
-// silently and non-interactively.
+// The primary user is a coding agent: `login` (approve the code in a browser)
+// is the one human-assisted step; the session file below holds a long-lived
+// session token, so every later command runs non-interactively.
 
-// Public identifiers (NOT secrets), baked in so `npx @novedu/cli login` works
-// out of the box. Env overrides let other deployments of this teaching repo
-// reuse the CLI against their own tenant/app registration.
-const DEFAULT_TENANT_ID = "91fc072c-edef-4f97-bdc5-cfb67718ae3a";
-const DEFAULT_CLIENT_ID = "4d44fc4b-0434-4981-9765-62e2074ceecb";
+/** The device-flow client identifier the server validates (`validateClient`). */
+const CLIENT_ID = "novedu-cli";
 
-function tenantId(): string {
-  return process.env.NOVEDU_TENANT_ID || DEFAULT_TENANT_ID;
-}
+/** Where the per-server session tokens live: `{ [origin]: { token, name } }`. */
+export const SESSIONS_PATH = join(homedir(), ".novedu", "sessions.json");
 
-function clientId(): string {
-  return process.env.NOVEDU_CLIENT_ID || DEFAULT_CLIENT_ID;
-}
+/** One stored sign-in: the bearer token plus the display name it belongs to. */
+export type StoredSession = { token: string; name: string };
 
-/** The delegated scope every token is requested for; msal-node adds the OIDC scopes itself. */
-function scopes(): string[] {
-  return [`api://${clientId()}/cli.access`];
-}
+/** The whole session file, keyed by server origin (one sign-in per server). */
+export type Sessions = Record<string, StoredSession>;
 
-/** Where the serialized MSAL cache (including the refresh token) lives. */
-export const TOKEN_CACHE_DIR = join(homedir(), ".novedu");
-export const TOKEN_CACHE_PATH = join(TOKEN_CACHE_DIR, "token-cache.json");
-
-/** Thrown when a command needs a token but no (usable) cached account exists. */
+/** Thrown when a command needs a token but no session is stored for the server. */
 export class NotSignedInError extends Error {
-  constructor() {
-    super('Not signed in — run "novedu-cli login".');
+  constructor(message = 'Not signed in — run "novedu-cli login".') {
+    super(message);
     this.name = "NotSignedInError";
   }
 }
 
+/** What `POST /api/auth/device/code` hands back. */
+export type DeviceCode = {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  verification_uri_complete: string;
+  expires_in: number;
+  interval: number;
+};
+
+/** The identity `GET /api/me` reports for a bearer token. */
+export type Identity = { name: string | null; userId: string; isTeacher: boolean };
+
+type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
+
 /**
- * File-backed MSAL cache (az-CLI model): plain JSON, directory 0700, file
- * 0600. A missing file simply means an empty cache. Exported for tests.
+ * The session-file key for a server: sessions are per ORIGIN, so
+ * `http://localhost:3000/` and `http://localhost:3000/x` share one entry while
+ * production and a dev server stay separate.
  */
-export function buildCachePlugin(cachePath: string = TOKEN_CACHE_PATH): ICachePlugin {
-  const cacheDir = dirname(cachePath);
+export function serverOrigin(server: string): string {
+  return new URL(server).origin;
+}
+
+/** Reads the session file; a missing or corrupt file simply means "no sessions". */
+export function readSessions(path: string = SESSIONS_PATH): Sessions {
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const sessions: Sessions = {};
+    for (const [origin, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!value || typeof value !== "object") continue;
+      const { token, name } = value as { token?: unknown; name?: unknown };
+      if (typeof token !== "string" || !token) continue;
+      sessions[origin] = { token, name: typeof name === "string" ? name : "" };
+    }
+    return sessions;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Writes the session file with the az-CLI modes: directory 0700, file 0600 —
+ * the token is a live credential. Writing also removes the obsolete
+ * `token-cache.json` beside it — no code path reads that file.
+ */
+export function writeSessions(sessions: Sessions, path: string = SESSIONS_PATH): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(path, `${JSON.stringify(sessions, null, 2)}\n`, { mode: 0o600 });
+  removeLegacyTokenCache(path);
+}
+
+/** The stored session for a server, if any. */
+export function storedSession(
+  server: string,
+  path: string = SESSIONS_PATH,
+): StoredSession | undefined {
+  return readSessions(path)[serverOrigin(server)];
+}
+
+/** Stores (or replaces) the session for a server. */
+export function rememberSession(
+  server: string,
+  session: StoredSession,
+  path: string = SESSIONS_PATH,
+): void {
+  const sessions = readSessions(path);
+  sessions[serverOrigin(server)] = session;
+  writeSessions(sessions, path);
+}
+
+/** Drops the stored session for a server (no-op when none is stored). */
+export function forgetSession(server: string, path: string = SESSIONS_PATH): void {
+  const sessions = readSessions(path);
+  delete sessions[serverOrigin(server)];
+  writeSessions(sessions, path);
+}
+
+/** Removes the obsolete `token-cache.json`, which no code path reads. */
+function removeLegacyTokenCache(sessionsPath: string): void {
+  rmSync(join(dirname(sessionsPath), "token-cache.json"), { force: true });
+}
+
+/**
+ * The one call every API command makes: the bearer token for the given server.
+ * Throws NotSignedInError when `login` has to run first.
+ *
+ * `NOVEDU_TOKEN` short-circuits the session file with a caller-supplied bearer
+ * token. It exists for TESTS and CI (the CLI integration suite runs the real
+ * binary against a fake API, with no browser to approve a device code) — the
+ * token is still validated by the server on every request, so this weakens
+ * nothing; it only removes the interactive step. Not a substitute for `login`.
+ */
+export async function getAccessToken(
+  server: string,
+  path: string = SESSIONS_PATH,
+): Promise<string> {
+  const override = process.env.NOVEDU_TOKEN?.trim();
+  if (override) return override;
+  const session = storedSession(server, path);
+  if (!session) {
+    throw new NotSignedInError(
+      `Not signed in to ${serverOrigin(server)} — run "novedu-cli login".`,
+    );
+  }
+  return session.token;
+}
+
+/** `{ error, error_description }` (OAuth) and `{ message, code }` (validation) in one shape. */
+function parseError(payload: unknown): { error?: string; description?: string } {
+  if (!payload || typeof payload !== "object") return {};
+  const body = payload as Record<string, unknown>;
+  const error =
+    typeof body.error === "string"
+      ? body.error
+      : typeof body.code === "string"
+        ? body.code
+        : undefined;
+  const description =
+    typeof body.error_description === "string"
+      ? body.error_description
+      : typeof body.message === "string"
+        ? body.message
+        : undefined;
+  return { error, description };
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Starts the device flow: asks the server for a device + user code pair. The
+ * request carries no credentials — the browser half authenticates the human.
+ */
+export async function requestDeviceCode(
+  server: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<DeviceCode> {
+  const response = await fetchImpl(new URL("/api/auth/device/code", server), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "user-agent": `novedu-cli/${cliVersion()}`,
+    },
+    body: JSON.stringify({ client_id: CLIENT_ID }),
+  });
+  const payload = await readJson(response);
+  if (!response.ok) {
+    const { error, description } = parseError(payload);
+    throw new Error(
+      `Could not start the sign-in: ${description ?? error ?? `HTTP ${response.status}`}`,
+    );
+  }
+  const code = payload as Partial<DeviceCode> | undefined;
+  if (!code || typeof code.device_code !== "string" || typeof code.user_code !== "string") {
+    throw new Error(`${server} returned no device code.`);
+  }
   return {
-    beforeCacheAccess: async (context) => {
-      let data: string;
-      try {
-        data = readFileSync(cachePath, "utf8");
-      } catch {
-        return; // no cache yet — leave the in-memory cache empty
-      }
-      context.tokenCache.deserialize(data);
-    },
-    afterCacheAccess: async (context) => {
-      if (!context.cacheHasChanged) return;
-      mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
-      writeFileSync(cachePath, context.tokenCache.serialize(), { mode: 0o600 });
-    },
+    device_code: code.device_code,
+    user_code: code.user_code,
+    verification_uri: code.verification_uri ?? new URL("/device", server).href,
+    verification_uri_complete:
+      code.verification_uri_complete ??
+      `${new URL("/device", server).href}?user_code=${encodeURIComponent(code.user_code)}`,
+    expires_in: typeof code.expires_in === "number" ? code.expires_in : 1800,
+    interval: typeof code.interval === "number" ? code.interval : 5,
   };
 }
 
-export function buildPca(cachePath: string = TOKEN_CACHE_PATH): PublicClientApplication {
-  return new PublicClientApplication({
-    auth: {
-      clientId: clientId(),
-      authority: `https://login.microsoftonline.com/${tenantId()}`,
-    },
-    cache: { cachePlugin: buildCachePlugin(cachePath) },
-  });
+/** Terminal poll outcomes, phrased for a human reading the terminal. */
+const POLL_FAILURES: Record<string, string> = {
+  access_denied: "Sign-in was denied in the browser.",
+  expired_token: "The sign-in request expired before it was approved.",
+  invalid_grant: "The sign-in request is no longer valid.",
+};
+
+function pollFailureMessage(payload: unknown, status: number): string {
+  const { error, description } = parseError(payload);
+  const detail = description ?? error ?? `HTTP ${status}`;
+  const known = error ? POLL_FAILURES[error] : undefined;
+  return known ? `${known} (${detail})` : `Sign-in failed: ${detail}`;
+}
+
+const defaultSleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Polls the token endpoint until the human approves the code in the browser,
+ * and returns the session token. Waits `interval` seconds between polls,
+ * honours the server's `slow_down` back-off, and gives up once the code's
+ * `expires_in` window has passed. The clock, the sleeper and fetch are
+ * injectable so tests need no real time.
+ */
+export async function pollDeviceToken(
+  server: string,
+  code: DeviceCode,
+  deps: { fetchImpl?: FetchLike; sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
+): Promise<string> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const sleep = deps.sleep ?? defaultSleep;
+  const now = deps.now ?? Date.now;
+
+  const deadline = now() + code.expires_in * 1000;
+  let interval = code.interval > 0 ? code.interval : 5;
+
+  while (true) {
+    await sleep(interval * 1000);
+    if (now() >= deadline) {
+      throw new Error("The sign-in request expired before it was approved.");
+    }
+    const response = await fetchImpl(new URL("/api/auth/device/token", server), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "user-agent": `novedu-cli/${cliVersion()}`,
+      },
+      body: JSON.stringify({
+        grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+        device_code: code.device_code,
+        client_id: CLIENT_ID,
+      }),
+    });
+    const payload = await readJson(response);
+
+    if (response.ok) {
+      const token = (payload as { access_token?: unknown } | undefined)?.access_token;
+      if (typeof token === "string" && token) return token;
+      throw new Error("Sign-in failed: the server returned no access token.");
+    }
+
+    const { error } = parseError(payload);
+    if (error === "authorization_pending") continue;
+    if (error === "slow_down") {
+      interval += 5;
+      continue;
+    }
+    throw new Error(pollFailureMessage(payload, response.status));
+  }
 }
 
 /**
- * Acquires a token silently from the cached account (MSAL refreshes via the
- * cached refresh token when needed). Returns null when there is no account or
- * the silent acquisition fails (expired/revoked refresh token) — callers
- * decide between falling back to interactive (`login`) and NotSignedInError.
+ * Calls `GET /api/me` with a bearer token.
+ *
+ * The two failures are kept apart, because callers act on them differently:
+ * `null` means the SERVER REJECTED the token (401/403 — sign in again), while
+ * anything else — unreachable server, 5xx, a body that is not an identity —
+ * THROWS with a message naming the server, so a transient outage is never
+ * mistaken for a dead session.
  */
-export async function acquireSilent(
-  pca: PublicClientApplication,
-): Promise<AuthenticationResult | null> {
-  const [account] = await pca.getTokenCache().getAllAccounts();
-  if (!account) return null;
+export async function fetchIdentity(
+  server: string,
+  token: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<Identity | null> {
+  let response: Response;
   try {
-    return await pca.acquireTokenSilent({ account, scopes: scopes() });
+    response = await fetchImpl(new URL("/api/me", server), {
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch (error) {
+    throw new Error(
+      `Could not reach ${serverOrigin(server)}: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (response.status === 401 || response.status === 403) return null;
+  if (!response.ok) {
+    throw new Error(`${serverOrigin(server)} answered HTTP ${response.status}.`);
+  }
+  const payload = (await readJson(response)) as Identity | undefined;
+  if (!payload || typeof payload.userId !== "string") {
+    throw new Error(`${serverOrigin(server)} returned no identity.`);
+  }
+  return payload;
+}
+
+/**
+ * Best-effort session revocation: deletes the session row server-side. The
+ * endpoint is JSON-only (an empty body is rejected), and a slow or unreachable
+ * server must never keep the local `logout` from clearing the token, hence the
+ * short timeout and the swallowed errors.
+ */
+export async function revokeSession(
+  server: string,
+  token: string,
+  fetchImpl: FetchLike = fetch,
+): Promise<void> {
+  try {
+    await fetchImpl(new URL("/api/auth/sign-out", server), {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: "{}",
+      signal: AbortSignal.timeout(3000),
+    });
   } catch {
-    return null;
+    // Local sign-out is what matters; the session expires on its own.
   }
 }
 
@@ -108,12 +352,10 @@ export async function acquireSilent(
  * How the system browser is launched per platform. Exported for tests.
  *
  * Windows goes through `cmd /c start`, and cmd RE-PARSES the command line it
- * receives: an unquoted URL is cut at the first `&`, so Entra only ever saw
- * `authorize?client_id=…` and answered AADSTS900144 ("the request body must
- * contain the following parameter: 'scope'"). Node quotes an argument only
- * when it contains whitespace, so the URL is quoted here explicitly and the
- * command line handed over verbatim. The empty `""` is `start`'s window title
- * — without it, `start` would take the quoted URL as the title.
+ * receives: an unquoted URL is cut at the first `&`. Node quotes an argument
+ * only when it contains whitespace, so the URL is quoted here explicitly and
+ * the command line handed over verbatim. The empty `""` is `start`'s window
+ * title — without it, `start` would take the quoted URL as the title.
  */
 export function browserCommand(
   url: string,
@@ -125,7 +367,8 @@ export function browserCommand(
   return { command: "xdg-open", args: [url], verbatim: false };
 }
 
-function defaultOpenBrowser(url: string): void {
+/** Opens the verification URL in the system browser; failure is not an error. */
+export function openBrowser(url: string): void {
   const { command, args, verbatim } = browserCommand(url);
   try {
     spawn(command, args, {
@@ -134,126 +377,6 @@ function defaultOpenBrowser(url: string): void {
       windowsVerbatimArguments: verbatim,
     }).unref();
   } catch {
-    // The sign-in URL was already surfaced via onUrl — opening is best-effort.
+    // The URL was already printed — opening it is a convenience.
   }
-}
-
-/**
- * Runs the interactive authorization-code + PKCE flow with a loopback
- * redirect (the az-CLI model): opens the system browser and receives the code
- * on a short-lived localhost server. This is the DEFAULT login flow — tenant
- * Conditional Access policies commonly block the device code flow (error
- * 53003) but permit this one, since it is the same flow the web sign-in uses.
- *
- * Entra matches any localhost port against the registered `http://localhost`
- * public-client redirect URI, so the receiver binds an ephemeral port.
- * `onUrl` always receives the sign-in URL (fallback when no browser opens).
- */
-export async function acquireInteractive(
-  pca: PublicClientApplication,
-  onUrl: (url: string) => void,
-  openBrowser: (url: string) => void = defaultOpenBrowser,
-): Promise<AuthenticationResult> {
-  const { verifier, challenge } = await new CryptoProvider().generatePkceCodes();
-
-  const server = createServer();
-  const port = await new Promise<number>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, () => resolve((server.address() as AddressInfo).port));
-  });
-  const redirectUri = `http://localhost:${port}`;
-
-  try {
-    const authCode = new Promise<string>((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("Sign-in timed out after 5 minutes.")),
-        5 * 60_000,
-      );
-      server.on("request", (req, res) => {
-        const url = new URL(req.url ?? "/", redirectUri);
-        const code = url.searchParams.get("code");
-        const error = url.searchParams.get("error");
-        if (!code && !error) {
-          // Favicon and other stray requests must not consume the redirect.
-          res.writeHead(404);
-          res.end();
-          return;
-        }
-        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-        res.end(
-          code
-            ? "<p>Signed in — you can close this tab and return to the terminal.</p>"
-            : "<p>Sign-in failed — you can close this tab.</p>",
-        );
-        clearTimeout(timeout);
-        if (code) resolve(code);
-        else
-          reject(
-            new Error(`Sign-in failed: ${url.searchParams.get("error_description") ?? error}`),
-          );
-      });
-    });
-
-    const authUrl = await pca.getAuthCodeUrl({
-      scopes: scopes(),
-      redirectUri,
-      codeChallenge: challenge,
-      codeChallengeMethod: "S256",
-    });
-    onUrl(authUrl);
-    openBrowser(authUrl);
-
-    const code = await authCode;
-    return await pca.acquireTokenByCode({
-      code,
-      scopes: scopes(),
-      redirectUri,
-      codeVerifier: verifier,
-    });
-  } finally {
-    server.close();
-  }
-}
-
-/**
- * Runs the device code flow — for machines without a local browser; the
- * tenant's Conditional Access policy must allow it. `onMessage` receives
- * Entra's instruction line (verification URL + user code) the moment the flow
- * starts — print it immediately so it can be relayed to the human while MSAL
- * keeps polling.
- */
-export async function acquireByDeviceCode(
-  pca: PublicClientApplication,
-  onMessage: (message: string) => void,
-): Promise<AuthenticationResult> {
-  const result = await pca.acquireTokenByDeviceCode({
-    deviceCodeCallback: (response) => onMessage(response.message),
-    scopes: scopes(),
-  });
-  if (!result) throw new Error("Device code sign-in did not return a token.");
-  return result;
-}
-
-/**
- * The one call every API command makes: a silently-acquired access token for
- * the Authorization header. Throws NotSignedInError when interactive login is
- * required first.
- *
- * `NOVEDU_TOKEN` short-circuits the MSAL cache with a caller-supplied bearer
- * token. It exists for TESTS and CI (the CLI integration suite runs the real
- * binary against a fake API, with no browser to sign in) — the token is still
- * validated by the server on every request, so this weakens nothing; it only
- * removes the interactive step. Not a substitute for `login` in normal use.
- */
-export async function getAccessToken(): Promise<string> {
-  const override = process.env.NOVEDU_TOKEN?.trim();
-  if (override) return override;
-  const result = await acquireSilent(buildPca());
-  if (!result) throw new NotSignedInError();
-  return result.accessToken;
-}
-
-/** Human-readable account label for command output. */
-export function displayName(result: AuthenticationResult): string {
-  return result.account?.name ?? result.account?.username ?? "(unknown account)";
 }

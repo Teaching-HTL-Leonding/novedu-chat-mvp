@@ -1,19 +1,19 @@
 // @vitest-environment node
 
-import type { Session } from "next-auth";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Session } from "@/lib/session";
 
 // `lib/student-mode.ts` holds THE teacher rule — "real teacher AND not
 // simulating a student" — that every teacher gate in the app derives from
-// (AGENTS.md). It has exactly two I/O seams: the session (`@/auth`) and the
+// (AGENTS.md). It has exactly two I/O seams: the session (`@/lib/session`) and the
 // student-mode cookie (`next/headers`); both are stubbed here so the rule itself
 // runs for real.
 
-const auth = vi.hoisted(() => vi.fn());
+const getSession = vi.hoisted(() => vi.fn());
 const requireTeacher = vi.hoisted(() => vi.fn());
 const cookies = vi.hoisted(() => vi.fn());
 
-vi.mock("@/auth", () => ({ auth, requireTeacher }));
+vi.mock("@/lib/session", () => ({ getSession, requireTeacher }));
 vi.mock("next/headers", () => ({ cookies }));
 
 import { studentModeCookies } from "@/tests/mocks/student-mode-cookies";
@@ -96,15 +96,15 @@ describe("effectiveTeacherForSession (the rule's boolean half)", () => {
     await expect(effectiveTeacherForSession(null)).resolves.toBe(false);
   });
 
-  it("does NOT call auth() — it uses the session the caller already has", async () => {
+  it("does NOT call getSession() — it uses the session the caller already has", async () => {
     await effectiveTeacherForSession(TEACHER);
-    expect(auth).not.toHaveBeenCalled();
+    expect(getSession).not.toHaveBeenCalled();
   });
 });
 
 describe("getTeacherView (the same rule, over the session it fetches itself)", () => {
   it("reports a plain teacher as effective", async () => {
-    auth.mockResolvedValue(TEACHER);
+    getSession.mockResolvedValue(TEACHER);
     await expect(getTeacherView()).resolves.toEqual({
       realTeacher: true,
       studentMode: false,
@@ -113,7 +113,7 @@ describe("getTeacherView (the same rule, over the session it fetches itself)", (
   });
 
   it("reports a simulating teacher as real-but-not-effective", async () => {
-    auth.mockResolvedValue(TEACHER);
+    getSession.mockResolvedValue(TEACHER);
     setStudentMode(true);
     await expect(getTeacherView()).resolves.toEqual({
       realTeacher: true,
@@ -123,7 +123,7 @@ describe("getTeacherView (the same rule, over the session it fetches itself)", (
   });
 
   it("never reports studentMode for a non-teacher who set the cookie", async () => {
-    auth.mockResolvedValue(STUDENT);
+    getSession.mockResolvedValue(STUDENT);
     setStudentMode(true);
     await expect(getTeacherView()).resolves.toEqual({
       realTeacher: false,
@@ -133,14 +133,14 @@ describe("getTeacherView (the same rule, over the session it fetches itself)", (
   });
 
   it("treats a missing session as a non-teacher", async () => {
-    auth.mockResolvedValue(null);
+    getSession.mockResolvedValue(null);
     await expect(getTeacherView()).resolves.toMatchObject({ effectiveTeacher: false });
   });
 });
 
 describe("the shorthands still gate on the effective status", () => {
   it("isEffectiveTeacher follows getTeacherView", async () => {
-    auth.mockResolvedValue(TEACHER);
+    getSession.mockResolvedValue(TEACHER);
     await expect(isEffectiveTeacher()).resolves.toBe(true);
     setStudentMode(true);
     await expect(isEffectiveTeacher()).resolves.toBe(false);
@@ -153,15 +153,11 @@ describe("the shorthands still gate on the effective status", () => {
     await expect(requireEffectiveTeacher()).rejects.toThrow(/student mode/i);
   });
 
-  it("requireTeacherUserId returns the oid, or a typed refusal", async () => {
+  it("requireTeacherUserId returns the user id, or a typed refusal", async () => {
     requireTeacher.mockResolvedValue(TEACHER);
     await expect(requireTeacherUserId()).resolves.toEqual({ ok: true, userId: "u1" });
 
     setStudentMode(true);
-    await expect(requireTeacherUserId()).resolves.toEqual({ ok: false, reason: "not-teacher" });
-
-    setStudentMode(false);
-    requireTeacher.mockResolvedValue({ user: { isTeacher: true } } as unknown as Session);
-    await expect(requireTeacherUserId()).resolves.toEqual({ ok: false, reason: "no-user-id" });
+    await expect(requireTeacherUserId()).resolves.toEqual({ ok: false });
   });
 });

@@ -37,20 +37,10 @@ beforeEach(() => {
 
 describe("the teacher gate", () => {
   it("refuses a non-teacher (student mode included) without minting", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "not-teacher" });
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
     const result = await mintCodingKeyAction(CODE);
     expect(result).toEqual({ ok: false, message: "Only teachers can request a key here." });
     expect(mocks.getCode).not.toHaveBeenCalled();
-    expect(mocks.getOrCreateCodingKey).not.toHaveBeenCalled();
-  });
-
-  it("refuses a session with no user id — there is nothing to attribute the key to", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false, reason: "no-user-id" });
-    const result = await mintCodingKeyAction(CODE);
-    expect(result).toEqual({
-      ok: false,
-      message: "Your session carries no user id — sign in again.",
-    });
     expect(mocks.getOrCreateCodingKey).not.toHaveBeenCalled();
   });
 });

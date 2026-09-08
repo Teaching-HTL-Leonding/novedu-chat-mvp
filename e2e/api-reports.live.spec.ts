@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { mintToken } from "./api-auth.utils";
+import { mintSessionToken } from "./api-auth.utils";
 import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
 
 // @live-db lifecycle of the /api/reports bearer channel over real HTTP against
@@ -8,7 +8,7 @@ import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
 // then the TEACHER drives the three bearer routes — GET /api/reports finds it →
 // GET /api/reports/<id> returns it with the embedded transcript → POST
 // /api/reports/resolve stamps it → GET /api/reports?status=resolved shows it
-// resolved by the teacher token's oid. It needs the real database (minted code +
+// resolved by the teacher principal. It needs the real database (minted code +
 // the written novedu_reports row + DB-side filtering) but NEVER the LLM: a report
 // can reference a ZERO-MESSAGE thread by design, so the chat page only renders and
 // nothing calls the model. Hence @live-db (NOT @live-llm), running in CI against
@@ -16,11 +16,11 @@ import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
 //
 // The default chromium project runs as the STUDENT (its storageState), which files
 // the report; the API is driven with an explicitly minted TEACHER bearer token
-// (real env issuer/audience, e2e signing key — like api-management.live.spec.ts).
+// (a real better-auth session row — like api-management.live.spec.ts).
 // The `request` fixture may carry the student's cookies, but the bearer routes are
 // proxy-excluded and self-gate on the token, so cookies are ignored on this path.
 // The code is minted with created_by = "e2e-test-suite" (mintTutorCode), NOT the
-// teacher token's oid, so the API is always queried with mine=0 to defeat the
+// teacher principal, so the API is always queried with mine=0 to defeat the
 // "Only my codes" default filter.
 
 // Dev compilation of /[code] + the routes + DB round-trips; a report references a
@@ -73,11 +73,11 @@ test("file a chat report through the UI, then list → show → resolve it over 
   // TEACHER — drive the bearer API over HTTP with a minted teacher token.
   // ---------------------------------------------------------------------------
   const headers = {
-    authorization: `Bearer ${await mintToken({ teacher: true, name: "E2E Api Teacher", ttlSeconds: 600 })}`,
+    authorization: `Bearer ${await mintSessionToken({ teacher: true })}`,
   };
 
-  // LIST: mine=0 (the code's creator is the e2e mint identity, not the teacher
-  // token's oid), q=marker narrows the DB-side search to this run's row.
+  // LIST: mine=0 (the code's creator is the e2e mint identity, not the
+  // teacher principal), q=marker narrows the DB-side search to this run's row.
   const listRes = await request.get(`/api/reports?mine=0&q=${encodeURIComponent(marker)}`, {
     headers,
   });
@@ -105,7 +105,7 @@ test("file a chat report through the UI, then list → show → resolve it over 
   expect(detail).toMatchObject({ id, kind: "chat", code });
   expect(Array.isArray(detail.messages)).toBe(true);
 
-  // RESOLVE: bulk-by-id, stamps resolved_at + resolved_by = the teacher token oid.
+  // RESOLVE: bulk-by-id, stamps resolved_at + resolved_by = the teacher principal.
   const resolveRes = await request.post("/api/reports/resolve", {
     headers,
     data: { ids: [id] },
@@ -123,6 +123,6 @@ test("file a chat report through the UI, then list → show → resolve it over 
   const resolvedReport = resolvedList.find((r: { id: string }) => r.id === id);
   expect(resolvedReport, "the report now appears in the resolved list").toBeDefined();
   expect(resolvedReport.resolvedAt).not.toBeNull();
-  // Attributed to the authenticated teacher — the token's oid.
-  expect(resolvedReport.resolvedBy).toBe("e2e-api-oid");
+  // Attributed to the authenticated teacher — the bearer session's principal.
+  expect(resolvedReport.resolvedBy).toBe("e2e-api-teacher");
 });

@@ -1,8 +1,8 @@
-import { auth } from "@/auth";
 import { AccessDenied } from "@/components/notice";
 import { Main } from "@/components/page-main";
 import { foundryConfigured } from "@/lib/llm/foundry-endpoint";
 import { openrouterConfigured } from "@/lib/llm/openrouter-endpoint";
+import { getSession } from "@/lib/session";
 import { getTeacherView } from "@/lib/student-mode";
 import { getBuildInfo } from "@/lib/version";
 import { HealthDashboard } from "./health-dashboard";
@@ -24,11 +24,9 @@ export default async function HealthPage() {
     );
   }
 
-  const session = await auth();
+  const session = await getSession();
   const userLabel = session?.user
-    ? [session.user.name, session.user.preferredUsername ?? session.user.email]
-        .filter(Boolean)
-        .join(" — ")
+    ? [session.user.name, session.user.email].filter(Boolean).join(" — ")
     : "Not signed in";
 
   return (

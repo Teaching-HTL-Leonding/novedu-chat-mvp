@@ -1,13 +1,7 @@
 // @vitest-environment node
-// jose's WebCrypto signing rejects jsdom-realm Uint8Arrays, and this route is
-// server-only anyway.
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { exportJWK, generateKeyPair, SignJWT } from "jose";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The bearer file-list route: real auth gate (local-JWKS-minted tokens), mocked
+// The bearer file-list route: real auth gate over a stubbed `getSession`, mocked
 // store. Pins the 401/403 matrix, the /files page's filter parsing (mine
 // default ON), the 503 mapping, and the wire shape (public download url,
 // createdAt = the active version's validFrom, no content).
@@ -24,45 +18,20 @@ vi.mock("@/lib/file-store", async (importOriginal) => {
 });
 vi.mock("@/lib/app-origin", () => ({ resolveAppOriginOr: mocks.resolveAppOriginOr }));
 
-import { resetApiAuthForTests } from "@/lib/api-auth";
+vi.mock("@/auth", () => ({ auth: { api: { getSession: vi.fn() } } }));
+
+import { auth } from "@/auth";
 import { unpagedResult } from "@/lib/db/paging";
+import { bearerSession } from "@/tests/mock-auth-session";
 import { GET } from "./route";
 
-const TENANT_ID = "11111111-2222-3333-4444-555555555555";
-const CLIENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
-const TEACHER_GROUP_ID = "99999999-8888-7777-6666-555555555555";
-const KID = "test-signing-key";
-
-let privateKey: CryptoKey;
-
-beforeAll(async () => {
-  const pair = await generateKeyPair("RS256");
-  privateKey = pair.privateKey;
-  const jwk = await exportJWK(pair.publicKey);
-  const jwksPath = join(mkdtempSync(join(tmpdir(), "api-files-test-")), "jwks.json");
-  writeFileSync(jwksPath, JSON.stringify({ keys: [{ ...jwk, kid: KID, alg: "RS256" }] }));
-
-  vi.stubEnv("API_AUTH_JWKS_PATH", jwksPath);
-  vi.stubEnv("AZURE_TENANT_ID", TENANT_ID);
-  vi.stubEnv("AZURE_CLIENT_ID", CLIENT_ID);
-  vi.stubEnv("TEACHER_GROUP_ID", TEACHER_GROUP_ID);
-  resetApiAuthForTests();
-});
+const getSession = vi.mocked(auth.api.getSession);
 
 async function mint(teacher = true): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  return new SignJWT({
-    scp: "cli.access",
-    oid: "teacher-oid-1",
-    name: "Test Teacher",
-    groups: teacher ? [TEACHER_GROUP_ID] : [],
-  })
-    .setProtectedHeader({ alg: "RS256", kid: KID })
-    .setIssuer(`https://login.microsoftonline.com/${TENANT_ID}/v2.0`)
-    .setAudience(CLIENT_ID)
-    .setIssuedAt(now)
-    .setExpirationTime(now + 300)
-    .sign(privateKey);
+  getSession.mockResolvedValue(
+    bearerSession({ id: "teacher-oid-1", name: "Test Teacher", isTeacher: teacher }),
+  );
+  return "session-token";
 }
 
 async function getRequest(query = "", token?: string): Promise<Response> {
@@ -75,6 +44,8 @@ async function getRequest(query = "", token?: string): Promise<Response> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  getSession.mockReset();
+  getSession.mockResolvedValue(null);
   mocks.listFiles.mockResolvedValue(
     unpagedResult([
       {
