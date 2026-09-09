@@ -1,6 +1,7 @@
 import {
   checkDb,
   checkFoundry,
+  checkImageStorage,
   checkOpenRouter,
   checkScch,
   resolveDbHost,
@@ -22,6 +23,7 @@ const PROBES = {
   scch: checkScch,
   foundry: checkFoundry,
   openrouter: checkOpenRouter,
+  images: checkImageStorage,
   "db-host": resolveDbHost,
   "scch-host": resolveScchHost,
   "foundry-host": resolveFoundryHost,

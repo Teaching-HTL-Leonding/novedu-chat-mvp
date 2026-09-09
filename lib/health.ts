@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { mastra } from "@/app/mastra";
 import { databaseHost } from "@/lib/db/pool";
+import { verifyImageRoot } from "@/lib/image-fs";
 import {
   foundryBearerToken,
   foundryConfigured,
@@ -136,6 +137,28 @@ export async function checkOpenRouter(): Promise<HealthIndicator> {
     if (!res.ok) return { ok: false, detail: `Model listing failed (HTTP ${res.status}).` };
     const json = (await res.json()) as { data?: { id: string }[] };
     return { ok: true, detail: `${json.data?.length ?? 0} models available.` };
+  } catch (e) {
+    return { ok: false, detail: errorMessage(e) };
+  }
+}
+
+/**
+ * Verifies the configured image storage root (`IMAGE_STORAGE_ROOT`): present,
+ * a directory, carrying the exact sentinel bytes, with a writable `images/`
+ * subdirectory (`verifyImageRoot`, `lib/image-fs.ts`). Never throws; `detail`
+ * always names the root path so a reused dev server with the wrong root is
+ * diagnosable from this probe alone.
+ */
+export async function checkImageStorage(): Promise<HealthIndicator> {
+  try {
+    const check = await withTimeout(verifyImageRoot(), "Image root check", TIMEOUT_MS);
+    if (check.ok) {
+      return { ok: true, detail: `Root ${check.root} — sentinel verified, writable.` };
+    }
+    if (check.reason === "unset") {
+      return { ok: false, detail: "IMAGE_STORAGE_ROOT is not set." };
+    }
+    return { ok: false, detail: `Root ${check.root}: ${check.detail}` };
   } catch (e) {
     return { ok: false, detail: errorMessage(e) };
   }

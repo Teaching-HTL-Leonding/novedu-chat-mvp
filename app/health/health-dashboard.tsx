@@ -148,6 +148,7 @@ export function HealthDashboard({
   openrouterConfigured: boolean;
 }) {
   const db = useProbe("db", indicatorError);
+  const images = useProbe("images", indicatorError);
   const scch = useProbe("scch", indicatorError);
   const dbHost = useProbe("db-host", hostError);
   const scchHost = useProbe("scch-host", hostError);
@@ -168,6 +169,10 @@ export function HealthDashboard({
           <div className={ROW}>
             <dt className={TERM}>Database connection</dt>
             <StatusValue state={db} testId="health-db" />
+          </div>
+          <div className={ROW}>
+            <dt className={TERM}>Image storage root</dt>
+            <StatusValue state={images} testId="health-images" />
           </div>
           <div className={ROW}>
             <dt className={TERM}>SCCH models</dt>

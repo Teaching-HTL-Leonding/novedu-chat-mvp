@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <title>evil fixture</title>
+  <rect width="64" height="64" fill="#000000" />
+  <script>
+    try {
+      localStorage.setItem("pwned", "1");
+    } catch {}
+    try {
+      document.title = "pwned";
+    } catch {}
+    try {
+      if (window.opener) {
+        window.opener.postMessage("pwned", "*");
+      }
+    } catch {}
+  </script>
+</svg>

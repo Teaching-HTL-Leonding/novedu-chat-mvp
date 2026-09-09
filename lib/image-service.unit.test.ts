@@ -163,7 +163,7 @@ describe("createImageForUser — writing the object", () => {
       mime: "image/jpeg",
       content: content(10, "image/jpeg"),
     });
-    const [key, , maxBytes] = mocks.writeNewObject.mock.calls[0];
+    const [key, , maxBytes] = mocks.writeNewObject.mock.calls[0] ?? [];
     expect(key).toMatch(/^[0-9a-f-]{36}\.jpg$/);
     expect(key).not.toContain("diagram");
     expect(maxBytes).toBe(MAX_IMAGE_BYTES);
@@ -260,8 +260,8 @@ describe("createImageForUser — writing the object", () => {
     });
     expect(result).toMatchObject({ ok: true, byteSize: 99 });
     expect(mocks.writeNewObject).toHaveBeenCalledTimes(2);
-    const [first] = mocks.writeNewObject.mock.calls[0];
-    const [second] = mocks.writeNewObject.mock.calls[1];
+    const [first] = mocks.writeNewObject.mock.calls[0] ?? [];
+    const [second] = mocks.writeNewObject.mock.calls[1] ?? [];
     expect(second).not.toBe(first);
     expect(mocks.createImage).toHaveBeenCalledWith(
       expect.objectContaining({ blobPath: second }),
@@ -356,7 +356,7 @@ describe("createImageForUser — insert outcome and cleanup", () => {
       reason: "conflict",
       message: expect.stringMatching(/already exists/i),
     });
-    const [key] = mocks.writeNewObject.mock.calls[0];
+    const [key] = mocks.writeNewObject.mock.calls[0] ?? [];
     expect(mocks.deleteObject).toHaveBeenCalledTimes(1);
     expect(mocks.deleteObject).toHaveBeenCalledWith(key);
   });
@@ -373,7 +373,7 @@ describe("createImageForUser — insert outcome and cleanup", () => {
       reason: "unavailable",
       message: expect.stringMatching(/could not be stored/i),
     });
-    const [key] = mocks.writeNewObject.mock.calls[0];
+    const [key] = mocks.writeNewObject.mock.calls[0] ?? [];
     expect(mocks.deleteObject).toHaveBeenCalledWith(key);
     expect(mocks.recordError).not.toHaveBeenCalled();
   });
@@ -387,7 +387,7 @@ describe("createImageForUser — insert outcome and cleanup", () => {
     });
     expect(result).toMatchObject({ ok: false, reason: "unavailable" });
     expect(mocks.deleteObject).not.toHaveBeenCalled();
-    const [key] = mocks.writeNewObject.mock.calls[0];
+    const [key] = mocks.writeNewObject.mock.calls[0] ?? [];
     expect(mocks.recordError).toHaveBeenCalledWith(
       expect.any(Error),
       expect.objectContaining({ "novedu.area": "image-service", "novedu.image.key": key }),

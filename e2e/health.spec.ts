@@ -1,6 +1,8 @@
 import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
 import { E2E_TEACHER, TEACHER_STORAGE_STATE } from "./auth.constants";
+import { E2E_IMAGE_ROOT } from "./image-root.constants";
+import { assertServerImageRoot } from "./image-root.utils";
 
 // Read the dev server's .env the way Next does, so the optional-provider
 // assertions below mirror exactly what the server sees (AZURE_FOUNDRY_ENDPOINT /
@@ -38,6 +40,22 @@ test.describe("as a teacher", () => {
   // Live dependency probes (DB round-trip, SCCH fetch) + dev compilation.
   test.setTimeout(60_000);
 
+  // Untagged/hermetic: the image storage root is local filesystem state the
+  // `image-root` setup project provisions on every run (in CI too), unlike the
+  // DB/SCCH probes below. Also doubles as the harness's own sanity check that
+  // the dev server under test booted with e2e/.image-root, not some other root
+  // (the actionable failure mode assertServerImageRoot exists for).
+  test("resolves the image storage root probe against the harness root", async ({ request }) => {
+    // Asserts the root itself AND (via the detail text it checks) that the
+    // probe reports OK — a mismatched or unprovisioned root fails this first,
+    // with the actionable message, before the plain OK assertion below runs.
+    await assertServerImageRoot(request, E2E_IMAGE_ROOT);
+
+    const res = await request.get("/api/health?probe=images");
+    const body = (await res.json()) as { ok: boolean };
+    expect(body.ok).toBe(true);
+  });
+
   // @live: probes hit the real database + SCCH endpoint — excluded in CI (test:e2e:ci).
   test("renders the shell immediately and resolves all probes", {
     tag: ["@live", "@live-llm"],
@@ -52,8 +70,11 @@ test.describe("as a teacher", () => {
     await expect(page.getByTestId("health-teacher")).toHaveText("Yes");
 
     // Probe rows resolve asynchronously. DB and SCCH hit the real dependencies
-    // configured in .env — both must be reachable from the dev machine.
+    // configured in .env — both must be reachable from the dev machine. The
+    // image storage root is local (provisioned by the `image-root` setup
+    // project), so it resolves OK here too, same as the dedicated test above.
     await expect(page.getByTestId("health-db")).toContainText("OK", { timeout: 20_000 });
+    await expect(page.getByTestId("health-images")).toContainText("OK", { timeout: 20_000 });
     await expect(page.getByTestId("health-scch")).toContainText("OK", { timeout: 20_000 });
     await expect(page.getByTestId("health-scch")).toContainText("models available");
 
