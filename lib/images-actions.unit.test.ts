@@ -144,7 +144,7 @@ describe("uploadImage — forwarding and result", () => {
 
   it("omits credit when the form carries none", async () => {
     await uploadImage(uploadForm());
-    const [, input] = mocks.createImageForUser.mock.calls[0];
+    const [, input] = mocks.createImageForUser.mock.calls[0] ?? [];
     expect(input.credit).toBeUndefined();
   });
 
