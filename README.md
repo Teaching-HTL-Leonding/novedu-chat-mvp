@@ -188,9 +188,7 @@ Notes:
   unset (or unprovisioned) means the app still boots, logs a warning, and the
   `/images` upload/list surface reports "unavailable" until it is set AND
   `npm run images:init-root` has been run against it once. The app never creates
-  the directory or its sentinel itself. `IMAGE_STORAGE_ACCOUNT` /
-  `IMAGE_BLOB_CONTAINER` are NOT app settings — they matter only to the
-  operator-run copy script (`scripts/images/README.md`). See `docs/images.md`.
+  the directory or its sentinel itself. See `docs/images.md`.
 - `DATABASE_URL` is **required to chat**: codes and the agents' memory live in the
   database, so creating/opening an activity fails if it is unset (the rest of the app
   still boots; activity validation without the app is the CLI's `validate` command).

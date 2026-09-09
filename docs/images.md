@@ -419,10 +419,6 @@ must confirm the container's `nextjs` user (uid 1001) can write
 ignores `chmod`/`chown`, so this is a platform check, not something the app can
 assert for itself.
 
-`IMAGE_STORAGE_ACCOUNT` and `IMAGE_BLOB_CONTAINER` are not app settings;
-they matter only to the operator-run copy script (`scripts/images/README.md`),
-which is unrelated to what the running app reads.
-
 The root check runs at server startup (`instrumentation.ts`, right after
 telemetry init and BEFORE the `DATABASE_URL` bail, so it always logs
 independent of the database) — logged, never fatal — and is exposed as the
@@ -430,15 +426,6 @@ independent of the database) — logged, never fatal — and is exposed as the
 teacher-only `GET /api/health?probe=images`). A running server with an unset,
 missing, or invalid root keeps serving every other feature; image operations
 answer `unavailable` until an operator fixes the mount.
-
-## Data migration
-
-The one-time copy from the previous Azure Blob Storage layout to the
-filesystem adapter's `images/<key>/content` layout — an operator-run script
-executed by hand with `az login`, never imported by the app or bundled into
-the CLI — is documented in full in `scripts/images/README.md` (what it does,
-the manifest and status codes, data-safety rules, required Azure roles, the
-stopped-app cutover order, and rollback). Run it with `npm run images:migrate`.
 
 ## Tests
 
@@ -503,6 +490,3 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   opt-in smoke test against a REAL mounted Azure Files share
   (`IMAGE_SMOKE_ROOT`, default `/novedu-files`); skips cleanly when unset,
   never runs in CI, and is the only image test that needs real Azure Files.
-- `scripts/images/core.unit.test.ts` and `e2e/image-migration-rows.live.spec.ts`
-  — the migration tool's decision logic and row classification; see
-  `scripts/images/README.md`.
