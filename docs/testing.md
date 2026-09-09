@@ -9,9 +9,10 @@ tagging one `@live`, or changing the CI test jobs.
 Prefer fast, deterministic, **secret-free** unit/component tests that run in CI.
 Reserve full-stack e2e for what genuinely needs the real wired-together app. A
 test earns an `@live` tag **only** if its assertion truly needs the live
-database, the SCCH LLM, or real Azure Blob Storage — not merely because the code
-path happens to sit behind one. If the logic short-circuits before the runtime is
-built (the chat gate) or is pure-prop rendering, it belongs in a fast test.
+database, the SCCH LLM, or a real mounted Azure Files share — not merely because
+the code path happens to sit behind one. If the logic short-circuits before the
+runtime is built (the chat gate) or is pure-prop rendering, it belongs in a fast
+test.
 
 Postgres is implied at every tier, not just `@live-db`: sessions are
 database-backed (`novedu_session`), so the `setup` project
@@ -65,22 +66,27 @@ Four kinds of e2e, by the external infra they need beyond that baseline:
   knowingly gives up).
   (Such a test is tagged `@live-llm` ONLY — the DB it also uses is implied — so a
   `--grep @live-db` run never selects it.)
-- **`@live-storage` e2e** — need real **Azure Blob Storage** (the image subsystem
-  in `e2e/image-management.live.spec.ts`): minting User-Delegation SAS URLs,
-  PUT/GET-ing actual blobs, plus the `novedu_images` metadata rows. The storage
-  account is reached with the passwordless data-store credential (`az login`) and
-  cannot be containerized in fork CI, so these are **excluded from CI** and run
-  locally only — exactly like `@live-llm`. (Such a test is tagged `@live-storage`
-  ONLY — the DB it also uses is implied — so a `--grep @live-db` run never selects
-  it.)
+- **`@live-storage` e2e** — need a REAL **mounted Azure Files share**
+  (`e2e/image-mount-smoke.live.spec.ts`, gated on `IMAGE_SMOKE_ROOT`): the one
+  manual, opt-in smoke proving the app-hosted image subsystem works against the
+  actual SMB mount rather than a temporary filesystem root. It cannot be
+  containerized in fork CI (it needs the real mounted share, e.g.
+  `/novedu-files`), so it is **excluded from CI** and run locally only —
+  exactly like `@live-llm`. The rest of the image subsystem's wired coverage
+  (`e2e/image-management.live.spec.ts` — upload, list, resolve, delete, the
+  shared-authenticated-asset and SVG-safety policies) needs no real mount at
+  all: it runs against a temporary filesystem root the harness provisions
+  itself, so it is tagged `@live-db` and **runs in CI**. (A `@live-storage` test
+  is tagged that ONLY — the DB it also uses is implied — so a `--grep @live-db`
+  run never selects it.)
 
 Every live test carries **`@live`** (so the local `--grep @live` smoke runs them
 all) **plus exactly one** of `@live-db` / `@live-llm` / `@live-storage`. CI runs
 hermetic + `@live-db` and excludes `@live-llm` and `@live-storage` via
 `npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage"`). Real
-credentials (Azure Postgres / SCCH / Azure Blob Storage) must never run on a fork
-`pull_request`; the CI container's Postgres password is a non-secret dummy — see
-`docs/ci-security.md`.
+credentials (Azure Postgres / SCCH / a real mounted Azure Files share) must
+never run on a fork `pull_request`; the CI container's Postgres password is a
+non-secret dummy — see `docs/ci-security.md`.
 
 ## Layers & tools
 
@@ -93,7 +99,7 @@ credentials (Azure Postgres / SCCH / Azure Blob Storage) must never run on a for
 | Hermetic e2e | Playwright | `e2e/*.spec.ts` (untagged) | dev server + the Postgres it boots against (session minting only) | ✅ |
 | `@live-db` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-db` | same Postgres, read/written beyond session minting (container in CI / Azure Postgres local) | ✅ |
 | `@live-llm` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-llm` | real DB + SCCH LLM | ❌ local only |
-| `@live-storage` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-storage` | real DB + Azure Blob Storage | ❌ local only |
+| `@live-storage` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-storage` | real DB + a mounted Azure Files share | ❌ local only |
 
 - The `component` project pins **`maxWorkers`** (≤ 4) and its own
   `sequence.groupOrder`. Browser mode's default of `min(12, cpus - 1)` tabs
@@ -160,8 +166,9 @@ id because those specs drive the live SCCH endpoint.
 | `npm run test` | Vitest `unit` + `component` (`test:unit` / `test:component` for one) |
 | `npm run test:cli` | Builds the CLI, then its integration suite (`cli/test/*`) |
 | `npm run test:e2e` | Playwright, all specs (needs `az login` + `.env` for `@live`) |
-| `npm run test:e2e:ci` | Playwright minus `@live-llm` — hermetic + `@live-db` (CI runs this) |
+| `npm run test:e2e:ci` | Playwright minus `@live-llm`/`@live-storage` — hermetic + `@live-db` (CI runs this) |
 | `npm run test:e2e:db` | Playwright `@live-db` only (against a local Postgres container) |
+| `npm run test:e2e:storage` | Playwright `@live-storage` only — the manual mounted-share smoke, skips cleanly without `IMAGE_SMOKE_ROOT` |
 | `npm run qa` | `check` + `typecheck` + `test` + `test:cli` + `build` + `docs:build` (`qa:e2e` adds e2e) |
 
 Run the local-only smoke (with `az login` done and `.env` populated):
@@ -174,9 +181,11 @@ The kept `@live` set is deliberately small. The **`@live-db`** ones — a valid 
 opens the chat, a mid-session window-close keeps the chat on screen, a teacher
 creating a code, the file CRUD lifecycle plus the list **multi-delete** ("Delete
 Selected" over several files) (`e2e/file-and-tutor-code-crud.spec.ts`, which writes
-the real `novedu_files` table), and the **database auth-matrix**
-(`e2e/db-auth.live.spec.ts`, below) — also run **in CI** against a container (next
-section). The **`@live-llm`** ones — the text round-trip, the vision round-trip,
+the real `novedu_files` table), the **image lifecycle**
+(`e2e/image-management.live.spec.ts`, which writes `novedu_images` against a
+temporary filesystem root — no real Azure Files needed), and the **database
+auth-matrix** (`e2e/db-auth.live.spec.ts`, below) — also run **in CI** against a
+container (next section). The **`@live-llm`** ones — the text round-trip, the vision round-trip,
 the health probe, the coding-agent round-trip, the eval feedback-judge probes — stay
 **local** (the SCCH endpoint is geo-blocked to Austria), as does the
 **reasoning-visibility** set (`e2e/reasoning-visibility.spec.ts`): it reads the
@@ -218,6 +227,19 @@ rest of `mastra.*`. SCCH is intentionally unset — the app boots without models
 and the DB-only specs never call the LLM. The `db-auth` Entra test detects the
 password-carrying URL and **skips** in CI (CI already covers the password path
 itself through every other `@live-db` spec).
+
+The `@live-db` image lifecycle (`e2e/image-management.live.spec.ts`) needs one
+more piece of infra, also provisioned for free: the `setup` project's second
+spec, `e2e/image-root.setup.ts`, wipes and re-provisions a repo-local directory
+(`e2e/.image-root`, gitignored, mirroring `e2e/.auth/`) via the same
+`initImageRoot` helper `npm run images:init-root` uses, and
+`playwright.config.ts` points the `npm run dev` webServer's
+`IMAGE_STORAGE_ROOT` at it — so the image lifecycle needs no Azure Files mount
+in CI or locally. A dev server reused from an earlier run (`reuseExistingServer`)
+keeps whatever root IT booted with; `e2e/image-root.utils.ts`'s
+`assertServerImageRoot`, called at the top of every image-storage spec, fails
+with an actionable message instead of a confusing 404/503 when the running
+server's root does not match.
 
 Reproduce it locally against a throwaway container:
 

@@ -27,6 +27,8 @@ node_modules/
 /blob-report/
 /playwright/.cache/
 /e2e/.auth/
+/e2e/.image-root/
+/scripts/images/manifest-*.json
 
 # next.js
 /.next/

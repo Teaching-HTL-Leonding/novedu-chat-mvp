@@ -29,7 +29,7 @@ The highest-cost rules to break. They always apply, regardless of subsystem; the
 - All other CLI/API routes are **session-token bearer**: proxy-excluded per-path and gated **only** by `requireBearerUser`/`requireBearerTeacher` (`lib/api-auth.ts`) over `auth.api.getSession` — the session resolved on every request, the role is the server-owned `novedu_user.is_teacher`, **no student mode on this channel**; auth never enters the `lib/*-service.ts` pipelines. `docs/api.md` lists every route.
 - **LLM connectivity is server-only** behind `lib/llm/` — the provider branch exists ONLY in `resolveLanguageModel`, `resolveChatEndpoint`, and `providerUnavailableReason`; endpoints, keys, and Entra tokens never reach the browser. Foundry auth is passwordless Entra — never `DefaultAzureCredential`, never an API key. A code's **LLM override pair** is both-or-nothing via `effectiveLlm`, availability-gated on the effective provider (`docs/ai-models.md`).
 - A thinking model's **reasoning is teacher-only on the live chat**: the `/api/copilotkit` route picks `ReasoningStrippingRunner` unless `effectiveTeacherForSession()` proves an effective teacher, so `REASONING_*` frames are never written to a student's stream. **Fails closed**; view-as-student gets a student's stream (`docs/chat.md`).
-- Image bytes use passwordless **User-Delegation-SAS** — no app route ever serves bytes; SVG renders only via `<img src>` on the blob origin, never inline markup (`docs/images.md`).
+- Image bytes are served ONLY by the cookie-session `GET /api/image-content/<id>`, which re-checks the active row on every request (incl. a `304`), sends `nosniff` + a sandboxing `Content-Security-Policy` on every response, and applies NO further authorization beyond a live session — no `checkCode()`, no thread token; teacher-hosted images are shared authenticated assets, not per-code resources. SVG renders only via `<img src>`, never inline markup (`docs/images.md`).
 - Telemetry carries **no** message / prompt / PII content (`docs/telemetry.md`).
 - Usage metering writes two **independent** hourly buckets — `usage_by_code` (no user) and `usage_by_user` (no code). **Never** a `(user × code)` row; ids + counts only, never content (`docs/usage-metering.md`).
 - Fork-PR CI stays **secret-free**; never add `pull_request_target` (`docs/ci-security.md`).
@@ -130,9 +130,9 @@ Read before touching: `app/files/**`, `app/api/files/**`, `lib/file-store.ts`, `
 
 ### App-hosted images → `docs/images.md`
 
-Read before touching: `app/images/**`, `app/api/images/**`, `lib/image-*.ts`, `components/content-image.tsx`, `novedu_images`.
+Read before touching: `app/images/**`, `app/api/images/**`, `app/api/image-content/**`, `lib/image-*.ts`, `components/content-image.tsx`, `novedu_images`.
 
-- Upload is confirm-only (SAS → PUT → confirm); retrieval is direct-to-blob via short-lived SAS — do NOT add an `/api/images` byte route.
+- Bytes live under the operator-provisioned `IMAGE_STORAGE_ROOT`; the adapter (`lib/image-fs.ts`) never creates the root, `images/`, or its sentinel — no fallback directory, ever. Upload is ONE request per channel (server action / bearer multipart POST) — no slot, no confirm step. `GET /api/image-content/<id>` is the one deliberate cookie-session transport beside `/api/copilotkit` and the teacher-only `/api/health` probe in an otherwise bearer-authenticated API namespace — not a public API exception, and not a precedent for a fourth.
 
 ### Student YAML GUI module → `docs/yaml-gui-student-contribution.md`
 

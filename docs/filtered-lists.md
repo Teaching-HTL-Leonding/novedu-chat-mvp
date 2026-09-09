@@ -376,8 +376,8 @@ href derives from it — never from the URL's `?page=`, which would otherwise of
 address bar until the next click; the content is correct throughout.
 
 Aggregates over the list shrink to the page for free: `/codes` runs
-`getInteractionCounts()` over the 20 visible codes, `/images` mints 20 read-SAS
-tokens.
+`getInteractionCounts()` over the 20 visible codes, `/images` builds 20 content-route
+URLs.
 
 **Select-all stays page-scoped.** `SelectionProvider` gets the rendered rows' ids and
 narrows the selection to them *at render* (not only in the prune effect), so the count

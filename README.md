@@ -30,7 +30,7 @@ Azure Database for PostgreSQL (authenticated via Entra — no password required)
 | **Mastra agents** (`app/mastra/`) | The `tutor`, `quizDiscussion`, and `writing` agents resolve their instructions + model per request and persist conversations via Mastra `Memory`; the server-only `quizEvaluator` grader and the eval agents `evalJudge` + `evalTutor` are never web-reachable by students (their only web callers are the teacher-only `/api/eval/*` routes). Agents are registered in `app/mastra/index.ts`. Storage is **Azure Database for PostgreSQL** via `@mastra/pg`, on the app's one shared pool, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). (The `coding` module has **no** Mastra agent — it is a thin proxy.) |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. See [`docs/chat.md`](docs/chat.md). |
 | **Coding proxy** (`app/api/coding/**`, `lib/coding-proxy.ts`, `lib/coding-key-store.ts`) | A **public**, OpenAI-compatible `POST /api/coding/v1/chat/completions` (plus `GET /api/coding/v1/models` as the sanctioned key-validity check) that authenticates with a **per-user API key** minted on the code's page (`novedu_coding_keys`; key row + code row re-verified on every request), appends the teacher's system prompt, pins the model, and streams the upstream's response straight back. See [`docs/coding.md`](docs/coding.md). |
-| **Images** (`app/images/**`, `lib/image-*.ts`) | Teacher-uploaded images stored in Azure Blob Storage, addressed by passwordless **User-Delegation SAS** (account keys disabled); retrieval is direct-to-blob (no app route serves the bytes). See [`docs/images.md`](docs/images.md). |
+| **Images** (`app/images/**`, `lib/image-*.ts`) | Teacher-uploaded images stored under a configured filesystem root (`IMAGE_STORAGE_ROOT` — an Azure Files mount in production), streamed through the app on upload and served through the app's own cookie-session route `GET /api/image-content/<id>` — no signed URL of any kind, no direct-to-storage traffic. See [`docs/images.md`](docs/images.md). |
 | **Usage metering** (`lib/usage-store.ts`, `app/mastra/usage-exporter.ts`) | Per-hour token / tool-call / activity counts written off the response path into two anonymity-preserving tables (`novedu_usage_by_code`, `novedu_usage_by_user`), surfaced on the teacher `/usage` dashboard. See [`docs/usage-metering.md`](docs/usage-metering.md) and [`docs/dashboard.md`](docs/dashboard.md). |
 | **LLM providers** (`lib/llm/`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | Three OpenAI-compatible upstreams behind one server-only seam: a self-hosted vLLM GPU server ("SCCH", the default) plus two optional ones — **Azure Foundry** when `AZURE_FOUNDRY_ENDPOINT` is set (passwordless Entra auth, no API key) and **OpenRouter** when `OPENROUTER_API_KEY` is set. The activity YAML's `llm:` block picks provider + model + an optional reasoning level, and a code can override the whole block; endpoints, keys, and tokens stay server-side. See [`docs/ai-models.md`](docs/ai-models.md). |
 | **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | **better-auth** with Microsoft Entra ID as the sign-in provider (Next 16 renamed `middleware` → `proxy.ts`, which checks only for a session cookie). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). Sessions are database-backed (`novedu_session`, no cookie cache). See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: the same **session token as a bearer**, obtained by the CLI's own OAuth device flow, validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
@@ -69,8 +69,9 @@ Azure Database for PostgreSQL (authenticated via Entra — no password required)
   **dev/test-only** fallback for environments without Entra — see
   [Storage](#notes--caveats-prototype) below — but **production always uses
   passwordless Entra**.)
-- **Optional:** an **Azure Blob Storage** account (account keys disabled; passwordless
-  User-Delegation SAS) for the image subsystem.
+- **Optional:** a writable directory for the app-hosted image subsystem
+  (`IMAGE_STORAGE_ROOT`) — any ordinary filesystem path works; production mounts
+  an Azure Files share there, but the app itself has no Azure Storage dependency.
 
 ## Configuration (`.env`)
 
@@ -150,13 +151,14 @@ STORAGE_TENANT_ID=your-data-store-tenant-id
 # (The legacy name TUTOR_CODE_ORIGIN is still read as a fallback.)
 CODE_ORIGIN=https://your-public-origin
 
-# --- Images (optional) — Azure Blob Storage for teacher-uploaded images ---
-# The storage account name and container. Both are OPTIONAL and default to the
-# hosted prototype's values (stnoveduchatmvp / novedu-images). Bytes are addressed
-# by passwordless User-Delegation SAS (account keys disabled), reached with the same
-# data-store credential as the database. See docs/images.md.
-IMAGE_STORAGE_ACCOUNT=your-storage-account-name
-IMAGE_BLOB_CONTAINER=your-container-name
+# --- Images (optional) — filesystem root for teacher-uploaded images ---
+# An absolute directory path OUTSIDE the repo (never e2e/.image-root — the
+# Playwright harness wipes that on every run). The app streams upload bytes into
+# this directory and serves them back itself; it never creates the directory or
+# its sentinel file, so run `npm run images:init-root` once against it before
+# using the Images page. Unset => the app boots with a warning and every image
+# operation reports "unavailable" until this is set. See docs/images.md.
+IMAGE_STORAGE_ROOT=/absolute/path/outside/the/repo
 
 # --- Telemetry (optional) — Azure Monitor / Application Insights via OpenTelemetry ---
 # Unset => telemetry is fully OFF (no exporter, no network sink). When set, server
@@ -182,6 +184,13 @@ Notes:
 - `APPLICATIONINSIGHTS_CONNECTION_STRING` is **optional**: unset means telemetry is
   fully off. When set, server telemetry exports to Azure Monitor / App Insights — no
   conversation content is ever sent. See `docs/telemetry.md`.
+- `IMAGE_STORAGE_ROOT` is **optional but expected in every developer's `.env`**:
+  unset (or unprovisioned) means the app still boots, logs a warning, and the
+  `/images` upload/list surface reports "unavailable" until it is set AND
+  `npm run images:init-root` has been run against it once. The app never creates
+  the directory or its sentinel itself. `IMAGE_STORAGE_ACCOUNT` /
+  `IMAGE_BLOB_CONTAINER` are NOT app settings — they matter only to the
+  operator-run copy script (`scripts/images/README.md`). See `docs/images.md`.
 - `DATABASE_URL` is **required to chat**: codes and the agents' memory live in the
   database, so creating/opening an activity fails if it is unset (the rest of the app
   still boots; activity validation without the app is the CLI's `validate` command).
@@ -211,7 +220,7 @@ things. Moving to a new domain therefore means touching all of them:
 | `CODE_ORIGIN` — env / app setting | Origin shown in generated code URLs (`https://<origin>/<code>`) and in the coding endpoint's connection snippet; read by `lib/app-origin.ts` (legacy name `TUTOR_CODE_ORIGIN` still honored). Display-only — falls back to the request's `x-forwarded-host`. |
 | `cli/src/server-url.ts` → `DEFAULT_SERVER` | The CLI's default server. A *default* only: `--server` and `NOVEDU_SERVER` override it per invocation. |
 | `teacher-docs/astro.config.mjs` → `site` | Canonical origin baked into the teacher guide's `llms.txt` links, sitemap and canonical tags. A *build-time* value, which is why it is not shared with the CLI's runtime default. |
-| Blob Storage CORS allowed origins | Browser uploads of teacher images (set in Azure; the current values are listed in `docs/images.md`). |
+| App Service Azure Files path mapping | The `novedu-files` share's mount path (`/novedu-files`) that `IMAGE_STORAGE_ROOT` points at in production — unrelated to the app's own origin, but part of moving the deployment (`docs/images.md`). |
 
 `grep -rn 'novedu\.at'` finds every in-repo occurrence, including the docs prose and
 test fixtures that only mention it as an example.

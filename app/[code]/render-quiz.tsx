@@ -25,8 +25,8 @@ export async function RenderQuiz({ entry, code }: { entry: CodeEntry; code: stri
   }
 
   // Resolve each question's optional content image to a usable URL here, at page
-  // render: hosted images are minted into short-lived read SAS URLs once on the
-  // server so the client runner only ever sees ready-to-render URLs.
+  // render: a hosted image becomes the app's own byte URL for its active version,
+  // so the client runner only ever sees ready-to-render URLs.
   const publicQuiz = toPublicQuiz(loaded.quiz);
   const questions: ResolvedQuizQuestion[] = await Promise.all(
     publicQuiz.questions.map(async ({ image, ...rest }) => {

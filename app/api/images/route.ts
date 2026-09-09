@@ -1,15 +1,17 @@
 import { ApiAuthError, requireBearerTeacher } from "@/lib/api-auth";
-import { mintReadSas } from "@/lib/image-blob";
+import { resolveAppOriginOr } from "@/lib/app-origin";
+import { imageContentPath } from "@/lib/image-ref";
 import { listImages } from "@/lib/image-store";
 import { recordError } from "@/lib/telemetry";
 
 // CLI/API bearer route listing app-hosted images (docs/api.md) with the
 // /images list's filters, keeping this channel's own `mine` param (the page
-// spells that narrowing `?owner=`). Unlike /api/files there is NO
-// public GET under this prefix — the /api/images exclusion in proxy.ts exists
-// only so bearer requests (which carry no Entra session cookie) reach these
-// self-gating handlers. Active versions only; the bytes stay in Blob Storage
-// (no app route ever serves them) — `url` is a short-lived read SAS.
+// spells that narrowing `?owner=`). Unlike /api/files there is NO public GET
+// under this prefix — the /api/images exclusion in proxy.ts exists only so
+// bearer requests (which carry no Entra session cookie) reach these
+// self-gating handlers. Active versions only; `url` is the app's own
+// COOKIE-SESSION byte route, so it opens in a signed-in browser and is not a
+// programmatic download endpoint.
 export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -21,9 +23,9 @@ function json(body: unknown, status: number): Response {
 /**
  * Lists active images: `q` contains-matches the name, `mine` defaults ON
  * (`mine=0` widens to all teachers' images). Bare JSON array, newest first;
- * `url` is a short-lived (~3 h) read SAS straight to the blob — or null when
- * minting fails for that row — and `createdAt` the active version's write time
- * (ISO 8601 UTC).
+ * `id` is the active version's row id, `url` the absolute
+ * `/api/image-content/<id>` link for a signed-in browser, and `createdAt` the
+ * active version's write time (ISO 8601 UTC).
  */
 export async function GET(request: Request) {
   try {
@@ -43,18 +45,20 @@ export async function GET(request: Request) {
       return json({ message: "Images could not be loaded right now. Try again in a moment." }, 503);
     }
 
-    // One bad blob must not fail the whole list — mirror app/images/page.tsx.
-    const rows = await Promise.all(
-      result.rows.map(async (entry) => ({
-        name: entry.name,
-        mimeType: entry.mimeType,
-        byteSize: entry.byteSize,
-        credit: entry.credit,
-        createdBy: entry.createdBy,
-        createdAt: entry.validFrom.toISOString(),
-        url: await mintReadSas(entry.blobPath).catch(() => null),
-      })),
-    );
+    // The one place an image URL is absolute: a CLI prints it for a human to
+    // open. An unknowable origin degrades to the root-relative path rather than
+    // failing the list.
+    const origin = await resolveAppOriginOr("");
+    const rows = result.rows.map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      mimeType: entry.mimeType,
+      byteSize: entry.byteSize,
+      credit: entry.credit,
+      createdBy: entry.createdBy,
+      createdAt: entry.validFrom.toISOString(),
+      url: `${origin}${imageContentPath(entry.id)}`,
+    }));
     return json(rows, 200);
   } catch (error) {
     if (error instanceof ApiAuthError) {

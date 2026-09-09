@@ -17,6 +17,8 @@
     "typecheck": "tsc --noEmit && tsc -p cli --noEmit && npm run typecheck --workspace teacher-docs",
     "db:generate": "drizzle-kit generate",
     "generate:schemas": "tsx scripts/generate-activity-schemas.ts",
+    "images:init-root": "node scripts/init-image-root.mjs",
+    "images:migrate": "tsx scripts/images/migrate-blob-to-files.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run --project unit",
@@ -43,7 +45,6 @@
     "@ai-sdk/openai-compatible": "2.0.72",
     "@azure/identity": "^4.13.2",
     "@azure/monitor-opentelemetry": "^1.19.0",
-    "@azure/storage-blob": "^12.33.0",
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/lang-yaml": "^6.1.3",
     "@copilotkit/react-core": "^1.69.2",
@@ -92,6 +93,8 @@
     }
   },
   "devDependencies": {
+    "@azure/storage-blob": "^12.33.0",
+    "@azure/storage-file-share": "^12.29.0",
     "@biomejs/biome": "2.5.10",
     "@earendil-works/pi-coding-agent": "0.84.3",
     "@playwright/test": "^1.62.1",

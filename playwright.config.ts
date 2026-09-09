@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { STORAGE_STATE } from "./e2e/auth.constants";
 import { FIXTURES_BASE, FIXTURES_PORT } from "./e2e/fixtures.constants";
+import { E2E_IMAGE_ROOT } from "./e2e/image-root.constants";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -16,8 +17,10 @@ export default defineConfig({
     // Creates the two e2e principals in `novedu_user`/`novedu_session` and mints
     // their signed better-auth session cookies into STORAGE_STATE (the app is
     // gated by Entra ID); the chromium project consumes the student one so specs
-    // run authenticated instead of being bounced to /sign-in.
-    { name: "setup", testMatch: /auth\.setup\.ts/ },
+    // run authenticated instead of being bounced to /sign-in. Also provisions
+    // the harness's own image storage root (e2e/image-root.setup.ts) before the
+    // dev server below boots against it.
+    { name: "setup", testMatch: /(auth|image-root)\.setup\.ts/ },
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"], storageState: STORAGE_STATE },
@@ -33,6 +36,12 @@ export default defineConfig({
       url: "http://localhost:3000",
       reuseExistingServer: !process.env.CI,
       timeout: 120 * 1000,
+      // Points the dev server's image storage at the harness root the `setup`
+      // project just provisioned (e2e/image-root.setup.ts), never at whatever
+      // `.env` sets locally. A REUSED server (reuseExistingServer above) keeps
+      // whatever root IT booted with — e2e/image-root.utils.ts's
+      // `assertServerImageRoot` catches that mismatch with an actionable message.
+      env: { ...process.env, IMAGE_STORAGE_ROOT: E2E_IMAGE_ROOT },
     },
     // Serves the on-disk test fixtures over HTTP so specs fetch activity YAML
     // offline. The dev server fetches these URLs server-side, so 127.0.0.1

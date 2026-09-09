@@ -44,6 +44,16 @@
 // (`docs/cli-eval.md`). It defaults to the REAL `cli/package.json` version so an
 // integration run is warning-free; `options.cliVersion` serves a different one so
 // the mismatch warning is testable end to end.
+//
+// `POST /api/images/<name>` fakes the app's ONE-shot multipart image upload
+// (app/api/images/[name]/route.ts): bearer required, exactly one `file` part
+// plus a `mime` field (an optional `credit`) parsed the same way the real
+// route does — `await new Response(buf, { headers: { "content-type": … }
+// }).formData()`, 400 when that throws — then a fixed `201` with a synthetic
+// `id`. It does not re-validate name/MIME/size the way the real route does (a
+// test double, not a second implementation); every accepted upload is
+// captured on the returned `imageUploads` array so a test can inspect the
+// exact bytes and fields the CLI sent.
 
 import { readFile } from "node:fs/promises";
 import http from "node:http";
@@ -67,7 +77,8 @@ const CLI_PACKAGE_VERSION = JSON.parse(
  * N `/api/eval/grade` requests answer 504 and `options.respondFailures` does the same
  * for `/api/eval/respond` (retry testing); every graded request is appended to the
  * returned `evalRequests` array, every generated one to `respondRequests`, and every
- * judged `/api/eval/judge` request to `judgeRequests`. `options.cliVersion` overrides the
+ * judged `/api/eval/judge` request to `judgeRequests`, and every accepted
+ * `/api/images/<name>` upload to `imageUploads`. `options.cliVersion` overrides the
  * `cliVersion` `/api/version` reports (default: the real `cli/package.json` one), so
  * `eval`'s mismatch warning can be exercised.
  *
@@ -77,7 +88,7 @@ const CLI_PACKAGE_VERSION = JSON.parse(
  *
  * @param {number} [port]
  * @param {{ codes?: Array<Record<string, unknown>>, evalFailures?: number, respondFailures?: number, cliVersion?: string }} [options]
- * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>>, evalRequests: Array<Record<string, unknown>>, respondRequests: Array<Record<string, unknown>>, judgeRequests: Array<Record<string, unknown>> }>}
+ * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>>, evalRequests: Array<Record<string, unknown>>, respondRequests: Array<Record<string, unknown>>, judgeRequests: Array<Record<string, unknown>>, imageUploads: Array<{ name: string, mime: string, credit: string | null, fileName: string, bytes: Buffer }> }>}
  */
 export function startFixturesServer(port = 0, options = {}) {
   const codes = options.codes ?? [];
@@ -88,6 +99,8 @@ export function startFixturesServer(port = 0, options = {}) {
   const respondRequests = [];
   /** @type {Array<Record<string, unknown>>} */
   const judgeRequests = [];
+  /** @type {Array<{ name: string, mime: string, credit: string | null, fileName: string, bytes: Buffer }>} */
+  const imageUploads = [];
   const evalState = { remainingFailures: options.evalFailures ?? 0 };
   const respondState = { remainingFailures: options.respondFailures ?? 0 };
   const reportedCliVersion = options.cliVersion ?? CLI_PACKAGE_VERSION;
@@ -126,6 +139,10 @@ export function startFixturesServer(port = 0, options = {}) {
         await handleEvalJudge(req, res, judgeRequests);
         return;
       }
+      if (url.pathname.startsWith("/api/images/")) {
+        await handleImageUpload(req, res, url, imageUploads);
+        return;
+      }
       const rel = decodeURIComponent(url.pathname).replace(/^\/+/, "");
       const filePath = path.resolve(ACTIVITIES_ROOT, rel);
       if (!filePath.startsWith(ACTIVITIES_ROOT)) {
@@ -155,6 +172,7 @@ export function startFixturesServer(port = 0, options = {}) {
         evalRequests,
         respondRequests,
         judgeRequests,
+        imageUploads,
       });
     });
   });
@@ -399,6 +417,64 @@ async function handleEvalJudge(req, res, requests) {
     output: 20 + issues.length,
   };
   sendJson(res, 200, { issues, usage });
+}
+
+/**
+ * The fake `POST /api/images/<name>` (app/api/images/[name]/route.ts): bearer
+ * required, POST only, ONE multipart/form-data body — parsed the same way the
+ * real route does, `await new Response(buf, { headers: { "content-type": … }
+ * }).formData()`, 400 when that throws (a bad/missing boundary). Requires
+ * exactly one `file` part and a `mime` field; `credit` is optional. Every
+ * accepted upload is captured on `imageUploads` (name, mime, credit, the
+ * file's own name, and its raw bytes) so a test can assert exactly what the
+ * CLI sent, then answered with a synthetic `id` — this fake does not
+ * re-validate name/MIME/size or reject a repeat name the way the real route
+ * does.
+ */
+async function handleImageUpload(req, res, url, imageUploads) {
+  if (!/^Bearer .+/.test(req.headers.authorization ?? "")) {
+    sendJson(res, 401, { message: "Unauthorized" });
+    return;
+  }
+  if (req.method !== "POST") {
+    sendJson(res, 405, { message: "Method not allowed" });
+    return;
+  }
+
+  const name = decodeURIComponent(url.pathname.slice("/api/images/".length));
+
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const buf = Buffer.concat(chunks);
+
+  let form;
+  try {
+    form = await new Response(buf, {
+      headers: { "content-type": req.headers["content-type"] ?? "" },
+    }).formData();
+  } catch {
+    sendJson(res, 400, { message: "The request body is not valid multipart/form-data." });
+    return;
+  }
+
+  const fileParts = form.getAll("file");
+  const mimeParts = form.getAll("mime");
+  if (fileParts.length !== 1 || typeof fileParts[0] === "string" || mimeParts.length !== 1) {
+    sendJson(res, 400, {
+      message: "file must be sent exactly once as a file part, and mime exactly once.",
+    });
+    return;
+  }
+  const file = fileParts[0];
+  const mime = String(mimeParts[0]);
+  const creditParts = form.getAll("credit");
+  const credit = creditParts.length ? String(creditParts[0]) : null;
+  const bytes = Buffer.from(await file.arrayBuffer());
+
+  imageUploads.push({ name, mime, credit, fileName: file.name, bytes });
+
+  const id = `fixture-${imageUploads.length}`;
+  sendJson(res, 201, { id, name, mimeType: mime, byteSize: bytes.length, credit });
 }
 
 // Run directly (Playwright webServer): listen on a fixed port and stay up.

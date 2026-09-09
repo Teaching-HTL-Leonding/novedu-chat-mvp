@@ -41,15 +41,18 @@ export const config = {
   // The /api/me identity probe, the /api/codes list/create endpoints, the
   // /api/reports list/detail/resolve endpoints, the /api/eval eval endpoints —
   // grade, judge and respond, all bounded by the one `api/eval(?:/|$)` entry
-  // (teacher-only; docs/cli-eval.md) — and the /api/images
-  // list/upload/confirm endpoints (all teacher-only; unlike /api/files there
-  // is NO public GET under that prefix) are
+  // (teacher-only; docs/cli-eval.md) — and the /api/images list/upload
+  // endpoints (all teacher-only; unlike /api/files there is NO public GET
+  // under that prefix) are
   // CLI/API bearer-token routes: they self-gate via requireBearerUser /
   // requireBearerTeacher (lib/api-auth.ts) and a CLI has no session
   // cookie, so they must not hit the cookie gate (see docs/api.md). Every future
   // bearer route gets its own explicit, path-bounded exclusion like these —
   // never a blanket prefix. (The bearer PUT /api/files/<name> and GET /api/files
   // ride the existing /api/files exclusion and self-gate the same way.)
+  // Image BYTES are served by GET /api/image-content/<id>, which deliberately
+  // has NO exclusion: it is a cookie-session route, so it belongs under this
+  // gate — and the `api/images(?:/|$)` boundary above keeps it there.
   // The /docs prefix is the teacher guide: a static export of teacher-docs,
   // copied into public/docs/ at image build and PUBLIC BY INTENT (docs for
   // everybody, no sign-in — see docs/teacher-docs.md). Path-bounded like the API

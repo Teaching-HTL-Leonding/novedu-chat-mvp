@@ -337,7 +337,7 @@ Tables (details in `docs/codes.md`):
 | `novedu_reports` | PK `id` | student-submitted reports on an AI interaction, always attributed to the reporter's user id even under an anonymous code (details in `docs/reports.md`) |
 | `novedu_coding_keys` | PK (`code`, `user_id`); unique index on `api_key` | the coding module's per-user API keys — one stable `nvk-…` key per student per coding code, the second sanctioned user↔code attribution (details in `docs/coding.md`) |
 | `novedu_files` | PK `id` (per-version); partial UK `name WHERE valid_until IS NULL` | App-hosted YAML files, **temporal/append-only** (details in `docs/files.md`) |
-| `novedu_images` | PK `id` (per-version); partial UK `name WHERE valid_until IS NULL` | App-hosted image metadata (bytes in Blob Storage), **temporal/append-only** (details in `docs/images.md`) |
+| `novedu_images` | PK `id` (per-version); partial UK `name WHERE valid_until IS NULL` | App-hosted image metadata (bytes under the configured `IMAGE_STORAGE_ROOT` filesystem), **temporal/append-only** (details in `docs/images.md`) |
 | `novedu_usage_by_code` | PK (`code`, `hour`) | per-hour token/tool/activity counts by code, no user (details in `docs/usage-metering.md`) |
 | `novedu_usage_by_user` | PK (`user_id`, `hour`) | per-hour token/tool/activity counts by user, no code (details in `docs/usage-metering.md`) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping (schema `public`) |

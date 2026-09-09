@@ -349,12 +349,12 @@ images list   [--search <q>] [--all]
   Unlike `files upload` it is **create-only**: a taken name fails with 409 —
   images are immutable; delete + re-upload in the web app (`/images`) to
   replace one. `--file` is required (images are binary — no stdin);
-  `--credit` stores an optional attribution shown with the image. The bytes go
-  straight to Azure Blob Storage (the CLI runs the same request → upload →
-  confirm flow as the web form). Reference the image from activity YAML by
-  name with `hosted: true`.
-- `images list` shows your images with a short-lived download `url` (a ~3 h
-  SAS link — share the *name*, not this URL).
+  `--credit` stores an optional attribution shown with the image. The bytes
+  travel to the app in ONE multipart request (the CLI runs the same one-shot
+  upload the web form's server action does — no upload slot, no confirm step).
+  Reference the image from activity YAML by name with `hosted: true`.
+- `images list` shows your images with a `url` that only opens for a
+  **signed-in browser session** — share the *name*, not this URL.
 - All `list` commands default to **only your own** codes/files/images (like the
   web lists); `--all` widens to every teacher's, `--search` is a
   contains-filter.

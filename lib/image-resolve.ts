@@ -1,21 +1,21 @@
-import { mintReadSas } from "@/lib/image-blob";
-import type { ImageRef, ResolvedImage } from "@/lib/image-ref";
+import { type ImageRef, imageContentPath, type ResolvedImage } from "@/lib/image-ref";
 import { getActiveImage } from "@/lib/image-store";
 import { resolveRelativeUrl } from "@/lib/relative-url";
 
 // Turns an `ImageRef` embedded by a module into a usable `ResolvedImage` for
 // `<ContentImage>`. Three shapes are handled:
 //   - `hosted: true` — `src` is an app-hosted image NAME; the active row supplies
-//     the blob path, which is minted into a short-lived read SAS URL.
+//     the version id, which becomes the app's own byte URL
+//     `/api/image-content/<id>` (root-relative, so the browser sends the session
+//     cookie the route requires).
 //   - an absolute http(s) URL — used as-is.
 //   - anything else — a relative path resolved against the module's base URL.
 //
-// Resolution is LENIENT: a missing ref, an unknown/soft-deleted hosted name, or
-// a failed SAS mint yields `null` so the consumer simply omits the image rather
-// than erroring.
+// Resolution is LENIENT: a missing ref or an unknown/soft-deleted hosted name
+// yields `null` so the consumer simply omits the image rather than erroring. No
+// storage call happens here at all — only the metadata lookup.
 //
-// SERVER: mints a SAS and reads the image store. Never import from client
-// components.
+// SERVER: reads the image store. Never import from client components.
 
 export async function resolveImageRef(
   ref: ImageRef | null | undefined,
@@ -26,15 +26,12 @@ export async function resolveImageRef(
   if (ref.hosted === true) {
     const active = await getActiveImage(ref.src);
     if (!active) return null;
-    // Stay lenient if the SAS mint fails (a transient credential / network
-    // issue): omit the image rather than failing the whole consumer render.
-    try {
-      const url = await mintReadSas(active.blobPath);
-      // A per-ref credit overrides the image's stored attribution.
-      return { url, alt: ref.alt, credit: ref.credit ?? active.credit ?? undefined };
-    } catch {
-      return null;
-    }
+    // A per-ref credit overrides the image's stored attribution.
+    return {
+      url: imageContentPath(active.id),
+      alt: ref.alt,
+      credit: ref.credit ?? active.credit ?? undefined,
+    };
   }
 
   if (/^https?:\/\//i.test(ref.src)) {

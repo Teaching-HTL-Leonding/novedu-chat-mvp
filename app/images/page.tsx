@@ -14,18 +14,19 @@ import { Input } from "@/components/ui/input";
 import { type OwnerParams, parseOwner } from "@/lib/db/owner-filter";
 import { type PagingParams, parsePaging } from "@/lib/db/paging";
 import { parseSort, type SortParams } from "@/lib/db/sorting";
-import { mintReadSas } from "@/lib/image-blob";
+import { imageContentPath } from "@/lib/image-ref";
 import { IMAGE_SORT_COLUMNS, listImageOwners, listImages } from "@/lib/image-store";
 import { deleteSelectedImagesAction } from "@/lib/images-actions";
 import { getSession } from "@/lib/session";
 import { LocalTime } from "../local-time";
 import { ViewImageButton } from "./view-image-button";
 
-// One active image as shown in the list. `viewUrl` is a short-lived read SAS
-// minted on the server (no app route serves image bytes) — the "View" button
-// opens it in the lightbox; `updatedSeconds` is the active version's write time as
-// unix seconds; `createdBy` is the OWNER's user id — here the last writer, since the
-// table is append-only — which drives the owner filter, applied in the DB.
+// One active image as shown in the list. `viewUrl` is the app's own byte route
+// for the active version (`/api/image-content/<id>`, served to signed-in users)
+// — the "View" button opens it in the lightbox; `updatedSeconds` is the active
+// version's write time as unix seconds; `createdBy` is the OWNER's user id —
+// here the last writer, since the table is append-only — which drives the owner
+// filter, applied in the DB.
 // `ownerName` is its `novedu_user` resolution, `null` for a teacher who has never
 // signed in through the web app.
 interface ImageRow {
@@ -95,21 +96,15 @@ export default async function ImagesPage({
     );
   }
 
-  // Mint every row's read SAS up front (in parallel) so the "View" button opens
-  // the image directly from Blob Storage — there is no app route serving bytes.
-  // Each mint is guarded independently: a transient failure on one blob yields an
-  // empty src (that row's lightbox shows its fallback note) instead of rejecting
-  // the whole page, which already loaded the list successfully.
-  const viewUrls = await Promise.all(
-    result.rows.map((entry) => mintReadSas(entry.blobPath).catch(() => "")),
-  );
-
-  const rows: ImageRow[] = result.rows.map((entry, index) => ({
+  // The byte URL is pure metadata — the row id — so building it costs nothing
+  // and cannot fail; the storage root is only touched when the browser actually
+  // requests the bytes.
+  const rows: ImageRow[] = result.rows.map((entry) => ({
     id: entry.id,
     name: entry.name,
     mimeType: entry.mimeType,
     byteSize: entry.byteSize,
-    viewUrl: viewUrls[index] ?? "",
+    viewUrl: imageContentPath(entry.id),
     credit: entry.credit,
     updatedSeconds: Math.floor(entry.validFrom.getTime() / 1000),
     createdBy: entry.createdBy,
@@ -186,7 +181,7 @@ export default async function ImagesPage({
           hint={
             <>
               App-hosted images. Upload a PNG, JPEG or SVG (max 5 MB) and reference it by name from
-              a tutor, fragment or quiz. Bytes are served direct from Blob Storage.
+              a tutor, fragment or quiz. Bytes are served by the app to signed-in users.
             </>
           }
           actions={
