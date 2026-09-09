@@ -1,257 +1,175 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The image actions are a thin auth + policy shell around the blob seam and the
-// image store. These tests pin the wiring: the teacher gate, the name/MIME/size
-// validation BEFORE any blob/store work, the confirm-time re-derivation of the
-// landed blob's size/MIME (never trusted from the client) with a best-effort
-// delete of a present-but-bad blob, and the store-reason → message mapping. The
-// blob seam and the store are mocked; the pure name/MIME helpers stay real.
+// The image actions are a thin auth + parsing shell around the service and the
+// image store. These tests pin the wiring: the effective-teacher gate BEFORE any
+// parsing, the FormData field checks (a hand-crafted POST reaches a server
+// action just like the form does), the local size ceiling, the exact forwarding
+// to the service, the message pass-through, and `revalidatePath` only on
+// success. The service and the store are mocked.
 
 const mocks = vi.hoisted(() => ({
   requireTeacherUserId: vi.fn(),
-  mintWriteSas: vi.fn(),
-  getBlobProperties: vi.fn(),
-  deleteBlob: vi.fn(),
-  getActiveImage: vi.fn(),
-  confirmImage: vi.fn(),
+  createImageForUser: vi.fn(),
   softDeleteImages: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
 vi.mock("@/lib/student-mode", () => ({ requireTeacherUserId: mocks.requireTeacherUserId }));
-vi.mock("@/lib/image-blob", () => ({
-  mintWriteSas: mocks.mintWriteSas,
-  getBlobProperties: mocks.getBlobProperties,
-  deleteBlob: mocks.deleteBlob,
+vi.mock("@/lib/image-service", () => ({
+  createImageForUser: mocks.createImageForUser,
+  MAX_IMAGE_BYTES: 5 * 1024 * 1024,
 }));
-vi.mock("@/lib/image-store", () => ({
-  getActiveImage: mocks.getActiveImage,
-  confirmImage: mocks.confirmImage,
-  softDeleteImages: mocks.softDeleteImages,
-}));
+vi.mock("@/lib/image-store", () => ({ softDeleteImages: mocks.softDeleteImages }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 
-import {
-  confirmImageUpload,
-  deleteSelectedImagesAction,
-  requestImageUpload,
-} from "@/lib/images-actions";
+import { deleteSelectedImagesAction, uploadImage } from "@/lib/images-actions";
 
-// 5 MB ceiling the actions enforce (matches MAX_IMAGE_BYTES in the SUT).
+// 5 MB ceiling the action enforces (matches MAX_IMAGE_BYTES in the service).
 const MAX_BYTES = 5 * 1024 * 1024;
+
+function pngFile(size = 8, name = "red.png"): File {
+  return new File([new Uint8Array(size)], name, { type: "image/png" });
+}
+
+function uploadForm(
+  overrides: {
+    file?: File | string | null;
+    extraFile?: File;
+    name?: string | null;
+    extraName?: string;
+    mime?: string | null;
+    credit?: string;
+    extraCredit?: string;
+  } = {},
+): FormData {
+  const form = new FormData();
+  if (overrides.file !== null) form.append("file", overrides.file ?? pngFile());
+  if (overrides.extraFile) form.append("file", overrides.extraFile);
+  if (overrides.name !== null) form.append("name", overrides.name ?? "diagram");
+  if (overrides.extraName) form.append("name", overrides.extraName);
+  if (overrides.mime !== null) form.append("mime", overrides.mime ?? "image/png");
+  if (overrides.credit !== undefined) form.append("credit", overrides.credit);
+  if (overrides.extraCredit) form.append("credit", overrides.extraCredit);
+  return form;
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireTeacherUserId.mockResolvedValue({ ok: true, userId: "teacher-1" });
-  mocks.mintWriteSas.mockResolvedValue("https://blob.example/abc.png?sas=write");
-  mocks.getBlobProperties.mockResolvedValue({
-    exists: true,
-    contentType: "image/png",
-    contentLength: 1234,
+  mocks.createImageForUser.mockResolvedValue({
+    ok: true,
+    id: "row-1",
+    name: "diagram",
+    mimeType: "image/png",
+    byteSize: 8,
+    credit: null,
   });
-  mocks.deleteBlob.mockResolvedValue(undefined);
-  mocks.getActiveImage.mockResolvedValue(null); // name free by default
-  mocks.confirmImage.mockResolvedValue({ ok: true, name: "diagram" });
   mocks.softDeleteImages.mockResolvedValue({ ok: true, deleted: 2 });
 });
 
-describe("requestImageUpload", () => {
-  it("rejects a non-teacher before any validation or minting", async () => {
+describe("uploadImage — the gate", () => {
+  it("refuses a caller the gate rejects (signed out, student, or teacher in student mode)", async () => {
+    // `requireTeacherUserId` collapses all three into one `{ ok: false }`.
     mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
-    const result = await requestImageUpload("diagram", "image/png", 100);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/teachers/i) });
-    expect(mocks.getActiveImage).not.toHaveBeenCalled();
-    expect(mocks.mintWriteSas).not.toHaveBeenCalled();
-  });
-
-  it("rejects a malformed name without checking the store or minting", async () => {
-    const result = await requestImageUpload("bad name!", "image/png", 100);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/letters/i) });
-    expect(mocks.getActiveImage).not.toHaveBeenCalled();
-    expect(mocks.mintWriteSas).not.toHaveBeenCalled();
-  });
-
-  it("rejects an unsupported MIME type", async () => {
-    const result = await requestImageUpload("diagram", "image/gif", 100);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/PNG, JPEG and SVG/i) });
-    expect(mocks.mintWriteSas).not.toHaveBeenCalled();
-  });
-
-  it("rejects an empty (non-positive) size", async () => {
-    const result = await requestImageUpload("diagram", "image/png", 0);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/empty/i) });
-    expect(mocks.mintWriteSas).not.toHaveBeenCalled();
-  });
-
-  it("rejects a non-finite size", async () => {
-    const result = await requestImageUpload("diagram", "image/png", Number.NaN);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/empty/i) });
-    expect(mocks.mintWriteSas).not.toHaveBeenCalled();
-  });
-
-  it("rejects a size over the 5 MB ceiling", async () => {
-    const result = await requestImageUpload("diagram", "image/png", MAX_BYTES + 1);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/too large|5 MB/i) });
-    expect(mocks.mintWriteSas).not.toHaveBeenCalled();
-  });
-
-  it("rejects a name already in use by an active image", async () => {
-    mocks.getActiveImage.mockResolvedValue({ name: "diagram", blobPath: "x.png" });
-    const result = await requestImageUpload("diagram", "image/png", 100);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/already exists/i) });
-    expect(mocks.mintWriteSas).not.toHaveBeenCalled();
-  });
-
-  it("reports a transient name-check failure (store undefined)", async () => {
-    mocks.getActiveImage.mockResolvedValue(undefined);
-    const result = await requestImageUpload("diagram", "image/png", 100);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/try again/i) });
-    expect(mocks.mintWriteSas).not.toHaveBeenCalled();
-  });
-
-  it("mints a create-only SAS over a UUID blob path with the MIME's extension", async () => {
-    const result = await requestImageUpload("diagram", "image/jpeg", 100);
-    expect(result).toMatchObject({ ok: true, uploadUrl: "https://blob.example/abc.png?sas=write" });
-    if (!result.ok) return;
-    // The blob path never leaks the chosen name: a random UUID + the MIME extension.
-    expect(result.blobPath).toMatch(/^[0-9a-f-]{36}\.jpg$/i);
-    expect(result.blobPath).not.toContain("diagram");
-    expect(mocks.mintWriteSas).toHaveBeenCalledWith(result.blobPath, "image/jpeg");
-  });
-
-  it("maps a SAS-minting failure to a retry message", async () => {
-    mocks.mintWriteSas.mockRejectedValue(new Error("delegation key down"));
-    const result = await requestImageUpload("diagram", "image/png", 100);
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/try again/i) });
+    const result = await uploadImage(uploadForm());
+    expect(result).toEqual({ ok: false, error: "Only teachers can upload images." });
+    expect(mocks.createImageForUser).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 });
 
-describe("confirmImageUpload", () => {
-  it("rejects a non-teacher before inspecting the blob or storing", async () => {
-    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png");
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/teachers/i) });
-    expect(mocks.getBlobProperties).not.toHaveBeenCalled();
-    expect(mocks.confirmImage).not.toHaveBeenCalled();
+describe("uploadImage — form parsing", () => {
+  const incomplete = { ok: false, error: "The upload form was incomplete. Try again." };
+
+  it("refuses a missing file part", async () => {
+    expect(await uploadImage(uploadForm({ file: null }))).toEqual(incomplete);
+    expect(mocks.createImageForUser).not.toHaveBeenCalled();
   });
 
-  it("rejects a malformed name without inspecting the blob", async () => {
-    const result = await confirmImageUpload("bad name!", "abc.png", "image/png");
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/letters/i) });
-    expect(mocks.getBlobProperties).not.toHaveBeenCalled();
+  it("refuses a duplicate file part", async () => {
+    expect(await uploadImage(uploadForm({ extraFile: pngFile(4, "b.png") }))).toEqual(incomplete);
+    expect(mocks.createImageForUser).not.toHaveBeenCalled();
   });
 
-  it("rejects an unsupported MIME type without inspecting the blob", async () => {
-    const result = await confirmImageUpload("diagram", "abc.png", "image/gif");
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/PNG, JPEG and SVG/i) });
-    expect(mocks.getBlobProperties).not.toHaveBeenCalled();
+  it("refuses a file sent as a plain string", async () => {
+    expect(await uploadImage(uploadForm({ file: "not-a-file" }))).toEqual(incomplete);
+    expect(mocks.createImageForUser).not.toHaveBeenCalled();
   });
 
-  it("reports a missing blob (upload never completed) without storing", async () => {
-    mocks.getBlobProperties.mockResolvedValue({ exists: false });
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png");
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/did not complete/i) });
-    expect(mocks.confirmImage).not.toHaveBeenCalled();
-    // Nothing landed, so there is nothing to clean up.
-    expect(mocks.deleteBlob).not.toHaveBeenCalled();
+  it("refuses a missing or duplicated name", async () => {
+    expect(await uploadImage(uploadForm({ name: null }))).toEqual(incomplete);
+    expect(await uploadImage(uploadForm({ extraName: "other" }))).toEqual(incomplete);
+    expect(mocks.createImageForUser).not.toHaveBeenCalled();
   });
 
-  it("rejects and DELETES a blob whose content type does not match the claimed MIME", async () => {
-    mocks.getBlobProperties.mockResolvedValue({
-      exists: true,
-      contentType: "image/jpeg",
-      contentLength: 1234,
-    });
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png");
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/not a valid image/i) });
-    expect(mocks.deleteBlob).toHaveBeenCalledWith("abc.png");
-    expect(mocks.confirmImage).not.toHaveBeenCalled();
+  it("refuses a missing mime", async () => {
+    expect(await uploadImage(uploadForm({ mime: null }))).toEqual(incomplete);
+    expect(mocks.createImageForUser).not.toHaveBeenCalled();
   });
 
-  it("rejects and DELETES a blob that is over the 5 MB ceiling", async () => {
-    mocks.getBlobProperties.mockResolvedValue({
-      exists: true,
-      contentType: "image/png",
-      contentLength: MAX_BYTES + 1,
-    });
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png");
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/not a valid image/i) });
-    expect(mocks.deleteBlob).toHaveBeenCalledWith("abc.png");
-    expect(mocks.confirmImage).not.toHaveBeenCalled();
+  it("refuses a duplicated credit", async () => {
+    expect(await uploadImage(uploadForm({ credit: "a", extraCredit: "b" }))).toEqual(incomplete);
+    expect(mocks.createImageForUser).not.toHaveBeenCalled();
   });
 
-  it("rejects and DELETES an empty (zero-byte) blob", async () => {
-    mocks.getBlobProperties.mockResolvedValue({
-      exists: true,
-      contentType: "image/png",
-      contentLength: 0,
-    });
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png");
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/not a valid image/i) });
-    expect(mocks.deleteBlob).toHaveBeenCalledWith("abc.png");
-    expect(mocks.confirmImage).not.toHaveBeenCalled();
+  it("refuses a file over 5 MB BEFORE calling the service", async () => {
+    const result = await uploadImage(uploadForm({ file: pngFile(MAX_BYTES + 1) }));
+    expect(result).toEqual({ ok: false, error: "The image is too large — the maximum is 5 MB." });
+    expect(mocks.createImageForUser).not.toHaveBeenCalled();
   });
 
-  it("reports a blob-inspection failure without storing", async () => {
-    mocks.getBlobProperties.mockRejectedValue(new Error("storage down"));
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png");
-    expect(result).toMatchObject({
-      ok: false,
-      error: expect.stringMatching(/could not be verified/i),
-    });
-    expect(mocks.confirmImage).not.toHaveBeenCalled();
-  });
-
-  it("stores the row with the blob-DERIVED size and revalidates on a good blob", async () => {
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png");
+  it("accepts a file of exactly 5 MB", async () => {
+    const result = await uploadImage(uploadForm({ file: pngFile(MAX_BYTES) }));
     expect(result).toEqual({ ok: true, name: "diagram" });
-    // The size is re-derived from the landed blob (contentLength), never trusted;
-    // with no Content Credentials given, the stored credit is null.
-    expect(mocks.confirmImage).toHaveBeenCalledWith(
-      { name: "diagram", blobPath: "abc.png", mimeType: "image/png", byteSize: 1234, credit: null },
-      "teacher-1",
-    );
+  });
+});
+
+describe("uploadImage — forwarding and result", () => {
+  it("forwards the exact name, mime, credit and file to the service and revalidates", async () => {
+    const file = pngFile(8);
+    const form = uploadForm({ file, credit: "CC BY 4.0" });
+
+    const result = await uploadImage(form);
+
+    expect(result).toEqual({ ok: true, name: "diagram" });
+    expect(mocks.createImageForUser).toHaveBeenCalledWith("teacher-1", {
+      name: "diagram",
+      mime: "image/png",
+      credit: "CC BY 4.0",
+      content: file,
+    });
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/images");
   });
 
-  it("trims and stores an optional Content Credentials string", async () => {
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png", "  CC BY 4.0  ");
-    expect(result).toEqual({ ok: true, name: "diagram" });
-    expect(mocks.confirmImage).toHaveBeenCalledWith(
-      {
-        name: "diagram",
-        blobPath: "abc.png",
-        mimeType: "image/png",
-        byteSize: 1234,
-        credit: "CC BY 4.0",
-      },
-      "teacher-1",
-    );
+  it("omits credit when the form carries none", async () => {
+    await uploadImage(uploadForm());
+    const [, input] = mocks.createImageForUser.mock.calls[0];
+    expect(input.credit).toBeUndefined();
   });
 
-  it("stores a whitespace-only credit as null (treated as absent)", async () => {
-    await confirmImageUpload("diagram", "abc.png", "image/png", "   ");
-    expect(mocks.confirmImage).toHaveBeenCalledWith(
-      expect.objectContaining({ credit: null }),
-      "teacher-1",
-    );
-  });
-
-  it("maps a name-taken store result to a clear message", async () => {
-    mocks.confirmImage.mockResolvedValue({ ok: false, reason: "name-taken" });
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png");
-    expect(result).toMatchObject({ ok: false, error: expect.stringMatching(/already exists/i) });
+  it("passes the service's message through and does NOT revalidate", async () => {
+    mocks.createImageForUser.mockResolvedValue({
+      ok: false,
+      reason: "conflict",
+      message: "An image with that name already exists. Choose another name.",
+    });
+    const result = await uploadImage(uploadForm());
+    expect(result).toEqual({
+      ok: false,
+      error: "An image with that name already exists. Choose another name.",
+    });
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("maps a store error to a retry message", async () => {
-    mocks.confirmImage.mockResolvedValue({ ok: false, reason: "error" });
-    const result = await confirmImageUpload("diagram", "abc.png", "image/png");
-    expect(result).toMatchObject({
+  it("passes an unavailable message through unchanged", async () => {
+    mocks.createImageForUser.mockResolvedValue({
       ok: false,
-      error: expect.stringMatching(/could not be stored/i),
+      reason: "unavailable",
+      message: "Image storage is unavailable right now. Try again later.",
     });
+    const result = await uploadImage(uploadForm());
+    expect(result).toMatchObject({ ok: false, error: /storage is unavailable/ });
   });
 });
 

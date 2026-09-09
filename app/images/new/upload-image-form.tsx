@@ -8,17 +8,20 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { imageMimeFromExtension, isImageMime } from "@/lib/file-name";
-import { confirmImageUpload, requestImageUpload } from "@/lib/images-actions";
+import { uploadImage } from "@/lib/images-actions";
 
 // The largest image the upload flow accepts (5 MB) — enforced server-side too, but
-// caught here first so a teacher learns before the bytes leave the browser.
+// caught here first so a teacher learns before the bytes leave the browser. This
+// literal is the CLIENT copy of `MAX_IMAGE_BYTES` in `lib/image-service.ts` (a
+// client component may not import that server module); the guard test in
+// `lib/image-service.unit.test.ts` fails if the two ever drift.
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
-// Upload form: name + a file picker. On submit the browser PUTs the bytes STRAIGHT
-// to Blob Storage with a short-lived create-only SAS (no app route serves image
-// bytes), then confirms — at which point the metadata row is written. Name and the
-// chosen file are controlled state, and the form submits via `onSubmit` (not a
-// React form `action`) so a rejected upload keeps what the teacher entered.
+// Upload form: name + a file picker. On submit the file is posted to the
+// `uploadImage` SERVER ACTION as `FormData`, which stores the bytes and writes
+// the metadata row in one round trip. Name and the chosen file are controlled
+// state, and the form submits via `onSubmit` (not a React form `action`) so a
+// rejected upload keeps what the teacher entered.
 export function UploadImageForm() {
   const router = useRouter();
   const [name, setName] = useState("");
@@ -55,30 +58,23 @@ export function UploadImageForm() {
     }
 
     startUpload(async () => {
-      const requested = await requestImageUpload(name, mime, file.size);
-      if (!requested.ok) {
-        setMessage(requested.error);
-        return;
-      }
+      const formData = new FormData();
+      formData.set("file", file, file.name);
+      formData.set("name", name);
+      formData.set("mime", mime);
+      formData.set("credit", credit);
 
+      let result: Awaited<ReturnType<typeof uploadImage>>;
       try {
-        const put = await fetch(requested.uploadUrl, {
-          method: "PUT",
-          headers: { "x-ms-blob-type": "BlockBlob", "Content-Type": mime },
-          body: file,
-        });
-        if (!put.ok) {
-          setMessage("The upload did not complete. Try again.");
-          return;
-        }
+        result = await uploadImage(formData);
       } catch {
+        // The action never rejects on a handled failure, so this is the network
+        // (or an aborted request) — the one case with no server message.
         setMessage("The upload could not be sent. Check your connection and try again.");
         return;
       }
-
-      const confirmed = await confirmImageUpload(name, requested.blobPath, mime, credit);
-      if (!confirmed.ok) {
-        setMessage(confirmed.error);
+      if (!result.ok) {
+        setMessage(result.error);
         return;
       }
 
@@ -90,8 +86,8 @@ export function UploadImageForm() {
     <PageBody>
       <BackLink href="/images">Back to images</BackLink>
       <FieldHint>
-        Upload a PNG, JPEG or SVG (max 5 MB). The bytes go straight to storage; reference the image
-        by its name from your YAML content.
+        Upload a PNG, JPEG or SVG (max 5 MB); reference the image by its name from your YAML
+        content.
       </FieldHint>
 
       <form className="flex shrink-0 flex-col items-stretch gap-3.5" onSubmit={onSubmit}>
@@ -124,7 +120,7 @@ export function UploadImageForm() {
               required
               accept="image/png,image/jpeg,image/svg+xml"
               onChange={(event) => {
-                setFileName(event.target.value);
+                setFileName(event.target.files?.[0]?.name ?? "");
                 setMessage(null);
               }}
               disabled={uploading}

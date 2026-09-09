@@ -6,8 +6,9 @@ import { ImageLightbox } from "@/components/image-lightbox";
 import { IconButton } from "@/components/ui/icon-button";
 
 // The list row's "View" action: an icon button that opens the image full-window in
-// the SAME <ImageLightbox> the quiz / tutor content images use. `url` is the row's
-// short-lived read SAS (minted on the server — no app route serves image bytes).
+// the SAME <ImageLightbox> the quiz / tutor content images use. `url` is the app's
+// own byte route for that image version (`/api/image-content/<id>`), which the
+// browser fetches with the session cookie it already carries.
 export function ViewImageButton({
   name,
   url,

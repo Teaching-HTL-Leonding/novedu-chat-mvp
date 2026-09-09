@@ -340,10 +340,11 @@ export const files = pgTable(
 );
 
 // App-hosted images that teachers upload for use in activity content. The bytes
-// live in Azure Blob Storage (one blob per row, addressed by `blob_path`); this
-// table only tracks metadata. Retrieval is direct-to-blob via a read-SAS — there
-// is no app route serving the bytes — and the blob is uploaded with a write-SAS
-// before any row exists (the row is written only on confirm).
+// live in the configured image storage root (one object per row, keyed by
+// `blob_path` — see `lib/image-fs.ts`); this table only tracks metadata. The
+// object is published BEFORE its row is written, and the bytes are retrieved
+// through the cookie-session route `GET /api/image-content/<id>`, which re-reads
+// the active row on every request.
 //
 // TEMPORAL / append-only versioning, mirroring novedu_files: each row is ONE
 // version of one image. The image's identity is its `name`; the ACTIVE version is
@@ -359,11 +360,12 @@ export const images = pgTable(
     id: varchar("id", { length: 36 }).primaryKey(),
     // Public identifier the teacher picks.
     name: varchar("name", { length: 450 }).notNull(),
-    // Server-chosen blob name within the container: `<uuid>.<ext>`.
+    // Server-chosen, opaque object key: `<uuid>.<ext>`. It never changes and is
+    // never derived from the name.
     blobPath: varchar("blob_path", { length: 80 }).notNull(),
     // "image/png" | "image/jpeg" | "image/svg+xml".
     mimeType: varchar("mime_type", { length: 32 }).notNull(),
-    // Size of the uploaded blob in bytes.
+    // Size of the stored object in bytes, as measured while it was written.
     byteSize: integer("byte_size").notNull(),
     // Optional attribution / "Content Credentials" (e.g. a CC BY notice) shown
     // below the image wherever it is rendered. NULL when the teacher gave none.

@@ -2,11 +2,12 @@
 import { asc, desc } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// Behaviour-level tests for the temporal IMAGE store: confirm (insert + name-taken
-// guard), list/getActive mapping, and the soft-delete transitions — including the
-// invariant that closing a row triggers the best-effort blob removal OUTSIDE the
-// row transaction. All over a fake drizzle handle (no real database) and a mocked
-// blob seam. Mirrors `lib/file-store.unit.test.ts`.
+// Behaviour-level tests for the temporal IMAGE store: create (insert + name-taken
+// guard + the definite/uncertain outcome), the by-name and by-id lookups, and the
+// soft-delete transitions — including the invariant that closing a row triggers
+// the best-effort object removal OUTSIDE the row transaction. All over a fake
+// drizzle handle (no real database) and a mocked filesystem adapter. Mirrors
+// `lib/file-store.unit.test.ts`.
 
 const fake = vi.hoisted(() => {
   const state = {
@@ -97,14 +98,22 @@ const fake = vi.hoisted(() => {
   return { state, db };
 });
 
-const blob = vi.hoisted(() => ({ deleteBlob: vi.fn() }));
+// The adapter seam, plus a log of when each call happened relative to the row
+// transaction — the object must only go AFTER the rows are committed.
+const storage = vi.hoisted(() => ({ deleteObject: vi.fn(), order: [] as string[] }));
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
-vi.mock("@/lib/image-blob", () => ({ deleteBlob: blob.deleteBlob }));
+vi.mock("@/lib/image-fs", () => ({ deleteObject: storage.deleteObject }));
 
 import { images } from "@/lib/db/schema";
-import { confirmImage, getActiveImage, listImages, softDeleteImages } from "@/lib/image-store";
+import {
+  createImage,
+  getActiveImage,
+  getActiveImageById,
+  listImages,
+  softDeleteImages,
+} from "@/lib/image-store";
 
 // A duplicate-key (unique constraint) violation as drizzle wraps it: cause chain
 // with the Postgres SQLSTATE.
@@ -139,7 +148,11 @@ beforeEach(() => {
   fake.state.insertError = undefined;
   fake.state.closeResult = { rowCount: 1 };
   fake.state.updateError = undefined;
-  blob.deleteBlob.mockResolvedValue(undefined);
+  storage.order = [];
+  storage.deleteObject.mockImplementation(async (key: string) => {
+    storage.order.push(`delete:${key}`);
+    return { ok: true, existed: true };
+  });
 });
 
 describe("listImages", () => {
@@ -206,7 +219,40 @@ describe("getActiveImage", () => {
   });
 });
 
-describe("confirmImage", () => {
+// The by-id lookup the byte route re-runs on EVERY request (including a 304), so
+// a closed row stops serving immediately.
+describe("getActiveImageById", () => {
+  const ID = "11111111-1111-1111-1111-111111111111";
+
+  it("maps the active row's metadata", async () => {
+    fake.state.rows = [activeRow()];
+    await expect(getActiveImageById(ID)).resolves.toMatchObject({
+      id: ID,
+      name: "diagram",
+      blobPath: "abc.png",
+      mimeType: "image/png",
+    });
+  });
+
+  it("returns null for a closed / unknown id", async () => {
+    fake.state.rows = [];
+    await expect(getActiveImageById(ID)).resolves.toBeNull();
+  });
+
+  it("returns null for a malformed id WITHOUT a DB hit", async () => {
+    fake.state.selectError = new Error("must not be reached");
+    await expect(getActiveImageById("not-a-uuid")).resolves.toBeNull();
+    await expect(getActiveImageById("")).resolves.toBeNull();
+    await expect(getActiveImageById(`${ID}' OR 1=1--`)).resolves.toBeNull();
+  });
+
+  it("returns undefined on a database error", async () => {
+    fake.state.selectError = new Error("down");
+    await expect(getActiveImageById(ID)).resolves.toBeUndefined();
+  });
+});
+
+describe("createImage", () => {
   const input = {
     name: "diagram",
     blobPath: "abc.png",
@@ -215,12 +261,13 @@ describe("confirmImage", () => {
     credit: "CC BY 4.0",
   };
 
-  it("inserts a first active version (with its credit) when the name is free", async () => {
+  it("inserts a first active version (with its credit) and returns the new row id", async () => {
     fake.state.rows = []; // no existing active row
-    const result = await confirmImage(input, "teacher-1");
-    expect(result).toEqual({ ok: true, name: "diagram" });
+    const result = await createImage(input, "teacher-1");
+    expect(result).toMatchObject({ ok: true, name: "diagram" });
     expect(fake.state.inserted).toHaveLength(1);
-    expect(fake.state.inserted[0]).toMatchObject({
+    const inserted = fake.state.inserted[0];
+    expect(inserted).toMatchObject({
       name: "diagram",
       blobPath: "abc.png",
       mimeType: "image/png",
@@ -230,89 +277,138 @@ describe("confirmImage", () => {
       validUntil: null,
       closedBy: null,
     });
+    // The returned id is exactly the row's — it is what the byte URL is built from.
+    if (!result.ok) return;
+    expect(result.id).toBe(inserted?.id);
   });
 
   it("rejects with name-taken when an active row already exists (pre-check)", async () => {
     fake.state.rows = [{ id: "existing" }];
-    const result = await confirmImage(input, "teacher-1");
+    const result = await createImage(input, "teacher-1");
     expect(result).toEqual({ ok: false, reason: "name-taken" });
     expect(fake.state.inserted).toHaveLength(0);
   });
 
-  it("maps a unique-index violation (a confirm race) to name-taken", async () => {
+  it("maps a unique-index violation (an insert race) to name-taken", async () => {
     fake.state.rows = [];
     fake.state.insertError = uniqueViolation();
-    await expect(confirmImage(input, "teacher-1")).resolves.toEqual({
+    await expect(createImage(input, "teacher-1")).resolves.toEqual({
       ok: false,
       reason: "name-taken",
     });
   });
 
-  it("returns reason:error on a generic database failure", async () => {
+  it("reports a DEFINITE outcome for a SQLSTATE failure the server answered", async () => {
     fake.state.rows = [];
-    fake.state.insertError = new Error("connection lost");
-    await expect(confirmImage(input, "teacher-1")).resolves.toEqual({ ok: false, reason: "error" });
+    fake.state.insertError = Object.assign(new Error("Failed query"), {
+      cause: Object.assign(new Error("value too long"), { code: "22001" }),
+    });
+    await expect(createImage(input, "teacher-1")).resolves.toEqual({
+      ok: false,
+      reason: "error",
+      outcome: "definite",
+    });
+  });
+
+  it("reports an UNCERTAIN outcome for a connection failure", async () => {
+    fake.state.rows = [];
+    fake.state.insertError = new Error("Connection terminated unexpectedly");
+    await expect(createImage(input, "teacher-1")).resolves.toEqual({
+      ok: false,
+      reason: "error",
+      outcome: "uncertain",
+    });
   });
 });
 
 // Bulk soft-delete (the list's "Delete Selected", the only delete path) loops the
-// `closeActiveImage` primitive in ONE transaction; the blobs are removed
+// `closeActiveImage` primitive in ONE transaction; the objects are removed
 // best-effort AFTER it commits. These pin the count of rows closed, the already-gone
 // no-op, the lost conditional-close race, the all-or-nothing rollback, the swallowed
-// best-effort blob failure, and the empty-input short-circuit.
+// best-effort storage failure, and the empty-input short-circuit.
 describe("softDeleteImages", () => {
-  it("closes every named image, counts the closed rows, and deletes each blob", async () => {
+  it("closes every named image, counts the closed rows, and deletes each object", async () => {
     fake.state.rows = [{ blobPath: "abc.png" }];
     fake.state.closeResult = { rowCount: 1 };
     await expect(softDeleteImages(["a", "b", "c"], "teacher-3")).resolves.toEqual({
       ok: true,
       deleted: 3,
     });
-    expect(blob.deleteBlob).toHaveBeenCalledTimes(3);
+    expect(storage.deleteObject).toHaveBeenCalledTimes(3);
   });
 
-  it("treats already-gone names as no-op successes (not counted, no blob delete)", async () => {
-    fake.state.rows = []; // nothing active to read
-    await expect(softDeleteImages(["ghost1", "ghost2"], "teacher-3")).resolves.toEqual({
-      ok: true,
-      deleted: 0,
-    });
-    expect(blob.deleteBlob).not.toHaveBeenCalled();
-  });
-
-  it("treats a lost conditional-close race as not counted (no blob delete)", async () => {
-    fake.state.rows = [{ blobPath: "abc.png" }];
-    fake.state.closeResult = { rowCount: 0 };
-    await expect(softDeleteImages(["diagram"], "teacher-3")).resolves.toEqual({
-      ok: true,
-      deleted: 0,
-    });
-    expect(blob.deleteBlob).not.toHaveBeenCalled();
-  });
-
-  it("still succeeds (best-effort) when a blob delete throws", async () => {
+  it("removes the objects only AFTER the row transaction resolves", async () => {
     fake.state.rows = [{ blobPath: "abc.png" }];
     fake.state.closeResult = { rowCount: 1 };
-    blob.deleteBlob.mockRejectedValue(new Error("blob gone"));
+    const original = fake.db.transaction;
+    const commit = vi
+      .spyOn(fake.db, "transaction")
+      .mockImplementation(async (cb: Parameters<typeof original>[0]) => {
+        storage.order.push("tx:start");
+        const result = await original(cb);
+        storage.order.push("tx:end");
+        return result;
+      });
+
+    await softDeleteImages(["a"], "teacher-3");
+
+    // The adapter is untouched until the transaction has resolved.
+    expect(storage.order).toEqual(["tx:start", "tx:end", "delete:abc.png"]);
+    commit.mockRestore();
+  });
+
+  it("keeps { ok: true } when the object was already missing", async () => {
+    fake.state.rows = [{ blobPath: "abc.png" }];
+    fake.state.closeResult = { rowCount: 1 };
+    storage.deleteObject.mockResolvedValue({ ok: true, existed: false });
     await expect(softDeleteImages(["diagram"], "teacher-3")).resolves.toEqual({
       ok: true,
       deleted: 1,
     });
   });
 
-  it("rolls the whole batch back on a database error (no blob delete)", async () => {
+  it("treats already-gone names as no-op successes (not counted, no object delete)", async () => {
+    fake.state.rows = []; // nothing active to read
+    await expect(softDeleteImages(["ghost1", "ghost2"], "teacher-3")).resolves.toEqual({
+      ok: true,
+      deleted: 0,
+    });
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it("treats a lost conditional-close race as not counted (no object delete)", async () => {
+    fake.state.rows = [{ blobPath: "abc.png" }];
+    fake.state.closeResult = { rowCount: 0 };
+    await expect(softDeleteImages(["diagram"], "teacher-3")).resolves.toEqual({
+      ok: true,
+      deleted: 0,
+    });
+    expect(storage.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it("still succeeds (best-effort) when the object delete fails", async () => {
+    fake.state.rows = [{ blobPath: "abc.png" }];
+    fake.state.closeResult = { rowCount: 1 };
+    storage.deleteObject.mockResolvedValue({ ok: false, reason: "error", detail: "io" });
+    await expect(softDeleteImages(["diagram"], "teacher-3")).resolves.toEqual({
+      ok: true,
+      deleted: 1,
+    });
+  });
+
+  it("rolls the whole batch back on a database error (no object delete)", async () => {
     fake.state.rows = [{ blobPath: "abc.png" }];
     fake.state.updateError = new Error("down");
     await expect(softDeleteImages(["a", "b"], "teacher-3")).resolves.toEqual({
       ok: false,
       deleted: 0,
     });
-    expect(blob.deleteBlob).not.toHaveBeenCalled();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
   });
 
-  it("short-circuits an empty selection without touching the database or blobs", async () => {
+  it("short-circuits an empty selection without touching the database or storage", async () => {
     fake.state.updateError = new Error("must not be reached");
     await expect(softDeleteImages([], "teacher-3")).resolves.toEqual({ ok: true, deleted: 0 });
-    expect(blob.deleteBlob).not.toHaveBeenCalled();
+    expect(storage.deleteObject).not.toHaveBeenCalled();
   });
 });

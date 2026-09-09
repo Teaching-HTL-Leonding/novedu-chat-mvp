@@ -3,7 +3,7 @@ import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
 import { type DbExecutor, getDb } from "@/lib/db";
 import { authUsers } from "@/lib/db/auth-schema";
 import { countRows } from "@/lib/db/count";
-import { isUniqueViolation } from "@/lib/db/errors";
+import { classifyDbFailure, isUniqueViolation } from "@/lib/db/errors";
 import type { OwnerOption } from "@/lib/db/owner-filter";
 import { listOwners, ownerJoin, ownerLabel } from "@/lib/db/owners";
 import { type PagedResult, type Paging, paginate } from "@/lib/db/paging";
@@ -13,11 +13,13 @@ import { type SortColumns, sortOrder } from "@/lib/db/sort-order";
 import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
 import { validateFileName } from "@/lib/file-name";
-import { deleteBlob } from "@/lib/image-blob";
+import { deleteObject } from "@/lib/image-fs";
+import { IMAGE_ID_PATTERN } from "@/lib/image-ref";
 
 // Persistence for app-hosted image metadata in the `novedu_images` SQL table. The
-// bytes live in Azure Blob Storage (one blob per row, addressed by `blob_path`);
-// this table only tracks metadata. The table is TEMPORAL/append-only: each row is
+// bytes live in the configured image storage root (one object per row, keyed by
+// `blob_path` — see `lib/image-fs.ts`); this table only tracks metadata. The
+// table is TEMPORAL/append-only: each row is
 // one version of one image, the active version is the single row with
 // `valid_until IS NULL`, every other row is history. See the schema comment in
 // `lib/db/schema.ts` for the model; this module owns ALL access to the table so
@@ -28,8 +30,15 @@ import { deleteBlob } from "@/lib/image-blob";
 // surfaces as `undefined`/`{ ok: false }`, which callers turn into a graceful
 // message.
 //
-// SERVER-ONLY: uses node:crypto and the database. Never import from client
-// components.
+// SERVER-ONLY: uses node:crypto, the database and the filesystem adapter. Never
+// import from client components.
+
+// The "this is the live version" predicate. EVERY query here goes through it, so
+// the temporal filter can never drift between the list, the lookups, the insert
+// pre-check and the delete.
+function activeRow() {
+  return isNull(images.validUntil);
+}
 
 /** An image as shown in the teacher's list — the active version's metadata. */
 export interface ImageListEntry {
@@ -55,13 +64,13 @@ export interface ImageListEntry {
  */
 export type ImageListRow = ImageListEntry & { ownerName: string | null };
 
-/** The active version of one image. Metadata only — the bytes live in Blob Storage. */
+/** The active version of one image. Metadata only — the bytes live in the storage root. */
 export type ActiveImage = ImageListEntry;
 
 // The list's WHERE, built once and shared by the COUNT and the row query — they
 // must never drift, or a page's total would describe a different set than its rows.
 function listConditions(opts?: { search?: string; createdBy?: string }): SQL[] {
-  const conditions: SQL[] = [isNull(images.validUntil)];
+  const conditions: SQL[] = [activeRow()];
   const term = opts?.search?.trim();
   if (term) {
     const match = containsAny(term, [images.name]);
@@ -161,38 +170,68 @@ export async function getActiveImage(name: string): Promise<ActiveImage | null |
     const rows = await getDb()
       .select()
       .from(images)
-      .where(and(eq(images.name, valid.name), isNull(images.validUntil)));
-    const entry = rows[0];
-    if (!entry) return null;
-    return {
-      id: entry.id,
-      name: entry.name,
-      blobPath: entry.blobPath,
-      mimeType: entry.mimeType,
-      byteSize: entry.byteSize,
-      credit: entry.credit,
-      validFrom: entry.validFrom,
-      createdBy: entry.createdBy,
-    };
+      .where(and(eq(images.name, valid.name), activeRow()));
+    return toActiveImage(rows[0]);
   } catch (error) {
     console.error("image-store: active-image lookup failed", error);
     return undefined;
   }
 }
 
-export type ConfirmImageResult =
-  | { ok: true; name: string }
-  | { ok: false; reason: "name-taken" | "error" };
+/**
+ * The active version by its per-version row id — what `GET /api/image-content/<id>`
+ * re-checks on EVERY byte request, so a deleted or replaced image stops being
+ * served immediately. `null` for a malformed id (no query at all) and for a row
+ * that is closed or unknown; `undefined` on a database error.
+ */
+export async function getActiveImageById(id: string): Promise<ActiveImage | null | undefined> {
+  if (typeof id !== "string" || !IMAGE_ID_PATTERN.test(id)) return null;
+  try {
+    const rows = await getDb()
+      .select()
+      .from(images)
+      .where(and(eq(images.id, id), activeRow()));
+    return toActiveImage(rows[0]);
+  } catch (error) {
+    console.error("image-store: active-image lookup by id failed", error);
+    return undefined;
+  }
+}
+
+// The one row → `ActiveImage` mapping both lookups share.
+function toActiveImage(entry: typeof images.$inferSelect | undefined): ActiveImage | null {
+  if (!entry) return null;
+  return {
+    id: entry.id,
+    name: entry.name,
+    blobPath: entry.blobPath,
+    mimeType: entry.mimeType,
+    byteSize: entry.byteSize,
+    credit: entry.credit,
+    validFrom: entry.validFrom,
+    createdBy: entry.createdBy,
+  };
+}
+
+export type CreateImageResult =
+  | { ok: true; id: string; name: string }
+  | { ok: false; reason: "name-taken" }
+  | { ok: false; reason: "error"; outcome: "definite" | "uncertain" };
 
 /**
- * Confirms a freshly-uploaded blob by writing its metadata row (version 1) — the
- * row is created only here, never before the blob is in place. Fails with
- * `name-taken` if an active image already uses the name (uniqueness is enforced
- * here, among active images only, so a name can be reused after its image is
- * deleted). Runs in a transaction so the existence check and the insert are
- * atomic.
+ * Writes the metadata row (version 1) for an image whose object is already in
+ * place, and returns the new per-version `id` — the value the byte URL is built
+ * from. Fails with `name-taken` if an active image already uses the name
+ * (uniqueness is enforced here, among active images only, so a name can be
+ * reused after its image is deleted). Runs in a transaction so the existence
+ * check and the insert are atomic.
+ *
+ * A failure carries the `outcome` of the SQL attempt: `definite` means the
+ * server answered and nothing was written (the caller may delete the object it
+ * just wrote), `uncertain` means the connection broke and the insert may have
+ * committed — the object must then be left alone (docs/images.md).
  */
-export async function confirmImage(
+export async function createImage(
   input: {
     name: string;
     blobPath: string;
@@ -201,18 +240,19 @@ export async function confirmImage(
     credit: string | null;
   },
   userId: string,
-): Promise<ConfirmImageResult> {
+): Promise<CreateImageResult> {
   const now = new Date();
+  const id = randomUUID();
   try {
     return await getDb().transaction(async (tx) => {
       const existing = await tx
         .select({ id: images.id })
         .from(images)
-        .where(and(eq(images.name, input.name), isNull(images.validUntil)));
+        .where(and(eq(images.name, input.name), activeRow()));
       if (existing.length > 0) return { ok: false, reason: "name-taken" as const };
 
       await tx.insert(images).values({
-        id: randomUUID(),
+        id,
         name: input.name,
         blobPath: input.blobPath,
         mimeType: input.mimeType,
@@ -223,15 +263,15 @@ export async function confirmImage(
         validUntil: null,
         closedBy: null,
       });
-      return { ok: true, name: input.name };
+      return { ok: true, id, name: input.name };
     });
   } catch (error) {
     // The pre-check above handles the common case, but the partial unique index
-    // is the real guard against a concurrent confirm racing in after it — it
+    // is the real guard against a concurrent insert racing in after it — it
     // rejected a second active row for the same name, SQLSTATE 23505.
     if (isUniqueViolation(error)) return { ok: false, reason: "name-taken" };
-    console.error("image-store: confirm failed", error);
-    return { ok: false, reason: "error" };
+    console.error("image-store: creating the image row failed", error);
+    return { ok: false, reason: "error", outcome: classifyDbFailure(error) };
   }
 }
 
@@ -242,8 +282,8 @@ export type DeleteImageResult = { ok: true } | { ok: false; reason: "not-found" 
  * `closed_by`) on the given transaction executor — `softDeleteImages` loops it over
  * the selected names. A single conditional statement; `not-found` (no active row)
  * is NOT an error, so it never rolls a batch back. A real DB error THROWS so the
- * surrounding transaction rolls back. The blob deletion is the caller's job — it
- * happens OUTSIDE the row transaction.
+ * surrounding transaction rolls back. Removing the object is the caller's job —
+ * it happens OUTSIDE the row transaction.
  */
 async function closeActiveImage(
   executor: DbExecutor,
@@ -254,19 +294,21 @@ async function closeActiveImage(
   const closed = await executor
     .update(images)
     .set({ validUntil: now, closedBy: userId })
-    .where(and(eq(images.name, name), isNull(images.validUntil)));
+    .where(and(eq(images.name, name), activeRow()));
   return affectedRows(closed) < 1 ? { ok: false, reason: "not-found" } : { ok: true };
 }
 
-// Best-effort blob removal AFTER the row is closed. A blob failure must NEVER fail
-// the delete — the row is already gone, the orphaned blob just lingers — so it is
-// swallowed with a logged warning. Runs OUTSIDE any DB transaction.
-async function deleteBlobBestEffort(blobPath: string): Promise<void> {
-  try {
-    await deleteBlob(blobPath);
-  } catch (error) {
-    console.error("image-store: blob delete failed", blobPath, error);
+// Best-effort object removal AFTER the row is closed. A storage failure must
+// NEVER fail the delete — the row is already closed, the orphaned object just
+// lingers until it is reconciled — so it is only logged. An object that was
+// already gone is a note, not an error. Runs OUTSIDE any DB transaction.
+async function deleteObjectBestEffort(key: string): Promise<void> {
+  const result = await deleteObject(key);
+  if (!result.ok) {
+    console.error("image-store: object delete failed", key, result.reason, result.detail);
+    return;
   }
+  if (!result.existed) console.warn("image-store: object already missing", key);
 }
 
 export type DeleteImagesResult = { ok: boolean; deleted: number };
@@ -276,9 +318,9 @@ export type DeleteImagesResult = { ok: boolean; deleted: number };
  * every named image in ONE transaction via the `closeActiveImage` primitive — the
  * list then drops the row, while the full history (including who deleted it) stays.
  * All-or-nothing for the ROWS — any DB error rolls the whole batch back. The backing
- * blobs are removed best-effort, per-image, AFTER the transaction commits (a blob
- * failure never fails the delete). `deleted` counts the rows actually closed (an
- * already-gone name is a no-op success).
+ * objects are removed best-effort, per-image, AFTER the transaction commits (a
+ * storage failure never fails the delete). `deleted` counts the rows actually closed
+ * (an already-gone name is a no-op success).
  */
 export async function softDeleteImages(
   names: string[],
@@ -286,15 +328,15 @@ export async function softDeleteImages(
 ): Promise<DeleteImagesResult> {
   if (names.length === 0) return { ok: true, deleted: 0 };
   const now = new Date();
-  let blobPaths: string[];
+  let keys: string[];
   try {
-    blobPaths = await getDb().transaction(async (tx) => {
+    keys = await getDb().transaction(async (tx) => {
       const closedPaths: string[] = [];
       for (const name of names) {
         const rows = await tx
           .select({ blobPath: images.blobPath })
           .from(images)
-          .where(and(eq(images.name, name), isNull(images.validUntil)));
+          .where(and(eq(images.name, name), activeRow()));
         const active = rows[0];
         if (!active) continue;
 
@@ -307,6 +349,6 @@ export async function softDeleteImages(
     console.error("image-store: bulk delete failed", error);
     return { ok: false, deleted: 0 };
   }
-  for (const blobPath of blobPaths) await deleteBlobBestEffort(blobPath);
-  return { ok: true, deleted: blobPaths.length };
+  for (const key of keys) await deleteObjectBestEffort(key);
+  return { ok: true, deleted: keys.length };
 }

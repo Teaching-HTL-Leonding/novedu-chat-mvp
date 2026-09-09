@@ -1,20 +1,24 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { confirmImageUploadForUser, prepareImageUpload } from "@/lib/image-service";
+import { createImageForUser, MAX_IMAGE_BYTES } from "@/lib/image-service";
 import { softDeleteImages } from "@/lib/image-store";
 import { requireTeacherUserId } from "@/lib/student-mode";
 
 // Teacher-only server actions for the app-hosted IMAGE surface. Mirrors
 // `lib/files-actions.ts`: each gates with the shared `requireTeacherUserId()`,
 // the policy pipeline lives in `lib/image-service.ts` (shared with the bearer
-// API routes, docs/api.md), and the mutating actions revalidate the list.
+// API route, docs/api.md), and the mutating actions revalidate the list.
 //
-// Upload is CONFIRM-ONLY: the browser PUTs the bytes straight to Blob Storage
-// with a short-lived create-only SAS (no app route serves image bytes), then
-// `confirmImageUpload` validates the landed blob and writes the metadata row.
-// No DB row exists until that confirm — an abandoned upload leaves at most an
-// orphan blob, never a half-written record.
+// Upload is ONE action carrying the `File` in `FormData`: the bytes reach the
+// server, the service streams them into a new storage object and only then
+// writes the metadata row. There is no upload slot and no confirm step.
+//
+// CSRF and body bounding come from the FRAMEWORK, not from code here: Next.js
+// compares `Origin` with `Host` on every server-action POST, and
+// `serverActions.bodySizeLimit` (25 MB, set in next.config.ts for quiz photos)
+// caps the request. The image ceiling itself is `MAX_IMAGE_BYTES` (5 MB),
+// checked here before the service and again while the adapter streams.
 
 // The shared teacher-gate refusal for these image actions — only the verb
 // (upload/delete) differs between the call sites.
@@ -23,40 +27,42 @@ function gateMessage(verb: string): string {
 }
 
 /**
- * Mints a short-lived, create-only upload SAS for a NEW image — the gate plus
- * `prepareImageUpload` (`lib/image-service.ts`), which validates name/MIME/size
- * and writes NO DB row (that happens in `confirmImageUpload`, once the bytes
- * are in place).
- */
-export async function requestImageUpload(
-  name: string,
-  mime: string,
-  size: number,
-): Promise<{ ok: true; uploadUrl: string; blobPath: string } | { ok: false; error: string }> {
-  const gate = await requireTeacherUserId();
-  if (!gate.ok) return { ok: false, error: gateMessage("upload") };
-
-  const result = await prepareImageUpload({ name, mime, byteSize: size });
-  if (!result.ok) return { ok: false, error: result.message };
-  return { ok: true, uploadUrl: result.uploadUrl, blobPath: result.blobPath };
-}
-
-/**
- * Confirms a freshly-uploaded blob — the gate plus `confirmImageUploadForUser`
- * (`lib/image-service.ts`), which re-derives size/MIME from the landed blob
- * (never trusted from the client) and writes the metadata row. Revalidates the
+ * Uploads a NEW image — the gate plus `createImageForUser`
+ * (`lib/image-service.ts`). The form posts `file` (the bytes), `name`, `mime`
+ * and an optional `credit`; every field is re-checked here, because a
+ * hand-crafted POST reaches this action just as the form does. Revalidates the
  * list on success.
  */
-export async function confirmImageUpload(
-  name: string,
-  blobPath: string,
-  mime: string,
-  credit?: string,
+export async function uploadImage(
+  formData: FormData,
 ): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
   const gate = await requireTeacherUserId();
   if (!gate.ok) return { ok: false, error: gateMessage("upload") };
 
-  const result = await confirmImageUploadForUser(gate.userId, { name, blobPath, mime, credit });
+  const incomplete = { ok: false as const, error: "The upload form was incomplete. Try again." };
+
+  const files = formData.getAll("file");
+  const file = files[0];
+  if (files.length !== 1 || !(file instanceof File)) return incomplete;
+
+  const names = formData.getAll("name");
+  const name = names[0];
+  if (names.length !== 1 || typeof name !== "string") return incomplete;
+
+  const mimes = formData.getAll("mime");
+  const mime = mimes[0];
+  if (mimes.length !== 1 || typeof mime !== "string") return incomplete;
+
+  const credits = formData.getAll("credit");
+  const credit = credits[0];
+  if (credits.length > 1 || (credit !== undefined && typeof credit !== "string")) return incomplete;
+
+  // Cheap and exact: refuse an oversized file before it is streamed anywhere.
+  if (file.size > MAX_IMAGE_BYTES) {
+    return { ok: false, error: "The image is too large — the maximum is 5 MB." };
+  }
+
+  const result = await createImageForUser(gate.userId, { name, mime, credit, content: file });
   if (!result.ok) return { ok: false, error: result.message };
 
   revalidatePath("/images");
@@ -66,7 +72,7 @@ export async function confirmImageUpload(
 /**
  * Bulk soft-delete behind the images list's "Delete Selected" button — the only way
  * to delete an image. Teacher-only; soft-deletes every selected image (and its
- * backing blob, best-effort) in one transaction (`softDeleteImages`). Revalidates
+ * backing object, best-effort) in one transaction (`softDeleteImages`). Revalidates
  * the list on success. Mirrors `deleteSelectedFilesAction`.
  */
 export async function deleteSelectedImagesAction(

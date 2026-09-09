@@ -36,10 +36,13 @@ export type ApiRequestResult =
  * server error bodies (`{ message }` — incl. the generic 401/403 — or
  * `{ errors }`) passed through VERBATIM — marks the process failed, and
  * returns `{ ok: false, error }` with that same payload. On success it returns
- * the parsed payload WITHOUT printing, so multi-step commands (`images upload`)
- * can consume intermediate responses silently. No client-side pre-validation:
- * the server runs the identical pipeline; offline checking is the `validate`
- * command's job.
+ * the parsed payload WITHOUT printing, so a caller that must inspect the
+ * result before deciding what to print (`codes sync`'s own listing step) can
+ * consume it silently. `body` may be a plain value (sent as JSON) or a
+ * `FormData` (sent as-is — `images upload`'s multipart request; `fetch` sets
+ * its own boundary'd content type). No client-side pre-validation: the server
+ * runs the identical pipeline; offline checking is the `validate` command's
+ * job.
  *
  * `quiet` suppresses both the stderr print and the exit-code marking and hands
  * the failure payload back instead — for commands that make MANY requests and
@@ -50,7 +53,7 @@ export async function performApiRequest(options: {
   server?: string;
   path: string;
   method?: "GET" | "POST" | "PUT";
-  body?: unknown;
+  body?: unknown | FormData;
   quiet?: boolean;
 }): Promise<ApiRequestResult> {
   const fail = (
@@ -76,15 +79,25 @@ export async function performApiRequest(options: {
     throw error;
   }
 
+  // A `FormData` body (image upload) is passed straight to `fetch`, which sets
+  // its own `content-type` with the multipart boundary — anything else is the
+  // existing JSON path.
+  const isFormData = options.body instanceof FormData;
+
   let response: Response;
   try {
     response = await fetch(new URL(options.path, server), {
       method: options.method ?? "GET",
       headers: {
         authorization: `Bearer ${token}`,
-        ...(options.body === undefined ? {} : { "content-type": "application/json" }),
+        ...(options.body === undefined || isFormData ? {} : { "content-type": "application/json" }),
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        options.body === undefined
+          ? undefined
+          : isFormData
+            ? (options.body as FormData)
+            : JSON.stringify(options.body),
     });
   } catch (error) {
     return fail({
@@ -117,7 +130,7 @@ export async function runApiRequest(options: {
   server?: string;
   path: string;
   method?: "GET" | "POST" | "PUT";
-  body?: unknown;
+  body?: unknown | FormData;
 }): Promise<void> {
   const result = await performApiRequest(options);
   if (result.ok) printJson(result.payload ?? null);
