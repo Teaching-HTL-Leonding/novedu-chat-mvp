@@ -539,9 +539,9 @@ in-page discussion live in `app/[code]/_quiz/`.
   secret (unlike `evaluation`), so it survives `toPublicQuiz` and is resolved
   server-side (`resolveImageRef`) to a `ResolvedImage` rendered above the question
   markdown by `<ContentImage>`. Its `src` resolves in **three cases**: a hosted
-  image **name** (`hosted: true` → looked up in `novedu_images`, minted to a
-  short-lived read SAS), an **absolute** `http(s)` URL (used as-is), or a path
-  **relative** to the quiz's own `file_url`. An optional **`credit`** ("Content
+  image **name** (`hosted: true` → looked up in `novedu_images`, turned into its
+  `/api/image-content/<id>` byte-route URL), an **absolute** `http(s)` URL (used
+  as-is), or a path **relative** to the quiz's own `file_url`. An optional **`credit`** ("Content
   Credentials") is shown small below the image — for a hosted image it defaults to
   the credit set at upload, and a per-question `credit` overrides it. Example:
 

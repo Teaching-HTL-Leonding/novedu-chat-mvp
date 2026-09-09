@@ -127,6 +127,17 @@ deliberately **unpaged**: the CLI reads each result whole, so they call the stor
 without `paging` and return every match as a bare JSON array. The teacher list PAGES
 do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wire one.
 
+**Cookie-session routes.** This namespace is bearer-only with exactly THREE
+deliberate exceptions, none of them list routes above: `/api/copilotkit` (the
+chat runtime, `docs/chat.md`), the teacher-only `/api/health` probe
+(`docs/dashboard.md`), and `GET /api/image-content/<id>` (the image byte route,
+`docs/images.md`) — a signed-in browser's `<img src>` and `fetch` calls carry a
+session cookie, not a bearer token, so these three stay on the cookie channel
+instead. `/api/image-content` in particular carries **no proxy-matcher
+exclusion at all** (unlike every bearer route below, which needs one to reach
+callers with no session cookie) — it sits behind the default cookie gate like
+any page, and its handler re-validates the session itself on top of that.
+
 - **`GET /api/version`** (`app/api/version/route.ts`) — the ONE route in this list
   that is **public and unauthenticated** (proxy-excluded, no bearer gate): the
   build-identity probe for CD triage. Answers
@@ -180,29 +191,25 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   the `/images` list's filters, with the bearer channel's own ownership param
   (`q` over the name; `mine` default on, where the web page spells it
   `?owner=`). Bare JSON array of active versions
-  `{ name, mimeType, byteSize, credit, createdBy, createdAt, url }` — `url` is
-  a **short-lived (~3 h) read SAS** straight to the blob (the bytes never pass
-  through the app, `docs/images.md`), or `null` when minting fails for that
-  row. Unlike `/api/files` there is **no public GET** anywhere under this
-  prefix.
+  `{ id, name, mimeType, byteSize, credit, createdBy, createdAt, url }` — `id`
+  is the per-version row id and `url` the absolute
+  `/api/image-content/<id>` link, which only resolves bytes for a **signed-in
+  browser session** (`docs/images.md`) — not a programmatic download endpoint.
+  Unlike `/api/files` there is **no public GET** anywhere under this prefix.
 - **`POST /api/images/<name>`** (`app/api/images/[name]/route.ts`,
-  teacher-only) — step 1 of the same **confirm-only, direct-to-blob** upload
-  flow the web form uses, via `prepareImageUpload` (`lib/image-service.ts`).
-  Body `{ mime, byteSize }` (PNG/JPEG/SVG, ≤ 5 MB — the claimed size; confirm
-  re-derives the real one). `200` with `{ uploadUrl, blobPath }`: PUT the raw
-  bytes to `uploadUrl` with `x-ms-blob-type: BlockBlob` and a `Content-Type`
-  equal to `mime` (the create-only SAS pins it, valid ~10 min), then confirm.
-  **Create-only, no upsert** — images are immutable; a taken name is `409`
-  (delete + re-upload in the web app is the way to replace one). Writes no DB
-  row.
-- **`POST /api/images/<name>/confirm`**
-  (`app/api/images/[name]/confirm/route.ts`, teacher-only) — step 3:
-  `confirmImageUploadForUser` (`lib/image-service.ts`) inspects the landed blob
-  (size/MIME re-derived, never trusted from the client; a present-but-bad blob
-  is deleted best-effort) and writes the `novedu_images` row as the token's
-  user id. Body `{ blobPath, mime, credit? }` (`credit` trimmed, clamped to 512
-  chars). `201` with `{ name, mimeType, byteSize, credit }`; a missing or
-  off-policy blob is `400`, a name race `409`, storage trouble `503`.
+  teacher-only) — ONE `multipart/form-data` request that carries the bytes to
+  the app and returns the confirmed result — no slot, no confirm step. Fields:
+  `file` (exactly one file part), `mime` (PNG/JPEG/SVG, exactly one string),
+  `credit` (optional, at most one string). The request is bounded twice: the
+  whole multipart envelope is capped at **6 MiB** by a streamed byte counter
+  (`readBoundedFormData`, `lib/bounded-form.ts` — `Content-Length` is only a
+  fast reject, never trusted alone) and the image itself at `MAX_IMAGE_BYTES`
+  (5 MB) by `createImageForUser` (`lib/image-service.ts`), the same pipeline
+  the web form's server action calls. `201` with
+  `{ id, name, mimeType, byteSize, credit }` (the measured size). **Create-only,
+  no upsert** — images are immutable; a taken name is `409` (delete + re-upload
+  in the web app is the way to replace one); `400` for a bad body/name/MIME/size,
+  `413` above 6 MiB, `503` when storage is unavailable.
 - **`GET /api/reports?status=&reaction=&q=&mine=`** (`app/api/reports/route.ts`,
   teacher-only) — the `/reports` inbox's exact filters and defaults over
   `listReports`: `status` `open` (default) | `resolved` | `all`; `reaction` one
@@ -373,17 +380,17 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   lock) stay JSON on stderr with exit 1; a single entry's rejection is reported
   in the run's report instead — `performApiRequest({ quiet: true })` hands the
   failure payload back rather than printing it.
-- **The `images` group** (`cli/src/commands/images.ts`) drives the three
+- **The `images` group** (`cli/src/commands/images.ts`) drives the two
   `/api/images` routes. `images upload <name> --file <path> [--credit <text>]`
-  runs the 3-step flow client-side: bearer `POST /api/images/<name>` for the
-  slot, a **raw `PUT` of the bytes to the SAS `uploadUrl`** (no bearer header —
-  the SAS is the auth; `Content-Type` = the MIME derived from the file
-  extension via the shared `imageMimeFromExtension`, the one client-side
-  check because the SAS pins it), then bearer `POST …/confirm` whose body is
-  the command's stdout. `--file` is **required** (binary — no stdin);
-  whichever step fails, exactly one JSON error lands on stderr (exit 1) and
-  later steps are skipped. `images list [--search <q>] [--all]` mirrors
-  `files list`. Create-only like the route: no overwrite, no delete (web-only).
+  reads the file, derives the MIME from its extension (`imageMimeFromExtension`,
+  the one client-side check), builds ONE `FormData` (`file`, `mime`, optional
+  `credit`), and sends it as ONE bearer `POST /api/images/<name>` — `runApiRequest`
+  passes a `FormData` body straight to `fetch`, which sets its own multipart
+  boundary, so the CLI never sets `content-type` itself. A failure is exactly
+  one JSON error on stderr (exit 1). `images list [--search <q>] [--all]`
+  mirrors `files list`, printing each row's `id` and its authenticated `url`
+  verbatim (opening it needs a signed-in browser). Create-only like the route:
+  no overwrite, no delete (web-only).
 - **The `reports` group** (`cli/src/commands/reports.ts`) drives the three
   `/api/reports` routes for the report-triage loop
   (`reports list` → `reports show <id>` → fix the activity YAML →
@@ -461,10 +468,9 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   that a cookie-only request (no `Authorization` header) never authenticates.
 - **Route unit tests** (`app/api/codes/route.unit.test.ts`,
   `app/api/files/route.unit.test.ts`, the PUT cases in
-  `app/api/files/[name]/route.unit.test.ts`, the three images routes —
+  `app/api/files/[name]/route.unit.test.ts`, the two images routes —
   `app/api/images/route.unit.test.ts`,
-  `app/api/images/[name]/route.unit.test.ts`,
-  `app/api/images/[name]/confirm/route.unit.test.ts` — and the three reports
+  `app/api/images/[name]/route.unit.test.ts` — and the three reports
   routes — `app/api/reports/route.unit.test.ts`,
   `app/api/reports/[id]/route.unit.test.ts`,
   `app/api/reports/resolve/route.unit.test.ts`) keep the auth gate REAL by
@@ -525,6 +531,6 @@ do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wi
   `cli/src/commands/reports.unit.test.ts` does the same for
   `reports list/show/resolve` (the defaults, `--all` → `mine=0`, the multi-id
   resolve body, and the exit codes), and `cli/src/commands/images.unit.test.ts`
-  pins the 3-step upload order (raw SAS PUT with the pinned content type and NO
-  bearer header), the short-circuit on each step's failure, and the
+  pins the ONE multipart request (exact `file`/`mime`/`credit` fields, no
+  `content-type` header set by the CLI), the 400/409/503 mapping, and the
   extension→MIME rejection with zero fetches.

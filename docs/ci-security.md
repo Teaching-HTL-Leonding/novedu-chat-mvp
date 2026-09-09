@@ -88,13 +88,14 @@ run untrusted PR code.**
   dummies only.
 - **No real credentials on a fork `pull_request`.** The live tag is split:
   `@live-db` (needs a Postgres database, no LLM) runs in CI against the **ephemeral
-  container** above — safe because the container is a non-secret dummy, not real
-  infra. `@live-llm` (needs the SCCH LLM — geo-blocked to Austria +
-  un-containerizable) and `@live-storage` (needs **real Azure Blob Storage** for the
-  image subsystem — no container substitutes for it, and the User-Delegation SAS
-  path needs the passwordless data-store credential) are both excluded from the PR
+  container** above, and the image lifecycle rides it too — a temporary
+  filesystem root, no Azure credentials, no mounted share — safe because both
+  are non-secret local resources, not real infra. `@live-llm` (needs the SCCH
+  LLM — geo-blocked to Austria + un-containerizable) and `@live-storage` (the
+  manual smoke against a REAL mounted Azure Files share, `docs/images.md`;
+  everything else image-related is `@live-db`) are both excluded from the PR
   run via `npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage"`) and run
-  local-only. Tests against **real** Azure Postgres, SCCH, or Azure Blob Storage must run
+  local-only. Tests against **real** Azure Postgres, SCCH, or Azure Files must run
   only on a **trusted trigger** — `push` to `main`, a `schedule`, or a
   reviewer-gated GitHub *Environment* — never on fork PR code.
 - **Keep `permissions:` least-privilege.** `qa.yml` only reads code and runs

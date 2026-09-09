@@ -90,8 +90,8 @@ references a deleted name simply shows no image.
 ## Three things to get right
 
 - Reference images by **name** with `hosted: true`, never by pasting a link.
-  The download link the image list offers is temporary and stops working after
-  a few hours; the name keeps working.
+  The link the image list offers only opens for a signed-in Novedu user, in a
+  browser; the name keeps working everywhere, including in the YAML.
 - A name that is already taken is rejected, in the app and in the CLI alike.
   Pick a new name, or delete the old image first if you want to replace it.
 - Hosting an image is not the same as letting students **answer** with a photo.

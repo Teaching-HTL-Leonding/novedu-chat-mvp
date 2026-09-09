@@ -178,7 +178,13 @@ Finer-grained access is by Entra **group** membership, but the result is a plain
   `docs/coding.md`), the CLI/API bearer routes (`/api/me`, `/api/codes`, `/api/reports`,
   `/api/images`, `/api/eval` — each self-gates via `requireBearerUser`/`requireBearerTeacher`,
   `docs/api.md`), `/docs` (the static teacher guide, public by intent —
-  `docs/teacher-docs.md`), and static assets.
+  `docs/teacher-docs.md`), and static assets. `GET /api/image-content/<id>` — the
+  route that serves app-hosted image bytes — is deliberately NOT excluded: it uses
+  the normal cookie session, stays behind this gate like any page, and its handler
+  calls `getSession()` itself on top of that. It applies no further authorization
+  beyond a live session — no teacher check, no `checkCode()`, no thread token —
+  because teacher-hosted images are shared authenticated assets, not per-code
+  resources (`docs/images.md`).
 - **`/sign-in`** (`app/sign-in/page.tsx`, server) reads `callbackURL` and `error` from
   the query, validates the callback is an app-relative path (it must start with `/`, and
   its second character may be neither `/` nor `\` — `//host` and `/\host` are both

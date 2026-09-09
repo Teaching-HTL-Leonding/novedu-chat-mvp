@@ -53,12 +53,14 @@ returns.
 Images are immutable; delete + re-upload happens in the web app (`/images`).
 
 - `--file` is required (`.png`, `.jpg`/`.jpeg` or `.svg`, max 5 MB — the type
-  comes from the extension; binary, so no stdin).
+  comes from the extension; binary, so no stdin). One request carries the
+  bytes to the app; there is no upload slot and no confirm step.
 - `--credit` stores an optional attribution.
 - Reference the uploaded image from activity YAML **by name** with
   `hosted: true`, e.g. a quiz question's
-  `image: { src: <name>, hosted: true, alt: … }`. The `url` in `images list` is
-  a short-lived SAS link for previewing — never embed it.
+  `image: { src: <name>, hosted: true, alt: … }`. The `url` in `images list`
+  only opens for a signed-in browser session — never embed it, always
+  reference by name.
 
 ## The report-driven enhancement loop
 
