@@ -95,7 +95,18 @@ DATABASE_URL=postgresql://novedu-chat-mvp-at@db-pgnovedu.postgres.database.azure
 
 # Local container, password auth (dev/test/CI only)
 DATABASE_URL=postgresql://postgres:Test-Passw0rd!@localhost:5432/novedu
+
+# The Compose stack's Postgres (compose.yaml), as seen from the app container
+DATABASE_URL=postgresql://postgres:Test-Passw0rd!@db:5432/novedu
 ```
+
+The Compose stack (`compose.yaml`, README "Running the whole stack with Docker
+Compose") is the third local option: a `postgres:18` service with password auth,
+the `mastra` schema pre-created by `scripts/db/local-init.sql` on the data
+volume's first start (the same statement CI runs in
+`scripts/ci/wait-and-create-db.mjs`), the app applying its own migrations at
+boot as everywhere else, and the port published on `127.0.0.1:55432` for
+`psql` from the host.
 
 ## `lib/db/pool.ts` — the one seam
 

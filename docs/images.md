@@ -407,6 +407,13 @@ path `IMAGE_STORAGE_ROOT` names (or a positional argument), and refuses `/` and
 `/home` outright. Run it once per root before the app first serves image
 traffic against it.
 
+In the Compose stack (`compose.yaml`) the root is the named volume
+`novedu-files`, mounted at `/novedu-files`, and the `files-init` service is the
+local analogue of the operator: it creates `images/`, writes the sentinel
+(byte-for-byte the adapter's, pinned by `lib/image-fs.unit.test.ts`) and chowns
+the tree to the image's `nextjs` user (uid/gid 1001) before the app starts —
+idempotent on an existing volume, never run by the app itself.
+
 On App Service, the platform's "bring your own storage" path mapping mounts the
 Azure Files share `novedu-files` at `/novedu-files`; the mount is SMB, keyed by
 the storage account key the platform holds in the path-mapping configuration

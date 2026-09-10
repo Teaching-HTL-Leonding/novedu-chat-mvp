@@ -160,13 +160,20 @@ CODE_ORIGIN=https://your-public-origin
 # operation reports "unavailable" until this is set. See docs/images.md.
 IMAGE_STORAGE_ROOT=/absolute/path/outside/the/repo
 
-# --- Telemetry (optional) — Azure Monitor / Application Insights via OpenTelemetry ---
-# Unset => telemetry is fully OFF (no exporter, no network sink). When set, server
-# traces/metrics/logs/exceptions export to App Insights. This is a SECRET — keep it
-# out of the repo and CI (see docs/telemetry.md). NO message/prompt/PII content is
-# ever sent.
-APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=...
-# Sets the App Insights cloud_RoleName so the app's spans are attributable.
+# --- Telemetry (optional) — OpenTelemetry, one of two backends (docs/telemetry.md) ---
+# Neither variable set => telemetry is fully OFF (no SDK, no exporter, no network
+# sink). NO message/prompt/PII content is ever sent on either backend.
+#
+# Standard OTLP export — selects the standard path. Point it at any OTLP receiver;
+# locally that is the Aspire dashboard from `docker compose -f compose.telemetry.yaml up -d`.
+# Every other OTEL_* variable is the SDK's own (protocol, headers, sampler, …).
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+# Azure Monitor / Application Insights — selects the Azure path, but ONLY when the
+# OTLP endpoint above is unset (OTLP wins when both are present). This is a
+# SECRET — keep it out of the repo and CI.
+# APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=...
+# The service name on either backend (App Insights cloud_RoleName). Defaults to
+# novedu-chat on the OTLP path when unset.
 OTEL_SERVICE_NAME=novedu-chat
 ```
 
@@ -181,9 +188,12 @@ Notes:
   authoring time and gated at runtime with a readable reason, never a raw
   missing-env error (`docs/ai-models.md`). `/health` shows a provider's rows only
   when it is configured.
-- `APPLICATIONINSIGHTS_CONNECTION_STRING` is **optional**: unset means telemetry is
-  fully off. When set, server telemetry exports to Azure Monitor / App Insights — no
-  conversation content is ever sent. See `docs/telemetry.md`.
+- Telemetry is **optional** and off unless a destination is set:
+  `OTEL_EXPORTER_OTLP_ENDPOINT` selects standard OTLP export (Aspire locally, any
+  receiver or Collector elsewhere), `APPLICATIONINSIGHTS_CONNECTION_STRING` selects
+  Azure Monitor / App Insights; OTLP wins when both are set, and
+  `OTEL_SDK_DISABLED=true` switches everything off. No conversation content is ever
+  sent. See `docs/telemetry.md`.
 - `IMAGE_STORAGE_ROOT` is **optional but expected in every developer's `.env`**:
   unset (or unprovisioned) means the app still boots, logs a warning, and the
   `/images` upload/list surface reports "unavailable" until it is set AND
@@ -248,6 +258,44 @@ npm run start
 To serve the teacher guide at `/docs` locally too, run `npm run docs:stage` first —
 it builds the docs site into `public/docs/`. (The Docker image build does this
 automatically; a plain local build without staging simply 404s on `/docs`.)
+
+### Running the whole stack with Docker Compose
+
+`compose.yaml` runs Novedu outside Azure: the production image (built from the
+`Dockerfile`), a local **password-auth Postgres**, and the **Aspire dashboard** as
+the OpenTelemetry receiver. It is not an Azure-free *app* setup — **sign-in still
+goes through Microsoft Entra ID** and the LLM providers stay external — only an
+Azure-free hosting of it: no Azure Database for PostgreSQL, no Azure Files share,
+no Application Insights.
+
+Prerequisites: Docker with Compose 2.20+; a `.env` in the repo root carrying at
+least `AUTH_SECRET`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
+and `TEACHER_GROUP_ID` (boot fails without them), optionally `SCCH_BASE_URL` /
+`SCCH_API_KEY` and/or `OPENROUTER_API_KEY` for a working LLM (Azure Foundry is not
+available in the container — its passwordless Entra auth needs the Azure CLI or a
+managed identity); and the Entra redirect URI
+`http://localhost:3000/api/auth/callback/microsoft` (see above). Only those keys
+are read from `.env`; its `DATABASE_URL`, `IMAGE_STORAGE_ROOT` and App Insights
+setting never reach the container.
+
+```bash
+docker compose up --build -d --wait          # build the image, start db + app + aspire, wait for health
+docker compose logs aspire | grep "login?t="  # the dashboard's login URL
+docker compose logs -f app                    # `telemetry: mode=otlp`, migrations, image root
+docker compose down                           # stop; keeps the data volumes
+docker compose down -v                        # stop and wipe database + image files
+```
+
+Then open **http://localhost:3000** (app), the login URL from the log for the
+dashboard at **http://localhost:18888**, and — if you need `psql` — the database on
+`127.0.0.1:55432` (user `postgres`, password `Test-Passw0rd!`, database `novedu`;
+`NOVEDU_DB_PORT` / `NOVEDU_DB_PASSWORD` in `.env` override both). Teacher role
+works exactly as in production: it comes from the Entra group on sign-in. The
+image root is provisioned inside the `novedu-files` volume by the `files-init`
+service; Mastra's schema is created by `scripts/db/local-init.sql` on the first
+boot of the `novedu-db` volume, and the app applies its own migrations at
+startup. Telemetry details and the dashboard-only variant are in
+[`docs/telemetry.md`](docs/telemetry.md).
 
 ## Scripts
 
