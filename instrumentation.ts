@@ -3,10 +3,11 @@ import type { Instrumentation } from "next";
 // Runs ONCE per server instance, before the first request is served (Next.js
 // instrumentation file convention). Startup duties, in order:
 //
-//   1. Bring up telemetry (Azure Monitor / Application Insights via OpenTelemetry)
-//      FIRST, so its auto-instrumentation can patch the HTTP and `pg` modules
-//      before anything opens a connection. No-op when the connection
-//      string is unset. Also records a content-free `app_started` event.
+//   1. Bring up telemetry FIRST (Azure Monitor or standard OTLP export — the
+//      facade picks one from the environment, docs/telemetry.md), so its
+//      auto-instrumentation can patch the HTTP and `pg` modules before anything
+//      opens a connection. No-op when no destination is configured. Also
+//      records a content-free `app_started` event.
 //   2. Log the image storage root's state (`verifyImageRoot`, `lib/image-fs.ts`)
 //      — independent of the database, so it runs even when DATABASE_URL is
 //      unset below. A missing/misconfigured root only warns: the app keeps
@@ -28,7 +29,7 @@ import type { Instrumentation } from "next";
 // The no-DB case (DATABASE_URL unset, e.g. plain `next build`) skips
 // migrations: the app boots for DB-less flows like tutor validation, matching
 // the graceful degradation in app/mastra/index.ts. Telemetry is independent of
-// the DB and gated on its own connection string.
+// the DB and gated on its own destination settings.
 export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
