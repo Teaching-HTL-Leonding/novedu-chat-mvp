@@ -32,6 +32,7 @@ import { HttpInstrumentation } from "@opentelemetry/instrumentation-http";
 import { PgInstrumentation } from "@opentelemetry/instrumentation-pg";
 import { RuntimeNodeInstrumentation } from "@opentelemetry/instrumentation-runtime-node";
 import { NodeSDK, type NodeSDKConfiguration, resources } from "@opentelemetry/sdk-node";
+import type { TelemetryEnv } from "@/lib/telemetry-mode";
 
 export const DEFAULT_SERVICE_NAME = "novedu-chat";
 
@@ -50,7 +51,7 @@ export function otlpInstrumentations() {
 
 /** The complete NodeSDK configuration; exported so tests can pin its shape. */
 export function otlpSdkConfiguration(
-  env: NodeJS.ProcessEnv = process.env,
+  env: TelemetryEnv = process.env,
 ): Partial<NodeSDKConfiguration> {
   const configuration: Partial<NodeSDKConfiguration> = {
     instrumentations: otlpInstrumentations(),

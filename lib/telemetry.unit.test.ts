@@ -172,7 +172,7 @@ describe("emitEvent record shape", () => {
 
       const records = exporter.getFinishedLogRecords();
       expect(records).toHaveLength(1);
-      const record = records[0];
+      const record = records[0] as (typeof records)[number];
       expect(record.body).toBe("report.submitted");
       expect(record.eventName).toBe("report.submitted");
       expect(record.attributes).toEqual({
@@ -214,14 +214,14 @@ describe("recordError sampling", () => {
 
       const spans = exporter.getFinishedSpans();
       expect(spans.map((s) => s.name)).toEqual(["exception", "exception"]);
-      const [first, second] = spans;
+      const [first, second] = spans as [(typeof spans)[number], (typeof spans)[number]];
       expect(first.parentSpanContext).toBeUndefined();
       expect(first.spanContext().traceId).not.toBe("0af7651916cd43dd8448eb211c80319c");
       expect(first.status.code).toBe(2); // SpanStatusCode.ERROR
       expect(first.status.message).toBe("boom");
       expect(first.attributes).toEqual({ path: "/x", routeType: "route" });
       expect(first.events.map((e) => e.name)).toEqual(["exception"]);
-      expect(first.events[0].attributes?.["exception.message"]).toBe("boom");
+      expect(first.events[0]?.attributes?.["exception.message"]).toBe("boom");
       expect(second.status.message).toBe("[object Object]");
     } finally {
       await provider.shutdown();

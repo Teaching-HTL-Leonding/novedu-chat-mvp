@@ -19,11 +19,14 @@ export type TelemetryMode = "disabled" | "azure" | "otlp";
 
 export type TelemetryChoice = { mode: TelemetryMode; reason: string };
 
+/** The subset of `process.env` the resolver reads — a plain object in tests. */
+export type TelemetryEnv = Readonly<Record<string, string | undefined>>;
+
 function present(value: string | undefined): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-export function resolveTelemetryMode(env: NodeJS.ProcessEnv = process.env): TelemetryChoice {
+export function resolveTelemetryMode(env: TelemetryEnv = process.env): TelemetryChoice {
   if (env.OTEL_SDK_DISABLED?.trim().toLowerCase() === "true") {
     return { mode: "disabled", reason: "OTEL_SDK_DISABLED=true" };
   }
