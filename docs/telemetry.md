@@ -310,6 +310,7 @@ docker compose down            # or `down -v` to wipe the data volumes
 # Compose's .env never reach the app container)
 docker run --rm --network chat-prototype_default \
   -e OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:18890 \
+  -e AUTH_URL=http://localhost:3000/api/auth \
   --env-file <(grep -E '^(AUTH_SECRET|AZURE_(TENANT|CLIENT)_(ID|SECRET)|TEACHER_GROUP_ID|DATABASE_URL)=' .env) \
   -p 127.0.0.1:3000:3000 novedu-chat:local
 ```

@@ -69,7 +69,7 @@ services:
       # Deliberately NOT aspire: app startup never waits for the receiver.
     ports:
       # Exactly localhost:3000 — the Entra redirect URI registered for local
-      # development (README) and the origin better-auth infers when AUTH_URL is unset.
+      # development (README) and the origin AUTH_URL below names.
       - "127.0.0.1:3000:3000"
     volumes:
       - novedu-files:/novedu-files
@@ -82,8 +82,11 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://aspire:18890
       OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME:-novedu-chat}"
       APPLICATIONINSIGHTS_CONNECTION_STRING: ""
-      # Entra ID sign-in — required; boot fails without them (auth.ts). AUTH_URL
-      # stays unset so better-auth infers http://localhost:3000 from the request.
+      # Entra ID sign-in — required; boot fails without them (auth.ts). AUTH_URL is
+      # set explicitly, as in production: the standalone server binds HOSTNAME=0.0.0.0
+      # and better-auth would otherwise infer http://0.0.0.0:3000 as its base URL
+      # and reject the browser's origin (docs/auth.md).
+      AUTH_URL: http://localhost:3000/api/auth
       AUTH_SECRET: "${AUTH_SECRET:?set AUTH_SECRET in .env}"
       AZURE_TENANT_ID: "${AZURE_TENANT_ID:?set AZURE_TENANT_ID in .env}"
       AZURE_CLIENT_ID: "${AZURE_CLIENT_ID:?set AZURE_CLIENT_ID in .env}"

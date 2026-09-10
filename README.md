@@ -270,7 +270,9 @@ no Application Insights.
 
 Prerequisites: Docker with Compose 2.20+; a `.env` in the repo root carrying at
 least `AUTH_SECRET`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
-and `TEACHER_GROUP_ID` (boot fails without them), optionally `SCCH_BASE_URL` /
+and `TEACHER_GROUP_ID` (boot fails without them; `AUTH_URL` is set by the compose
+file itself, as in production, because the container binds `0.0.0.0` and
+better-auth must not infer that as its origin), optionally `SCCH_BASE_URL` /
 `SCCH_API_KEY` and/or `OPENROUTER_API_KEY` for a working LLM (Azure Foundry is not
 available in the container — its passwordless Entra auth needs the Azure CLI or a
 managed identity); and the Entra redirect URI
