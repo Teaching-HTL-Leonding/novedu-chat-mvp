@@ -215,15 +215,14 @@ non-secret DUMMY literal, so secret-freeness / fork-safety holds
 
 Flow: the service container starts (the `postgres:18` image creates
 `POSTGRES_DB` itself, and GitHub's service-container health check waits on
-`pg_isready`) → `scripts/ci/wait-and-create-db.mjs` polls for readiness and runs
-`CREATE SCHEMA IF NOT EXISTS mastra` (idempotent — the app's own boot sequence
-creates the `novedu_*` tables and the rest of `mastra.*`) → `npm run
+`pg_isready`) → `scripts/ci/wait-for-db.mjs` polls until the container accepts
+connections, and nothing else → `npm run
 test:e2e:ci` runs hermetic + `@live-db` against the **same** dev server and
 container — the hermetic specs' session minting (`e2e/auth.setup.ts`,
 `mintSessionToken`) writes `novedu_user`/`novedu_session` rows here too, it just
 never touches any other app table; the Playwright `webServer` boots `npm
-run dev`, which applies the `novedu_*` migrations and lets Mastra create the
-rest of `mastra.*`. SCCH is intentionally unset — the app boots without models
+run dev`, whose startup creates the `mastra` schema, applies the `novedu_*`
+migrations and creates the `mastra.*` tables (`instrumentation.ts`). SCCH is intentionally unset — the app boots without models
 and the DB-only specs never call the LLM. The `db-auth` Entra test detects the
 password-carrying URL and **skips** in CI (CI already covers the password path
 itself through every other `@live-db` spec).
@@ -249,10 +248,6 @@ docker run -e POSTGRES_PASSWORD=Test-Passw0rd! -e POSTGRES_DB=novedu -p 5432:543
 export DATABASE_URL=postgresql://postgres:Test-Passw0rd!@localhost:5432/novedu
 npm run test:e2e:db
 ```
-
-(The Compose stack's Postgres, `compose.yaml`, works the same way on
-`localhost:55432` — its `scripts/db/local-init.sql` already created the `mastra`
-schema.)
 
 ## Database auth-matrix `@live` test
 
@@ -359,7 +354,11 @@ All secret-free and hermetic — no Aspire, no Azure, no network beyond loopback
   literal (or the password).
 - `lib/telemetry-isolation.unit.test.ts` — grep-guard: `cli/src/**`'s transitive
   import closure never reaches the facade, an OTel SDK / instrumentation /
-  exporter package, or the Azure distro.
+  exporter package, or the Azure distro. The closure walk itself (specifier
+  scan, `@/`-and-relative resolution, visit-once queue) is the shared
+  `tests/import-graph.ts`, which `lib/prompt-dump.unit.test.ts` uses too; each
+  guard supplies its own roots and its own per-module verdict through the
+  `walkClosure` callback.
 
 Each real-SDK case lives in its own file on purpose: a `NodeSDK` registers global
 providers that cannot be replaced within a worker, and Vitest's per-file
@@ -368,31 +367,27 @@ and forces a final metric collection, so the delivery assertions need no batch-
 delay tuning.
 
 **Manual acceptance check** (never part of any suite; run once per change to the
-telemetry code or the Compose stack, from a fresh `docker compose down -v`):
+telemetry code):
 
-1. `docker compose up --build -d --wait`; the app log shows `telemetry: mode=otlp`
-   and the image-root OK line; `psql` in the `db` container shows rows in
-   `novedu_drizzle_migrations` and tables in schema `mastra`; `curl` gets
-   `/api/version` 200, `/docs/` 200, `/api/files/no-such` 404, `/sign-in` 200.
-2. Open the dashboard login URL from `docker compose logs aspire`: resource
-   `novedu-chat` is listed; Structured Logs shows `app_started`; Traces shows
-   `GET /api/version` as ONE trace with nested SERVER spans (never sibling
-   request spans); Metrics shows `nodejs.eventloop.*`, `v8js.memory.*` and
-   `http.server.duration`.
+1. `docker compose -f compose.telemetry.yaml up -d`; open the dashboard login URL
+   from `docker compose logs aspire`.
+2. `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 npm run dev`; the app log
+   shows `telemetry: mode=otlp`.
 3. Sign in at `http://localhost:3000` with a teacher account; upload a
    self-contained tutor YAML at `/files/new`, mint a code for it at `/codes/new`,
    open `/<code>`, send one message, get a reply.
-4. That turn's trace: nested request spans, `pg.query:*` spans whose
-   `db.statement` carries `$1` placeholders and no bound values, a
-   `fetch POST <LLM endpoint>` client span; the resource has no
-   `process.command_args` / `process.owner`; HTTP spans carry no header attributes.
-5. `docker compose stop db`; `curl /api/files/anything` answers 503 and the
-   dashboard shows an `exception` root span with `novedu.area` and no user
-   content; `docker compose start db`; the request answers 404 again.
-6. `docker compose stop aspire`; the app still answers `/api/version` and a chat
-   turn; `docker compose start aspire`; a further request shows up in the
-   dashboard after the next export.
-7. `docker compose down -v`.
+4. In the dashboard: resource `novedu-chat` is listed; Structured Logs shows
+   `app_started`; Traces shows the chat turn as ONE trace with nested SERVER
+   spans (never sibling request spans), `pg.query:*` spans whose `db.statement`
+   carries `$1` placeholders and no bound values, and a `fetch POST <LLM
+   endpoint>` client span; the resource has no `process.command_args` /
+   `process.owner`; HTTP spans carry no header attributes; Metrics shows
+   `nodejs.eventloop.*`, `v8js.memory.*` and `http.server.duration`.
+5. `docker compose -f compose.telemetry.yaml stop`; the app still answers
+   `/api/version` and a chat turn.
+6. `docker compose -f compose.telemetry.yaml start`; a further request shows up
+   in the dashboard after the next export.
+7. `docker compose -f compose.telemetry.yaml down`.
 
 No real student content is used at any step.
 

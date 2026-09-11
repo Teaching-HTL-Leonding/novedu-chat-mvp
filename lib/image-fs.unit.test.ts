@@ -457,16 +457,3 @@ describe.skipIf(!existsSync(helperPath))("sentinel parity with scripts/lib/image
     expect(helper.SENTINEL_CONTENT).toBe(SENTINEL_CONTENT);
   });
 });
-
-// The Compose stack's `files-init` service writes the marker with a shell
-// `printf` (compose.yaml) — the third copy of the bytes, pinned here too.
-const composePath = path.resolve(process.cwd(), "compose.yaml");
-
-describe.skipIf(!existsSync(composePath))("sentinel parity with compose.yaml", () => {
-  it("writes the same marker file name and bytes", async () => {
-    const compose = await readFile(composePath, "utf8");
-    expect(compose).toContain(`/${SENTINEL_FILE}`);
-    // printf 'novedu-files-v1\n' — the source has a literal backslash-n.
-    expect(compose).toContain(`printf '${SENTINEL_CONTENT.replace("\n", "\\n")}'`);
-  });
-});

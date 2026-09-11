@@ -259,46 +259,6 @@ To serve the teacher guide at `/docs` locally too, run `npm run docs:stage` firs
 it builds the docs site into `public/docs/`. (The Docker image build does this
 automatically; a plain local build without staging simply 404s on `/docs`.)
 
-### Running the whole stack with Docker Compose
-
-`compose.yaml` runs Novedu outside Azure: the production image (built from the
-`Dockerfile`), a local **password-auth Postgres**, and the **Aspire dashboard** as
-the OpenTelemetry receiver. It is not an Azure-free *app* setup — **sign-in still
-goes through Microsoft Entra ID** and the LLM providers stay external — only an
-Azure-free hosting of it: no Azure Database for PostgreSQL, no Azure Files share,
-no Application Insights.
-
-Prerequisites: Docker with Compose 2.20+; a `.env` in the repo root carrying at
-least `AUTH_SECRET`, `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`
-and `TEACHER_GROUP_ID` (boot fails without them; `AUTH_URL` is set by the compose
-file itself, as in production, because the container binds `0.0.0.0` and
-better-auth must not infer that as its origin), optionally `SCCH_BASE_URL` /
-`SCCH_API_KEY` and/or `OPENROUTER_API_KEY` for a working LLM (Azure Foundry is not
-available in the container — its passwordless Entra auth needs the Azure CLI or a
-managed identity); and the Entra redirect URI
-`http://localhost:3000/api/auth/callback/microsoft` (see above). Only those keys
-are read from `.env`; its `DATABASE_URL`, `IMAGE_STORAGE_ROOT` and App Insights
-setting never reach the container.
-
-```bash
-docker compose up --build -d --wait          # build the image, start db + app + aspire, wait for health
-docker compose logs aspire | grep "login?t="  # the dashboard's login URL
-docker compose logs -f app                    # `telemetry: mode=otlp`, migrations, image root
-docker compose down                           # stop; keeps the data volumes
-docker compose down -v                        # stop and wipe database + image files
-```
-
-Then open **http://localhost:3000** (app), the login URL from the log for the
-dashboard at **http://localhost:18888**, and — if you need `psql` — the database on
-`127.0.0.1:55432` (user `postgres`, password `Test-Passw0rd!`, database `novedu`;
-`NOVEDU_DB_PORT` / `NOVEDU_DB_PASSWORD` in `.env` override both). Teacher role
-works exactly as in production: it comes from the Entra group on sign-in. The
-image root is provisioned inside the `novedu-files` volume by the `files-init`
-service; Mastra's schema is created by `scripts/db/local-init.sql` on the first
-boot of the `novedu-db` volume, and the app applies its own migrations at
-startup. Telemetry details and the dashboard-only variant are in
-[`docs/telemetry.md`](docs/telemetry.md).
-
 ## Scripts
 
 | Script | What it does |

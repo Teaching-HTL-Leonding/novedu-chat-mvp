@@ -16,10 +16,13 @@ import type { Instrumentation } from "next";
 //   3. Apply pending Drizzle migrations to the app-owned `novedu_*` tables — the
 //      server must never run against an older schema than its code expects.
 //      Failures abort startup on purpose.
-//   4. Create Mastra's `mastra_*` tables (`initMastraStorage`). Mastra would do
-//      this itself, but only on the store's first use — and `lib/code-stats-store.ts`
-//      reads those tables directly, so on a database where no agent has run yet
-//      the teacher's stats panels would break first. Same fail-loud policy as (3).
+//   4. Create the `mastra` schema and Mastra's `mastra_*` tables inside it
+//      (`initMastraStorage`). Mastra would create the tables itself, but only on
+//      the store's first use — and `lib/code-stats-store.ts` reads those tables
+//      directly, so on a database where no agent has run yet the teacher's stats
+//      panels would break first. Same fail-loud policy as (3). The schema
+//      statement sits inside that function, beside the `init()` it guards, rather
+//      than here — see app/mastra/index.ts.
 //
 // Expired codes are NOT garbage-collected: codes and their conversation data live
 // until a teacher deletes them explicitly, so their stats stay reachable.

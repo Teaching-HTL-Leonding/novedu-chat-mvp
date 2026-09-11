@@ -156,19 +156,19 @@ Read before touching: `components/data-list.tsx`, `components/list-*.tsx`, `lib/
 
 ### Postgres, Drizzle & credentials → `docs/database.md`
 
-Read before touching: Mastra storage (`app/mastra/index.ts`), `lib/db/`, migrations, `instrumentation.ts`, `scripts/db/local-init.sql`, the `db` service in `compose.yaml`.
+Read before touching: Mastra storage (`app/mastra/index.ts`), `lib/db/`, migrations, `instrumentation.ts`, `scripts/db/*.sql`.
 
 - Every consumer takes the ONE pool from `getPool()` (`lib/db/pool.ts`) — the one auth seam; app tables use the `novedu_` prefix in `public`, Mastra's live in schema `mastra`; **no foreign keys** between `novedu_*` and `mastra_*`.
 - Dev and prod share ONE server, and the app role owns its objects instead of holding grants. Whenever your own `az login` identity is the first to boot a new migration or a Mastra upgrade against it, the new tables/functions belong to you and production is locked out of them: run `scripts/db/reassign-ownership.sql` as the Entra admin afterwards (`docs/database.md`, ownership hazard).
 
 ### Telemetry → `docs/telemetry.md`
 
-Read before touching: `instrumentation.ts`, `lib/telemetry*.ts`, `compose.telemetry.yaml`, `compose.yaml`, the `@opentelemetry/*` / `@azure/monitor-opentelemetry` dependencies, any `recordError`/`emitEvent` call site.
+Read before touching: `instrumentation.ts`, `lib/telemetry*.ts`, `compose.telemetry.yaml`, the `@opentelemetry/*` / `@azure/monitor-opentelemetry` dependencies, any `recordError`/`emitEvent` call site.
 
 - Off unless a destination is set; disabled / Azure / OTLP selection and the single facade: see the security block. Exactly one backend per process; a failed start stays off, never falls back.
 - The OTLP path passes the `NodeSDK` ONLY instrumentations + the fixed detector set `env, host, os, serviceinstance` (never `process` / `all`) + a conditional `novedu-chat` service name — every exporter/processor/reader/sampler is the SDK's environment setup. Never opt into `headersToSpanAttributes` or `enhancedDatabaseReporting`; no diag logger of our own; no shutdown/flush handling (Next owns signals).
-- The OTel packages are lockstep 0.x — bump `sdk-node`, the three instrumentations and the Azure distro together; all of them sit in `serverExternalPackages`.
-- The Aspire dashboard (`compose.telemetry.yaml`, pinned tag) is the local receiver; the full local stack (`compose.yaml`: app + password-auth Postgres + dashboard) hosts the app outside Azure but keeps Entra sign-in and external LLM providers.
+- The OTel packages are lockstep 0.x — bump `sdk-node`, the three instrumentations, the exact `@opentelemetry/api-logs` pin (it must equal the version the Azure distro pulls, or the global logger ends up on two copies) and the Azure distro together; all of them sit in `serverExternalPackages`.
+- The Aspire dashboard (`compose.telemetry.yaml`, pinned tag) is the local OTLP receiver for an app running on the host.
 
 ### Usage metering → `docs/usage-metering.md`
 

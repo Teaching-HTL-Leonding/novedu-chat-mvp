@@ -99,11 +99,7 @@ only sign-in provider. Key facts so future runs don't have to rediscover the set
   PADDED base64 (44 characters), as `makeSignature` from `better-auth/crypto` produces it.
   It is the only cookie better-auth sets here: the OAuth state of a sign-in round trip
   lives in `novedu_verification`, not in a cookie, because the instance has a database.
-- **`AUTH_URL`.** Unset locally (`npm run dev` on the host): better-auth infers the base
-  URL from the request. The Compose stack (`compose.yaml`) sets it to
-  `http://localhost:3000/api/auth`, because the standalone server in the container
-  binds `HOSTNAME=0.0.0.0` and the inferred `http://0.0.0.0:3000` would be rejected as
-  the browser's origin.
+- **`AUTH_URL`.** Unset locally: better-auth infers the base URL from the request.
   Production sets `AUTH_URL` to the app's public base URL (`https://novedu.at/api/auth`;
   a value that already carries the `/api/auth` path is used as-is, a bare origin gets it
   appended) — that is what better-auth treats as its `baseURL` **and** as a trusted origin, so a POST from the real browser (the `/device`

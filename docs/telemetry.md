@@ -109,12 +109,19 @@ visible with `OTEL_LOG_LEVEL`) and exports fail asynchronously.
 
 Dependencies: `@opentelemetry/sdk-node`, `@opentelemetry/instrumentation-http`,
 `@opentelemetry/instrumentation-pg`, `@opentelemetry/instrumentation-runtime-node`
-are direct dependencies pinned to the ranges the installed Azure distribution
-requires, so npm dedupes to one copy of every SDK package; `@opentelemetry/api`
-and `@opentelemetry/api-logs` are exact pins for the same reason (the distro's
-global logger). `sdk-node`, `api-logs`, every instrumentation and every exporter
-are lockstep 0.x releases — **bump them together with the distro**, or two SDK
-copies get installed. All of them patch modules at `require` time, so they are
+are direct dependencies at the ranges the installed Azure distribution resolves
+to, and `@opentelemetry/api` / `@opentelemetry/api-logs` are exact pins of the
+versions the distro itself pulls. The point is that the API packages hand out the
+global tracer and logger: our direct imports and the distro's must end up on the
+**same installed copy**, which is what the matching versions buy — `npm ls
+@opentelemetry/api-logs` shows one hoisted entry with every other consumer
+`deduped` onto it (the lone exception is the older `api-logs` nested under
+`@azure/opentelemetry-instrumentation-azure-sdk`, transitive inside the distro
+and not ours to align). Pinning `api-logs` to a version the distro does not use
+installs a second copy instead. `sdk-node`, `api-logs`, every instrumentation and
+every exporter are lockstep 0.x releases — **bump them together with the distro**
+and re-pin `api-logs` to the version the new distro resolves to, or the copies
+drift apart. All of them patch modules at `require` time, so they are
 listed in `serverExternalPackages` (`next.config.ts`) beside the distro and `pg`,
 and traced into the standalone Docker output.
 
@@ -279,14 +286,12 @@ Defaults are kept: browser-token authentication for the UI (the login URL with
 its token is in the container log) and an unsecured OTLP receiver for trusted
 local senders. **Never set `ASPIRE_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS`** (it
 disables all dashboard authentication). Dashboard settings use the
-`ASPIRE_DASHBOARD_*` environment prefix. Both published ports are loopback only;
-the Compose network is for trusted local containers.
+`ASPIRE_DASHBOARD_*` environment prefix. Both published ports are loopback only.
 
 | Consumer                                  | Destination              |
 | ----------------------------------------- | ------------------------ |
 | Browser on the host                       | `http://localhost:18888` |
 | App running on the host                   | `http://localhost:4318`  |
-| App container on the same Compose network | `http://aspire:18890`    |
 
 Host port `4318` maps to the dashboard's OTLP/HTTP port `18890`. The dashboard
 accepts OTLP/gRPC, OTLP/HTTP protobuf and OTLP/HTTP JSON; `http/protobuf` is the
@@ -298,30 +303,12 @@ docker compose -f compose.telemetry.yaml up -d
 docker compose logs aspire | grep "login?t="          # open this URL in the browser
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 npm run dev
 docker compose -f compose.telemetry.yaml down
-
-# The whole stack in Docker — app image, local Postgres, dashboard (compose.yaml)
-docker compose up --build -d --wait
-docker compose logs aspire | grep "login?t="
-docker compose down            # or `down -v` to wipe the data volumes
-
-# A hand-run app container on the dashboard's network (project name = the
-# repository directory, so the network is <dir>_default; `localhost` inside a
-# container is NOT Aspire, and variables on the dashboard service or in
-# Compose's .env never reach the app container)
-docker run --rm --network chat-prototype_default \
-  -e OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:18890 \
-  -e AUTH_URL=http://localhost:3000/api/auth \
-  --env-file <(grep -E '^(AUTH_SECRET|AZURE_(TENANT|CLIENT)_(ID|SECRET)|TEACHER_GROUP_ID|DATABASE_URL)=' .env) \
-  -p 127.0.0.1:3000:3000 novedu-chat:local
 ```
 
 App startup never depends on dashboard readiness. The dashboard keeps telemetry
 in memory (default caps of 10,000 logs and traces) and discards it on restart;
 this setup is for development and short-term diagnostics — durable storage and
-production hosting of a non-Azure backend are out of scope. The full Compose
-stack (`compose.yaml`: app + password-auth Postgres + dashboard) is described in
-the README; it hosts the app outside Azure but is **not** an Azure-free app
-setup — sign-in still goes through Entra ID and the LLM providers stay external.
+production hosting of a non-Azure backend are out of scope.
 
 ## Operating the Azure path
 

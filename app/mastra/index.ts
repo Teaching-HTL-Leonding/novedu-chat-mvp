@@ -17,10 +17,9 @@ const logger = new PinoLogger({ name: "Mastra", level: "info" });
 // Build the Mastra store on the app's ONE Postgres pool (`getPool()` in
 // lib/db/pool.ts — the same pool Drizzle uses for the `novedu_*` tables). A pool
 // passed in via `pool:` is never closed by Mastra, so there is no lifecycle
-// coupling. Mastra's tables live in their own `mastra` schema — pre-created by
-// provisioning (scripts/db/provision.sql), since the app role may not create
-// schemas; `init()` only creates the tables inside it. The app's tables stay in
-// `public`.
+// coupling. Mastra's tables live in their own `mastra` schema, created by
+// `initMastraStorage()` below; `init()` only creates the tables inside it. The
+// app's tables stay in `public`.
 function buildStore(): PostgresStore {
   const store = new PostgresStore({ id: "mastra-storage", pool: getPool(), schemaName: "mastra" });
   // Keep agentic-loop workflow snapshots OUT of the database: every agent run
@@ -48,9 +47,9 @@ if (process.env.DATABASE_URL && !globalForStore.mastraStore) {
   logger.warn("DATABASE_URL not set — tutor chat will fail without storage");
 }
 
-// Create Mastra's own `mastra_*` tables in the pre-provisioned `mastra` schema.
-// `PostgresStore` auto-initializes them, but only LAZILY — on the store's first use, i.e. the
-// first agent run. That is too late for us: `lib/code-stats-store.ts` reads
+// Create the `mastra` schema and Mastra's own `mastra_*` tables inside it.
+// `PostgresStore` auto-initializes the TABLES, but only LAZILY — on the store's first use, i.e.
+// the first agent run. That is too late for us: `lib/code-stats-store.ts` reads
 // `mastra_threads` / `mastra_messages` directly (the by-value join model in
 // docs/codes.md), so on a database where no agent has run yet a teacher opening
 // a code detail page hits "relation does not exist" and the stats panel degrades
@@ -59,8 +58,30 @@ if (process.env.DATABASE_URL && !globalForStore.mastraStore) {
 // migrations, so the boot contract stays "every table this server reads exists
 // once startup finishes". Failures propagate for the same reason migration
 // failures do.
+//
+// The `CREATE SCHEMA IF NOT EXISTS` lives HERE — not in instrumentation.ts, and not
+// in a Drizzle migration — because this is the one function that owns the invariant
+// "the schema exists before `PostgresStore.init()` runs": keeping the statement in
+// the same call site as the `init()` it guards means no second place can drift out
+// of order, and every environment (prod, dev, CI, Compose) gets it from the app's
+// own boot instead of from per-environment setup. A Drizzle migration would be the
+// wrong home: it would pull Mastra's schema into the `novedu_*` migration history,
+// which is deliberately decoupled from Mastra's (no foreign keys, no shared
+// bookkeeping — docs/database.md). The app role may create schemas: it holds CREATE
+// on the database, which the Drizzle migrator's own `CREATE SCHEMA IF NOT EXISTS
+// "public"` already requires (scripts/db/provision.sql).
+// Production provisioning still creates `mastra` explicitly, and that stays: created
+// by the Entra admin it is OWNED by the admin with USAGE + CREATE granted to the app
+// role, whereas the first boot to reach a fresh database would otherwise own the
+// schema — and on the shared dev/prod server that first boot can be a developer's own
+// `az login` identity. `scripts/db/reassign-ownership.sql` reassigns tables, views,
+// sequences and functions only, NOT schemas, so a developer-owned `mastra` schema has
+// no scripted remedy (docs/database.md, "Ownership hazard").
 export async function initMastraStorage(): Promise<void> {
-  await globalForStore.mastraStore?.init();
+  const store = globalForStore.mastraStore;
+  if (!store) return;
+  await getPool().query('CREATE SCHEMA IF NOT EXISTS "mastra"');
+  await store.init();
 }
 
 export const mastra = new Mastra({

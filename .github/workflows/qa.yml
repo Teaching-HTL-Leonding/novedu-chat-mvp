@@ -142,11 +142,10 @@ jobs:
       - run: npx playwright install --with-deps chromium
 
       # The postgres:18 image creates the `novedu` database itself; the app
-      # creates its own tables at boot (instrumentation.ts). This step only waits
-      # for the service to accept connections and creates Mastra's `mastra` schema
-      # ahead of time.
-      - name: Wait for Postgres + create schema
-        run: node scripts/ci/wait-and-create-db.mjs
+      # creates the `mastra` schema and every table at boot (instrumentation.ts).
+      # This step only waits for the service to accept connections.
+      - name: Wait for Postgres
+        run: node scripts/ci/wait-for-db.mjs
 
       # Runs hermetic + @live-db (against the container), excludes @live-llm.
       # Playwright's webServer boots `npm run dev`, which migrates novedu_* on start.
