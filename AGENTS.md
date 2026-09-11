@@ -30,7 +30,7 @@ The highest-cost rules to break. They always apply, regardless of subsystem; the
 - **LLM connectivity is server-only** behind `lib/llm/` — the provider branch exists ONLY in `resolveLanguageModel`, `resolveChatEndpoint`, and `providerUnavailableReason`; endpoints, keys, and Entra tokens never reach the browser. Foundry auth is passwordless Entra — never `DefaultAzureCredential`, never an API key. A code's **LLM override pair** is both-or-nothing via `effectiveLlm`, availability-gated on the effective provider (`docs/ai-models.md`).
 - A thinking model's **reasoning is teacher-only on the live chat**: the `/api/copilotkit` route picks `ReasoningStrippingRunner` unless `effectiveTeacherForSession()` proves an effective teacher, so `REASONING_*` frames are never written to a student's stream. **Fails closed**; view-as-student gets a student's stream (`docs/chat.md`).
 - Image bytes are served ONLY by the cookie-session `GET /api/image-content/<id>`, which re-checks the active row on every request (incl. a `304`), sends `nosniff` + a sandboxing `Content-Security-Policy` on every response, and applies NO further authorization beyond a live session — no `checkCode()`, no thread token; teacher-hosted images are shared authenticated assets, not per-code resources. SVG renders only via `<img src>`, never inline markup (`docs/images.md`).
-- Telemetry carries **no** message / prompt / PII content (`docs/telemetry.md`).
+- Telemetry carries **no** message / prompt / PII content on either backend. The backend is chosen ONCE at boot by the pure resolver `lib/telemetry-mode.ts` — `OTEL_SDK_DISABLED` > `OTEL_EXPORTER_OTLP_ENDPOINT` (standard OTLP) > `APPLICATIONINSIGHTS_CONNECTION_STRING` (Azure Monitor) > off — behind the single facade `lib/telemetry.ts`; startup logs name only the mode. `cli/src/**` never imports the facade or any OTel SDK (grep-guarded) (`docs/telemetry.md`).
 - Usage metering writes two **independent** hourly buckets — `usage_by_code` (no user) and `usage_by_user` (no code). **Never** a `(user × code)` row; ids + counts only, never content (`docs/usage-metering.md`).
 - Fork-PR CI stays **secret-free**; never add `pull_request_target` (`docs/ci-security.md`).
 - Production Postgres is always passwordless Entra / Managed Identity; password auth is dev/test only (`docs/database.md`).
@@ -156,16 +156,19 @@ Read before touching: `components/data-list.tsx`, `components/list-*.tsx`, `lib/
 
 ### Postgres, Drizzle & credentials → `docs/database.md`
 
-Read before touching: Mastra storage (`app/mastra/index.ts`), `lib/db/`, migrations, `instrumentation.ts`.
+Read before touching: Mastra storage (`app/mastra/index.ts`), `lib/db/`, migrations, `instrumentation.ts`, `scripts/db/*.sql`.
 
 - Every consumer takes the ONE pool from `getPool()` (`lib/db/pool.ts`) — the one auth seam; app tables use the `novedu_` prefix in `public`, Mastra's live in schema `mastra`; **no foreign keys** between `novedu_*` and `mastra_*`.
 - Dev and prod share ONE server, and the app role owns its objects instead of holding grants. Whenever your own `az login` identity is the first to boot a new migration or a Mastra upgrade against it, the new tables/functions belong to you and production is locked out of them: run `scripts/db/reassign-ownership.sql` as the Entra admin afterwards (`docs/database.md`, ownership hazard).
 
 ### Telemetry → `docs/telemetry.md`
 
-Read before touching: `instrumentation.ts`, `lib/telemetry.ts`, any `recordError`/`emitEvent` call site.
+Read before touching: `instrumentation.ts`, `lib/telemetry*.ts`, `compose.telemetry.yaml`, the `@opentelemetry/*` / `@azure/monitor-opentelemetry` dependencies, any `recordError`/`emitEvent` call site.
 
-- Off unless `APPLICATIONINSIGHTS_CONNECTION_STRING` is set; everything goes through the `lib/telemetry.ts` seam; no PII (security block).
+- Off unless a destination is set; disabled / Azure / OTLP selection and the single facade: see the security block. Exactly one backend per process; a failed start stays off, never falls back.
+- The OTLP path passes the `NodeSDK` ONLY instrumentations + the fixed detector set `env, host, os, serviceinstance` (never `process` / `all`) + a conditional `novedu-chat` service name — every exporter/processor/reader/sampler is the SDK's environment setup. Never opt into `headersToSpanAttributes` or `enhancedDatabaseReporting`; no diag logger of our own; no shutdown/flush handling (Next owns signals).
+- The OTel packages are lockstep 0.x — bump `sdk-node`, the three instrumentations, the exact `@opentelemetry/api-logs` pin (it must equal the version the Azure distro pulls, or the global logger ends up on two copies) and the Azure distro together; all of them sit in `serverExternalPackages`.
+- The Aspire dashboard (`compose.telemetry.yaml`, pinned tag) is the local OTLP receiver for an app running on the host.
 
 ### Usage metering → `docs/usage-metering.md`
 

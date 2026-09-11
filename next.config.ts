@@ -10,11 +10,21 @@ const nextConfig: NextConfig = {
   // networking that doesn't survive bundling.
   // See https://mastra.ai/guides/getting-started/next-js
   //
-  // `@azure/monitor-opentelemetry` (the OTEL distro, loaded in instrumentation.ts)
-  // must also stay external: its auto-instrumentation patches modules at require
-  // time, which only works when those modules load through Node's loader rather
-  // than a bundle.
-  serverExternalPackages: ["@mastra/*", "pg", "@azure/monitor-opentelemetry"],
+  // The telemetry SDKs (loaded via lib/telemetry.ts from instrumentation.ts)
+  // must also stay external: `@azure/monitor-opentelemetry` and the standard
+  // `@opentelemetry/*` SDK + instrumentations patch modules at require time,
+  // which only works when those modules load through Node's loader rather than
+  // a bundle. Both backends share the same instrumentation packages
+  // (docs/telemetry.md).
+  serverExternalPackages: [
+    "@mastra/*",
+    "pg",
+    "@azure/monitor-opentelemetry",
+    "@opentelemetry/sdk-node",
+    "@opentelemetry/instrumentation-http",
+    "@opentelemetry/instrumentation-pg",
+    "@opentelemetry/instrumentation-runtime-node",
+  ],
   // A quiz answer may carry up to 3 photos of 5 MB each as base64 data URLs
   // (~20 MB inflated) through the quiz server actions — raise the default 1 MB
   // body limit with headroom. Global to ALL server actions; accepted by design.

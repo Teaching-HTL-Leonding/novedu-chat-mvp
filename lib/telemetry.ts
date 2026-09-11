@@ -1,70 +1,101 @@
-// Telemetry seam — Azure Monitor (Application Insights) via OpenTelemetry.
+// Telemetry seam — the ONE application interface over OpenTelemetry.
 //
 // Two responsibilities, deliberately split:
-//   1. initTelemetry(): one-time SDK bring-up. Loads the heavy
-//      `@azure/monitor-opentelemetry` distro (auto-instruments HTTP + the
-//      `pg` driver, captures exceptions, exports traces/metrics/logs).
-//      Gated on APPLICATIONINSIGHTS_CONNECTION_STRING — unset means telemetry is
-//      fully OFF (no exporter, no network sink). Called once from
-//      instrumentation.ts, in the Node-only branch.
-//   2. emitEvent(): a thin, content-free custom-event helper for feature usage.
+//   1. initTelemetry(): one-time SDK bring-up. A pure resolver
+//      (lib/telemetry-mode.ts) picks disabled / Azure Monitor / standard OTLP
+//      from the environment without loading an SDK; the chosen initializer
+//      (lib/telemetry-azure.ts or lib/telemetry-otlp.ts) is then dynamically
+//      imported. Exactly one backend runs per process; callers never choose one
+//      and never import an SDK. Called once from instrumentation.ts, in the
+//      Node-only branch.
+//   2. emitEvent() / recordError(): thin, content-free helpers for feature
+//      usage and caught errors.
 //
 // WHY THIS SHAPE:
-//   - emitEvent() goes through the OpenTelemetry logs API, which is a NO-OP when
-//     no LoggerProvider is registered. So this module is safe to import from
-//     shared code: without initTelemetry() (e.g. in the CLI, or any process
-//     without the connection string) emitEvent() does nothing and never touches
-//     the network. The CLI prints to the console; it must never log telemetry.
-//   - The distro is loaded with a DYNAMIC import inside initTelemetry() so it
-//     never enters edge/browser bundles and is only paid for on the server.
-//   - PRIVACY: only pass metadata to emitEvent() — never message/prompt/PII
-//     content. Bodies are not captured by HTTP auto-instrumentation; this is the
-//     one seam where content could leak, so keep it to identifiers and counts.
+//   - emitEvent() goes through the OpenTelemetry logs API and recordError()
+//     through the trace API; both are NO-OPs when no provider is registered. So
+//     this module is safe to import from shared code: without initTelemetry()
+//     (a process with no destination configured) they do nothing and never
+//     touch the network. The CLI never initializes telemetry and must never
+//     import this module (grep-guarded in lib/telemetry-isolation.unit.test.ts).
+//   - The initializers are loaded with DYNAMIC imports so neither SDK enters
+//     edge/browser bundles and only the selected one is paid for on the server.
+//   - Bring-up is idempotent and cached, including its failure: a backend that
+//     fails to start leaves telemetry off for the life of the process and never
+//     falls back to the other one. Startup logs name only the selected mode —
+//     never an endpoint, connection string, or credential.
+//   - PRIVACY: only pass metadata to emitEvent()/recordError() — never
+//     message/prompt/PII content. Bodies and headers are not captured by HTTP
+//     auto-instrumentation and bound SQL values are not captured by the pg one;
+//     these helpers are the one seam where content could leak, so keep them to
+//     identifiers and counts.
 import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
+import { resolveTelemetryMode, type TelemetryMode } from "@/lib/telemetry-mode";
 
-let initialized = false;
+export type { TelemetryMode };
+
+let bringUp: Promise<TelemetryMode> | null = null;
 
 /**
- * Bring up Azure Monitor exactly once. Returns true if telemetry is active.
- * No-op (returns false) when APPLICATIONINSIGHTS_CONNECTION_STRING is unset.
+ * Bring up the selected backend exactly once and report which one runs.
+ * Concurrent and repeated calls share the first outcome — including
+ * "disabled" after a failed start. Never throws.
  */
-export async function initTelemetry(): Promise<boolean> {
-  if (initialized) return true;
+export function initTelemetry(): Promise<TelemetryMode> {
+  bringUp ??= start();
+  return bringUp;
+}
 
-  const connectionString = process.env.APPLICATIONINSIGHTS_CONNECTION_STRING;
-  if (!connectionString) {
-    console.warn("telemetry: APPLICATIONINSIGHTS_CONNECTION_STRING not set — telemetry disabled");
-    return false;
+async function start(): Promise<TelemetryMode> {
+  const { mode, reason } = resolveTelemetryMode();
+  if (mode === "disabled") {
+    console.warn(`telemetry: disabled (${reason})`);
+    return "disabled";
   }
+  try {
+    if (mode === "azure") {
+      const { startAzureMonitor } = await import("@/lib/telemetry-azure");
+      startAzureMonitor((process.env.APPLICATIONINSIGHTS_CONNECTION_STRING ?? "").trim());
+    } else {
+      const { startOtlpSdk } = await import("@/lib/telemetry-otlp");
+      startOtlpSdk();
+    }
+    console.log(`telemetry: mode=${mode}`);
+    return mode;
+  } catch (error) {
+    console.error(
+      `telemetry: ${mode} initialization failed — telemetry stays off until restart:`,
+      describeFailure(error),
+    );
+    return "disabled";
+  }
+}
 
-  // Dynamic import keeps the distro out of edge/browser bundles and off the
-  // import graph of anything that merely wants emitEvent(). Aliased on
-  // destructuring: the `use*` name reads as a React hook to Biome's lint, but
-  // this is a plain SDK bring-up call.
-  const { useAzureMonitor: enableAzureMonitor } = await import("@azure/monitor-opentelemetry");
-  enableAzureMonitor({
-    azureMonitorExporterOptions: { connectionString },
-  });
-
-  initialized = true;
-  return true;
+/** Error name + message with every configured destination value redacted. */
+function describeFailure(error: unknown): string {
+  const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  return [
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
+    process.env.APPLICATIONINSIGHTS_CONNECTION_STRING,
+  ].reduce<string>(
+    (acc, secret) => (secret?.trim() ? acc.split(secret.trim()).join("[redacted]") : acc),
+    text,
+  );
 }
 
 type EventAttributes = Record<string, string | number | boolean>;
 
 /**
- * Record a caught error as an exception in App Insights (AppExceptions).
+ * Record a caught error as an exception (App Insights `AppExceptions`; an
+ * `exception` span with an exception event on any other receiver).
  *
  * WHY THIS EXISTS: auto-instrumentation only captures SOME unhandled errors
  * (e.g. a synchronous throw in a route handler, which Next records on the
  * request span). Async driver rejections (a failed SQL statement) and any
  * caught-and-logged error do NOT surface on their own. Call this at the failure
  * site to guarantee the error reaches OTEL. Safe when telemetry is off (no
- * active span / no provider → no-op).
- *
- * Attaches to the active span (the request span inside a handler) so it exports
- * reliably; falls back to a short-lived span when there is none.
+ * provider → no-op).
  */
 export function recordError(error: unknown, attributes?: EventAttributes): void {
   const err = error instanceof Error ? error : new Error(String(error));
@@ -74,9 +105,10 @@ export function recordError(error: unknown, attributes?: EventAttributes): void 
   // span's sampling decision — and an errored route's request span is dropped,
   // so the exception would silently vanish (observed for sync route throws via
   // onRequestError; async DB errors survived only because their request span had
-  // already ended, making this a root span by accident). Forcing root gives a
-  // fresh sampling decision so every recorded error exports. End immediately so
-  // it always flushes.
+  // already ended, making this a root span by accident). Forcing root gives the
+  // exception an independent root sampling decision. Delivery is still subject
+  // to the sampler, the bounded batch queues and receiver availability. End
+  // immediately so it always reaches the processor.
   const span = trace.getTracer("novedu-app").startSpan("exception", { root: true });
   if (attributes) span.setAttributes(attributes);
   span.recordException(err);
@@ -85,14 +117,17 @@ export function recordError(error: unknown, attributes?: EventAttributes): void 
 }
 
 /**
- * Record a content-free feature-usage event. Lands in the App Insights
- * `customEvents` table via the `microsoft.custom_event.name` convention.
- * Safe to call when telemetry is off — the logs API is a no-op without a
- * registered provider.
+ * Record a content-free feature-usage event. The event name travels three ways
+ * at once: as the log body (so a plain receiver such as Aspire displays it), as
+ * the record's first-class `eventName`, and as the `microsoft.custom_event.name`
+ * attribute that lands it in the App Insights `customEvents` table (an ordinary
+ * receiver shows that as one more attribute). Safe to call when telemetry is
+ * off — the logs API is a no-op without a registered provider.
  */
 export function emitEvent(name: string, attributes?: EventAttributes): void {
   logs.getLogger("novedu-app").emit({
     body: name,
+    eventName: name,
     attributes: { "microsoft.custom_event.name": name, ...attributes },
   });
 }

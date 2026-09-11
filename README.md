@@ -160,13 +160,20 @@ CODE_ORIGIN=https://your-public-origin
 # operation reports "unavailable" until this is set. See docs/images.md.
 IMAGE_STORAGE_ROOT=/absolute/path/outside/the/repo
 
-# --- Telemetry (optional) — Azure Monitor / Application Insights via OpenTelemetry ---
-# Unset => telemetry is fully OFF (no exporter, no network sink). When set, server
-# traces/metrics/logs/exceptions export to App Insights. This is a SECRET — keep it
-# out of the repo and CI (see docs/telemetry.md). NO message/prompt/PII content is
-# ever sent.
-APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=...
-# Sets the App Insights cloud_RoleName so the app's spans are attributable.
+# --- Telemetry (optional) — OpenTelemetry, one of two backends (docs/telemetry.md) ---
+# Neither variable set => telemetry is fully OFF (no SDK, no exporter, no network
+# sink). NO message/prompt/PII content is ever sent on either backend.
+#
+# Standard OTLP export — selects the standard path. Point it at any OTLP receiver;
+# locally that is the Aspire dashboard from `docker compose -f compose.telemetry.yaml up -d`.
+# Every other OTEL_* variable is the SDK's own (protocol, headers, sampler, …).
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+# Azure Monitor / Application Insights — selects the Azure path, but ONLY when the
+# OTLP endpoint above is unset (OTLP wins when both are present). This is a
+# SECRET — keep it out of the repo and CI.
+# APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=...;IngestionEndpoint=...
+# The service name on either backend (App Insights cloud_RoleName). Defaults to
+# novedu-chat on the OTLP path when unset.
 OTEL_SERVICE_NAME=novedu-chat
 ```
 
@@ -181,9 +188,12 @@ Notes:
   authoring time and gated at runtime with a readable reason, never a raw
   missing-env error (`docs/ai-models.md`). `/health` shows a provider's rows only
   when it is configured.
-- `APPLICATIONINSIGHTS_CONNECTION_STRING` is **optional**: unset means telemetry is
-  fully off. When set, server telemetry exports to Azure Monitor / App Insights — no
-  conversation content is ever sent. See `docs/telemetry.md`.
+- Telemetry is **optional** and off unless a destination is set:
+  `OTEL_EXPORTER_OTLP_ENDPOINT` selects standard OTLP export (Aspire locally, any
+  receiver or Collector elsewhere), `APPLICATIONINSIGHTS_CONNECTION_STRING` selects
+  Azure Monitor / App Insights; OTLP wins when both are set, and
+  `OTEL_SDK_DISABLED=true` switches everything off. No conversation content is ever
+  sent. See `docs/telemetry.md`.
 - `IMAGE_STORAGE_ROOT` is **optional but expected in every developer's `.env`**:
   unset (or unprovisioned) means the app still boots, logs a warning, and the
   `/images` upload/list surface reports "unavailable" until it is set AND

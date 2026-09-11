@@ -39,7 +39,9 @@ Two guards keep it that way, both in `lib/prompt-dump.unit.test.ts`:
   imports, `export … from`, dynamic `import()`), so a server-only import N levels
   deep fails too. This is load-bearing: `app/mastra/scch.ts` performs a
   **top-level `await` network call at import time** and is pulled in transitively
-  through `lib/llm/model.ts`, so a single `app/` import would break the CLI.
+  through `lib/llm/model.ts`, so a single `app/` import would break the CLI. The
+  walk runs on the shared `tests/import-graph.ts` (`walkClosure`), which the CLI
+  telemetry guard uses as well.
 - a **no-second-implementation guard** — `lib/quiz-actions.ts` and
   `lib/code-modules/quiz.ts` must IMPORT the extracted builders (the prompt text
   itself must not appear in either file).

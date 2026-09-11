@@ -169,12 +169,14 @@ The web app's Postgres role is a **plain login role** — not superuser, no
 `CREATEDB` / `CREATEROLE`, and **not the database owner**. It holds `CONNECT` +
 `CREATE` on `novedu` and `USAGE` + `CREATE` on exactly two schemas: `public`
 (the app-owned `novedu_*` tables, migrated by Drizzle at boot) and `mastra`
-(pre-created by provisioning; Mastra's own tables are created inside it by
+(created by provisioning; Mastra's own tables are created inside it by
 `initMastraStorage()`). `CREATE` on the *database* only permits creating
 schemas; it is required because Drizzle's migrator always runs `CREATE SCHEMA
 IF NOT EXISTS` for its bookkeeping schema (`public`) before anything else, and
 Postgres checks that privilege before the `IF NOT EXISTS` shortcut — without it
-the boot fails with `permission denied for database`. `REVOKE CREATE ON
+the boot fails with `permission denied for database`. That same grant is what
+lets `initMastraStorage()` run its own `CREATE SCHEMA IF NOT EXISTS "mastra"`
+on a database where provisioning has not (a container, CI). `REVOKE CREATE ON
 SCHEMA public FROM public` closes the default-open schema, so nothing but the
 app role (and the admin) may create objects there. The role **OWNS the tables
 it creates at boot** — Drizzle's migrations in `public`, Mastra's `init()` in
@@ -198,7 +200,11 @@ the server's Entra admin: on the `postgres` database,
 `pgaadauth_create_principal('novedu-chat-mvp-at', false, false)` registers the
 Managed Identity as a role, then `create database novedu`; on `novedu`,
 `create schema mastra`, the `revoke create on schema public from public`, and
-the `grant` statements above. A developer's own `az login` role is made a
+the `grant` statements above. The app creates the `mastra` schema itself when it
+is missing (`initMastraStorage()`), but provisioning still creates it explicitly:
+created by the Entra admin, the schema is **owned** by the admin with `USAGE` +
+`CREATE` granted to the app role — whereas whichever identity boots first against
+an unprovisioned database ends up owning it (see the ownership hazard below). A developer's own `az login` role is made a
 **member** of the app role (`grant "novedu-chat-mvp-at" to "<developer role>"`,
 the script's third block): membership confers the app role's privileges on every
 table it owns, so local dev needs no per-table grants — and this applies to the
@@ -220,7 +226,9 @@ functions — Mastra's boot also runs `CREATE OR REPLACE FUNCTION
 mastra.trigger_set_timestamps()`, which only the function's owner may do (a
 foreign-owned function fails with `42501`; the app still boots, but every
 restart logs the exception). Run the script as the Entra admin after any such
-local-first boot.
+local-first boot. The script reassigns **objects, not schemas**: `public` and
+`mastra` themselves keep whichever owner created them, which is why provisioning
+creates `mastra` as the Entra admin instead of leaving it to the first boot.
 
 ## App-owned schema (`novedu_*`) & Drizzle workflow
 
@@ -253,9 +261,14 @@ local-first boot.
   id) is what lets that identity's first sign-in through better-auth link back
   to the seeded row instead of minting a second one. A user signing in for the
   first time gets a random id instead.
-- Startup then calls **`initMastraStorage()`** (`app/mastra/index.ts`) to
-  create Mastra's own `mastra.*` tables. `PostgresStore` does that itself, but
-  only **lazily** — on the store's first use, i.e. the first agent run — and
+- Startup then calls **`initMastraStorage()`** (`app/mastra/index.ts`), which
+  runs `CREATE SCHEMA IF NOT EXISTS "mastra"` on the shared pool and then creates
+  Mastra's own `mastra.*` tables. The schema statement lives in that function,
+  immediately before `PostgresStore.init()`, so the invariant "the schema exists
+  before the store initializes" has exactly one home — and deliberately *not* in a
+  Drizzle migration, which would pull Mastra's schema into the `novedu_*`
+  migration history the two are otherwise decoupled from. `PostgresStore` creates
+  the tables itself, but only **lazily** — on the store's first use, i.e. the first agent run — and
   `lib/code-stats-store.ts` reads `mastra.mastra_threads` /
   `mastra.mastra_messages` *directly*, so on a database where no agent has run
   yet a teacher's code detail page would degrade to "Stats temporarily
