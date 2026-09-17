@@ -161,6 +161,12 @@ Optional, **default `true`**. When true, questions are presented in a random ord
 per attempt. Set `shuffle: false` to keep the authored order (useful when later
 questions build on earlier ones).
 
+Students can **skip** a question before answering it. A skipped question moves to
+the end of the line and returns after every question not yet seen, with the
+half-written answer restored; the last remaining question can't be skipped. This
+holds with `shuffle: false` too. Skipping never changes the attempt length, and
+skips are not stored.
+
 ### `question_count`
 
 Optional. How many questions **one attempt** asks. Omit it to ask every question

@@ -14,6 +14,17 @@ import {
   normalizeStudentImage,
 } from "@/lib/image-normalize";
 import { startDiscussion, submitAnswer } from "@/lib/quiz-actions";
+import {
+  type AttemptState,
+  canSkip,
+  completeCurrent,
+  currentSlot,
+  progressPosition,
+  skipCurrent,
+  skippedUnanswered,
+  skippedWaiting,
+  startAttempt,
+} from "@/lib/quiz-attempt";
 import { buildQuestionSequence } from "@/lib/quiz-sequence";
 import {
   type QuizVerdict,
@@ -47,13 +58,19 @@ const VERDICT_VARS: Record<QuizVerdict, string> = {
 // The student-facing quiz runner. Walks the attempt's question sequence one at a
 // time: render the markdown question, take a free-text answer, grade it via
 // the `submitAnswer` action (LLM verdict + feedback), then offer Next / Finish /
-// an inline discussion. The sequence semantics (shuffle passes, `question_count`
-// truncation/repeats) live in the pure `buildQuestionSequence`
-// (lib/quiz-sequence.ts); the runner only calls it. The quiz CODE travels with
-// every action so the server re-verifies it each time. NOTHING is stored about
-// the run — the summary is client-only and a reload restarts the quiz.
+// an inline discussion. Before a verdict the student may Skip: the question moves
+// to the back of the line and returns later with its draft answer restored. The
+// sequence semantics (shuffle passes, `question_count` truncation/repeats) live in
+// the pure `buildQuestionSequence` (lib/quiz-sequence.ts), the walk and skip rules
+// in the pure lib/quiz-attempt.ts; the runner only calls them. The quiz CODE
+// travels with every action so the server re-verifies it each time. NOTHING is
+// stored about the run — skips never reach the server, the summary is client-only
+// and a reload restarts the quiz.
 
 type VerdictCounts = Record<QuizVerdict, number>;
+type AnswerImage = { name: string; dataUrl: string };
+/** An unsent answer, parked while its question waits after a skip. */
+type Draft = { answer: string; images: AnswerImage[] };
 
 export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string }) {
   // Build the sequence on the CLIENT after mount: server and first client render
@@ -61,15 +78,21 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
   // the real sequence once. `ready` gates the questions so the first visible
   // question never flickers.
   const [order, setOrder] = useState<ResolvedQuizQuestion[]>(quiz.questions);
+  const [attempt, setAttempt] = useState<AttemptState>(() => startAttempt(quiz.questions.length));
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    setOrder(
-      buildQuestionSequence(quiz.questions, { shuffle: quiz.shuffle, count: quiz.questionCount }),
-    );
+    const sequence = buildQuestionSequence(quiz.questions, {
+      shuffle: quiz.shuffle,
+      count: quiz.questionCount,
+    });
+    setOrder(sequence);
+    setAttempt(startAttempt(sequence.length));
     setReady(true);
   }, [quiz]);
 
-  const [index, setIndex] = useState(0);
+  // Drafts of skipped questions, keyed by SLOT (drill mode repeats a question in
+  // several slots). Memory only — a reload drops them with the rest of the run.
+  const drafts = useRef(new Map<number, Draft>());
   const [answer, setAnswer] = useState("");
   // Photo answers (only offered when the current question's `imageInput` is
   // true): normalized client-side by the shared helper — decoded, straightened,
@@ -77,7 +100,7 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
   // re-validated server-side. `imageError` is the dismissible upload notice; it
   // carries the per-file diagnostics so a student can hand a teacher something
   // more useful than "it did not work".
-  const [images, setImages] = useState<{ name: string; dataUrl: string }[]>([]);
+  const [images, setImages] = useState<AnswerImage[]>([]);
   const [imageError, setImageError] = useState<{
     messages: string[];
     diagnostics: ImageDiagnostics[];
@@ -109,13 +132,23 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
   }
 
   const total = order.length;
-  const current = order[index];
+  const slot = currentSlot(attempt);
+  const current = slot === undefined ? undefined : order[slot];
 
-  if (finished || !current) {
-    return <Summary counts={counts} answered={answered} total={total} />;
+  if (finished || slot === undefined || !current) {
+    return (
+      <Summary
+        counts={counts}
+        answered={answered}
+        total={total}
+        skipped={skippedUnanswered(attempt)}
+      />
+    );
   }
 
-  const isLast = index >= total - 1;
+  const isLast = !canSkip(attempt);
+  const waiting = skippedWaiting(attempt);
+  const keyOf = (s: number) => order[s]?.id;
 
   // Validate + read the picked files (camera or gallery). Accepted photos become
   // thumbnails; every rejected file's reason lands in one dismissible notice.
@@ -123,7 +156,7 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
     if (!files || files.length === 0) return;
     const errors: string[] = [];
     const diagnostics: ImageDiagnostics[] = [];
-    const accepted: { name: string; dataUrl: string }[] = [];
+    const accepted: AnswerImage[] = [];
     let count = images.length;
     for (const file of Array.from(files)) {
       if (count >= MAX_IMAGES_PER_ANSWER) {
@@ -205,10 +238,31 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
     setError(null);
   }
 
-  function goNext() {
+  // Show the new current slot, restoring its parked draft if it was skipped.
+  function moveTo(next: AttemptState) {
     reset();
-    if (isLast) setFinished(true);
-    else setIndex((i) => i + 1);
+    setAttempt(next);
+    const nextSlot = currentSlot(next);
+    const draft = nextSlot === undefined ? undefined : drafts.current.get(nextSlot);
+    if (draft) {
+      setAnswer(draft.answer);
+      setImages(draft.images);
+    }
+  }
+
+  function goNext() {
+    if (slot === undefined) return;
+    drafts.current.delete(slot);
+    const next = completeCurrent(attempt, keyOf);
+    moveTo(next);
+    if (currentSlot(next) === undefined) setFinished(true);
+  }
+
+  function handleSkip() {
+    if (slot === undefined || grading || !canSkip(attempt)) return;
+    if (answer !== "" || images.length > 0) drafts.current.set(slot, { answer, images });
+    else drafts.current.delete(slot);
+    moveTo(skipCurrent(attempt, keyOf));
   }
 
   return (
@@ -221,7 +275,9 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
       ) : null}
 
       <p className={PROGRESS}>
-        Question {index + 1} of {total}
+        Question {progressPosition(attempt, total)} of {total}
+        {attempt.skipped.has(slot) ? " · skipped earlier" : null}
+        {waiting > 0 ? ` · ${waiting} skipped for later` : null}
       </p>
 
       <section className={CARD}>
@@ -289,6 +345,11 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
                   }}
                 />
               </>
+            ) : null}
+            {canSkip(attempt) ? (
+              <Button variant="outline" onClick={handleSkip} disabled={grading}>
+                Skip for now
+              </Button>
             ) : null}
             <Button variant="outline" onClick={() => setFinished(true)} disabled={grading}>
               Finish
@@ -380,7 +441,7 @@ function AnswerThumbnails({
   onRemove,
   disabled = false,
 }: {
-  images: { name: string; dataUrl: string }[];
+  images: AnswerImage[];
   onRemove?: (index: number) => void;
   disabled?: boolean;
 }) {
@@ -415,10 +476,12 @@ function Summary({
   counts,
   answered,
   total,
+  skipped,
 }: {
   counts: VerdictCounts;
   answered: number;
   total: number;
+  skipped: number;
 }) {
   return (
     <div className={RUNNER}>
@@ -426,6 +489,9 @@ function Summary({
         <h1 className="font-bold text-2xl">Quiz summary</h1>
         <p className={PROGRESS}>
           You answered {answered} of {total} question{total === 1 ? "" : "s"}.
+          {skipped > 0
+            ? ` ${skipped} skipped question${skipped === 1 ? " was" : "s were"} not answered.`
+            : null}
         </p>
         <div className="flex flex-wrap gap-4">
           <SummaryStat verdict="correct" count={counts.correct} label="correct" />

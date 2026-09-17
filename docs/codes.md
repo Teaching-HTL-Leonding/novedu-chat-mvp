@@ -529,7 +529,21 @@ in-page discussion live in `app/[code]/_quiz/`.
   count — count < pool is a random subset per attempt, count > pool covers the
   pool evenly before repeating; with `shuffle: false`, sequential cycling
   (`1…N, 1…N, …`) truncated — count < pool means "the first N, in order". The
-  progress label reads "Question x of `question_count`". Grading stays
+  progress label reads "Question x of `question_count`".
+- **Skipping** — before a verdict the student may
+  "Skip for now". The walk is the pure, client-safe `lib/quiz-attempt.ts`
+  (`QuizRunner` only calls it): the sequence is N SLOTS (positions, not
+  questions — drill mode repeats a question across slots), `pending` is a queue
+  whose head is the current slot. Answering removes the head; skipping moves it
+  to the TAIL ("back of the line"), so skipped slots return after every unseen
+  slot, FIFO, and may be skipped again; the last pending slot cannot be skipped.
+  After every transition, if the new head asks the question just shown, the
+  first later slot asking a different question moves to the front (keeps the
+  no-immediate-repeat guarantee). The attempt length never changes; progress
+  counts completed slots, so a skip does not advance it. A skipped slot's draft
+  (text + photos) is parked in memory per slot and restored on return; the
+  summary names skipped slots never answered. Skips never reach the server — no
+  action, no metering, no telemetry. Grading stays
   per-question and stateless (a repeated question is graded again) and there is
   **no server-side attempt enforcement** — attempt/result recording remains future
   work. `toPublicQuiz` puts the EFFECTIVE `questionCount` (authored value ??

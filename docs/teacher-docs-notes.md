@@ -70,6 +70,9 @@ prose carries everything an editor needs.
 
 ## 20-building-activities/04-quizzes
 
+- Skips live only in the student's browser for one attempt: nothing is stored,
+  and teachers see nothing about them (no statistics, no transcript).
+
 - In a compound quiz, `instructions` is the ONE thing that is not ignored, and it
   must NOT be described as "ignored": the chapter quiz's top-level `instructions:`
   text TRAVELS with its questions, but for GRADING only, and it is ADDITIVE — the

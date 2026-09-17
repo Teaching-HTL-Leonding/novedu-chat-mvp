@@ -4,7 +4,7 @@ description: What a quiz is, how students answer and get feedback, and how your 
 sidebar:
   order: 4
 audience: teacher
-keywords: [quiz, grading, feedback, open-ended questions, verdict, discussion, photo answer]
+keywords: [quiz, grading, feedback, open-ended questions, verdict, discussion, photo answer, skip question]
 related:
   - 20-building-activities/04-quizzes
   - 00-introduction/03-tutors-overview
@@ -20,6 +20,8 @@ Because the grading is a prompt you write in plain language, a question can ask 
 Students open a quiz and see a welcome screen with a greeting and a short description you write. Then the questions come one at a time; by default their order is shuffled for each attempt, though you can keep your authored order when later questions build on earlier ones.
 
 For each question, a student reads it, types an answer in their own words, and submits. The AI grades the answer and immediately shows a verdict, correct, partial, or incorrect, together with feedback that confirms or gently corrects them. After seeing the feedback, the student can open a short discussion chat about that question to ask why an answer was wrong or to dig into the idea behind it.
+
+A student who is stuck on a question can skip it and come back to it later. The skipped question moves to the end of the quiz and returns after all the questions the student hasn't seen yet, with any half-written answer still in place. A skipped question doesn't count as answered.
 
 If you allow it, students can also attach a photo of their work, for example a handwritten calculation, and the AI grades the photo together with (or instead of) the typed text. Photo answers are off by default.
 
