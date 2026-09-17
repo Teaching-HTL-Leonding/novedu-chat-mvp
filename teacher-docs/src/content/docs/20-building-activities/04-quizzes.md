@@ -4,7 +4,7 @@ description: Write a quiz file with open-ended questions and private grading gui
 sidebar:
   order: 4
 audience: teacher
-keywords: [quiz, questions, grading, evaluation, rubric, shuffle, photo answer, imageInput, discussion, fragments, quiz_files, compound quiz, final quiz, question_count, attempt length, eval, golden answers, test the grader]
+keywords: [quiz, questions, grading, evaluation, rubric, shuffle, skip question, photo answer, imageInput, discussion, fragments, quiz_files, compound quiz, final quiz, question_count, attempt length, eval, golden answers, test the grader]
 related:
   - 20-building-activities/01-handling-yaml
   - 20-building-activities/02-available-llms
@@ -79,6 +79,21 @@ Since students never see the grading guide, you don't need to hide anything in i
 
 Questions are shuffled by default: each student gets a random order per attempt. Set `shuffle: false` at the top of the file when later questions build on earlier ones, as the sorting-algorithms sample quiz does (it moves from concept to code step by step).
 
+## Skipping a question
+
+Every quiz lets students skip a question. Before submitting an answer, a student can select **Skip for now**, and the quiz moves on to the next question.
+
+A skipped question comes back later in the same attempt:
+
+- It moves to the end of the line and returns after every question the student hasn't seen yet. Several skipped questions come back in the order they were skipped.
+- A student can skip a returning question again, as long as another question is still waiting. The last remaining question can't be skipped.
+- Whatever the student had already typed or attached as a photo is still there when the question returns.
+- The progress display doesn't move forward on a skip. It shows how many questions are waiting for later, and marks a returning question as skipped earlier.
+
+Skipping also applies with `shuffle: false`, so a student can move a question behind later ones even when you keep your authored order. If later questions really depend on an earlier answer, say so in the question text.
+
+A skipped question counts as unanswered until the student answers it. If a student finishes early, the summary names how many skipped questions were never answered. Skips aren't stored anywhere and don't show up in your statistics.
+
 ## How many questions one attempt asks
 
 By default one attempt walks through every question exactly once. Set a top-level `question_count` to change that:
@@ -95,6 +110,7 @@ The number combines with `shuffle` in a predictable way:
 Students see the chosen length in the progress display ("Question 3 of 30"). Two things to keep in mind:
 
 - `question_count` shapes one attempt in the student's browser; it is not an exam lock. Reloading the page starts a fresh attempt, and answers are not stored.
+- Skipping never changes the length of an attempt: a skipped question returns later instead of being replaced by a new one.
 - A repeated question is simply graded again, independently of the earlier answer.
 
 ## Photo answers
