@@ -252,6 +252,9 @@ none. The extension this profile does need is `application-insights`, for any
 AZURE_CONFIG_DIR=~/.htl-azure-novedu az extension add -n application-insights
 ```
 
+`az monitor log-analytics query` (for example the workspace's `Usage` table)
+needs the preview extension `log-analytics`, which `az` installs on first use.
+
 ## What stays with a human
 
 - The login itself (above).
