@@ -123,7 +123,11 @@ know or care which case it is: it is always `novedu_user.id`, by value, everywhe
 Finer-grained access is by Entra **group** membership, but the result is a plain
 **server-owned column**, not something read off the token per request:
 
-- The Entra security group whose members are teachers is `TEACHER_GROUP_ID` in `.env`.
+- The Entra group whose members are teachers is `TEACHER_GROUP_ID` in `.env`. It is a
+  Microsoft 365 group, not a security group, so the app registration must emit it in the
+  `groups` claim: `groupMembershipClaims` is `All` (or `ApplicationGroup` with the group
+  assigned to the application) — under `SecurityGroup` it never appears and every teacher
+  signs in as a student.
 - `applyTeacherFlag` in `auth.ts` is a `databaseHooks.account.create.after` /
   `account.update.after` hook — it runs on the **account** row, once for a brand-new
   identity and again on every later sign-in of an existing one (including the seeded

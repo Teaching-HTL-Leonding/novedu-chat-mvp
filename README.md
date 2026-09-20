@@ -108,7 +108,7 @@ AZURE_CLIENT_SECRET=your-entra-app-client-secret
 #   openssl rand -base64 32
 AUTH_SECRET=your-generated-secret
 
-# Object id of the Entra security group whose members are treated as teachers
+# Object id of the Entra group whose members are treated as teachers
 # (gates teacher-only operations such as creating codes). Tenant-specific
 # configuration, not a secret. Required — the app fails to start without it.
 TEACHER_GROUP_ID=your-entra-teacher-group-object-id

@@ -1,0 +1,59 @@
+name: Deploy an image version to a stage
+description: >
+  Points the stage's container app (new Azure environment,
+  docs/azure-runtime-env.md) at an image version that already sits in the
+  registry, then waits until the stage reports that version. Expects a prior
+  azure/login as that stage's GitHub identity.
+
+inputs:
+  stage:
+    description: dev or prod
+    required: true
+  version:
+    description: Image version tag, e.g. 0.1.0.126
+    required: true
+  base-url:
+    description: Public base URL of the stage, without a trailing slash
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Inputs reach the shell through env, never inline in the script.
+    - name: Update the container app
+      shell: bash
+      env:
+        STAGE: ${{ inputs.stage }}
+        VERSION: ${{ inputs.version }}
+      run: |
+        az containerapp update \
+          --resource-group "rg-novedu-$STAGE" --name "ca-novedu-$STAGE" \
+          --image "crnovedu.azurecr.io/novedu:$VERSION" \
+          --output none --only-show-errors
+
+    # Green means deployed AND answering: single-revision mode keeps the
+    # previous revision serving until the new one is ready (a failed boot-time
+    # migration never gets there). The poll also wakes a scaled-to-zero app.
+    - name: Wait until the stage reports the version
+      shell: bash
+      env:
+        STAGE: ${{ inputs.stage }}
+        VERSION: ${{ inputs.version }}
+        BASE_URL: ${{ inputs.base-url }}
+      run: |
+        deadline=$((SECONDS + 600))
+        while [ "$SECONDS" -lt "$deadline" ]; do
+          running=$(curl -fsS -m 30 "$BASE_URL/api/version" | jq -r .version 2>/dev/null || true)
+          if [ "$running" = "$VERSION" ]; then
+            echo "$STAGE runs $VERSION"
+            exit 0
+          fi
+          echo "waiting: $STAGE reports '${running:-no answer}'"
+          sleep 15
+        done
+        echo "::error::$STAGE did not report $VERSION within 10 minutes"
+        az containerapp revision list \
+          --resource-group "rg-novedu-$STAGE" --name "ca-novedu-$STAGE" \
+          --query "[].{name:name,created:properties.createdTime,active:properties.active,health:properties.healthState,running:properties.runningState,details:properties.runningStateDetails}" \
+          --output table || true
+        exit 1
