@@ -11,7 +11,8 @@ them. Read it before running any `az` command against `rg-novedu-shared` /
 > old environment**, which serves `novedu.at` and is what every other doc in
 > this repo describes (`docs/database.md`, `docs/images.md`, the
 > `novedu-publish` skill, …). Both stages here run the Novedu image, but
-> neither serves a user or holds data.
+> neither serves a user. The dev stage holds a copy of the production data
+> ("Data in the dev stage" below); the prod stage is empty.
 >
 > **`docs/azure-access.md` is the entry point**: it carries the rules for the
 > transition period, the tenant / subscription / admin-group ids, the separate
@@ -21,7 +22,7 @@ them. Read it before running any `az` command against `rg-novedu-shared` /
 > | | |
 > |---|---|
 > | **Built so far** | the three resource groups; the shared Log Analytics workspace, Container Apps environment (incl. both storage definitions), container registry and Postgres server; per stage a Key Vault, a storage account with a provisioned image root, an Application Insights resource, a container app running the Novedu image off the mounted share, and a GitHub OIDC identity; every role assignment and both Postgres stage databases; the complete configuration of both stages — Key Vault secret values, the apps' secret references and environment variables, and both sign-in app registrations; the GitHub pipeline (publish → dev, manual promote → prod) |
-> | **Not built yet** | custom domains, managed certificates and DNS; prod's fixed single replica; Azure Foundry in the new tenant; any production data |
+> | **Not built yet** | custom domains, managed certificates and DNS; prod's fixed single replica; Azure Foundry in the new tenant; the production data in the prod stage |
 >
 > This block is updated as the build-out proceeds and removed once the
 > environment is production. Each section below marks what is designed but not
@@ -362,6 +363,42 @@ the start, and the **ownership hazard** of `docs/database.md` cannot occur in
 `novedu_dev`. The flip side: admin work inside that database starts with `SET
 ROLE NONE` (which the provisioning script does itself). `novedu_prod` has no
 such default; there the group is a plain admin.
+
+## Data in the dev stage
+
+`novedu_dev` and the dev image share hold a **copy of the production data**, so
+the stage can be exercised with realistic content. It is real student and
+teacher data: treat the dev stage like production when it comes to exporting or
+sharing what is in it. The prod stage stays empty until cutover.
+
+The copy differs from production in four deliberate ways:
+
+- **No chat messages.** `mastra.mastra_messages` is empty; the threads exist, so
+  a stored chat opens with an empty transcript.
+- **No credentials.** `novedu_session`, `novedu_device_code`,
+  `novedu_verification` and `novedu_coding_keys` are empty, and the token
+  columns of `novedu_account` are null — session tokens and coding API keys are
+  stored in plaintext and would otherwise be working credentials on this stage.
+  Everyone signs in fresh; students request a new coding key.
+- **App-hosted file URLs point at the dev stage.** `novedu_codes.file_url` is an
+  absolute URL, and the app resolves it from its own database only when it
+  starts with the stage's `CODE_ORIGIN`; any other origin is fetched over
+  HTTPS. Every `…/api/files/…` URL of the production hostnames is therefore
+  rewritten to the dev origin. Changing a stage's hostname needs the same
+  rewrite.
+- **Only active images.** The share holds the bytes of the active image rows
+  under `images/<key>/content`; closed rows have no bytes in production either.
+
+Sign-in needs no mapping: both environments authenticate against the same Entra
+tenant and teacher group, so a user's `oid` finds their copied
+`novedu_account` row and the teacher flag is recomputed as usual.
+
+The copy is a `pg_dump` of the schemas `public` and `mastra` restored with
+`--no-owner --no-acl --role=ca-novedu-dev` into the stopped stage, without the
+dump's schema entries — the stage's schemas and grants stay as provisioned, and
+every restored object is owned by the app role (`provision-stage.mjs dev
+--check` verifies it). There is no `pg_dump` on the dev machines; the
+`postgres:18` container image provides it.
 
 ## Deploying and running
 

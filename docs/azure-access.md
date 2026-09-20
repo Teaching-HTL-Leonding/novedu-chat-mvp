@@ -18,7 +18,7 @@ Container Apps.
 
 | | Old environment | New environment |
 |---|---|---|
-| Role right now | **Production.** Serves `novedu.at` to real users with real data — few of both | **Under construction.** Both stages run the app, but nobody uses it and it holds no data |
+| Role right now | **Production.** Serves `novedu.at` to real users with real data — few of both | **Under construction.** Both stages run the app, but nobody uses it. The dev stage holds a copy of the production data, the prod stage is empty |
 | Hosting | App Service, image from Docker Hub | Container Apps, image from Azure Container Registry |
 | Stages | one | `dev` (`dev.novedu.at`) and `prod` (`app.novedu.at`) |
 | Database | Postgres server `db-pgnovedu`, database `novedu` | Postgres server `psql-novedu`, databases `novedu_dev` / `novedu_prod` |
@@ -34,8 +34,9 @@ it is neither lost nor exposed along the way.
 
 The migration runs in separate steps, each finished before the next begins:
 
-1. **Build the new environment** and prove both stages on empty databases. The
-   old environment is not touched.
+1. **Build the new environment** and prove both stages: prod on an empty
+   database, dev on a copy of the production data as a rehearsal of the
+   transfer. The old environment is only read, never changed.
 2. **Azure Foundry** in the new tenant.
 3. **Cutover:** stop the old environment, transfer the database and the image
    files, move DNS for `novedu.at`, switch the CLI's default server and the
@@ -56,11 +57,14 @@ is gitignored) — ask the developer leading the migration for them.
 - **Local development is unchanged.** Keep your `.env` as `.env.example` and
   `docs/database.md` describe it. Do not point a local app at the new
   environment for feature work: its stages are not announced as usable, and
-  their databases are empty by design.
-- **No production data in the new environment.** Transferring data and image
-  files is the cutover step, done once and deliberately. The data set is small,
-  but it is real student and teacher data: never copy it over "to try
-  something".
+  the dev stage holds a copy of real production data.
+- **Production data in the new environment: the dev stage's copy, nothing
+  else.** The dev stage holds a copy of the production data without chat
+  messages and without credentials (`docs/azure-runtime-env.md`, "Data in the
+  dev stage"). The data set is small, but it is real student and teacher data:
+  treat that stage like production, never export it, and never copy anything
+  further over "to try something". Transferring data and image files into the
+  prod stage is the cutover step, done once and deliberately.
 - **Most developers need no access to the new environment at all.** Only get it
   if you take part in building or operating it.
 - **Coordinate before you change anything there.** Without infrastructure-as-code,
