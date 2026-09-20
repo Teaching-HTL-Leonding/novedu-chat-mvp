@@ -63,8 +63,13 @@ is why every change is coordinated (`docs/azure-access.md`).
 
 ### `log-novedu` — Log Analytics
 
-One workspace, `PerGB2018`, 30 days retention. It takes the Container Apps
-environment's logs and backs both stages' Application Insights resources.
+One workspace, `PerGB2018`, 30 days retention, **daily cap 0.5 GB**. It takes
+the Container Apps environment's logs and backs both stages' Application
+Insights resources. The cap bounds what a log storm can cost; once it is
+reached, ingestion stops until the reset (17:00 UTC) — logs and telemetry of
+both stages are then missing for the rest of that window, so a gap there means
+"cap hit", not "nothing happened". Check it with
+`az monitor log-analytics workspace show -g rg-novedu-shared -n log-novedu --query workspaceCapping`.
 
 ### `cae-novedu` — Container Apps environment
 
@@ -113,7 +118,7 @@ environment*) — purging one of those leaves the stage unable to restart.
 | Network | public endpoint, TLS |
 | Authentication | **Entra-only — password authentication is disabled** |
 | Entra admin | the security group `novedu-dev` |
-| Databases | `novedu_dev`, `novedu_prod` — each migrated by its own stage at boot, both without data |
+| Databases | `novedu_dev`, `novedu_prod` — each migrated by its own stage at boot. `novedu_dev` holds the copy of the production data (*Data in the dev stage*), `novedu_prod` is empty |
 
 The firewall is an "allow Azure services" rule plus one rule per developer
 machine IP. Adding one:
@@ -144,6 +149,20 @@ mounted at `/novedu-files`:
 |---|---|
 | Volume | `files-<stage>`, type `AzureFile`, from the environment storage definition of the same name |
 | Mount path | `/novedu-files` — what `IMAGE_STORAGE_ROOT` points at (`docs/images.md`) |
+
+Each app has three HTTP probes on the public `GET /api/version` (port 3000):
+
+| Probe | Period | Timeout | Failure threshold |
+|---|---|---|---|
+| Startup | 5 s | 3 s | 60 — five minutes for a boot that applies migrations |
+| Liveness | 30 s | 5 s | 3 |
+| Readiness | 10 s | 3 s | 3 |
+
+The route touches neither the database nor an LLM provider, so an outage of a
+dependency never restarts the container. Next.js answers requests only once
+`instrumentation.ts` has finished, so the startup probe also covers the
+boot-time migrations. `/api/health` is teacher-only and checks dependencies —
+unsuitable on both counts.
 
 Both scale 0–1 and **no custom domain is bound** — each app is reached at its
 generated Container Apps hostname. Prod's fixed single replica is **not built
@@ -194,7 +213,7 @@ run from another branch — or a fork PR — cannot obtain one
 
 ## Identity and access
 
-The complete list of role assignments — there are no others, and **no identity
+The complete list of role assignments inside the environment — **no identity
 of one stage holds any right on the other stage's resources**:
 
 | Principal | Rights |
@@ -210,6 +229,23 @@ updates its own app, so a promotion can never introduce a new image.
 Human access runs entirely on the group's rights — nobody needs a personal role
 assignment. Group membership therefore includes prod; see
 `docs/azure-access.md` for what that means during the transition period.
+
+The resource groups also **inherit every assignment made on the subscription**
+`Novedu`. There it is the subscription Owners only — no Contributor, no service
+principal. Anyone added at that scope reaches everything in both stages: the
+storage keys, a shell in the running container (and with it the resolved
+secrets), and the right to appoint a Postgres Entra admin. Keep that scope to
+the Owners; *Reviewing the environment* lists it.
+
+### Delete locks
+
+A `CanNotDelete` lock named `no-delete` sits on each resource that holds data
+or secrets the runbook cannot rebuild: `psql-novedu`, `stnovedudev`,
+`stnoveduprod`, `kv-novedu-dev` and `kv-novedu-prod`. It blocks deleting the
+resource and anything below it on the management plane — a database, a file
+share, a role assignment scoped to the resource — but no data operation: rows,
+files and secret versions are written and deleted as before. Deleting such a
+resource on purpose starts with `az lock delete`.
 
 ## Configuration
 
@@ -229,12 +265,14 @@ versionless, so a new secret version needs no change to the app.
 | Key Vault secret | App secret | Environment variable | Value |
 |---|---|---|---|
 | `AUTH-SECRET` | `auth-secret` | `AUTH_SECRET` | dev: the same value as the old environment. prod: its own, randomly generated (32 bytes, base64) |
-| `AZURE-CLIENT-SECRET` | `azure-client-secret` | `AZURE_CLIENT_SECRET` | dev: the secret of the registration *Novedu Chat MVP*, shared with the old environment. prod: the secret `novedu-prod` of *Novedu Chat (prod)*, expiring 2028-09-20 |
+| `AZURE-CLIENT-SECRET` | `azure-client-secret` | `AZURE_CLIENT_SECRET` | dev: the secret of the registration *Novedu Chat MVP*, shared with the old environment, expiring 2028-06-08. prod: the secret `novedu-prod` of *Novedu Chat (prod)*, expiring 2028-09-20. The vault secret's `expires` attribute carries the same date |
 | `SCCH-API-KEY` | `scch-api-key` | `SCCH_API_KEY` | the one SCCH key — the **only** secret that is identical in both stages and the old environment |
 | `APPLICATIONINSIGHTS-CONNECTION-STRING` | `appinsights-connection-string` | `APPLICATIONINSIGHTS_CONNECTION_STRING` | the stage's own `appi-novedu-<stage>` |
 
-Apart from the SCCH key every secret is per stage, so compromising dev's vault
-tells nobody anything about prod.
+Apart from the SCCH key no secret is shared between the stages, so
+compromising dev's vault tells nobody anything about prod. Dev's `AUTH_SECRET`
+and client secret are, however, the old environment's values: until cutover,
+whoever reads dev's vault holds two secrets of the live production.
 
 ### Environment variables
 
@@ -311,11 +349,17 @@ Because the app's reference is versionless, the new value is picked up by the
 next revision — or immediately with
 `az containerapp revision restart -g rg-novedu-<stage> -n ca-novedu-<stage> --revision <revision>`.
 
-A client secret expires, so check it before it does:
+A client secret expires, so check it before it does. The `expires` attribute
+of `AZURE-CLIENT-SECRET` mirrors the registration's end date — Key Vault does
+not enforce it, it only makes the date visible (and lets a near-expiry event
+fire); set it again with `az keyvault secret set-attributes --expires <date>
+-o none` whenever the secret is rotated:
 
 ```bash
 az ad app credential list --id <client id> \
   --query "[].{name:displayName,end:endDateTime}" -o table
+az keyvault secret show --vault-name kv-novedu-<stage> -n AZURE-CLIENT-SECRET \
+  --query attributes.expires -o tsv
 ```
 
 ## Postgres roles and stage isolation
@@ -459,8 +503,9 @@ Container Apps hostnames and are what changes when custom domains arrive.
 - **Single-revision mode** keeps the old revision serving until the new one is
   ready, so a failed boot-time migration leaves the stage on its previous
   revision.
-- **Default TCP probes.** `/api/health` is teacher-only and cannot serve as a
-  probe.
+- **The probes poll `/api/version`**, the same route the pipeline polls, and
+  the startup probe allows a boot five minutes. `az containerapp update
+  --image` keeps them.
 - **Dev scales to zero**, so the first request after an idle period pays a cold
   start that includes the boot-time migration check.
 
@@ -481,6 +526,22 @@ done
 az role assignment list --all \
   --query "[?contains(scope,'rg-novedu-')].{principal:principalName,type:principalType,role:roleDefinitionName,scope:scope}" \
   -o table
+
+# ... and what the resource groups inherit from the subscription and above
+# (expected: the subscription Owners, nothing else)
+az role assignment list --scope /subscriptions/165b0053-6959-416b-9edf-aa3f82f3f270 --include-inherited \
+  --query "[?!contains(scope,'/resourceGroups/')].{principal:principalName,type:principalType,role:roleDefinitionName,scope:scope}" \
+  -o table
+
+# The delete locks (expected: no-delete on the Postgres server, both storage
+# accounts and both vaults)
+for rg in rg-novedu-shared rg-novedu-dev rg-novedu-prod; do
+  az lock list -g $rg --query "[].{name:name,level:level,id:id}" -o tsv
+done
+
+# A stage's probes
+az containerapp show -g rg-novedu-dev -n ca-novedu-dev \
+  --query "properties.template.containers[0].probes[].{type:type,path:httpGet.path,period:periodSeconds,failures:failureThreshold}" -o table
 
 # Postgres is Entra-only (password auth disabled)
 az postgres flexible-server show -g rg-novedu-shared -n psql-novedu --query authConfig
