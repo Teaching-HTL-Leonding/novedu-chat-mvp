@@ -182,6 +182,14 @@ Read before touching: `app/usage/**`, `lib/usage-stats-store.ts`, `lib/usage-ran
 
 - Teacher-only, server-first read surface over `usage_by_code` — no `/api/usage/*` route; all windows UTC.
 
+### Azure migration & transition period → `docs/azure-access.md`
+
+Temporary — delete this entry together with the doc once the migration is complete. Read before running any `az` command against either Azure environment, changing how the app runs locally, or when a login has expired.
+
+- Novedu is migrating to a new Azure tenant (two-stage Container Apps). Until cutover the OLD environment is production (few real users, real data; breaking changes and outages are acceptable, losing or exposing data is not) and everything else in this file and in `docs/` describes it; local development and releases are unchanged, and no production data goes into the new environment.
+- The new environment is reached ONLY through the second `az` profile, per command: `AZURE_CONFIG_DIR=~/.htl-azure-novedu az …`, subscription `Novedu`. A command without the variable hits the default profile — the tenant serving `novedu.at`.
+- Device-code login is blocked in that tenant, and `az login` over SSH falls back to it silently: use the tunnelled browser flow from the doc. Tokens and secret values never pass through a Claude session.
+
 ### CI / GitHub Actions security → `docs/ci-security.md`
 
 Read before touching: `.github/workflows/`, or adding a secret / real infra to CI.
