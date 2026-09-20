@@ -30,9 +30,15 @@ jobs:
   qa:
     uses: ./.github/workflows/qa.yml
 
+  # Builds the image ONCE and releases it to production — the old environment:
+  # Docker Hub, the App Service webhook and the Docker Hub description sync are
+  # legacy, removed at the Azure cutover (docs/azure-access.md). The `deploy-dev`
+  # job below hands the very same image to the new environment.
   build-and-push:
     needs: qa
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -96,3 +102,51 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
           repository: ${{ env.IMAGE_NAME }}
+
+  # New Azure environment (docs/azure-runtime-env.md): every publish also
+  # deploys to the dev stage. A separate job, so a problem over there can never
+  # block the production release above. Promotion to the prod stage is the
+  # manual promote.yml.
+  #
+  # SECURITY: no secrets here. Azure trusts this job by OIDC federation — the
+  # dev identity accepts a token only for this repo's `refs/heads/main`, so a
+  # run from any other ref (or a fork) cannot log in (docs/ci-security.md).
+  deploy-dev:
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      VERSION: ${{ needs.build-and-push.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_DEV_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Registry-to-registry copy of the image built above: same digest, so the
+      # stages run exactly what production runs. Only the immutable version tag
+      # goes to the registry, never :latest.
+      - name: Copy the image to the Azure registry
+        run: |
+          az acr login --name crnovedu
+          docker buildx imagetools create \
+            --tag "crnovedu.azurecr.io/novedu:$VERSION" \
+            "docker.io/$IMAGE_NAME:$VERSION"
+
+      - name: Deploy to dev
+        uses: ./.github/actions/deploy-stage
+        with:
+          stage: dev
+          version: ${{ env.VERSION }}
+          base-url: ${{ vars.DEV_BASE_URL }}

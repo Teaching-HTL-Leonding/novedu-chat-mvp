@@ -1,17 +1,17 @@
 # Azure runtime environment: how Novedu is run (new environment)
 
 How the new two-stage Azure environment is put together, what each resource is
-for, and how the `dev` and `prod` stages are kept apart. Read it before running
-any `az` command against `rg-novedu-shared` / `rg-novedu-dev` /
-`rg-novedu-prod`, before touching `scripts/db/provision-stage.*`, and before
-adding the deployment workflows.
+for, how the `dev` and `prod` stages are kept apart, and how an image reaches
+them. Read it before running any `az` command against `rg-novedu-shared` /
+`rg-novedu-dev` / `rg-novedu-prod`, before touching
+`scripts/db/provision-stage.*`, and before touching the deployment workflows.
 
 > **Status: under construction, not in use.** Novedu is in the middle of a
 > transition period between two Azure environments. **Production is still the
 > old environment**, which serves `novedu.at` and is what every other doc in
 > this repo describes (`docs/database.md`, `docs/images.md`, the
-> `novedu-publish` skill, …). Nothing described here serves a user, holds data,
-> or is deployed to.
+> `novedu-publish` skill, …). Both stages here run the Novedu image, but
+> neither serves a user or holds data.
 >
 > **`docs/azure-access.md` is the entry point**: it carries the rules for the
 > transition period, the tenant / subscription / admin-group ids, the separate
@@ -20,8 +20,8 @@ adding the deployment workflows.
 >
 > | | |
 > |---|---|
-> | **Built so far** | the three resource groups; the shared Log Analytics workspace, Container Apps environment (incl. both storage definitions), container registry and Postgres server; per stage a Key Vault, a storage account with a provisioned image root, an Application Insights resource, a container app running a placeholder image, and a GitHub OIDC identity; every role assignment and both Postgres stage databases; the complete configuration of both stages — Key Vault secret values, the apps' secret references and environment variables, and both sign-in app registrations |
-> | **Not built yet** | a Novedu image in the registry; the `/novedu-files` volume mount; target port 3000 and prod's fixed single replica; custom domains, managed certificates and DNS; the GitHub pipeline (build → dev, promote → prod); Azure Foundry in the new tenant; any production data |
+> | **Built so far** | the three resource groups; the shared Log Analytics workspace, Container Apps environment (incl. both storage definitions), container registry and Postgres server; per stage a Key Vault, a storage account with a provisioned image root, an Application Insights resource, a container app running the Novedu image off the mounted share, and a GitHub OIDC identity; every role assignment and both Postgres stage databases; the complete configuration of both stages — Key Vault secret values, the apps' secret references and environment variables, and both sign-in app registrations; the GitHub pipeline (publish → dev, manual promote → prod) |
+> | **Not built yet** | custom domains, managed certificates and DNS; prod's fixed single replica; Azure Foundry in the new tenant; any production data |
 >
 > This block is updated as the build-out proceeds and removed once the
 > environment is production. Each section below marks what is designed but not
@@ -46,7 +46,7 @@ database, so sharing a server or an environment never shares data.
 | Container app | `ca-novedu-dev`, 0.5 vCPU / 1 GiB | `ca-novedu-prod`, 1 vCPU / 2 GiB |
 | Database | `novedu_dev` | `novedu_prod` |
 | Intended hostname | `dev.novedu.at` | `app.novedu.at` |
-| Replicas | 0–1 (scales to zero) | 0–1 while on the placeholder image; exactly 1 once live |
+| Replicas | 0–1 (scales to zero) | 0–1 while the stage is empty; exactly 1 once live |
 
 The hostnames are **not built yet** — no custom domain, no managed certificate
 and no DNS record exists, and both apps are reachable only under their
@@ -86,9 +86,22 @@ because dev's key cannot open prod's share.
 
 ### `crnovedu` — Container Registry
 
-Basic tier, **admin user disabled** (`crnovedu.azurecr.io`). The intended
-repository is `novedu`; **no image is pushed yet**. Deployments are meant to
-reference an immutable version tag, never `:latest`.
+Basic tier, **admin user disabled** (`crnovedu.azurecr.io`). One repository,
+`novedu`, holding the images the stages run. Every tag is an immutable version
+tag, `<package.json version>.<workflow run number>` (e.g. `0.1.0.126`); there is
+no `:latest` here, because a stage must always name the exact version it runs.
+
+Pushing is the pipeline's job (*Deploying and running* below). The Basic tier
+has **no retention policy**, so old versions accumulate until someone purges
+them:
+
+```bash
+AZURE_CONFIG_DIR=~/.htl-azure-novedu az acr run --registry crnovedu \
+  --cmd "acr purge --filter 'novedu:.*' --ago 90d --keep 10 --untagged" /dev/null
+```
+
+Check first which versions the two stages currently run (*Reviewing the
+environment*) — purging one of those leaves the stage unable to restart.
 
 ### `psql-novedu` — Postgres Flexible Server
 
@@ -99,7 +112,7 @@ reference an immutable version tag, never `:latest`.
 | Network | public endpoint, TLS |
 | Authentication | **Entra-only — password authentication is disabled** |
 | Entra admin | the security group `novedu-dev` |
-| Databases | `novedu_dev`, `novedu_prod` (both empty — no tables yet) |
+| Databases | `novedu_dev`, `novedu_prod` — each migrated by its own stage at boot, both without data |
 
 The firewall is an "allow Azure services" rule plus one rule per developer
 machine IP. Adding one:
@@ -120,15 +133,20 @@ values listed above.
 Single-revision mode, external ingress, HTTPS only, system-assigned managed
 identity, Consumption profile.
 
-**Current state:** both apps carry their full Novedu configuration — secret
-references and environment variables, see *Configuration* below — but still run
-Microsoft's public placeholder image (`mcr.microsoft.com/k8se/quickstart`) on
-target port 80, scale 0–1, with **no volume mount and no custom domain**. The
-placeholder ignores the configuration; it is there so that the apps, and with
-them their system-assigned identities, exist and can hold role assignments — an
-identity cannot be granted anything before its app is created. Target port
-3000, prod's fixed single replica and the `/novedu-files` volume mount are
-**not built yet**.
+Both apps run the Novedu image from `crnovedu`, pulled with the app's own
+system-assigned identity (no registry credential is stored), on target port
+3000, with their full configuration — secret references and environment
+variables, see *Configuration* below — and the stage's Azure Files share
+mounted at `/novedu-files`:
+
+| | |
+|---|---|
+| Volume | `files-<stage>`, type `AzureFile`, from the environment storage definition of the same name |
+| Mount path | `/novedu-files` — what `IMAGE_STORAGE_ROOT` points at (`docs/images.md`) |
+
+Both scale 0–1 and **no custom domain is bound** — each app is reached at its
+generated Container Apps hostname. Prod's fixed single replica is **not built
+yet**; it comes with cutover.
 
 ### Key Vault `kv-novedu-<stage>`
 
@@ -147,9 +165,9 @@ The share is already provisioned as an **image root**: an `images/` directory
 plus the `.novedu-files-root` sentinel, whose bytes come from
 `scripts/lib/image-root.mjs`. Both are written through the storage API rather
 than by the app, because the image adapter never creates the root, `images/` or
-the sentinel and has no fallback directory — see `docs/images.md`. The app's
-`IMAGE_STORAGE_ROOT` already points at `/novedu-files`; the mount that would
-make this share visible there is not built yet.
+the sentinel and has no fallback directory — see `docs/images.md`. The share is
+mounted into the stage's container app at `/novedu-files`, which is where the
+app's `IMAGE_STORAGE_ROOT` points.
 
 ### Application Insights `appi-novedu-<stage>`
 
@@ -168,9 +186,10 @@ A user-assigned managed identity per stage for GitHub Actions OIDC, audience
 | `id-novedu-gh-dev` | `repo:Teaching-HTL-Leonding/novedu-chat-mvp:ref:refs/heads/main` |
 | `id-novedu-gh-prod` | `repo:Teaching-HTL-Leonding/novedu-chat-mvp:environment:production` |
 
-Both are **inert**: no workflow uses them. A federated token is issued only for
-the exact subject above, so a fork PR cannot obtain one and `qa.yml` stays
-secret-free (`docs/ci-security.md`).
+These are the only credentials the pipeline has: **no Azure secret is stored in
+GitHub**. A federated token is issued only for the exact subject above, so a
+run from another branch — or a fork PR — cannot obtain one
+(`docs/ci-security.md`).
 
 ## Identity and access
 
@@ -239,7 +258,8 @@ The FQDN is the app's generated Container Apps hostname —
 `ca-novedu-dev.salmonmeadow-98d2bbff.austriaeast.azurecontainerapps.io` and
 `ca-novedu-prod.salmonmeadow-98d2bbff.austriaeast.azurecontainerapps.io`. No
 custom domain is bound; binding one means changing `AUTH_URL` and
-`CODE_ORIGIN` and adding the new callback to that stage's app registration.
+`CODE_ORIGIN`, the stage's `*_BASE_URL` GitHub variable, and adding the new
+callback to that stage's app registration.
 
 ### Deliberately not set
 
@@ -343,17 +363,57 @@ the start, and the **ownership hazard** of `docs/database.md` cannot occur in
 ROLE NONE` (which the provisioning script does itself). `novedu_prod` has no
 such default; there the group is a plain admin.
 
-## Deploying and running (design — not built yet)
+## Deploying and running
 
-None of this exists yet; it is the shape the environment is built towards.
+Development is **trunk-based**: `main` is the only long-lived branch, and the
+stages are deployment targets, not branches. One image is built once per merge
+to `main` and both stages run that same artifact — prod never gets a separately
+built one.
 
-One image is built once per commit on `main` and pushed to `crnovedu` under an
-immutable version tag. That image is deployed to dev automatically, and **the
-very same image** is promoted to prod by a manual step — prod never gets a
-separately built artifact. Database migrations run at app boot, per stage, so
-deploying to a stage migrates that stage's database.
+| Step | Where | What happens |
+|---|---|---|
+| Publish | `.github/workflows/docker-publish.yml` | QA gate, then the image is built **once** under the version tag and released to production (the old environment — Docker Hub plus the App Service webhook; legacy, it goes away at cutover). |
+| Deploy to dev | its `deploy-dev` job | Copies that very image registry-to-registry into `crnovedu` (same digest) and deploys it to `ca-novedu-dev`. A **separate job**, so a problem in the new environment never blocks the production release, and a red `deploy-dev` leaves production untouched. |
+| Promote to prod | `.github/workflows/promote.yml`, manual | Verifies the version exists in `crnovedu` and deploys it to `ca-novedu-prod`. **Nothing is built.** |
 
-Constraints the design has to respect:
+Both deploy steps go through the composite action
+`.github/actions/deploy-stage`: `az containerapp update --image`, then poll the
+stage's `/api/version` until it reports that version (10 minutes, revision list
+printed on timeout). **Green means the stage answers with the version** — the
+poll also wakes a scaled-to-zero app. Database migrations run at app boot, per
+stage, so deploying to a stage migrates that stage's database.
+
+### Promoting and rolling back
+
+```bash
+gh workflow run promote.yml -f version=0.1.0.126   # a specific version
+gh workflow run promote.yml                        # the version dev currently runs
+```
+
+An empty `version` resolves to what dev reports at `/api/version`. **Rollback is
+the same command with an older version.** Migrations are forward-only, so
+rolling back across one only works if that migration was backward-compatible.
+
+### GitHub configuration
+
+No Azure secret is involved anywhere — all of this is plain repository or
+environment **variables** (`docs/ci-security.md`).
+
+| Scope | Name | Holds |
+|---|---|---|
+| repository variable | `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` | the tenant and subscription of `docs/azure-access.md` |
+| repository variable | `AZURE_DEV_CLIENT_ID` | client id of `id-novedu-gh-dev` |
+| repository variable | `DEV_BASE_URL` | dev's public base URL, no trailing slash |
+| environment `production` | `AZURE_PROD_CLIENT_ID` | client id of `id-novedu-gh-prod` |
+| environment `production` | `PROD_BASE_URL` | prod's public base URL, no trailing slash |
+
+The `production` environment's deployment branches are **`main` only**; it is
+what the prod identity's federated subject matches, so it is part of the trust
+chain, not a convenience. A required reviewer can be added to it without
+touching the workflow. The two `*_BASE_URL` variables carry the generated
+Container Apps hostnames and are what changes when custom domains arrive.
+
+### Constraints the pipeline respects
 
 - **One replica per stage is a hard limit** (dev 0–1, prod exactly 1 once
   live). The Drizzle migrator takes no lock, and the pool maximum of 20
@@ -390,6 +450,18 @@ az postgres flexible-server show -g rg-novedu-shared -n psql-novedu --query auth
 
 # The environment's storage definitions
 az containerapp env storage list -g rg-novedu-shared -n cae-novedu -o table
+
+# The image versions in the registry, newest first
+az acr repository show-tags -n crnovedu --repository novedu --orderby time_desc --top 10
+
+# What a stage runs: image, port, registry (identity pull) and the file mount
+az containerapp show -g rg-novedu-<stage> -n ca-novedu-<stage> --query "{
+  image:properties.template.containers[0].image,
+  port:properties.configuration.ingress.targetPort,
+  fqdn:properties.configuration.ingress.fqdn,
+  registries:properties.configuration.registries[].{server:server,identity:identity},
+  volumes:properties.template.volumes[].{name:name,storage:storageName,type:storageType},
+  mounts:properties.template.containers[0].volumeMounts }"
 
 # The GitHub OIDC federated credentials, per stage
 az identity federated-credential list \

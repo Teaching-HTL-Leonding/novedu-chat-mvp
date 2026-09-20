@@ -17,13 +17,14 @@ The defense is simple to state: **the workflows that run untrusted PR code must
 have no secrets in their environment, and the workflows that have secrets must not
 run untrusted PR code.**
 
-## How the two workflows are split
+## How the workflows are split
 
 | Workflow | Trigger | Runs PR (untrusted) code? | Has secrets? |
 | --- | --- | --- | --- |
 | **`qa.yml`** | `pull_request` to `main`, `workflow_call` | **Yes** | **No** — secret-free |
 | **`docs.yml`** | `pull_request` to `main` (teacher-docs paths) | **Yes** | **No** — secret-free |
-| **`docker-publish.yml`** | `push` to `main`, `workflow_dispatch` | No | Yes |
+| **`docker-publish.yml`** | `push` to `main`, `workflow_dispatch` | No | Yes — in `build-and-push` only |
+| **`promote.yml`** | `workflow_dispatch`, in the environment `production` | No | **No** — OIDC only |
 
 - **`qa.yml`** is the per-PR quality gate (biome, typecheck, unit + component
   tests, `next build`, Playwright e2e — hermetic + DB-backed `@live-db` — and a
@@ -58,10 +59,49 @@ run untrusted PR code.**
   `qa.yml`, so the same rule applies: **no secrets, no env, `contents: read`** —
   and none are needed, the docs build touches no app code.
 - **`docker-publish.yml`** holds the real secrets (`DOCKER_USERNAME` /
-  `DOCKER_PASSWORD`, `AZURE_WEBAPP_CI_CD_URL`). It triggers **only** on `push` to
-  `main` (a maintainer merge) and manual `workflow_dispatch`. A fork PR cannot
-  produce a push to `main`, so it can never reach these secrets. It reuses `qa.yml`
-  via `workflow_call` as a gate, then builds/publishes/deploys.
+  `DOCKER_PASSWORD`, `AZURE_WEBAPP_CI_CD_URL`) — all of them in its
+  `build-and-push` job, which is the only place in the repo that references a
+  `secrets.*` value at all. It triggers **only** on `push` to `main` (a
+  maintainer merge) and manual `workflow_dispatch`. A fork PR cannot produce a
+  push to `main`, so it can never reach these secrets. It reuses `qa.yml` via
+  `workflow_call` as a gate, then builds/publishes/deploys.
+  - The **`deploy-dev`** job hands the same image to the dev stage of the new
+    Azure environment (`docs/azure-runtime-env.md`). It is **secret-free**: it
+    reaches Azure by OIDC (below) and holds none of the Docker Hub credentials
+    above.
+- **`promote.yml`** deploys an image version that already sits in the Azure
+  registry to the prod stage; it builds nothing and runs no PR code. It is
+  **secret-free** for the same reason — OIDC only — and runs in the GitHub
+  environment `production`.
+
+## Azure deploys: OIDC federation, no stored credential
+
+**No Azure credential exists in GitHub.** The two Azure deploy jobs
+(`docker-publish.yml`'s `deploy-dev` and `promote.yml`) authenticate with a
+short-lived OIDC token that GitHub mints for the run and Azure exchanges for an
+access token, against a user-assigned identity per stage.
+
+- **`id-token: write` is granted per job**, to those two and to
+  `publish-cli.yml`'s npm trusted publishing — nowhere else. A job cannot grant
+  itself the permission, and the token is worthless without a matching
+  federated subject on the other side.
+- **The federated subjects are exact.** The dev identity trusts only
+  `repo:<this repo>:ref:refs/heads/main`, the prod identity only
+  `repo:<this repo>:environment:production`. A fork PR runs under its own
+  repository and a feature branch under its own ref, so **neither produces a
+  subject any identity trusts** — the exchange fails before any Azure call.
+  `deploy-dev` additionally carries `if: github.ref == 'refs/heads/main'`.
+- **The `production` environment is restricted to `main`** (deployment
+  branches), which is what makes the prod subject reachable only from `main`.
+  That branch restriction is part of the trust chain — **do not loosen it**; a
+  required reviewer may be added on top.
+- **Client, tenant and subscription ids are plain `vars.*`, not secrets.** They
+  are identifiers, not credentials: without a trusted subject they authenticate
+  nothing. Which variable lives where is in `docs/azure-runtime-env.md`.
+- The rights behind each identity are minimal and stage-bound — the dev one may
+  push to the registry and update the dev app, the prod one may only pull and
+  update the prod app, so a promotion can never introduce a new image
+  (`docs/azure-runtime-env.md`).
 
 ## GitHub's built-in protections we rely on
 
@@ -102,3 +142,7 @@ run untrusted PR code.**
   tests, so `contents: read`. Any workflow that needs more should request the
   minimum it needs, scoped to the job.
 - **No `pull_request_target`.** See protection 2 above.
+- **Azure deploys stay credential-free.** Never store an Azure client secret or
+  publish profile in GitHub, never widen a federated subject, and never loosen
+  the `production` environment's `main`-only deployment branches — that
+  restriction is what keeps the prod identity out of reach of every other ref.

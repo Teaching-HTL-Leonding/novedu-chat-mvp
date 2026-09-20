@@ -18,7 +18,7 @@ Container Apps.
 
 | | Old environment | New environment |
 |---|---|---|
-| Role right now | **Production.** Serves `novedu.at` to real users with real data — few of both | **Under construction.** Empty: nobody uses it, it holds no data |
+| Role right now | **Production.** Serves `novedu.at` to real users with real data — few of both | **Under construction.** Both stages run the app, but nobody uses it and it holds no data |
 | Hosting | App Service, image from Docker Hub | Container Apps, image from Azure Container Registry |
 | Stages | one | `dev` (`dev.novedu.at`) and `prod` (`app.novedu.at`) |
 | Database | Postgres server `db-pgnovedu`, database `novedu` | Postgres server `psql-novedu`, databases `novedu_dev` / `novedu_prod` |

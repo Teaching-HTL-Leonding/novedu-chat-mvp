@@ -192,9 +192,9 @@ Temporary — delete this entry together with the doc once the migration is comp
 
 ### Azure runtime environment (new, under construction) → `docs/azure-runtime-env.md`
 
-Read before touching: `scripts/db/provision-stage.*`, any `az` work on `rg-novedu-*`, and later the deploy/promote workflows.
+Read before touching: `scripts/db/provision-stage.*`, any `az` work on `rg-novedu-*`, `.github/actions/deploy-stage/**`, `.github/workflows/promote.yml`, or `docker-publish.yml`'s `deploy-dev` job.
 
-- Not in use: both stages are configured (Key Vault secrets, secret references, env vars, sign-in registrations), but there is no Novedu image — the apps run a placeholder — and no data; production is still the old environment. The doc marks what is designed but not built.
+- Both stages run the Novedu image, deployed by the pipeline: every publish goes to dev, prod only via the manual `promote.yml`. Still no data and no custom domains, and production is still the old environment. The doc marks what is designed but not built.
 - Those stages run on SCCH ONLY: never set `AZURE_FOUNDRY_ENDPOINT` / `OPENROUTER_API_KEY` there. The SCCH key is the only secret shared between the stages; every other secret is per stage, in that stage's Key Vault.
 - One replica per stage is a HARD limit (dev 0–1, prod exactly 1): the Drizzle migrator takes no lock and `lib/db/pool.ts`'s 20 connections are sized against B1ms's 50.
 - No identity of one stage ever holds a right on the other stage's resources or database; Postgres there is Entra-only (password auth disabled) and stage isolation is a privilege (`revoke connect`), not a network rule.
@@ -203,7 +203,8 @@ Read before touching: `scripts/db/provision-stage.*`, any `az` work on `rg-noved
 
 Read before touching: `.github/workflows/`, or adding a secret / real infra to CI.
 
-- Public teaching repo: fork PRs run untrusted code. `qa.yml` stays secret-free; secrets live only in `docker-publish.yml`.
+- Public teaching repo: fork PRs run untrusted code. `qa.yml` stays secret-free; secrets live only in `docker-publish.yml`'s `build-and-push` job.
+- Azure deploys (`deploy-dev`, `promote.yml`) are OIDC-only and secret-free — no stored Azure credential; don't widen a federated subject or the `production` environment's `main`-only branches.
 
 ### Testing → `docs/testing.md`
 

@@ -15,6 +15,8 @@ description: Publish novedu into production
 3. Create a PR based on the branch
 4. Monitor the QA GH Action using `gh` CLI and wait for it to complete
 5. If the QA run is successful, merge the PR
-6. Monitor the production deployment and ensure it completes successfully
+6. Monitor `docker-publish.yml` and ensure it completes successfully — both the production deployment and the `deploy-dev` job, which hands the same image to the dev stage of the new Azure environment (green = dev's `/api/version` reports the new version). A red `deploy-dev` does not affect production, but report it.
+
+**Not part of publishing:** promoting to the new environment's prod stage — that is the manual `promote.yml` (`docs/azure-runtime-env.md`).
 
 **Publishing the CLI** (when the check above says so): bump `cli/package.json` `"version"` (usually no source change — the new logic is bundled on rebuild), land it on `main` via the steps above, then `git tag cli-v<version> && git push origin cli-v<version>` to trigger `publish-cli.yml`. Verify with `npm view @novedu/cli version`.

@@ -1,0 +1,76 @@
+name: Promote to prod
+
+# New Azure environment (docs/azure-runtime-env.md): deploys an image version
+# that docker-publish.yml already built — and the dev stage already ran — to the
+# prod stage. Nothing is built here. Rollback = run it with an older version
+# (migrations are forward-only, so rolling back across one needs that migration
+# to have been backward-compatible).
+#
+# SECURITY: no secrets. The prod identity accepts an OIDC token only for the
+# GitHub environment `production`, which is restricted to `main` — so neither a
+# push nor a run from another branch can reach prod (docs/ci-security.md).
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Image version (e.g. 0.1.0.126). Empty = the version the dev stage runs.
+        required: false
+        type: string
+
+concurrency:
+  group: promote-prod
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # The input reaches the shell through env, never inline in the script.
+      - name: Resolve the version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          DEV_BASE_URL: ${{ vars.DEV_BASE_URL }}
+        run: |
+          version="$INPUT_VERSION"
+          if [ -z "$version" ]; then
+            version=$(curl -fsS -m 60 --retry 5 --retry-all-errors "$DEV_BASE_URL/api/version" | jq -r .version)
+          fi
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::not an image version: '$version'"
+            exit 1
+          fi
+          echo "Promoting $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Azure (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_PROD_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Verify the version exists in the registry
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          az acr login --name crnovedu
+          docker buildx imagetools inspect "crnovedu.azurecr.io/novedu:$VERSION" > /dev/null
+
+      - name: Deploy to prod
+        uses: ./.github/actions/deploy-stage
+        with:
+          stage: prod
+          version: ${{ steps.version.outputs.version }}
+          base-url: ${{ vars.PROD_BASE_URL }}
