@@ -4,7 +4,7 @@
 > environments. When the migration is complete — the new environment is
 > production and the old one is decommissioned — **delete this file and its
 > entry in `AGENTS.md`**. Whatever is still true then (profile handling, login,
-> access checks) moves into the permanent deployment documentation first.
+> access checks) moves into `docs/azure-runtime-env.md` first.
 
 For every Novedu developer, and for Claude sessions working on a developer's
 behalf. Read it before running any `az` command against either environment,
@@ -22,7 +22,7 @@ Container Apps.
 | Hosting | App Service, image from Docker Hub | Container Apps, image from Azure Container Registry |
 | Stages | one | `dev` (`dev.novedu.at`) and `prod` (`app.novedu.at`) |
 | Database | Postgres server `db-pgnovedu`, database `novedu` | Postgres server `psql-novedu`, databases `novedu_dev` / `novedu_prod` |
-| Documented in | every other doc in this repo (`docs/database.md`, `docs/images.md`, the `novedu-publish` skill, …) | this document, until the permanent deployment docs take over |
+| Documented in | every other doc in this repo (`docs/database.md`, `docs/images.md`, the `novedu-publish` skill, …) | `docs/azure-runtime-env.md`, plus this document for access and the transition rules |
 
 **The stakes are low, and the migration is planned accordingly.** Novedu is an
 MVP with a small user base: breaking changes are fine and outages are
@@ -240,21 +240,24 @@ identities. Re-check Postgres with
 ## CLI extensions
 
 Extensions are installed **per profile**: the new-environment profile does not
-see the ones in `~/.azure`. Add the `containerapp` extension to it before any
-`az containerapp` command:
+see the ones in `~/.azure`. `az containerapp` works from the core CLI and needs
+none. The extension this profile does need is `application-insights`, for any
+`az monitor app-insights` command:
 
 ```bash
-AZURE_CONFIG_DIR=~/.htl-azure-novedu az extension add -n containerapp --upgrade
+AZURE_CONFIG_DIR=~/.htl-azure-novedu az extension add -n application-insights
 ```
 
 ## What stays with a human
 
 - The login itself (above).
-- Secret values: they are entered directly into Key Vault
-  (`az keyvault secret set ... -o none`, or the portal) and never pass through a
-  Claude session or its transcript.
-- DNS records for the stage hostnames, and changes to the app registrations in
-  the sign-in tenant.
+- Typing or pasting a secret value: a person enters it directly into Key Vault
+  (`az keyvault secret set ... --file /dev/stdin -o none`, or the portal). A
+  Claude session may only move a value it never sees — piped from its source
+  into Key Vault inside one command, with no output — and checks names, lengths
+  and hashes, never values. No secret value appears in a session or its
+  transcript.
+- DNS records for the stage hostnames.
 
 Tokens are never printed, logged, or written to files by a Claude session;
 checks query metadata such as `expiresOn` only.

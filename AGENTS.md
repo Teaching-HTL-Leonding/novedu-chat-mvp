@@ -190,6 +190,15 @@ Temporary — delete this entry together with the doc once the migration is comp
 - The new environment is reached ONLY through the second `az` profile, per command: `AZURE_CONFIG_DIR=~/.htl-azure-novedu az …`, subscription `Novedu`. A command without the variable hits the default profile — the tenant serving `novedu.at`.
 - Device-code login is blocked in that tenant, and `az login` over SSH falls back to it silently: use the tunnelled browser flow from the doc. Tokens and secret values never pass through a Claude session.
 
+### Azure runtime environment (new, under construction) → `docs/azure-runtime-env.md`
+
+Read before touching: `scripts/db/provision-stage.*`, any `az` work on `rg-novedu-*`, and later the deploy/promote workflows.
+
+- Not in use: both stages are configured (Key Vault secrets, secret references, env vars, sign-in registrations), but there is no Novedu image — the apps run a placeholder — and no data; production is still the old environment. The doc marks what is designed but not built.
+- Those stages run on SCCH ONLY: never set `AZURE_FOUNDRY_ENDPOINT` / `OPENROUTER_API_KEY` there. The SCCH key is the only secret shared between the stages; every other secret is per stage, in that stage's Key Vault.
+- One replica per stage is a HARD limit (dev 0–1, prod exactly 1): the Drizzle migrator takes no lock and `lib/db/pool.ts`'s 20 connections are sized against B1ms's 50.
+- No identity of one stage ever holds a right on the other stage's resources or database; Postgres there is Entra-only (password auth disabled) and stage isolation is a privilege (`revoke connect`), not a network rule.
+
 ### CI / GitHub Actions security → `docs/ci-security.md`
 
 Read before touching: `.github/workflows/`, or adding a secret / real infra to CI.
