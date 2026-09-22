@@ -67,6 +67,7 @@ Read before touching: `app/[code]/**`, `app/codes/**`, `app/api/copilotkit/**`, 
 - Fixed layering: **FileKind** → validator (`lib/file-validators.ts`) → **CodeModule** descriptor; adding a module touches only the documented seams.
 - Editing a code changes only note + window + the LLM override pair — never the module, `file_url`, or the frozen `anonymous`.
 - `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities. TWO sanctioned exceptions: `novedu_reports` stores the reporter's user id even on anonymous codes behind an explicit on-form notice (`docs/reports.md`), and `novedu_coding_keys` stores the requester's user id behind an explicit on-page notice (`docs/coding.md`).
+- `precheckAnswer` (the quiz pre-check) re-derives the env gate and the quiz's `immediate_feedback` on every call, returns only a hint enum, and `evaluation` still never leaves the server; Jev is a connectivity site behind `lib/llm/jev-client.ts`, not an `LlmProvider`.
 
 ### Reports → `docs/reports.md`
 
@@ -107,7 +108,7 @@ Read before touching: `app/api/coding/**`, `app/[code]/_coding/**`, `lib/coding-
 
 Read before touching: `lib/llm/**`, `app/mastra/scch.ts`, `app/mastra/model-entry.ts`, `lib/scch-endpoint.ts`, the `llm:` block of any activity schema.
 
-- Adding a provider = one branch in each of the THREE functions (security block) + a name constant + the schema enum literal + its `providerOptions` key in `reasoningOptionsKey` (beside `resolveLanguageModel` in `lib/llm/model.ts`).
+- Adding a provider = one branch in each of the THREE functions (security block) + a name constant + the schema enum literal + its `providerOptions` key in `reasoningOptionsKey` (beside `resolveLanguageModel` in `lib/llm/model.ts`). Jev (the quiz pre-check classifier) is NOT a provider: no branch in the three functions, not selectable in any `llm:` block, and `@typesafe-ai/sdk` is imported by exactly `lib/llm/jev-client.ts` (grep-guarded).
 - The ai-sdk provider names (`scch`/`azure-foundry`/`openrouter`) are the metering contract — renaming breaks usage attribution.
 - The agent path uses TWO ai-sdk packages across THREE instances: SCCH and OpenRouter on `@ai-sdk/openai-compatible` (exact-pinned `2.x`, the ai-sdk-v6 line — it alone maps `reasoning_content`, and needs `includeUsage: true` for metering; both share the exported `stripAssistantReasoning`), Foundry on `@ai-sdk/openai`. `providerOptions` keys differ accordingly.
 

@@ -215,7 +215,11 @@ Both backends run the same instrumentation set, so a receiver gets:
   `OTEL_SEMCONV_STABILITY_OPT_IN=http` switches to the stable
   `http.server.request.duration` / `http.client.request.duration` (seconds).
 - **Exceptions** recorded by `recordError()` (including Next request errors) and
-  **application events** emitted through the logs API.
+  **application events** emitted through the logs API. Both stay content-free by
+  the invariant below: an event carries ids, counts and durations only — e.g.
+  `quiz.precheck` (`{ verdict, latencyMs, code }`, the quiz pre-check hint,
+  `docs/codes.md`), whose classifier failures are reported under the
+  `"novedu.area": "quiz-precheck"` attribute and never carry the student's answer.
 
 The baseline is useful signal coverage, not identical Azure and Aspire metric
 names, tables, or dashboards. Full prompt/agent tracing and capture of console

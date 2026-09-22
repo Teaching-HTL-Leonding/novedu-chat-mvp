@@ -44,7 +44,7 @@ describe("parseQuiz", () => {
     expect(q.questions[0]?.evaluation).toContain("Canberra");
   });
 
-  it("defaults anonymous and shuffle to true when omitted", () => {
+  it("defaults anonymous, shuffle and immediateFeedback to true when omitted", () => {
     const result = parseQuiz(`
 llm:
   model: m
@@ -57,6 +57,22 @@ questions:
     if (!result.ok) return;
     expect(result.quiz.anonymous).toBe(true);
     expect(result.quiz.shuffle).toBe(true);
+    expect(result.quiz.immediateFeedback).toBe(true);
+  });
+
+  it("parses the immediate_feedback opt-out", () => {
+    const result = parseQuiz(`
+immediate_feedback: false
+llm:
+  model: m
+questions:
+  - id: a
+    question: Q
+    evaluation: E
+`);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.quiz.immediateFeedback).toBe(false);
   });
 
   it("defaults a missing llm.provider to SCCH and carries an explicit one", () => {
@@ -352,7 +368,7 @@ describe("toPublicQuiz", () => {
     const result = parseQuiz(VALID);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const pub = toPublicQuiz(result.quiz);
+    const pub = toPublicQuiz(result.quiz, { immediateFeedback: true });
     const serialized = JSON.stringify(pub);
     expect(serialized).not.toContain("Canberra"); // evaluation text must not leak
     expect(serialized).not.toContain("gemma"); // model must not leak
@@ -370,6 +386,7 @@ describe("toPublicQuiz", () => {
       id: "x",
       anonymous: false,
       shuffle: true,
+      immediateFeedback: true,
       model: "m",
       provider: "SCCH",
       imageInput: false,
@@ -378,7 +395,7 @@ describe("toPublicQuiz", () => {
       instructionsPreamble: "",
       questions: [{ id: "a", question: "Q", evaluation: "E" }],
     };
-    expect(toPublicQuiz(quiz)).not.toHaveProperty("anonymous");
+    expect(toPublicQuiz(quiz, { immediateFeedback: true })).not.toHaveProperty("anonymous");
   });
 
   it("strips each question's sourcePreamble (server-only, like evaluation)", () => {
@@ -386,6 +403,7 @@ describe("toPublicQuiz", () => {
       id: "x",
       anonymous: true,
       shuffle: true,
+      immediateFeedback: true,
       model: "m",
       provider: "SCCH",
       imageInput: false,
@@ -401,7 +419,7 @@ describe("toPublicQuiz", () => {
         },
       ],
     };
-    const pub = toPublicQuiz(quiz);
+    const pub = toPublicQuiz(quiz, { immediateFeedback: true });
     expect(pub.questions[0]).not.toHaveProperty("sourcePreamble");
     expect(JSON.stringify(pub)).not.toContain("SOURCE-PREAMBLE");
   });
@@ -411,6 +429,7 @@ describe("toPublicQuiz", () => {
       id: "x",
       anonymous: true,
       shuffle: true,
+      immediateFeedback: true,
       model: "m",
       provider: "SCCH",
       imageInput: false,
@@ -422,9 +441,13 @@ describe("toPublicQuiz", () => {
         { id: "b", question: "Q", evaluation: "E" },
       ],
     };
-    expect(toPublicQuiz(base).questionCount).toBe(2); // default: pool size
-    expect(toPublicQuiz({ ...base, questionCount: 30 }).questionCount).toBe(30); // drill mode
-    expect(toPublicQuiz({ ...base, questionCount: 1 }).questionCount).toBe(1);
+    expect(toPublicQuiz(base, { immediateFeedback: true }).questionCount).toBe(2); // default: pool size
+    expect(
+      toPublicQuiz({ ...base, questionCount: 30 }, { immediateFeedback: true }).questionCount,
+    ).toBe(30); // drill mode
+    expect(
+      toPublicQuiz({ ...base, questionCount: 1 }, { immediateFeedback: true }).questionCount,
+    ).toBe(1);
   });
 
   it("carries the raw ImageRef through unchanged (it holds no secret)", () => {
@@ -433,6 +456,7 @@ describe("toPublicQuiz", () => {
       id: "x",
       anonymous: true,
       shuffle: true,
+      immediateFeedback: true,
       model: "m",
       provider: "SCCH",
       imageInput: false,
@@ -441,7 +465,7 @@ describe("toPublicQuiz", () => {
       instructionsPreamble: "",
       questions: [{ id: "a", question: "Q", evaluation: "E", image }],
     };
-    const pub = toPublicQuiz(quiz);
+    const pub = toPublicQuiz(quiz, { immediateFeedback: true });
     expect(pub.questions[0]?.image).toEqual(image);
   });
 
@@ -450,6 +474,7 @@ describe("toPublicQuiz", () => {
       id: "x",
       anonymous: true,
       shuffle: true,
+      immediateFeedback: true,
       model: "m",
       provider: "SCCH",
       imageInput: true,
@@ -461,14 +486,40 @@ describe("toPublicQuiz", () => {
         { id: "opts-out", question: "Q", evaluation: "E", imageInput: false },
       ],
     };
-    const pub = toPublicQuiz(quiz);
+    const pub = toPublicQuiz(quiz, { immediateFeedback: true });
     expect(pub.questions.map((q) => q.imageInput)).toEqual([true, false]);
 
-    const optIn = toPublicQuiz({
-      ...quiz,
-      imageInput: false,
-      questions: [{ id: "opts-in", question: "Q", evaluation: "E", imageInput: true }],
-    });
+    const optIn = toPublicQuiz(
+      {
+        ...quiz,
+        imageInput: false,
+        questions: [{ id: "opts-in", question: "Q", evaluation: "E", imageInput: true }],
+      },
+      { immediateFeedback: true },
+    );
     expect(optIn.questions[0]?.imageInput).toBe(true);
+  });
+
+  it("carries the EFFECTIVE immediateFeedback it is GIVEN, not the quiz's own field", () => {
+    const quiz: Quiz = {
+      id: "x",
+      anonymous: true,
+      shuffle: true,
+      immediateFeedback: true,
+      model: "m",
+      provider: "SCCH",
+      imageInput: false,
+      fragmentBlock: { fragment_files: [], text_files: [] },
+      quizFiles: [],
+      instructionsPreamble: "",
+      questions: [{ id: "a", question: "Q", evaluation: "E" }],
+    };
+    expect(toPublicQuiz(quiz, { immediateFeedback: true }).immediateFeedback).toBe(true);
+    // The caller's gate wins: an opted-in quiz on a server without the feature.
+    expect(toPublicQuiz(quiz, { immediateFeedback: false }).immediateFeedback).toBe(false);
+    // …and an opted-out quiz stays off even when the option says true (the caller
+    // already ANDed the two — the projection only copies what it is handed).
+    const off: Quiz = { ...quiz, immediateFeedback: false };
+    expect(toPublicQuiz(off, { immediateFeedback: false }).immediateFeedback).toBe(false);
   });
 });

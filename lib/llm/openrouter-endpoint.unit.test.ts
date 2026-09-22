@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  openrouterApiRoot,
   openrouterAuthHeader,
   openrouterBase,
   openrouterChatCompletionsUrl,
@@ -40,6 +41,13 @@ describe("openrouter URL builders", () => {
   it("tolerates trailing slashes on the override", () => {
     vi.stubEnv("OPENROUTER_BASE_URL", "https://gateway.test/v1//");
     expect(openrouterBase()).toBe("https://gateway.test/v1");
+  });
+
+  it("exposes the API root without /v1 for SDKs that append their own path", () => {
+    vi.stubEnv("OPENROUTER_BASE_URL", "");
+    expect(openrouterApiRoot()).toBe("https://openrouter.ai/api");
+    vi.stubEnv("OPENROUTER_BASE_URL", "https://gateway.test/x/v1/");
+    expect(openrouterApiRoot()).toBe("https://gateway.test/x");
   });
 
   it("never throws on a missing base URL — unlike SCCH, it has a default", () => {

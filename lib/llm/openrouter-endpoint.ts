@@ -36,6 +36,13 @@ export const openrouterChatCompletionsUrl = (): string => `${openrouterBase()}/c
 
 export const openrouterModelsUrl = (): string => `${openrouterBase()}/models`;
 
+/**
+ * The API ROOT (the base without its `/v1`) — for an SDK that appends its own
+ * versioned path (the TypeSafe SDK behind `lib/llm/jev-client.ts` adds
+ * `/v1/systemone`). Same override as `openrouterBase()`, so a proxy serves both.
+ */
+export const openrouterApiRoot = (): string => openrouterBase().replace(/\/v1$/, "");
+
 /** Throws on a missing key (the coding route maps that to its 500 config path). */
 export function openrouterAuthHeader(): string {
   const key = process.env.OPENROUTER_API_KEY;
