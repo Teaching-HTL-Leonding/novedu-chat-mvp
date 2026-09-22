@@ -94,7 +94,9 @@ learns which provider answered.
 - `lib/llm/openrouter-endpoint.ts` — the OpenRouter counterpart, deliberately
   IMPORT-FREE like `lib/scch-endpoint.ts`: `openrouterConfigured()` (the key alone
   decides), `openrouterBase()` (never throws — the public host is the default),
-  the `/chat/completions` + `/models` URL builders, and `openrouterAuthHeader()`
+  the `/chat/completions` + `/models` URL builders, `openrouterApiRoot()` (the
+  base with its trailing `/v1` stripped, for an SDK that appends its own
+  versioned path — the Jev client below), and `openrouterAuthHeader()`
   (the one function that throws on a missing key).
 - `lib/llm/upstream-error.ts` — **the failure classifier**, provider-AGNOSTIC (it
   interpolates the provider name, never branches on it):
@@ -105,6 +107,45 @@ Adding a provider = one branch in each of the three functions above + a name
 constant/mapping in `provider.ts` + the schema enum literal (+ docs) + its
 provider-options key in `reasoningOptionsKey` (`lib/llm/model.ts`, below).
 Nothing else changes.
+
+### Jev — the pre-check classifier
+
+`lib/llm/jev-client.ts` is a **fourth connectivity site behind the same seam, and
+NOT a fourth `LlmProvider`** — the "three functions" invariant above is untouched.
+Jev (TypeSafe's "System One" classifier) answers the quiz pre-check hint
+(`docs/codes.md`, "Immediate feedback"): one `POST …/v1/systemone` with a state
+and a map of named questions, no text generation, the answer an enum plus a
+confidence.
+
+- **No branch anywhere.** Jev has no entry in `resolveLanguageModel`,
+  `resolveChatEndpoint` or `providerUnavailableReason`, no literal in
+  `lib/llm/provider.ts`, and **cannot be selected in any activity's `llm:` block**
+  or in a code's LLM override. Its one caller is `precheckAnswer`.
+- **Rides OpenRouter.** No env of its own beyond the feature flag: the bearer is
+  `OPENROUTER_API_KEY` and the base URL is `openrouterApiRoot()` (so an
+  `OPENROUTER_BASE_URL` proxy serves Jev too — the SDK appends `/v1/systemone`
+  itself). The key is read in `createJevClient` and the throw on a missing key is
+  **ours**, deliberately: `TypeSafeClientConfig.apiKey` is optional and would
+  otherwise fall back to the SDK's own `TYPESAFE_API_KEY`, letting a stray
+  environment variable authenticate a deployment that never configured OpenRouter.
+  There is no `?? ""` fallback — the feature gate guarantees the key before any
+  caller gets here, so throwing is correct fail-closed behaviour.
+- **One importer.** `@typesafe-ai/sdk` is imported by **exactly this file** —
+  grep-guarded in `lib/llm/jev-client.unit.test.ts` — so the SDK never reaches the
+  browser, the CLI bundle or any other module. The request object is built by the
+  pure `lib/quiz-precheck.ts` against a local structural type and is accepted
+  structurally.
+- **Lazy and cached**, for the same three reasons as the OpenRouter ai-sdk instance
+  above: an OpenRouter-less deployment never constructs it (and `lib/quiz-actions.ts`
+  is imported by every quiz page), the key is read at first use rather than at
+  import, and one instance per process keeps the SDK's connection reuse.
+- **Fixed settings**, all in that file: `JEV_MODEL = "~typesafe/jev-latest"`
+  (OpenRouter's alias; the response reports the versioned id),
+  `JEV_TIMEOUT_MS = 5000`, `retry: { maxRetries: 0 }` (a late hint is worse than
+  none — the next typing pause asks again), and `logLevel: "error"`, which is
+  load-bearing rather than taste: the SDK logs request summaries at `info` and full
+  headers and BODIES at `debug`, and the body carries the student's answer and the
+  question's server-only `evaluation`.
 
 ## Two ai-sdk packages — and why
 
@@ -336,7 +377,8 @@ the client-body read), awaits it before the upstream fetch, and maps a failure
 Endpoints, the SCCH and OpenRouter keys, and Entra tokens live in server modules
 only and never
 reach the browser — for every module, including the coding proxy (which keeps the
-teacher prompt + pinned model server-side, docs/coding.md). `provider` is part of
+teacher prompt + pinned model server-side, docs/coding.md) and the Jev client
+(whose bearer is the same OpenRouter key). `provider` is part of
 the activity YAML like `model`: server-read, live, never client-trusted.
 
 ## Metering contract — provider names on spans

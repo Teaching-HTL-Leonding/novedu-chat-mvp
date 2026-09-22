@@ -116,6 +116,7 @@ title: "Welcome!" # optional: greeting students see on the welcome screen
 description: "What this quiz covers." # optional: shown below the greeting
 anonymous: false # optional: omit for default true; false attributes each attempt
 shuffle: true # optional: omit for default true; false keeps the authored order
+immediate_feedback: false # optional: omit for default true; false hides the live hint while typing
 question_count: 30 # optional: questions per attempt (omit: every question once)
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic # which model grades + discusses
@@ -166,6 +167,22 @@ the end of the line and returns after every question not yet seen, with the
 half-written answer restored; the last remaining question can't be skipped. This
 holds with `shuffle: false` too. Skipping never changes the attempt length, and
 skips are not stored.
+
+### `immediate_feedback`
+
+Optional, **default `true`**. While a student types an answer, a small pill (icon
+plus label) next to "Your answer" shows where the answer currently stands: **looks correct**,
+**partly there**, **not yet**, or **unsure** when the check cannot tell. It
+updates after a short pause in typing, and its tooltip says plainly that this is
+a live hint, not the graded verdict — the real grading still happens on
+**Submit**, from your `evaluation` prompt.
+
+The hint only appears when the school's server has the feature switched on. If
+it is off there, the hint never shows and this field changes nothing.
+
+Set `immediate_feedback: false` to switch the hint off for this quiz — for
+example in an exam, where students should commit to an answer without a running
+commentary.
 
 ### `question_count`
 

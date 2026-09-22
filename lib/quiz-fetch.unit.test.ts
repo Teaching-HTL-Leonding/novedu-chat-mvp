@@ -88,7 +88,7 @@ describe("loadQuiz — instructionsPreamble", () => {
     if (result.ok) {
       expect(result.quiz.instructionsPreamble).toBe("");
       // The public projection never carries the server-only fragment fields.
-      const pub = toPublicQuiz(result.quiz);
+      const pub = toPublicQuiz(result.quiz, { immediateFeedback: true });
       expect(pub).not.toHaveProperty("instructionsPreamble");
       expect(pub).not.toHaveProperty("instructions");
       expect(pub).not.toHaveProperty("fragmentBlock");
@@ -115,7 +115,7 @@ describe("loadQuiz — instructionsPreamble", () => {
       // Guard: the preamble really is non-empty, so the projection is exercised on the
       // path that matters (an all-empty preamble would strip trivially).
       expect(result.quiz.instructionsPreamble).toContain("SAFETY-MARKER");
-      const pub = toPublicQuiz(result.quiz);
+      const pub = toPublicQuiz(result.quiz, { immediateFeedback: true });
       expect(pub).not.toHaveProperty("instructionsPreamble");
       expect(pub).not.toHaveProperty("fragmentBlock");
       // The server-only fragment text must not appear ANYWHERE in the client projection.
@@ -129,7 +129,7 @@ describe("loadQuiz — instructionsPreamble", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.quiz.questionCount).toBe(7);
-      expect(toPublicQuiz(result.quiz).questionCount).toBe(7);
+      expect(toPublicQuiz(result.quiz, { immediateFeedback: true }).questionCount).toBe(7);
     }
   });
 
@@ -308,10 +308,35 @@ questions:
     expect(byId.get("intro/q2")?.imageInput).toBe(false);
     // The COMPOUND quiz's own imageInput (false) must not re-interpret imports:
     // the public projection keeps the source-effective values.
-    const pub = toPublicQuiz(result.quiz);
+    const pub = toPublicQuiz(result.quiz, { immediateFeedback: true });
     const pubById = new Map(pub.questions.map((q) => [q.id, q]));
     expect(pubById.get("intro/q1")?.imageInput).toBe(true);
     expect(pubById.get("own")?.imageInput).toBe(false);
+  });
+
+  it("ignores an include's immediate_feedback — the compound quiz's own value governs", async () => {
+    // Like anonymous / shuffle / llm, the include-level flag never travels: only the
+    // source's `questions` are lifted.
+    const introOptedOut = `immediate_feedback: false\n${INTRO_QUIZ}`;
+    state.bodies = {
+      [QUIZ_URL]: compoundYaml(),
+      [INTRO_URL]: introOptedOut,
+      [LOOPS_URL]: LOOPS_QUIZ,
+    };
+    const result = await loadQuiz(QUIZ_URL);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // The compound declares nothing → its own default true, unaffected by the include.
+    expect(result.quiz.immediateFeedback).toBe(true);
+
+    // …and the compound's own opt-out governs the whole pool, imports included.
+    state.bodies = {
+      [QUIZ_URL]: compoundYaml("immediate_feedback: false"),
+      [INTRO_URL]: INTRO_QUIZ,
+      [LOOPS_URL]: LOOPS_QUIZ,
+    };
+    const optedOut = await loadQuiz(QUIZ_URL);
+    expect(optedOut.ok && optedOut.quiz.immediateFeedback).toBe(false);
   });
 
   it("absolutizes relative image paths against the SOURCE url; hosted/absolute pass through", async () => {
@@ -440,7 +465,7 @@ questions:
     expect(result.quiz.questions.find((q) => q.id === "intro/q1")?.sourcePreamble).toContain(
       "INTRO-SECRET-PREAMBLE",
     );
-    const serialized = JSON.stringify(toPublicQuiz(result.quiz));
+    const serialized = JSON.stringify(toPublicQuiz(result.quiz, { immediateFeedback: true }));
     expect(serialized).not.toContain("INTRO-SECRET-PREAMBLE");
     expect(serialized).not.toContain("INTRO-SECRET-EVALUATION");
     expect(serialized).not.toContain("quizFiles");

@@ -22,6 +22,9 @@ the `--chart-*` tokens in `app/globals.css`, and the `/usage` entry in
   in for it. The two LLM pies sit side by side beneath the module/code pair.
 - Two **KPIs**: **Chats** (distinct Mastra threads with a user message) and **Quiz
   answers graded** (`SUM(quiz_answers)`).
+- The quiz pre-check hint (`docs/codes.md`, "Immediate feedback") is **not** in any
+  of these numbers — its classifier calls are deliberately unmetered
+  (`docs/usage-metering.md`).
 
 The code pie (and the module pie) may show a **`cli-eval` pseudo-code / `eval`
 module** row: that is a teacher's `novedu-cli eval` run, metered under a sentinel
