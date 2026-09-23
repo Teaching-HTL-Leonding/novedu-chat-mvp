@@ -195,7 +195,7 @@ Temporary — delete this entry together with the doc once the migration is comp
 
 Read before touching: `scripts/db/provision-stage.*`, any `az` work on `rg-novedu-*`, `.github/actions/deploy-stage/**`, `.github/workflows/promote.yml`, or `docker-publish.yml`'s `deploy-dev` job.
 
-- Both stages run the Novedu image, deployed by the pipeline: every publish goes to dev, prod only via the manual `promote.yml`. Dev holds a copy of the production data, prod is empty; no custom domains yet, and production is still the old environment. The doc marks what is designed but not built.
+- Both stages run the Novedu image, deployed by the pipeline: every publish goes to dev, prod only via the manual `promote.yml`. Dev (`dev.novedu.at`) holds a copy of the production data, prod (`app.novedu.at`) is empty, and production is still the old environment. `AUTH_URL` must name the stage's custom domain or sign-in breaks. The doc marks what is designed but not built.
 - Those stages run on SCCH ONLY: never set `AZURE_FOUNDRY_ENDPOINT` / `OPENROUTER_API_KEY` there. The SCCH key is the only secret shared between the stages; every other secret is per stage, in that stage's Key Vault.
 - One replica per stage is a HARD limit (dev 0–1, prod exactly 1): the Drizzle migrator takes no lock and `lib/db/pool.ts`'s 20 connections are sized against B1ms's 50.
 - No identity of one stage ever holds a right on the other stage's resources or database; Postgres there is Entra-only (password auth disabled) and stage isolation is a privilege (`revoke connect`), not a network rule.
