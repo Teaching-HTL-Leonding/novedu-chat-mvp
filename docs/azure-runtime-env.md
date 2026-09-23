@@ -21,8 +21,8 @@ them. Read it before running any `az` command against `rg-novedu-shared` /
 >
 > | | |
 > |---|---|
-> | **Built so far** | the three resource groups; the shared Log Analytics workspace, Container Apps environment (incl. both storage definitions), container registry and Postgres server; per stage a Key Vault, a storage account with a provisioned image root, an Application Insights resource, a container app running the Novedu image off the mounted share, and a GitHub OIDC identity; every role assignment and both Postgres stage databases; the complete configuration of both stages — Key Vault secret values, the apps' secret references and environment variables, and both sign-in app registrations; the GitHub pipeline (publish → dev, manual promote → prod) |
-> | **Not built yet** | custom domains, managed certificates and DNS; prod's fixed single replica; Azure Foundry in the new tenant; the production data in the prod stage |
+> | **Built so far** | the three resource groups; the shared Log Analytics workspace, Container Apps environment (incl. both storage definitions), container registry and Postgres server; per stage a Key Vault, a storage account with a provisioned image root, an Application Insights resource, a container app running the Novedu image off the mounted share, and a GitHub OIDC identity; every role assignment and both Postgres stage databases; the complete configuration of both stages — Key Vault secret values, the apps' secret references and environment variables, and both sign-in app registrations; the GitHub pipeline (publish → dev, manual promote → prod); the custom domains `dev.novedu.at` and `app.novedu.at` with their DNS records and managed certificates |
+> | **Not built yet** | prod's fixed single replica; Azure Foundry in the new tenant; the production data in the prod stage |
 >
 > This block is updated as the build-out proceeds and removed once the
 > environment is production. Each section below marks what is designed but not
@@ -46,12 +46,14 @@ database, so sharing a server or an environment never shares data.
 | Resource group | `rg-novedu-dev` | `rg-novedu-prod` |
 | Container app | `ca-novedu-dev`, 0.5 vCPU / 1 GiB | `ca-novedu-prod`, 1 vCPU / 2 GiB |
 | Database | `novedu_dev` | `novedu_prod` |
-| Intended hostname | `dev.novedu.at` | `app.novedu.at` |
+| Hostname | `dev.novedu.at` | `app.novedu.at` |
 | Replicas | 0–1 (scales to zero) | 0–1 while the stage is empty; exactly 1 once live |
 
-The hostnames are **not built yet** — no custom domain, no managed certificate
-and no DNS record exists, and both apps are reachable only under their
-generated `*.austriaeast.azurecontainerapps.io` names.
+Each hostname is a custom domain on its container app (SNI binding) with a
+managed certificate of the environment `cae-novedu`, validated by CNAME. The
+apps still answer under their generated `*.austriaeast.azurecontainerapps.io`
+names, but the app's configuration (`AUTH_URL`, `CODE_ORIGIN`) names the custom
+domain, so sign-in works only there.
 
 Everything is in **Austria East**, and every resource carries the tags
 `project=novedu` and `stage=shared|dev|prod`. There is **no
@@ -164,8 +166,8 @@ dependency never restarts the container. Next.js answers requests only once
 boot-time migrations. `/api/health` is teacher-only and checks dependencies —
 unsuitable on both counts.
 
-Both scale 0–1 and **no custom domain is bound** — each app is reached at its
-generated Container Apps hostname. Prod's fixed single replica is **not built
+Both scale 0–1 and are reached at their custom domain (*The staging
+concept*). Prod's fixed single replica is **not built
 yet**; it comes with cutover.
 
 ### Key Vault `kv-novedu-<stage>`
@@ -281,8 +283,8 @@ Plain values on the container app, beside the four secret references:
 | Variable | Value |
 |---|---|
 | `DATABASE_URL` | `postgresql://ca-novedu-<stage>@psql-novedu.postgres.database.azure.com/novedu_<stage>?sslmode=require` |
-| `AUTH_URL` | `https://<the app's FQDN>/api/auth` |
-| `CODE_ORIGIN` | `https://<the app's FQDN>` |
+| `AUTH_URL` | `https://<the stage's hostname>/api/auth` |
+| `CODE_ORIGIN` | `https://<the stage's hostname>` |
 | `AZURE_TENANT_ID` | `91fc072c-edef-4f97-bdc5-cfb67718ae3a` (both stages) |
 | `AZURE_CLIENT_ID` | dev `4d44fc4b-0434-4981-9765-62e2074ceecb`, prod `d36756ba-5d79-4809-8a01-896d02639a34` |
 | `TEACHER_GROUP_ID` | `1adac4e1-be54-458c-90ef-318d89f83317` (both stages) |
@@ -293,12 +295,14 @@ Plain values on the container app, beside the four secret references:
 `DATABASE_URL` carries **no password**: the app authenticates with its managed
 identity token (`lib/db/pool.ts`, `docs/database.md`).
 
-The FQDN is the app's generated Container Apps hostname —
-`ca-novedu-dev.salmonmeadow-98d2bbff.austriaeast.azurecontainerapps.io` and
-`ca-novedu-prod.salmonmeadow-98d2bbff.austriaeast.azurecontainerapps.io`. No
-custom domain is bound; binding one means changing `AUTH_URL` and
-`CODE_ORIGIN`, the stage's `*_BASE_URL` GitHub variable, and adding the new
-callback to that stage's app registration.
+The hostname is the stage's custom domain, `dev.novedu.at` or `app.novedu.at`.
+`AUTH_URL` is better-auth's base URL: it builds the OAuth `redirect_uri` from
+it, while the state cookie lives on the host the browser started from — so a
+value that differs from the host people use breaks sign-in. Changing a stage's
+hostname therefore means changing `AUTH_URL` and `CODE_ORIGIN`, the stage's
+`*_BASE_URL` GitHub variable, adding the new callback to that stage's app
+registration, and rewriting `novedu_codes.file_url` (*Data in the dev
+stage*).
 
 ### Deliberately not set
 
@@ -321,8 +325,8 @@ app registrations in it:
 
 | Registration | Client id | Used by | Redirect URIs |
 |---|---|---|---|
-| *Novedu Chat MVP* | `4d44fc4b-0434-4981-9765-62e2074ceecb` | `ca-novedu-dev`, the old environment, local development | the dev callback `https://<dev FQDN>/api/auth/callback/microsoft` beside the old environment's and localhost's |
-| *Novedu Chat (prod)* | `d36756ba-5d79-4809-8a01-896d02639a34` | `ca-novedu-prod` | the prod callback only |
+| *Novedu Chat MVP* | `4d44fc4b-0434-4981-9765-62e2074ceecb` | `ca-novedu-dev`, the old environment, local development | `https://dev.novedu.at/api/auth/callback/microsoft` beside the old environment's and localhost's |
+| *Novedu Chat (prod)* | `d36756ba-5d79-4809-8a01-896d02639a34` | `ca-novedu-prod` | `https://app.novedu.at/api/auth/callback/microsoft` |
 
 Both are single-tenant, carry `groupMembershipClaims: All` with the optional
 `groups` claim on the id and the access token — that is what `TEACHER_GROUP_ID`
@@ -429,7 +433,11 @@ The copy differs from production in four deliberate ways:
   starts with the stage's `CODE_ORIGIN`; any other origin is fetched over
   HTTPS. Every `…/api/files/…` URL of the production hostnames is therefore
   rewritten to the dev origin. Changing a stage's hostname needs the same
-  rewrite.
+  rewrite. The current copy predates the custom domain and carries the
+  generated origin `https://ca-novedu-dev.salmonmeadow-98d2bbff.austriaeast.azurecontainerapps.io`:
+  those files are fetched over HTTPS from that still-reachable host, which
+  works but bypasses the database shortcut. The final data transfer writes
+  the stage's hostname.
 - **Only active images.** The share holds the bytes of the active image rows
   under `images/<key>/content`; closed rows have no bytes in production either.
 
@@ -491,8 +499,8 @@ environment **variables** (`docs/ci-security.md`).
 The `production` environment's deployment branches are **`main` only**; it is
 what the prod identity's federated subject matches, so it is part of the trust
 chain, not a convenience. A required reviewer can be added to it without
-touching the workflow. The two `*_BASE_URL` variables carry the generated
-Container Apps hostnames and are what changes when custom domains arrive.
+touching the workflow. The two `*_BASE_URL` variables carry the stages'
+custom domains, `https://dev.novedu.at` and `https://app.novedu.at`.
 
 ### Constraints the pipeline respects
 
