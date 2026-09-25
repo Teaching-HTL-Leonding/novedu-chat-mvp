@@ -115,4 +115,12 @@ describe("teacher", () => {
     expect(html).toContain('data-active="custom"');
     expect(loadDiagnostics).toHaveBeenCalledTimes(1);
   });
+
+  it("shows the fallback notice on an unconfigured server too", async () => {
+    vi.stubEnv("APPLICATIONINSIGHTS_CONNECTION_STRING", "InstrumentationKey=k");
+    const html = await renderPage({ from: "2026-09-25T08:00:00Z", to: "2026-09-25T07:00:00Z" });
+    expect(html).toContain("The custom range must start before it ends.");
+    expect(html).toContain('data-testid="diagnostics-not-configured"');
+    expect(loadDiagnostics).not.toHaveBeenCalled();
+  });
 });

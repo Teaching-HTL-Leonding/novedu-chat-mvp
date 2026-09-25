@@ -68,6 +68,8 @@ export default async function DiagnosticsPage({
   const controls = (
     <RangeControls active={active} from={range.from.toISOString()} to={range.to.toISOString()} />
   );
+  // Shown in both branches: an unconfigured server still falls back to a range.
+  const rangeNotice = notice ? <RangeNotice>{notice}</RangeNotice> : null;
 
   if (!diagnosticsConfigured()) {
     return (
@@ -75,6 +77,7 @@ export default async function DiagnosticsPage({
         <PageBody className="gap-6">
           {banner}
           {controls}
+          {rangeNotice}
           <NotConfiguredCard />
         </PageBody>
       </Main>
@@ -103,7 +106,7 @@ export default async function DiagnosticsPage({
       <PageBody className="gap-6">
         {banner}
         {controls}
-        {notice ? <RangeNotice>{notice}</RangeNotice> : null}
+        {rangeNotice}
         <p className="text-foreground/70 text-sm" data-testid="diagnostics-range">
           <LocalTime seconds={range.from.getTime() / 1000} /> –{" "}
           <LocalTime seconds={range.to.getTime() / 1000} />
