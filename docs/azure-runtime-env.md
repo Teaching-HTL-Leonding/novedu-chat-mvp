@@ -22,7 +22,7 @@ them. Read it before running any `az` command against `rg-novedu-shared` /
 > | | |
 > |---|---|
 > | **Built so far** | the three resource groups; the shared Log Analytics workspace, Container Apps environment (incl. both storage definitions), container registry and Postgres server; per stage a Key Vault, a storage account with a provisioned image root, an Application Insights resource, a container app running the Novedu image off the mounted share, and a GitHub OIDC identity; every role assignment and both Postgres stage databases; the complete configuration of both stages — Key Vault secret values, the apps' secret references and environment variables, and both sign-in app registrations; the GitHub pipeline (publish → dev, manual promote → prod); the custom domains `dev.novedu.at` and `app.novedu.at` with their DNS records and managed certificates |
-> | **Not built yet** | prod's fixed single replica; Azure Foundry in the new tenant; the production data in the prod stage; each app identity's Reader role on its own stage's Application Insights resource (for `/diagnostics`) |
+> | **Not built yet** | prod's fixed single replica; Azure Foundry in the new tenant; the production data in the prod stage |
 >
 > This block is updated as the build-out proceeds and removed once the
 > environment is production. Each section below marks what is designed but not
@@ -199,8 +199,7 @@ telemetry stays its own. The app reaches it through
 own connection string (`docs/telemetry.md`). The connection string must carry
 `ApplicationId=`: the teacher-only `/diagnostics` page reads the resource back
 through it with the app's own identity, which therefore needs **Reader** on
-**its own** stage's `appi-novedu-<stage>` (`docs/diagnostics.md`) — designed,
-not assigned yet.
+**its own** stage's `appi-novedu-<stage>` (`docs/diagnostics.md`).
 
 ### GitHub identity `id-novedu-gh-<stage>`
 
@@ -225,7 +224,7 @@ of one stage holds any right on the other stage's resources**:
 | Principal | Rights |
 |---|---|
 | group `novedu-dev` | Owner on the three resource groups; Key Vault Secrets Officer on both vaults; Entra admin of `psql-novedu` |
-| `ca-novedu-<stage>` (system-assigned MI) | AcrPull on `crnovedu`; Key Vault Secrets User on **its own** stage's vault; a Postgres role in **its own** stage's database; Reader on **its own** stage's `appi-novedu-<stage>` (designed, not assigned yet) |
+| `ca-novedu-<stage>` (system-assigned MI) | AcrPull on `crnovedu`; Key Vault Secrets User on **its own** stage's vault; a Postgres role in **its own** stage's database; Reader on **its own** stage's `appi-novedu-<stage>` |
 | `id-novedu-gh-dev` | AcrPush on `crnovedu`; Contributor on the resource `ca-novedu-dev` |
 | `id-novedu-gh-prod` | AcrPull on `crnovedu`; Contributor on the resource `ca-novedu-prod` |
 
