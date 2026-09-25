@@ -1,8 +1,9 @@
+import { DASHBOARD_CARD } from "@/components/dashboard-ui";
 import { Spinner } from "@/components/spinner";
-import { DASHBOARD_CARD } from "./dashboard-ui";
 
-// Suspense fallbacks for the dashboard sections: the card shell renders instantly
-// while its async server section streams in, so the page never blocks on the DB.
+// Suspense fallbacks for the chart pages' sections (usage, diagnostics): the card
+// shell renders instantly while its async server section streams in, so the page
+// never blocks on its data source.
 
 function Loading() {
   return (

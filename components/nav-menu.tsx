@@ -27,6 +27,7 @@ const NAV_ITEMS = [
   { href: "/images", label: "Images", heading: "Images", teacherOnly: true },
   { href: "/usage", label: "Usage", heading: "Usage Dashboard", teacherOnly: true },
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
+  { href: "/diagnostics", label: "Diagnostics", heading: "LLM Diagnostics", teacherOnly: true },
   {
     href: "/docs",
     label: "Teacher Guide",

@@ -1,23 +1,20 @@
 "use client";
 
+import { Bar, BarChart, CartesianGrid, Legend, Tooltip, XAxis, YAxis } from "recharts";
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import type { TokenBucket } from "@/lib/usage-range";
-import {
-  resolveChartColors,
+  GRID_PROPS,
+  LEGEND_WRAPPER_STYLE,
+  legendText,
   TOOLTIP_CONTENT_STYLE,
+  TOOLTIP_CURSOR,
   TOOLTIP_LABEL_STYLE,
-} from "./_charts/chart-colors";
-import { formatCompact, formatCount } from "./_charts/format";
-import { legendText } from "./_charts/legend";
+  X_AXIS_PROPS,
+  Y_AXIS_PROPS,
+} from "@/components/charts/chart-chrome";
+import { resolveChartColors } from "@/components/charts/chart-colors";
+import { ChartFrame } from "@/components/charts/chart-frame";
+import { formatCompact, formatCount } from "@/components/charts/format";
+import type { TokenBucket } from "@/lib/usage-range";
 
 // Reusable stacked token-usage bar chart (docs/dashboard.md). Presentation-only —
 // the data (already bucketed + zero-filled by lib/usage-stats-store, UTC labels) is
@@ -39,47 +36,32 @@ export function TokenUsageBarChart({ data }: { data: TokenBucket[] }) {
   // in a `useMemo([])` — a client render self-corrects an empty SSR read.
   const colors = resolveChartColors();
   return (
-    <div className="h-72 w-full text-foreground">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid vertical={false} stroke="currentColor" strokeOpacity={0.12} />
-          <XAxis
-            dataKey="label"
-            tickLine={false}
-            axisLine={{ stroke: "currentColor", strokeOpacity: 0.2 }}
-            tick={{ fill: "currentColor", fillOpacity: 0.6, fontSize: 12 }}
-            interval="preserveStartEnd"
-            minTickGap={16}
+    <ChartFrame>
+      <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <CartesianGrid {...GRID_PROPS} />
+        <XAxis dataKey="label" {...X_AXIS_PROPS} minTickGap={16} />
+        <YAxis width={48} {...Y_AXIS_PROPS} tickFormatter={formatCompact} />
+        <Tooltip
+          cursor={TOOLTIP_CURSOR}
+          contentStyle={TOOLTIP_CONTENT_STYLE}
+          labelStyle={TOOLTIP_LABEL_STYLE}
+          labelFormatter={(label) => `${label} UTC`}
+          formatter={(value, name) => [formatCount(Number(value)), name]}
+        />
+        <Legend formatter={legendText} wrapperStyle={LEGEND_WRAPPER_STYLE} />
+        {SERIES.map((s, i) => (
+          <Bar
+            key={s.dataKey}
+            dataKey={s.dataKey}
+            stackId="tokens"
+            name={s.name}
+            fill={colors.series[s.slot]}
+            maxBarSize={56}
+            // Round only the top segment of the stack.
+            radius={i === SERIES.length - 1 ? [4, 4, 0, 0] : undefined}
           />
-          <YAxis
-            width={48}
-            tickLine={false}
-            axisLine={false}
-            tick={{ fill: "currentColor", fillOpacity: 0.6, fontSize: 12 }}
-            tickFormatter={formatCompact}
-          />
-          <Tooltip
-            cursor={{ fill: "currentColor", fillOpacity: 0.05 }}
-            contentStyle={TOOLTIP_CONTENT_STYLE}
-            labelStyle={TOOLTIP_LABEL_STYLE}
-            labelFormatter={(label) => `${label} UTC`}
-            formatter={(value, name) => [formatCount(Number(value)), name]}
-          />
-          <Legend formatter={legendText} wrapperStyle={{ fontSize: "0.75rem" }} />
-          {SERIES.map((s, i) => (
-            <Bar
-              key={s.dataKey}
-              dataKey={s.dataKey}
-              stackId="tokens"
-              name={s.name}
-              fill={colors.series[s.slot]}
-              maxBarSize={56}
-              // Round only the top segment of the stack.
-              radius={i === SERIES.length - 1 ? [4, 4, 0, 0] : undefined}
-            />
-          ))}
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+        ))}
+      </BarChart>
+    </ChartFrame>
   );
 }

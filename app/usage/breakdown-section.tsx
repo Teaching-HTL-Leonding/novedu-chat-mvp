@@ -1,7 +1,7 @@
+import { DashboardCard, DataUnavailable, EmptyRange } from "@/components/dashboard-ui";
 import { type CodeModule, codeModuleLabels } from "@/lib/code-modules/types";
 import type { Slice, UsageRange } from "@/lib/usage-range";
 import { getUsageBreakdown } from "@/lib/usage-stats-store";
-import { DashboardCard, DataUnavailable, EmptyRange } from "./dashboard-ui";
 import { TokensPieChart } from "./tokens-pie-chart";
 
 // The two breakdown pies. ONE `getUsageBreakdown` read feeds both — summed by

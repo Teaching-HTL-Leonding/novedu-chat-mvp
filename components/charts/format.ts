@@ -1,5 +1,6 @@
-// Fixed en-US number formatting for the dashboard so chart axes, tooltips, and the
-// table read the same regardless of the viewer's locale. Pure; client + server safe.
+// Fixed en-US number formatting for the chart pages (usage, diagnostics) so axes,
+// tooltips, and tables read the same regardless of the viewer's locale. Pure;
+// client + server safe.
 
 /** Full grouped integer, e.g. `1,234,567`. */
 export const formatCount = (n: number): string => n.toLocaleString("en-US");

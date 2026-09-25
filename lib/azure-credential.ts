@@ -45,3 +45,17 @@ export function buildDataStoreCredential(): TokenCredential {
 export function buildCognitiveServicesCredential(): TokenCredential {
   return new ChainedTokenCredential(new AzureCliCredential({}), new ManagedIdentityCredential());
 }
+
+// The ONE way this app READS its own telemetry — the Application Insights query
+// API behind the LLM diagnostics page (`lib/diagnostics-client.ts`,
+// docs/diagnostics.md). Same explicit chain and the same reason to avoid
+// `DefaultAzureCredential` (see above), without a tenant pin: the App Insights
+// resource lives in the ambient tenant of the `az login` identity locally and of
+// the Managed Identity on Azure. That identity needs the `Reader` role on the
+// App Insights resource. For the new tenant's resources, `az login` under
+// `AZURE_CONFIG_DIR=~/.htl-azure-novedu` (docs/azure-access.md).
+//
+// SERVER-ONLY: handles Azure credentials. Never import from client components.
+export function buildMonitorCredential(): TokenCredential {
+  return new ChainedTokenCredential(new AzureCliCredential({}), new ManagedIdentityCredential());
+}

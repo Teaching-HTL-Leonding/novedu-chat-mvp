@@ -1,15 +1,17 @@
 "use client";
 
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { CODE_MODULES } from "@/lib/code-modules/types";
-import { OTHER_KEY, type Slice } from "@/lib/usage-range";
+import { Cell, Legend, Pie, PieChart, Tooltip } from "recharts";
 import {
-  resolveChartColors,
+  LEGEND_WRAPPER_STYLE,
+  legendText,
   TOOLTIP_CONTENT_STYLE,
   TOOLTIP_LABEL_STYLE,
-} from "./_charts/chart-colors";
-import { formatCount } from "./_charts/format";
-import { legendText } from "./_charts/legend";
+} from "@/components/charts/chart-chrome";
+import { resolveChartColors } from "@/components/charts/chart-colors";
+import { ChartFrame } from "@/components/charts/chart-frame";
+import { formatCount } from "@/components/charts/format";
+import { CODE_MODULES } from "@/lib/code-modules/types";
+import { OTHER_KEY, type Slice } from "@/lib/usage-range";
 
 // Donut used for ALL dashboard pies (docs/dashboard.md). Color assignment differs
 // by variant, so it is decided here from serializable props (a function prop can't
@@ -79,37 +81,35 @@ export function TokensPieChart({
   };
 
   return (
-    <div className="h-72 w-full text-foreground">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={slices}
-            dataKey="total"
-            nameKey="label"
-            cx="50%"
-            cy="50%"
-            innerRadius="55%"
-            outerRadius="88%"
-            // No paddingAngle: it inserts a gap between every slice, so a single
-            // ~100% slice would render as an open ring. The 2px surface stroke
-            // separates adjacent real slices instead.
-            stroke={colors.surface || undefined}
-            strokeWidth={2}
-            label={renderPercent}
-            labelLine={false}
-          >
-            {slices.map((slice, i) => (
-              <Cell key={slice.key} fill={colorFor(slice, i)} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={TOOLTIP_CONTENT_STYLE}
-            labelStyle={TOOLTIP_LABEL_STYLE}
-            formatter={(value, name) => [formatCount(Number(value)), name]}
-          />
-          <Legend formatter={legendText} wrapperStyle={{ fontSize: "0.75rem" }} />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartFrame>
+      <PieChart>
+        <Pie
+          data={slices}
+          dataKey="total"
+          nameKey="label"
+          cx="50%"
+          cy="50%"
+          innerRadius="55%"
+          outerRadius="88%"
+          // No paddingAngle: it inserts a gap between every slice, so a single
+          // ~100% slice would render as an open ring. The 2px surface stroke
+          // separates adjacent real slices instead.
+          stroke={colors.surface || undefined}
+          strokeWidth={2}
+          label={renderPercent}
+          labelLine={false}
+        >
+          {slices.map((slice, i) => (
+            <Cell key={slice.key} fill={colorFor(slice, i)} />
+          ))}
+        </Pie>
+        <Tooltip
+          contentStyle={TOOLTIP_CONTENT_STYLE}
+          labelStyle={TOOLTIP_LABEL_STYLE}
+          formatter={(value, name) => [formatCount(Number(value)), name]}
+        />
+        <Legend formatter={legendText} wrapperStyle={LEGEND_WRAPPER_STYLE} />
+      </PieChart>
+    </ChartFrame>
   );
 }

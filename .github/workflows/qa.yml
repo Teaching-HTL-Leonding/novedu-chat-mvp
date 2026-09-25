@@ -30,8 +30,9 @@ permissions:
 # where untrusted PR code executes — anything in the environment here is
 # exfiltratable. The values below are test-only DUMMIES (NOT secrets). Tests
 # needing the SCCH LLM (geo-blocked to Austria, un-containerizable) are tagged
-# @live-llm and excluded via `npm run test:e2e:ci`; they stay local-only. The
-# DB-backed tests are tagged @live-db and DO run here, against the ephemeral
+# @live-llm and excluded via `npm run test:e2e:ci`; they stay local-only, as do
+# the @live-storage (real image mount) and @live-telemetry (real App Insights
+# query API, docs/diagnostics.md) tests. The DB-backed tests are tagged @live-db and DO run here, against the ephemeral
 # Postgres service in the e2e job (reached with a throwaway password — the
 # container's password is a non-secret DUMMY, so secret-freeness holds). Live
 # credentials (real Azure Postgres / SCCH) must NEVER be added here or run on a
@@ -147,7 +148,8 @@ jobs:
       - name: Wait for Postgres
         run: node scripts/ci/wait-for-db.mjs
 
-      # Runs hermetic + @live-db (against the container), excludes @live-llm.
+      # Runs hermetic + @live-db (against the container), excludes @live-llm,
+      # @live-storage and @live-telemetry.
       # Playwright's webServer boots `npm run dev`, which migrates novedu_* on start.
       - run: npm run test:e2e:ci
 
