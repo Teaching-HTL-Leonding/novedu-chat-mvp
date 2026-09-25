@@ -30,15 +30,3 @@ export function resolveChartColors(): ChartColors {
     surface: cssVar("--background"),
   };
 }
-
-// HTML tooltip/legend chrome (Recharts renders these as HTML, so CSS custom
-// properties and color-mix() DO resolve here — token-based, no bare hex).
-export const TOOLTIP_CONTENT_STYLE = {
-  background: "var(--color-background)",
-  border: "1px solid color-mix(in oklab, var(--color-foreground) 15%, transparent)",
-  borderRadius: "0.5rem",
-  fontSize: "0.75rem",
-  color: "var(--color-foreground)",
-} as const;
-
-export const TOOLTIP_LABEL_STYLE = { color: "var(--color-foreground)", fontWeight: 600 } as const;

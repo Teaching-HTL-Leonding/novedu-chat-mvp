@@ -1,9 +1,14 @@
 import { Suspense } from "react";
+import {
+  BreakdownSkeleton,
+  ChartSkeleton,
+  KpiSkeleton,
+  ModelsSkeleton,
+} from "@/components/dashboard-skeletons";
 import { Main, PageBody } from "@/components/page-main";
 import { requireTeacherPage } from "@/components/require-teacher-page";
 import { parseRange } from "@/lib/usage-range";
 import { BreakdownSection } from "./breakdown-section";
-import { BreakdownSkeleton, ChartSkeleton, KpiSkeleton, ModelsSkeleton } from "./chart-skeleton";
 import { KpiSection } from "./kpi-section";
 import { ModelsSection } from "./models-section";
 import { RangeTabs } from "./range-tabs";

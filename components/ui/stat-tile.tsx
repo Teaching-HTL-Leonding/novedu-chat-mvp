@@ -4,9 +4,9 @@ import { cn } from "@/lib/utils";
 
 // A labelled big-number tile — a `<dt>`/`<dd>` pair — for a stats/KPI summary row;
 // render inside a `<dl>`. The number stays in the app ink; the label uses the
-// shared small-caps META_LABEL. Shared by the per-code conversation stats and the
-// usage dashboard KPIs (docs/dashboard.md). `className` is a cn-merged delta on the
-// tile box.
+// shared small-caps META_LABEL. Shared by the per-code conversation stats, the
+// usage dashboard KPIs (docs/dashboard.md) and the diagnostics summary
+// (docs/diagnostics.md). `className` is a cn-merged delta on the tile box.
 export function StatTile({
   label,
   value,

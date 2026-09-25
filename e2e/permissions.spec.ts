@@ -62,6 +62,7 @@ test.describe("as a student", () => {
     await expect(page.getByRole("link", { name: "Codes", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Health" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Usage" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Diagnostics" })).toHaveCount(0);
   });
 });
 
@@ -96,5 +97,6 @@ test.describe("as a teacher", () => {
     await expect(page.getByRole("link", { name: "Codes", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Health" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Usage" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Diagnostics" })).toBeVisible();
   });
 });

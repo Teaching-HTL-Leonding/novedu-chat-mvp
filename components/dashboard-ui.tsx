@@ -1,9 +1,10 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-// Shared chrome for the usage dashboard sections. Pure presentation (server-safe),
-// styled with the app's hairline-card recipe + foreground ramp (docs/styling.md);
-// folds into shadcn's Card when that lands.
+// Shared chrome for the sections of the chart pages (the usage dashboard, the LLM
+// diagnostics page). Pure presentation (server-safe), styled with the app's
+// hairline-card recipe + foreground ramp (docs/styling.md); folds into shadcn's
+// Card when that lands.
 
 export const DASHBOARD_CARD = "rounded-lg border border-foreground/15 bg-card p-4";
 

@@ -24,7 +24,7 @@ the database for something **beyond** that baseline: seeding or inspecting the
 app's own tables through `e2e/db.ts` (tutor-code minting, file CRUD, the
 password-auth path) rather than merely resolving a session.
 
-Four kinds of e2e, by the external infra they need beyond that baseline:
+Five kinds of e2e, by the external infra they need beyond that baseline:
 
 - **Hermetic e2e** — no infra beyond the dev server (and the session rows every
   spec's auth setup already writes): the sign-in gate, routing, device-flow
@@ -79,12 +79,19 @@ Four kinds of e2e, by the external infra they need beyond that baseline:
   itself, so it is tagged `@live-db` and **runs in CI**. (A `@live-storage` test
   is tagged that ONLY — the DB it also uses is implied — so a `--grep @live-db`
   run never selects it.)
+- **`@live-telemetry` e2e** — need the REAL **Application Insights query API**
+  (`e2e/diagnostics.live.spec.ts`, gated on `APPLICATIONINSIGHTS_CONNECTION_STRING`
+  in `.env` plus an `az login` identity with Reader on that resource): the one
+  proof that the endpoint accepts the diagnostics page's KQL (`docs/diagnostics.md`).
+  CI has neither the resource nor a credential, so it is **excluded from CI** and
+  run locally only. Tagged `@live-telemetry` ONLY — the DB it also uses is implied.
 
 Every live test carries **`@live`** (so the local `--grep @live` smoke runs them
-all) **plus exactly one** of `@live-db` / `@live-llm` / `@live-storage`. CI runs
-hermetic + `@live-db` and excludes `@live-llm` and `@live-storage` via
-`npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage"`). Real
-credentials (Azure Postgres / SCCH / a real mounted Azure Files share) must
+all) **plus exactly one** of `@live-db` / `@live-llm` / `@live-storage` /
+`@live-telemetry`. CI runs hermetic + `@live-db` and excludes the other three via
+`npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage|@live-telemetry"`).
+Real credentials (Azure Postgres / SCCH / a real mounted Azure Files share /
+Application Insights) must
 never run on a fork `pull_request`; the CI container's Postgres password is a
 non-secret dummy — see `docs/ci-security.md`.
 
@@ -100,6 +107,7 @@ non-secret dummy — see `docs/ci-security.md`.
 | `@live-db` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-db` | same Postgres, read/written beyond session minting (container in CI / Azure Postgres local) | ✅ |
 | `@live-llm` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-llm` | real DB + SCCH LLM | ❌ local only |
 | `@live-storage` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-storage` | real DB + a mounted Azure Files share | ❌ local only |
+| `@live-telemetry` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-telemetry` | real DB + the App Insights query API (`az login`) | ❌ local only |
 
 - The `component` project pins **`maxWorkers`** (≤ 4) and its own
   `sequence.groupOrder`. Browser mode's default of `min(12, cpus - 1)` tabs
@@ -166,9 +174,10 @@ id because those specs drive the live SCCH endpoint.
 | `npm run test` | Vitest `unit` + `component` (`test:unit` / `test:component` for one) |
 | `npm run test:cli` | Builds the CLI, then its integration suite (`cli/test/*`) |
 | `npm run test:e2e` | Playwright, all specs (needs `az login` + `.env` for `@live`) |
-| `npm run test:e2e:ci` | Playwright minus `@live-llm`/`@live-storage` — hermetic + `@live-db` (CI runs this) |
+| `npm run test:e2e:ci` | Playwright minus `@live-llm`/`@live-storage`/`@live-telemetry` — hermetic + `@live-db` (CI runs this) |
 | `npm run test:e2e:db` | Playwright `@live-db` only (against a local Postgres container) |
 | `npm run test:e2e:storage` | Playwright `@live-storage` only — the manual mounted-share smoke, skips cleanly without `IMAGE_SMOKE_ROOT` |
+| `npm run test:e2e:telemetry` | Playwright `@live-telemetry` only — the diagnostics page against real App Insights, skips cleanly without `APPLICATIONINSIGHTS_CONNECTION_STRING` |
 | `npm run qa` | `check` + `typecheck` + `test` + `test:cli` + `build` + `docs:build` (`qa:e2e` adds e2e) |
 
 Run the local-only smoke (with `az login` done and `.env` populated):
@@ -404,3 +413,4 @@ job is **secret-free**; that is a hard security invariant, not a convenience —
 - **Tutor codes / the chat gate** → `docs/codes.md` (Testing section).
 - **Auth & e2e session cookies** → `docs/auth.md`.
 - **Telemetry** → `docs/telemetry.md` (and the "Telemetry tests" section above).
+- **LLM diagnostics** → `docs/diagnostics.md` (Testing section).

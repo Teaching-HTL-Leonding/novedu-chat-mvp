@@ -1,8 +1,8 @@
+import { formatCount } from "@/components/charts/format";
+import { DataUnavailable } from "@/components/dashboard-ui";
 import { StatTile } from "@/components/ui/stat-tile";
 import type { UsageRange } from "@/lib/usage-range";
 import { getDashboardKpis } from "@/lib/usage-stats-store";
-import { formatCount } from "./_charts/format";
-import { DataUnavailable } from "./dashboard-ui";
 
 // Headline KPIs — both windowed to the selected range. Async server component:
 // one query, rendered behind its own Suspense boundary so it streams independently.

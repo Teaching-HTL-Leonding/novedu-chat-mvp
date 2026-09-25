@@ -6,8 +6,10 @@ has no read surface) and the seed of a subsystem that grows: the token-over-time
 chart is built to be reused on future single-code stats pages.
 
 Read before touching: `app/usage/**`, `lib/usage-stats-store.ts`, `lib/usage-range.ts`,
-the `--chart-*` tokens in `app/globals.css`, and the `/usage` entry in
-`components/nav-menu.tsx`.
+the shared chart building blocks in `components/charts/**` and
+`components/dashboard-{ui,skeletons}.tsx` (also used by the LLM diagnostics page,
+`docs/diagnostics.md`), the `--chart-*` tokens in `app/globals.css`, and the
+`/usage` entry in `components/nav-menu.tsx`.
 
 ## What it shows
 
@@ -96,8 +98,9 @@ chart children — there is deliberately **no client `fetch('/api/*')`** and so 
 
 "Load immediately with loading indicators" is React `<Suspense>` streaming: the page
 shell + range tabs flush instantly and each section streams in independently behind
-its own skeleton (`app/usage/chart-skeleton.tsx`). The time filter is the `?range=`
-search param — `range-tabs.tsx` is a small client `<Link>` group; the Suspense
+its own skeleton (`components/dashboard-skeletons.tsx`). The time filter is the `?range=`
+search param — `range-tabs.tsx` is a small client `<Link>` group styled with the
+shared `SEGMENTED_NAV` / `segmentedItemVariants` recipe (`components/ui/segmented-nav.ts`); the Suspense
 boundaries are **keyed by range**, so switching shows the skeletons again while the
 new window streams. `page.tsx` snaps one `now` and passes it to every section, so the
 KPI, chart, and pies all describe the same window.
@@ -113,10 +116,19 @@ before charting work.
 Colors follow docs/styling.md — the dataviz-validated hues live **only** as
 `--chart-*` tokens in `app/globals.css` (shadcn's `--chart-1..N` convention, so
 shadcn's chart components drop in later); components carry **no bare hex**. Because an
-SVG `fill` attribute does not resolve a CSS custom property, `_charts/chart-colors.ts`
-reads the tokens with `getComputedStyle` and hands Recharts concrete strings; chart
-**chrome** (grid/axis/legend/tooltip) uses `currentColor` + opacity or token-based
-HTML styles off the `foreground` ramp. The bar chart's companion table and the pies'
+SVG `fill` attribute does not resolve a CSS custom property,
+`components/charts/chart-colors.ts` reads the tokens with `getComputedStyle` and hands
+Recharts concrete strings; chart **chrome** (grid/axis/legend/tooltip) uses
+`currentColor` + opacity or token-based HTML styles off the `foreground` ramp.
+
+The building blocks every chart in the app shares (this dashboard and the LLM
+diagnostics page) live in `components/charts/`: `chart-colors.ts` (the token
+resolver), `chart-chrome.tsx` (props objects for grid, axes and tooltip cursor, the
+tooltip/legend styles, `legendText`), `chart-frame.tsx` (`ChartFrame` — the sized
+`text-foreground` box around `ResponsiveContainer`, `h-72` unless a `h-*` delta is
+passed) and `format.ts` (fixed en-US `formatCount` / `formatCompact`). The section
+cards and their notices are `components/dashboard-ui.tsx`. Each chart stays a plain
+Recharts component composed from these — there is no generic chart abstraction. The bar chart's companion table and the pies'
 legends are the dataviz **"relief"** that keeps the two sub-3:1 hues legible. The app
 is **light-only**. The code pie is top-9 + "Other"; only the first 8 hues are
 CVD-validated and a 10-slice pie is at the readability limit, so `N` is a single
@@ -140,7 +152,9 @@ students. No message/prompt content or PII is read.
   `{ rows }` result, assert the shaping + never-throws); `app/usage/page.unit.test.tsx` (the
   teacher gate) and the section server components via `renderToStaticMarkup`.
 - **Component** — the bar + pie charts render props-driven in the `vitest-browser`
-  project (real Chromium).
+  project (real Chromium), through the shared `renderChart` harness
+  (`tests/render-chart.tsx`: stylesheet, fixed-width frame, pointer parked off the
+  chart so no tooltip duplicates a legend label).
 - **E2E** — `e2e/usage-dashboard.live.spec.ts` (`@live-db`, seeds
   `novedu_usage_by_code` via the plain `pg` driver through `e2e/db.ts`, runs in
   CI) and a hermetic access-denied spec (default student session). See

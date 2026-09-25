@@ -326,6 +326,11 @@ production hosting of a non-Azure backend are out of scope.
 - **Sampling:** `AppRequests` is sampled and holds one row per SERVER span (see
   above); the `http.server.duration` metric in `AppMetrics` is the unsampled
   request count.
+- **The read side in the app:** the teacher-only `/diagnostics` page
+  (`docs/diagnostics.md`) queries the LLM calls, failed chat turns and chat-turn
+  durations of this resource through the App Insights query API, addressed by the
+  `ApplicationId` in the connection string. The app's identity needs **Reader** on
+  the resource — the old App Service's managed identity on `novedu-chat-mvp-ai`.
 
 ## Tests
 

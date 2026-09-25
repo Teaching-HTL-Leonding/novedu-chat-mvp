@@ -179,9 +179,16 @@ Read before touching: `lib/usage-store.ts`, `app/mastra/usage-exporter.ts`, `lib
 
 ### Usage dashboard → `docs/dashboard.md`
 
-Read before touching: `app/usage/**`, `lib/usage-stats-store.ts`, `lib/usage-range.ts`.
+Read before touching: `app/usage/**`, `lib/usage-stats-store.ts`, `lib/usage-range.ts`, the shared chart building blocks `components/charts/**` + `components/dashboard-{ui,skeletons}.tsx`.
 
 - Teacher-only, server-first read surface over `usage_by_code` — no `/api/usage/*` route; all windows UTC.
+
+### LLM diagnostics → `docs/diagnostics.md`
+
+Read before touching: `app/diagnostics/**`, `lib/diagnostics-*.ts`, `buildMonitorCredential` in `lib/azure-credential.ts`.
+
+- Teacher-only, server-first read surface over the app's own App Insights telemetry — gated by `requireTeacherPage()`, no API route, no `proxy.ts` change; the five queries run once per render (`app/diagnostics/load.ts`) and never throw.
+- The connection string stays server-only (only its `ApplicationId` is extracted); hosts are mapped to provider NAMES server-side — no endpoint URL reaches the browser or the copied report. KQL is built from validated dates and the bin enum only.
 
 ### Azure migration & transition period → `docs/azure-access.md`
 

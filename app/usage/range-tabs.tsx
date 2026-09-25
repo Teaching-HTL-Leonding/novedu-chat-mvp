@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { SEGMENTED_NAV, segmentedItemVariants } from "@/components/ui/segmented-nav";
 import { parseRange, USAGE_RANGE_LABELS, USAGE_RANGES } from "@/lib/usage-range";
 import { cn } from "@/lib/utils";
 
@@ -12,17 +13,12 @@ import { cn } from "@/lib/utils";
 // active link, NOT an ARIA tablist (which would promise a tabpanel + arrow-key
 // traversal these links don't have).
 
-const TAB = "rounded-md px-3 py-1.5 font-medium text-sm transition-colors";
-
 export function RangeTabs() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const active = parseRange(searchParams.get("range"));
   return (
-    <nav
-      aria-label="Time range"
-      className="inline-flex flex-wrap gap-1 self-start rounded-lg border border-foreground/15 bg-card p-1"
-    >
+    <nav aria-label="Time range" className={cn(SEGMENTED_NAV, "self-start")}>
       {USAGE_RANGES.map((range) => {
         const isActive = range === active;
         // Preserve any other params (e.g. a future `?code=` on a single-code stats
@@ -34,12 +30,7 @@ export function RangeTabs() {
             key={range}
             href={`${pathname}?${params.toString()}`}
             aria-current={isActive ? "page" : undefined}
-            className={cn(
-              TAB,
-              isActive
-                ? "bg-foreground text-background"
-                : "text-foreground/70 hover:bg-foreground/5",
-            )}
+            className={segmentedItemVariants({ active: isActive })}
           >
             {USAGE_RANGE_LABELS[range]}
           </Link>
