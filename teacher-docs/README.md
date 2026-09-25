@@ -98,7 +98,7 @@ dead `related:` slugs (build failure), and a post-build output check
   directory), not Ctrl-C alone.
 - The build logs `Entry docs → 404 was not found.` — Starlight looking for an
   optional custom 404 chapter in the corpus. Harmless.
-- **`site` is hardcoded to the public origin** (`https://novedu.at`, beside `base`
+- **`site` is hardcoded to the public origin** (`https://app.novedu.at`, beside `base`
   in `astro.config.mjs`), because the llms.txt link index needs absolute URLs.
   Two knock-on effects: Starlight's built-in `@astrojs/sitemap` — registered on
   every build — emits `dist/sitemap-index.xml` + `sitemap-0.xml`, and every page

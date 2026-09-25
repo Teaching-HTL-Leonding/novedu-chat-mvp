@@ -18,7 +18,7 @@ const base = "/docs";
 // runs. The CLI keeps its own (overridable) default in cli/src/server-url.ts;
 // both change together on a domain move — see "Changing the public domain" in
 // the root README.
-const site = "https://novedu.at";
+const site = "https://app.novedu.at";
 
 export default defineConfig({
   base,

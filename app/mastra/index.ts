@@ -69,14 +69,11 @@ if (process.env.DATABASE_URL && !globalForStore.mastraStore) {
 // which is deliberately decoupled from Mastra's (no foreign keys, no shared
 // bookkeeping — docs/database.md). The app role may create schemas: it holds CREATE
 // on the database, which the Drizzle migrator's own `CREATE SCHEMA IF NOT EXISTS
-// "public"` already requires (scripts/db/provision.sql).
-// Production provisioning still creates `mastra` explicitly, and that stays: created
-// by the Entra admin it is OWNED by the admin with USAGE + CREATE granted to the app
+// "public"` already requires (scripts/db/provision-stage.sql).
+// Stage provisioning still creates `mastra` explicitly, and that stays: created by
+// the Entra admin it is OWNED by the admin with USAGE + CREATE granted to the app
 // role, whereas the first boot to reach a fresh database would otherwise own the
-// schema — and on the shared dev/prod server that first boot can be a developer's own
-// `az login` identity. `scripts/db/reassign-ownership.sql` reassigns tables, views,
-// sequences and functions only, NOT schemas, so a developer-owned `mastra` schema has
-// no scripted remedy (docs/database.md, "Ownership hazard").
+// schema (docs/database.md, "Privilege model").
 export async function initMastraStorage(): Promise<void> {
   const store = globalForStore.mastraStore;
   if (!store) return;

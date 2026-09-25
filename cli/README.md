@@ -409,15 +409,15 @@ activities:
       end: 2027-01-31T23:59:59+01:00
   tutors:
     sorting:
-      url: https://novedu.at/api/files/sorting-tutor
+      url: https://app.novedu.at/api/files/sorting-tutor
 ```
 
 ```bash
 npx @novedu/cli codes sync ddp-activities.yaml
 # ddp-activities.yaml: 3 entries
-#   reused    welcome         cu4afwoa23  https://novedu.at/cu4afwoa23
-#   minted    number-systems  hb34gpvahn  https://novedu.at/hb34gpvahn
-#   reused    sorting         nlc90ezf5z  https://novedu.at/nlc90ezf5z
+#   reused    welcome         cu4afwoa23  https://app.novedu.at/cu4afwoa23
+#   minted    number-systems  hb34gpvahn  https://app.novedu.at/hb34gpvahn
+#   reused    sorting         nlc90ezf5z  https://app.novedu.at/nlc90ezf5z
 #
 # 2 reused, 1 minted, 0 failed
 # Lock file: ddp-activities.lock.yaml

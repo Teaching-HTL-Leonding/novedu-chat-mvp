@@ -7,7 +7,7 @@ on:
     # build/publish/deploy entirely. Mixed pushes (code + docs) still publish.
     # EXCEPTION: teacher-docs/** is re-included (last matching pattern wins) —
     # the teacher guide ships INSIDE the image at /docs, so a corpus change must
-    # trigger a publish or production docs go stale.
+    # trigger a publish or the deployed docs go stale.
     # Manual runs (workflow_dispatch) always build regardless of what changed.
     paths:
       - '**'
@@ -30,10 +30,10 @@ jobs:
   qa:
     uses: ./.github/workflows/qa.yml
 
-  # Builds the image ONCE and releases it to production — the old environment:
-  # Docker Hub, the App Service webhook and the Docker Hub description sync are
-  # legacy, removed at the Azure cutover (docs/azure-access.md). The `deploy-dev`
-  # job below hands the very same image to the new environment.
+  # Builds the image ONCE and pushes it to Docker Hub, the build artifact the
+  # `deploy-dev` job below copies into the Azure registry. Production is the
+  # prod stage, reached only through the manual promote.yml
+  # (docs/azure-runtime-env.md).
   build-and-push:
     needs: qa
     runs-on: ubuntu-latest
@@ -65,7 +65,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          # amd64 only: Azure App Service runs amd64, and building the arm64
+          # amd64 only: Azure Container Apps runs amd64, and building the arm64
           # variant under QEMU emulation takes far too long. Build arm64
           # locally on a Mac if ever needed (the Dockerfile is multi-arch).
           platforms: linux/amd64
@@ -82,15 +82,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Tell the Azure web app to pull the fresh :latest image (the secret is
-      # the App Service container CI/CD webhook URL, which embeds credentials).
-      - name: Trigger Azure App Service deployment
-        # Passed via env, not inline: the URL's basic-auth username starts
-        # with `$` and would be mangled by shell expansion in the run line.
-        env:
-          CI_CD_URL: ${{ secrets.AZURE_WEBAPP_CI_CD_URL }}
-        run: curl -fsS -X POST "$CI_CD_URL"
-
       # Keep the Docker Hub repository description in sync with the README.
       # Non-blocking: editing the description needs a Docker Hub PAT with
       # Read/Write/Delete scope; the current DOCKER_PASSWORD can push images
@@ -103,10 +94,8 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
           repository: ${{ env.IMAGE_NAME }}
 
-  # New Azure environment (docs/azure-runtime-env.md): every publish also
-  # deploys to the dev stage. A separate job, so a problem over there can never
-  # block the production release above. Promotion to the prod stage is the
-  # manual promote.yml.
+  # Every publish deploys to the dev stage (docs/azure-runtime-env.md).
+  # Promotion to the prod stage is the manual promote.yml.
   #
   # SECURITY: no secrets here. Azure trusts this job by OIDC federation — the
   # dev identity accepts a token only for this repo's `refs/heads/main`, so a
@@ -134,8 +123,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # Registry-to-registry copy of the image built above: same digest, so the
-      # stages run exactly what production runs. Only the immutable version tag
+      # Registry-to-registry copy of the image built above: same digest, so both
+      # stages run exactly what was built and tested. Only the immutable version tag
       # goes to the registry, never :latest.
       - name: Copy the image to the Azure registry
         run: |

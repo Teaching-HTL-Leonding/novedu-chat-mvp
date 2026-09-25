@@ -21,6 +21,11 @@ It is a prototype: access is gated behind Microsoft Entra ID sign-in (the teache
 guide at `/docs` is deliberately public), and agent memory/storage is persisted to
 Azure Database for PostgreSQL (authenticated via Entra — no password required).
 
+It runs in two stages on Azure Container Apps: **production** at `https://app.novedu.at`
+(the latest stable release, for activities used in class) and **dev** at
+`https://dev.novedu.at` (every merge to `main`, for trying new features and activities).
+See [`docs/azure-runtime-env.md`](docs/azure-runtime-env.md).
+
 ## What's in here
 
 | Area | Description |
@@ -126,27 +131,30 @@ TEACHER_GROUP_ID=your-entra-teacher-group-object-id
 #   * Omit the password to use passwordless Microsoft Entra auth (your `az login`
 #     identity locally, the app's Managed Identity on Azure) — an Entra access token
 #     is fetched and used as the password on every new connection. ← USE THIS IN
-#     PRODUCTION. The Postgres role name is your Entra UPN exactly as Azure registers
-#     it (for a guest account, the `<local>_<domain>#EXT#@<tenant>.onmicrosoft.com`
-#     form — URL-encode the `#`/`@` in it); production uses the identity name
-#     novedu-chat-mvp-at.
+#     PRODUCTION. Developers log in under the admin group's name `novedu-dev` against
+#     the dev stage's database (docs/database.md); the stages use their identity names
+#     ca-novedu-dev / ca-novedu-prod.
 #   * Include a password (`postgresql://user:pw@host/db`) for classic password auth —
 #     a DEV/TEST/CI-ONLY fallback for environments that can't do Entra (e.g. a remote
 #     coding agent, a CI service container). NEVER use a password in a production URL.
 #   * Any `sslmode` other than `disable` (e.g. `sslmode=require`) turns on TLS with
 #     certificate verification (needed for Azure; a local container typically omits it).
 #
-# Passwordless (Entra), against the real Azure server:
-# DATABASE_URL=postgresql://<your-encoded-upn>@db-pgnovedu.postgres.database.azure.com/novedu?sslmode=require
+# Passwordless (Entra), against the dev stage's database on Azure (needs a firewall
+# rule for your IP and AZURE_CONFIG_DIR below):
+# DATABASE_URL=postgresql://novedu-dev@psql-novedu.postgres.database.azure.com/novedu_dev?sslmode=require
 #
 # Password auth, against a local container (dev/test only):
 DATABASE_URL=postgresql://postgres:Test-Passw0rd!@localhost:5432/novedu
 # Entra tenant of the Postgres server, used for the local `az login` credential. Only
-# relevant on the Entra path (ignored when the URL carries a password). SEPARATE from
-# AZURE_TENANT_ID above (the user sign-in tenant), because the database lives in a
-# different tenant. Optional — if unset, the az credential uses its ambient default
+# relevant on the Entra path (ignored when the URL carries a password). A SEPARATE
+# setting from AZURE_TENANT_ID above (the user sign-in tenant), even though both name
+# the same tenant. Optional — if unset, the az credential uses its ambient default
 # tenant.
 STORAGE_TENANT_ID=your-data-store-tenant-id
+# The az profile the local `az login` credential uses — the new environment's profile,
+# as an ABSOLUTE path (.env does not expand `~`; docs/azure-access.md). Entra path only.
+# AZURE_CONFIG_DIR=/home/<you>/.htl-azure-novedu
 
 # --- Public origin ---
 # Public origin the generated code URLs (`https://<origin>/<code>`) and the coding
@@ -235,12 +243,13 @@ things. Moving to a new domain therefore means touching all of them:
 
 | Where | What it controls |
 | --- | --- |
-| `AUTH_URL` — production app setting, **not in the repo** | better-auth's `baseURL` and trusted origin (unset locally — better-auth infers the base URL from the request instead). Also what makes the session cookie carry the `__Secure-` prefix under https (`__Secure-novedu.session_token`). Sign-in breaks if it still names the old domain. |
+| `AUTH_URL` — environment variable of each stage's container app, **not in the repo** | better-auth's `baseURL` and trusted origin (unset locally — better-auth infers the base URL from the request instead). Also what makes the session cookie carry the `__Secure-` prefix under https (`__Secure-novedu.session_token`). Sign-in breaks if it still names the old domain. |
 | Entra app registration redirect URI | The callback URL for the new origin (see the bullet above). |
 | `CODE_ORIGIN` — env / app setting | Origin shown in generated code URLs (`https://<origin>/<code>`) and in the coding endpoint's connection snippet; read by `lib/app-origin.ts` (legacy name `TUTOR_CODE_ORIGIN` still honored). Display-only — falls back to the request's `x-forwarded-host`. |
 | `cli/src/server-url.ts` → `DEFAULT_SERVER` | The CLI's default server. A *default* only: `--server` and `NOVEDU_SERVER` override it per invocation. |
 | `teacher-docs/astro.config.mjs` → `site` | Canonical origin baked into the teacher guide's `llms.txt` links, sitemap and canonical tags. A *build-time* value, which is why it is not shared with the CLI's runtime default. |
-| App Service Azure Files path mapping | The `novedu-files` share's mount path (`/novedu-files`) that `IMAGE_STORAGE_ROOT` points at in production — unrelated to the app's own origin, but part of moving the deployment (`docs/images.md`). |
+| `novedu_codes.file_url` rows | App-hosted YAML URLs are stored absolute and served from the app's own database only when they start with `CODE_ORIGIN`; a stage whose hostname changes needs them rewritten (`docs/azure-runtime-env.md`). |
+| Stage GitHub variables `DEV_BASE_URL` / `PROD_BASE_URL` | The URL the deploy step polls for the new version (`docs/azure-runtime-env.md`). |
 
 `grep -rn 'novedu\.at'` finds every in-repo occurrence, including the docs prose and
 test fixtures that only mention it as an example.

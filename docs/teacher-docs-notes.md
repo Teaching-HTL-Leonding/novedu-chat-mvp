@@ -33,6 +33,23 @@ prose carries everything an editor needs.
 - Only the tutor chat has the button. Do not generalise it to quizzes or writing
   activities.
 
+## 00-introduction/07-environments
+
+- Reader: a teacher deciding where to build, test, and run an activity, and one
+  with prototype-era codes asking where they went.
+- The "What we had during the prototype phase" section is a DELIBERATE exception
+  to the no-history rule, requested by the project lead because the move affects
+  every existing user. Keep it to that one section; no dates, no versions.
+- DEV has NO availability guarantee and its data is kept without a guarantee.
+  Never let the chapter suggest DEV for regular class use; ongoing
+  prototype-era activities may continue there.
+- What moved from the prototype to DEV: everything except chat messages and
+  sign-in credentials (sessions, CLI sessions, coding API keys). Quiz answers are
+  not stored anywhere, so never list them as moved or kept. `novedu.at` forwards
+  to PROD, where prototype codes do not exist.
+- Codes, uploaded files, and images are per environment; only the school account
+  is shared. The CLI's default is PROD.
+
 ## 10-yaml-for-teachers/06-testing-the-grader
 
 - Never state a rate, a per-answer time or a total for a whole-course run: speed

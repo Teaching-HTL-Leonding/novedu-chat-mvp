@@ -56,14 +56,14 @@ export function buildPoolConfig(url: string): PoolConfig {
     host: parsed.hostname,
     port: parsed.port ? Number(parsed.port) : 5432,
     database: decodeUrlPart(parsed.pathname.replace(/^\//, ""), "database name"),
-    // Locally the Postgres role is the developer's Entra UPN, which the URL
-    // carries percent-encoded (`rainer%40example.com`); `URL.username` keeps the
-    // encoding, so decode it here.
+    // A role name that is an Entra UPN arrives percent-encoded
+    // (`rainer%40example.com`); `URL.username` keeps the encoding, so decode it
+    // here.
     user: decodeUrlPart(parsed.username, "user"),
-    // Bound the pool: dev, prod and the Playwright workers share one small
-    // server (`max_connections = 50`). Drizzle and the Mastra store share these
-    // twenty clients — the one production process takes at most 20, leaving the
-    // rest for developers, e2e runs and admin sessions.
+    // Bound the pool: both stages, local development and the Playwright workers
+    // share one small server (`max_connections = 50`). Drizzle and the Mastra
+    // store share these twenty clients — each stage's one process takes at most
+    // 20, leaving the rest for developers, e2e runs and admin sessions.
     max: 20,
     idleTimeoutMillis: 30_000,
     // Bound the WAIT for a client too: node-postgres's default (0) queues a

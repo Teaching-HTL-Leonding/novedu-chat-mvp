@@ -18,7 +18,7 @@ import { getDb } from "@/lib/db";
 // tracks. NOTE the migrator ALWAYS runs `CREATE SCHEMA IF NOT EXISTS <schema>`
 // first — even for `public` — and Postgres checks CREATE on the DATABASE before
 // the IF NOT EXISTS shortcut, so the app role needs that grant
-// (scripts/db/provision.sql, docs/database.md "Privilege model") or the boot
+// (scripts/db/provision-stage.sql, docs/database.md "Privilege model") or the boot
 // fails with "permission denied for database".
 export async function runMigrations(): Promise<void> {
   await migrate(getDb(), {
