@@ -62,36 +62,51 @@ new ChainedTokenCredential(
 
 `DefaultAzureCredential` would try `EnvironmentCredential` first and pick up
 `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` — but those are set for
-**user sign-in** (`auth.ts`), in a **different tenant** than the database, so it
-would authenticate as the wrong service principal ("server is not configured to
-accept this token"). The explicit chain ignores those vars: locally it uses the
-`az login` identity in the data-store tenant; on Azure the `az` CLI is absent, so
+**user sign-in** (`auth.ts`) — the sign-in app registration, not an identity with
+a Postgres role — so it would authenticate as the wrong service principal. The
+explicit chain ignores those vars: locally it uses the `az login` identity of the
+new environment's `az` profile; on Azure the `az` CLI is absent, so
 the CLI credential fails fast and the chain falls through to the app's Managed
 Identity.
 
-- **`STORAGE_TENANT_ID`** is the tenant of the Postgres database. It is
-  **separate** from the user-sign-in `AZURE_TENANT_ID`. Optional locally — if
-  unset, the az credential uses its ambient default tenant. Irrelevant under
-  password auth.
+- **`STORAGE_TENANT_ID`** is the tenant of the Postgres database
+  (`91fc072c-…`, `docs/azure-access.md`). It is a **separate** variable from the
+  user-sign-in `AZURE_TENANT_ID`, even though both name the same tenant today.
+  Optional locally — if unset, the az credential uses its ambient default
+  tenant. Irrelevant under password auth.
+- **`AZURE_CONFIG_DIR`** selects the `az` profile the CLI credential shells out
+  to. A local `.env` sets it to the absolute path of the new environment's
+  profile (`/home/<you>/.htl-azure-novedu`); without it the credential asks your
+  default profile, whose token the server rejects.
 
 ### Local dev identity vs. prod identity
 
-The Postgres role name is **the Entra UPN exactly as Azure registers it** — for
-a guest account that is the `<local>_<domain>#EXT#@<tenant>.onmicrosoft.com`
-form, not the plain e-mail address (the e-mail form is rejected with `28P01`).
-In `DATABASE_URL` it must be **URL-encoded** (`#` → `%23`, `@` → `%40`); `new
+The server is `psql-novedu` with one database per stage (`novedu_dev`,
+`novedu_prod`; `docs/azure-runtime-env.md`). Its Entra admin is the security
+group `novedu-dev`, and **every developer logs in under the group's name** with
+their own Entra token as the password — so every developer's `DATABASE_URL` is
+the same. Local development runs against `novedu_dev`; there, a group session
+automatically acts as the dev stage's app role (`SET ROLE` default, see
+*Privilege model*). Each stage's app logs in as its Managed Identity,
+`ca-novedu-<stage>`. Both go through the same code path — only the role name
+and database in the URL differ.
+
+A role name that is an Entra UPN (a personal login, e.g. for admin work) must be
+**URL-encoded** in `DATABASE_URL` (`#` → `%23`, `@` → `%40`); `new
 URL().username` keeps the encoding, so `buildPoolConfig` decodes it with
-`decodeURIComponent`. Production uses the identity name `novedu-chat-mvp-at`.
-Both go through the same code path — only the role name in the URL differs.
+`decodeURIComponent`.
+
+Your machine's IP needs a firewall rule on `psql-novedu`
+(`docs/azure-runtime-env.md`).
 
 Example URLs:
 
 ```
-# Local dev, password-less (Entra, guest account)
-DATABASE_URL=postgresql://rainer_example.com%23EXT%23%40example.onmicrosoft.com@db-pgnovedu.postgres.database.azure.com/novedu?sslmode=require
+# Local dev, password-less (Entra, group login; .env also sets AZURE_CONFIG_DIR)
+DATABASE_URL=postgresql://novedu-dev@psql-novedu.postgres.database.azure.com/novedu_dev?sslmode=require
 
-# Production, password-less (Managed Identity)
-DATABASE_URL=postgresql://novedu-chat-mvp-at@db-pgnovedu.postgres.database.azure.com/novedu?sslmode=require
+# A stage, password-less (Managed Identity)
+DATABASE_URL=postgresql://ca-novedu-prod@psql-novedu.postgres.database.azure.com/novedu_prod?sslmode=require
 
 # Local container, password auth (dev/test/CI only)
 DATABASE_URL=postgresql://postgres:Test-Passw0rd!@localhost:5432/novedu
@@ -115,10 +130,11 @@ process as an unhandled event.
 
 The pool is bounded and pinned:
 
-- `max: 20` — Drizzle and the Mastra store share these clients. Dev, prod, and
-  every Playwright worker share one small server (`max_connections = 50` on
-  `db-pgnovedu`'s B1ms tier), so the one production process takes at most 20
-  and leaves the rest for developers, e2e runs and admin sessions.
+- `max: 20` — Drizzle and the Mastra store share these clients. Both stages,
+  local development and every Playwright worker share one small server
+  (`max_connections = 50` on `psql-novedu`'s B1ms tier), so each stage's one
+  process takes at most 20 and leaves the rest for developers, e2e runs and
+  admin sessions.
 - `connectionTimeoutMillis: 10_000` — a checkout waits at most 10 s for a free
   client. Without it node-postgres queues forever when the pool is exhausted or
   the server is unreachable, so requests would hang instead of failing into the
@@ -167,7 +183,7 @@ agent's memory need the database.
 
 The web app's Postgres role is a **plain login role** — not superuser, no
 `CREATEDB` / `CREATEROLE`, and **not the database owner**. It holds `CONNECT` +
-`CREATE` on `novedu` and `USAGE` + `CREATE` on exactly two schemas: `public`
+`CREATE` on its stage's database and `USAGE` + `CREATE` on exactly two schemas: `public`
 (the app-owned `novedu_*` tables, migrated by Drizzle at boot) and `mastra`
 (created by provisioning; Mastra's own tables are created inside it by
 `initMastraStorage()`). `CREATE` on the *database* only permits creating
@@ -195,40 +211,32 @@ marked `FORCE ROW LEVEL SECURITY`. That is the point to decide on a stricter
 split (a separate owner role, out-of-band migrations, a DML-only app role) —
 not before RLS is actually on the table.
 
-**Provisioning.** `scripts/db/provision.sql` is the one-time setup, run once by
-the server's Entra admin: on the `postgres` database,
-`pgaadauth_create_principal('novedu-chat-mvp-at', false, false)` registers the
-Managed Identity as a role, then `create database novedu`; on `novedu`,
-`create schema mastra`, the `revoke create on schema public from public`, and
-the `grant` statements above. The app creates the `mastra` schema itself when it
-is missing (`initMastraStorage()`), but provisioning still creates it explicitly:
-created by the Entra admin, the schema is **owned** by the admin with `USAGE` +
-`CREATE` granted to the app role — whereas whichever identity boots first against
-an unprovisioned database ends up owning it (see the ownership hazard below). A developer's own `az login` role is made a
-**member** of the app role (`grant "novedu-chat-mvp-at" to "<developer role>"`,
-the script's third block): membership confers the app role's privileges on every
-table it owns, so local dev needs no per-table grants — and this applies to the
-Entra admin too, which owns the database but none of the tables. The developer's
-Postgres role name is the Entra UPN as Azure registers it (for a guest account
-the `user_domain#EXT#@tenant.onmicrosoft.com` form), which is also what the
-user part of a local `DATABASE_URL` must carry, URL-encoded.
+**Provisioning.** `scripts/db/provision-stage.mjs <dev|prod>` (with
+`provision-stage.sql`) is the setup of one stage, run by a member of the
+server's Entra admin group; it is idempotent, and `--check` verifies a stage
+without changing it (`docs/azure-runtime-env.md`, "Postgres roles and stage
+isolation"). On the `postgres` database it registers the stage's Managed
+Identity as a role (`pgaadauth_create_principal('ca-novedu-<stage>', false,
+false)`) and creates the database, owned by the admin group; in that database
+it creates the `mastra` schema, runs `revoke create on schema public from
+public` and `revoke connect on database … from public`, and grants the
+privileges above. The app creates the `mastra` schema itself when it is missing
+(`initMastraStorage()`), but provisioning still creates it explicitly: created
+by the admin, the schema is **owned** by the admin with `USAGE` + `CREATE`
+granted to the app role — whereas whichever identity boots first against an
+unprovisioned database ends up owning it.
 
-**Ownership hazard on the shared database.** Dev and prod share this one
-server. Whenever a developer's own `az login` identity is the first to boot a
-new migration (or a Mastra upgrade) against it, the objects it creates or
-alters land owned by that developer — and the production identity, holding no
-grant on tables it doesn't own, is locked out of them until ownership is
-reassigned. `scripts/db/reassign-ownership.sql` is the documented remedy: an
-idempotent `DO` block that `ALTER … OWNER TO`s every table/view/sequence in
-`public` and `mastra` not already owned by `novedu-chat-mvp-at`, skipping
-sequences that belong to a table (those move with it), plus a second block for
-functions — Mastra's boot also runs `CREATE OR REPLACE FUNCTION
-mastra.trigger_set_timestamps()`, which only the function's owner may do (a
-foreign-owned function fails with `42501`; the app still boots, but every
-restart logs the exception). Run the script as the Entra admin after any such
-local-first boot. The script reassigns **objects, not schemas**: `public` and
-`mastra` themselves keep whichever owner created them, which is why provisioning
-creates `mastra` as the Entra admin instead of leaving it to the first boot.
+**Local boots act as the dev app role.** In `novedu_dev` only, the admin group
+is a member of `ca-novedu-dev` and carries the role default
+`alter role "novedu-dev" in database novedu_dev set role = 'ca-novedu-dev'`, so
+every developer session — a local `npm run dev`, an e2e run, an admin script —
+acts as the app role from its first statement. Whatever a local boot creates
+(a new migration's tables, a Mastra upgrade's columns or functions) is therefore
+owned by `ca-novedu-dev` from the start, exactly as if the dev stage had
+booted it, and the stage is never locked out of its own objects. Admin work
+that must not act as the app role starts with `SET ROLE NONE`. `novedu_prod`
+has no such default and no developer boots against it: its objects are created
+only by the prod stage's own boot.
 
 ## App-owned schema (`novedu_*`) & Drizzle workflow
 

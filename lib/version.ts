@@ -1,7 +1,7 @@
 // Build identity of the running image. The three values are baked into the
 // Docker image at build time (Dockerfile ARG -> ENV, fed by docker-publish.yml)
-// and read back at runtime to triage deployments — i.e. confirm the App Service
-// container actually pulled the latest published image. In local `npm run dev`
+// and read back at runtime to triage deployments — i.e. confirm a stage actually
+// runs the version the pipeline deployed. In local `npm run dev`
 // the env vars are unset, so everything reads "dev".
 //
 // `version` matches the Docker image TAG the workflow pushes

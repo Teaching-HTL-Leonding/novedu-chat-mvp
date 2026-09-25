@@ -182,9 +182,8 @@ verbatim.
 
 ## Operations
 
-The app's identity needs **Reader on its own App Insights resource**: the old App
-Service's managed identity on `novedu-chat-mvp-ai`, and each new stage's
-`ca-novedu-<stage>` on its `appi-novedu-<stage>` (`docs/azure-runtime-env.md`). A
+The app's identity needs **Reader on its own App Insights resource**: each
+stage's `ca-novedu-<stage>` on its `appi-novedu-<stage>` (`docs/azure-runtime-env.md`). A
 fresh assignment answers 403 for a few minutes. The environment's
 `APPLICATIONINSIGHTS_CONNECTION_STRING` must contain `ApplicationId=`, or the page
 shows "Not configured".

@@ -25,7 +25,7 @@ like a newer flag or command might already cover it.
 
 For up-to-date teacher-facing documentation on any Novedu feature (activity
 YAML fields, codes, quizzes, providers, …), fetch the machine-readable teacher
-guide: <https://novedu.at/docs/llms.txt> is the index, `llms-full.txt` beside
+guide: <https://app.novedu.at/docs/llms.txt> is the index, `llms-full.txt` beside
 it the full corpus, and every chapter has a `.md` twin at its own URL. Prefer
 it over guessing — it is generated from the same corpus the `/docs` site serves.
 
@@ -77,10 +77,12 @@ failure modes and the cost/safety notes that decide whether a run is correct.
 - **The server validates, not the CLI.** Don't pre-validate before
   `codes create` / `files upload` — the server runs the identical pipeline as the
   web forms. `validate` is for offline checks, not a gate on upload.
-- **`--server <url>`** is accepted by `whoami`, `codes`, `files`, `images`,
-  `reports` and `eval`. It beats the `NOVEDU_SERVER` env var, which beats the
-  production default. Use `--server http://localhost:3000` against a local dev
-  server.
+- **`--server <url>`** is accepted by `login`, `logout`, `whoami`, `codes`,
+  `files`, `images`, `reports` and `eval`. It beats the `NOVEDU_SERVER` env var,
+  which beats the production default `https://app.novedu.at`. Use
+  `--server https://dev.novedu.at` for the dev stage (new features, activity
+  experiments) and `--server http://localhost:3000` against a local dev server.
+  Sessions are stored per server, so each one needs its own `login`.
 - **`--all` / `--search`**: every `list` (including `reports list`) defaults to
   **only your own** rows; `--all` widens to every teacher's, `--search` is a
   contains-filter.

@@ -171,7 +171,7 @@ above it (the service, the store, the routes) speaks in opaque object **keys**
   directory — an atomic publish within the directory. Every failure path (too
   large, empty, a failing source stream, or any filesystem error) removes the
   whole object directory, so a reader can never see a partial object and a
-  retry can reuse the key. No file locks anywhere — the App Service SMB mount
+  retry can reuse the key. No file locks anywhere — the Azure Files SMB mount
   advises against them.
 - **No symlinks followed.** An object directory or `content` file that is a
   symbolic link is reported as an `error`, never treated as data.
@@ -397,8 +397,8 @@ loader can transform.
 
 ## Provisioning
 
-`IMAGE_STORAGE_ROOT` is the one operational setting: `/novedu-files` in the
-mounted App Service deployment, an explicit directory outside the repo in local
+`IMAGE_STORAGE_ROOT` is the one operational setting: `/novedu-files` on both
+Azure stages, an explicit directory outside the repo in local
 dev, and the harness's own directory in Playwright (below). The app **never**
 creates the root, `images/`, or the sentinel — not even as a development
 convenience: `npm run images:init-root` (`scripts/init-image-root.mjs` →
@@ -407,17 +407,18 @@ path `IMAGE_STORAGE_ROOT` names (or a positional argument), and refuses `/` and
 `/home` outright. Run it once per root before the app first serves image
 traffic against it.
 
-On App Service, the platform's "bring your own storage" path mapping mounts the
-Azure Files share `novedu-files` at `/novedu-files`; the mount is SMB, keyed by
-the storage account key the platform holds in the path-mapping configuration
-ONLY (never in an app setting or the repository — App Service mounts are
-key-based by platform necessity, Entra/RBAC is not supported for mounts). The
-app itself holds no storage key or credential of any kind; it only ever sees a
-mounted directory through ordinary `node:fs`. Before cutting over, an operator
-must confirm the container's `nextjs` user (uid 1001) can write
-`<mount>/images` — App Service mounts are world-writable by default, but CIFS
-ignores `chmod`/`chown`, so this is a platform check, not something the app can
-assert for itself.
+On Azure, each stage's container app mounts its own storage account's Azure
+Files share `novedu-files` at `/novedu-files`, through an environment storage
+definition of the Container Apps environment (`docs/azure-runtime-env.md`). The
+mount is SMB, keyed by the storage account key the platform holds in that
+storage definition ONLY (never in an app setting or the repository — Azure
+Files mounts are key-based by platform necessity, Entra/RBAC is not supported
+for them). The app itself holds no storage key or credential of any kind; it
+only ever sees a mounted directory through ordinary `node:fs`. The share's root
+is provisioned through the storage API, not by the app. An operator confirms
+that the container's `nextjs` user (uid 1001) can write `<mount>/images` — the
+mounts are world-writable by default, but CIFS ignores `chmod`/`chown`, so this
+is a platform check, not something the app can assert for itself.
 
 The root check runs at server startup (`instrumentation.ts`, right after
 telemetry init and BEFORE the `DATABASE_URL` bail, so it always logs

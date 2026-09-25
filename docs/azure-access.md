@@ -1,86 +1,98 @@
-# Azure migration: working in the transition period
+# Azure access, and the old environment on standby
 
-> **Temporary document.** It exists only while Novedu migrates between two Azure
-> environments. When the migration is complete — the new environment is
-> production and the old one is decommissioned — **delete this file and its
-> entry in `AGENTS.md`**. Whatever is still true then (profile handling, login,
-> access checks) moves into `docs/azure-runtime-env.md` first.
+> **Temporary document.** It exists while the old Azure environment is kept on
+> standby as an emergency fallback. When that environment is decommissioned,
+> move what is still true (profile handling, login, access checks) into
+> `docs/azure-runtime-env.md`, then **delete this file and its entry in
+> `AGENTS.md`**.
 
 For every Novedu developer, and for Claude sessions working on a developer's
 behalf. Read it before running any `az` command against either environment,
 before changing how you run the app locally, and whenever a login has expired.
 
-## Background: the migration
+## Two environments
 
-Novedu is moving to a different Azure tenant and subscription, and at the same
-time from a single App Service to a two-stage setup (dev and prod) on Azure
-Container Apps.
+Novedu runs in a two-stage Azure Container Apps environment in the tenant of
+HTL Leonding (`docs/azure-runtime-env.md`). The single App Service it used to
+run on, in a different tenant and subscription, is kept on standby.
 
-| | Old environment | New environment |
+| | Old environment (standby) | New environment (production) |
 |---|---|---|
-| Role right now | **Production.** Serves `novedu.at` to real users with real data — few of both | **Under construction.** Both stages run the app, but nobody uses it. The dev stage holds a copy of the production data, the prod stage is empty |
-| Hosting | App Service, image from Docker Hub | Container Apps, image from Azure Container Registry |
-| Stages | one | `dev` (`dev.novedu.at`) and `prod` (`app.novedu.at`) |
+| Role | **Fallback only.** The Novedu app does not run. The App Service answers `novedu.at` with a temporary redirect to `app.novedu.at`; its database and file share keep the data exactly as it was when the app was stopped | **Production.** `app.novedu.at` (prod stage) serves users; `dev.novedu.at` (dev stage) holds a copy of the old environment's data |
+| Hosting | App Service `novedu-chat-mvp-at`, RG `Novedu-Chat-MVP` | Container Apps, image from Azure Container Registry |
 | Database | Postgres server `db-pgnovedu`, database `novedu` | Postgres server `psql-novedu`, databases `novedu_dev` / `novedu_prod` |
-| Documented in | every other doc in this repo (`docs/database.md`, `docs/images.md`, the `novedu-publish` skill, …) | `docs/azure-runtime-env.md`, plus this document for access and the transition rules |
+| Image files | share `novedu-files` in `stnoveduchatmvp` | share `novedu-files` per stage (`docs/azure-runtime-env.md`) |
 
-**The stakes are low, and the migration is planned accordingly.** Novedu is an
-MVP with a small user base: breaking changes are fine and outages are
-acceptable, on `novedu.at` today and during cutover alike. So the migration
-favours simple, understandable steps over zero-downtime techniques, and nobody
-needs to engineer around a short interruption. What the small scale does *not*
-relax is care for the data itself: it belongs to real students and teachers, so
-it is neither lost nor exposed along the way.
+The prod stage started empty: it did **not** receive the old environment's
+data. That data lives on in two places — unchanged in the old environment, and
+as the copy in the dev stage (`docs/azure-runtime-env.md`, "Data in the dev
+stage").
 
-The migration runs in separate steps, each finished before the next begins:
-
-1. **Build the new environment** and prove both stages: prod on an empty
-   database, dev on a copy of the production data as a rehearsal of the
-   transfer. The old environment is only read, never changed.
-2. **Azure Foundry** in the new tenant.
-3. **Cutover:** stop the old environment, transfer the database and the image
-   files, move DNS for `novedu.at`, switch the CLI's default server and the
-   repo's documentation to the new environment.
-4. **Decommission** the old environment — and remove this document.
+What is still open: Azure Foundry in the new tenant (both stages run on SCCH
+only), and decommissioning the old environment.
 
 There is no infrastructure-as-code: the new environment is built from an ordered
 runbook of `az` commands, dev first, prod as a replay. The design spec and the
 runbook are working documents outside the repository (`docs/superpowers/specs`
-is gitignored) — ask the developer leading the migration for them.
+is gitignored) — ask the developer leading the environment for them.
 
-## Rules for the transition period
+## Rules
 
-- **Production is the old environment until cutover.** Releases, hotfixes and
-  production diagnostics work exactly as the other docs describe. Nothing about
-  the migration changes how a feature gets shipped — including that a breaking
-  change or a brief outage on `novedu.at` is acceptable.
-- **Local development is unchanged.** Keep your `.env` as `.env.example` and
-  `docs/database.md` describe it. Do not point a local app at the new
-  environment for feature work: its stages are not announced as usable, and
-  the dev stage holds a copy of real production data.
-- **Production data in the new environment: the dev stage's copy, nothing
-  else.** The dev stage holds a copy of the production data without chat
-  messages and without credentials (`docs/azure-runtime-env.md`, "Data in the
-  dev stage"). The data set is small, but it is real student and teacher data:
-  treat that stage like production, never export it, and never copy anything
-  further over "to try something". Transferring data and image files into the
-  prod stage is the cutover step, done once and deliberately.
-- **Most developers need no access to the new environment at all.** Only get it
-  if you take part in building or operating it.
-- **Coordinate before you change anything there.** Without infrastructure-as-code,
-  two people applying runbook steps at the same time collide silently. Read-only
-  commands are always fine; anything that creates, changes or deletes a resource
-  is agreed with the developer leading the migration first.
+- **Production is the prod stage.** Releases go through the pipeline: every
+  publish deploys to dev, production follows through the manual `promote.yml`
+  (`docs/azure-runtime-env.md`).
+- **Leave the old environment alone.** Its database, file share and settings are
+  the fallback, so nothing writes to them: no app, no local boot, no script. The
+  only sanctioned changes are the redirect below and the rollback. Read-only
+  commands are fine.
+- **Local development runs against the dev stage's database** `novedu_dev`
+  (`docs/database.md`), with the new profile. It holds real student and teacher
+  data: never export it, and never copy anything further over "to try
+  something".
+- **Coordinate before you change anything in the new environment.** Without
+  infrastructure-as-code, two people applying runbook steps at the same time
+  collide silently. Read-only commands are always fine; anything that creates,
+  changes or deletes a resource is agreed with the developer leading the
+  environment first.
 - **Group rights include prod.** Every member of the admin group is Owner of the
-  new prod resource group and Postgres admin on `novedu_prod`. While that stage is
-  empty, mistakes there cost nothing but a replay of the runbook; after cutover
-  the same rights reach the real data, with no further change of rights in
-  between.
-- **Never mix the two environments in one `az` profile** (next section). A
-  command that lands in the wrong tenant or subscription is the main operational
-  risk of this period.
+  prod resource group and Postgres admin on `novedu_prod` — which holds the real
+  production data.
+- **Never mix the two environments in one `az` profile** (below). A command
+  that lands in the wrong tenant or subscription is the main operational risk.
 
-## The new environment's target
+## The old environment on standby
+
+The App Service `novedu-chat-mvp-at` keeps the `novedu.at` binding and its
+certificate, but instead of the Novedu image it runs a minimal nginx container,
+`docker.io/rstropek/novedu-redirect:1`, built by hand from
+`deploy/novedu-at-redirect/`. Every request is answered with a **302** to the
+same path and query on `https://app.novedu.at` (plain HTTP first gets the App
+Service's 301 to HTTPS). The redirect is temporary by intent: `novedu.at` is to
+become a landing page, and its DNS is managed outside this project.
+
+Its settings differ from the app's in exactly two values: the container image
+and `WEBSITES_PORT=80` (the app used `3000`). `DOCKER_ENABLE_CI` is `false`, so
+nothing redeploys it. Every other app setting and the `/novedu-files` mount are
+left as they were.
+
+**Rollback** — only in an emergency, and agreed with the developer leading the
+environment. It revives the old app exactly at the state it was stopped in;
+whatever was written on `app.novedu.at` since is not in it.
+
+```bash
+# default profile = the old tenant
+az webapp config container set -n novedu-chat-mvp-at -g Novedu-Chat-MVP \
+  --container-image-name docker.io/rstropek/novedu-chat-mvp:0.2.0.130
+az webapp config appsettings set -n novedu-chat-mvp-at -g Novedu-Chat-MVP \
+  --settings WEBSITES_PORT=3000 -o none
+az webapp restart -n novedu-chat-mvp-at -g Novedu-Chat-MVP
+```
+
+The image is pinned to the version the old app last ran: the pipeline still
+pushes `:latest` to Docker Hub, and a newer image would migrate the old database
+forward.
+
+## The new environment
 
 | | |
 |---|---|
@@ -134,8 +146,12 @@ once at the top. Never run `az login --tenant 91fc072c-…` or `az account set`
 for the new subscription in the default profile.
 
 `AzureCliCredential` shells out to `az` and inherits the variable, so it also
-decides which identity a locally running app uses — one more reason to leave it
-unset for everyday development.
+decides which identity a locally running app uses. Local development reaches
+`novedu_dev` in the new tenant, so the app's `.env` sets
+`AZURE_CONFIG_DIR` to the **absolute** path of the new profile (`.env` does not
+expand `~`) — see `docs/database.md`. Every Entra token the local app requests
+then comes from the new tenant, including Azure Foundry's, which is why a local
+`.env` leaves `AZURE_FOUNDRY_ENDPOINT` unset.
 
 ## Logging in
 

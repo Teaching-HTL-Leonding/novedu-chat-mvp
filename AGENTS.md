@@ -157,10 +157,10 @@ Read before touching: `components/data-list.tsx`, `components/list-*.tsx`, `lib/
 
 ### Postgres, Drizzle & credentials → `docs/database.md`
 
-Read before touching: Mastra storage (`app/mastra/index.ts`), `lib/db/`, migrations, `instrumentation.ts`, `scripts/db/*.sql`.
+Read before touching: Mastra storage (`app/mastra/index.ts`), `lib/db/`, migrations, `instrumentation.ts`, `scripts/db/*`.
 
 - Every consumer takes the ONE pool from `getPool()` (`lib/db/pool.ts`) — the one auth seam; app tables use the `novedu_` prefix in `public`, Mastra's live in schema `mastra`; **no foreign keys** between `novedu_*` and `mastra_*`.
-- Dev and prod share ONE server, and the app role owns its objects instead of holding grants. Whenever your own `az login` identity is the first to boot a new migration or a Mastra upgrade against it, the new tables/functions belong to you and production is locked out of them: run `scripts/db/reassign-ownership.sql` as the Entra admin afterwards (`docs/database.md`, ownership hazard).
+- Both stages and local development share ONE server (`psql-novedu`), one database per stage; each stage's app role owns its objects instead of holding grants. Local development runs against `novedu_dev` as the group `novedu-dev`, whose sessions act as `ca-novedu-dev` by role default — never point a local boot at `novedu_prod` (`docs/database.md`).
 
 ### Telemetry → `docs/telemetry.md`
 
@@ -190,19 +190,19 @@ Read before touching: `app/diagnostics/**`, `lib/diagnostics-*.ts`, `buildMonito
 - Teacher-only, server-first read surface over the app's own App Insights telemetry — gated by `requireTeacherPage()`, no API route, no `proxy.ts` change; the five queries run once per render (`app/diagnostics/load.ts`) and never throw.
 - The connection string stays server-only (only its `ApplicationId` is extracted); hosts are mapped to provider NAMES server-side — no endpoint URL reaches the browser or the copied report. KQL is built from validated dates and the bin enum only.
 
-### Azure migration & transition period → `docs/azure-access.md`
+### Azure access & the old environment on standby → `docs/azure-access.md`
 
-Temporary — delete this entry together with the doc once the migration is complete. Read before running any `az` command against either Azure environment, changing how the app runs locally, or when a login has expired.
+Temporary — delete this entry together with the doc once the old environment is decommissioned. Read before running any `az` command against either Azure environment, changing how the app runs locally, or when a login has expired.
 
-- Novedu is migrating to a new Azure tenant (two-stage Container Apps). Until cutover the OLD environment is production (few real users, real data; breaking changes and outages are acceptable, losing or exposing data is not) and everything else in this file and in `docs/` describes it; local development and releases are unchanged. The new dev stage holds a copy of the production data (no chat messages, no credentials) — real student and teacher data, treated like production; nothing further is copied over before cutover.
-- The new environment is reached ONLY through the second `az` profile, per command: `AZURE_CONFIG_DIR=~/.htl-azure-novedu az …`, subscription `Novedu`. A command without the variable hits the default profile — the tenant serving `novedu.at`.
+- Production is the prod stage (`app.novedu.at`). The old App Service environment is a standby fallback: its app is replaced by a redirect of `novedu.at` to `app.novedu.at`, and its database and file share are NEVER written to — no app, no local boot, no script. Rollback is the documented two-setting switch, only in an emergency.
+- The new environment is reached ONLY through the second `az` profile: `AZURE_CONFIG_DIR=~/.htl-azure-novedu az …`, subscription `Novedu`; a local `.env` sets the same variable (absolute path) so the app's `az` credential reaches `novedu_dev`. A command without the variable hits the default profile — the old tenant.
 - Device-code login is blocked in that tenant, and `az login` over SSH falls back to it silently: use the tunnelled browser flow from the doc. Tokens and secret values never pass through a Claude session.
 
-### Azure runtime environment (new, under construction) → `docs/azure-runtime-env.md`
+### Azure runtime environment → `docs/azure-runtime-env.md`
 
 Read before touching: `scripts/db/provision-stage.*`, any `az` work on `rg-novedu-*`, `.github/actions/deploy-stage/**`, `.github/workflows/promote.yml`, or `docker-publish.yml`'s `deploy-dev` job.
 
-- Both stages run the Novedu image, deployed by the pipeline: every publish goes to dev, prod only via the manual `promote.yml`. Dev (`dev.novedu.at`) holds a copy of the production data, prod (`app.novedu.at`) is empty, and production is still the old environment. `AUTH_URL` must name the stage's custom domain or sign-in breaks. The doc marks what is designed but not built.
+- Both stages run the same image, deployed by the pipeline: every publish goes to dev (`dev.novedu.at`), production (`app.novedu.at`) only via the manual `promote.yml`. Dev holds a copy of the old environment's data (no chat messages, no credentials) — real student and teacher data, treated like production. `AUTH_URL` must name the stage's custom domain or sign-in breaks.
 - Those stages run on SCCH ONLY: never set `AZURE_FOUNDRY_ENDPOINT` / `OPENROUTER_API_KEY` there. The SCCH key is the only secret shared between the stages; every other secret is per stage, in that stage's Key Vault.
 - One replica per stage is a HARD limit (dev 0–1, prod exactly 1): the Drizzle migrator takes no lock and `lib/db/pool.ts`'s 20 connections are sized against B1ms's 50.
 - No identity of one stage ever holds a right on the other stage's resources or database; Postgres there is Entra-only (password auth disabled) and stage isolation is a privilege (`revoke connect`), not a network rule.

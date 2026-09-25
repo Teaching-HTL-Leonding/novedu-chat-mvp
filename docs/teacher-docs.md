@@ -81,7 +81,7 @@ inside the web app** — see "Serving at `/docs`" below. No custom CSS.
   and the Markdown twins" below.
 - Those routes need Astro's **`site`**, since the table of contents is nothing but
   absolute URLs — hence the second single seam beside `base` in `astro.config.mjs`
-  (`https://novedu.at`, hardcoded; the CLI keeps its own overridable default in
+  (`https://app.novedu.at`, hardcoded; the CLI keeps its own overridable default in
   `cli/src/server-url.ts`, and the root README's "Changing the public domain"
   checklist ties every occurrence together). Knock-on effects to know about:
   Starlight registers `@astrojs/sitemap` on every build, and with a `site` set it

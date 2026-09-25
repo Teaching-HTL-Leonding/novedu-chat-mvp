@@ -14,9 +14,9 @@ import {
 // The chain is built EXPLICITLY rather than using `DefaultAzureCredential`: that
 // one would pick up `AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET` via
 // its `EnvironmentCredential` — but this app sets those for *user sign-in*
-// (auth.ts), in a *different* tenant than the data stores — and would
-// authenticate as the wrong service principal ("server is not configured to
-// accept this token"). This chain ignores those vars.
+// (auth.ts) — the sign-in app registration, which has no Postgres role — and
+// would authenticate as the wrong service principal. This chain ignores those
+// vars.
 //
 // SERVER-ONLY: handles Azure credentials. Never import from client components.
 export function buildDataStoreCredential(): TokenCredential {
@@ -38,8 +38,7 @@ export function buildDataStoreCredential(): TokenCredential {
 // Azure Foundry (Azure OpenAI) endpoint used by `lib/llm/foundry-endpoint.ts`. Same
 // explicit chain as the data-store credential (and the same reason to avoid
 // `DefaultAzureCredential` — see above), but WITHOUT the `STORAGE_TENANT_ID` pin:
-// the Foundry resource lives in the `az login` identity's ambient tenant, not the
-// data-store tenant.
+// the Foundry resource lives in the ambient tenant of the `az login` identity.
 //
 // SERVER-ONLY: handles Azure credentials. Never import from client components.
 export function buildCognitiveServicesCredential(): TokenCredential {
@@ -52,8 +51,8 @@ export function buildCognitiveServicesCredential(): TokenCredential {
 // `DefaultAzureCredential` (see above), without a tenant pin: the App Insights
 // resource lives in the ambient tenant of the `az login` identity locally and of
 // the Managed Identity on Azure. That identity needs the `Reader` role on the
-// App Insights resource. For the new tenant's resources, `az login` under
-// `AZURE_CONFIG_DIR=~/.htl-azure-novedu` (docs/azure-access.md).
+// App Insights resource. Locally that is the new environment's `az` profile
+// (`AZURE_CONFIG_DIR`, docs/azure-access.md).
 //
 // SERVER-ONLY: handles Azure credentials. Never import from client components.
 export function buildMonitorCredential(): TokenCredential {

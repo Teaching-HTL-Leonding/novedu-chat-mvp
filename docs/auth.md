@@ -100,7 +100,7 @@ only sign-in provider. Key facts so future runs don't have to rediscover the set
   It is the only cookie better-auth sets here: the OAuth state of a sign-in round trip
   lives in `novedu_verification`, not in a cookie, because the instance has a database.
 - **`AUTH_URL`.** Unset locally: better-auth infers the base URL from the request.
-  Production sets `AUTH_URL` to the app's public base URL (`https://novedu.at/api/auth`;
+  Each Azure stage sets `AUTH_URL` to its public base URL (`https://app.novedu.at/api/auth` on prod;
   a value that already carries the `/api/auth` path is used as-is, a bare origin gets it
   appended) — that is what better-auth treats as its `baseURL` **and** as a trusted origin, so a POST from the real browser (the `/device`
   approve/deny actions, for instance) passes better-auth's origin check. It is also what

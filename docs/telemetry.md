@@ -316,13 +316,15 @@ production hosting of a non-Azure backend are out of scope.
 
 ## Operating the Azure path
 
-- **Querying:** the App Insights component is **workspace-based**
-  (`novedu-chat-mvp-ai`, backed by the `novedu-chat-mvp-logs` Log Analytics
-  workspace, RG `Novedu-Chat-MVP`, region `austriaeast`). Query it through the
-  **Log Analytics workspace using the `App*` table names** (`AppRequests`,
-  `AppDependencies`, `AppExceptions`, `AppEvents`, …). The classic component query
-  API (`az monitor app-insights query --app novedu-chat-mvp-ai`, lowercase
-  `requests`/`dependencies`/`exceptions`/`customEvents`) reads the same data.
+- **Querying:** each stage has its own **workspace-based** App Insights component
+  (`appi-novedu-dev` / `appi-novedu-prod`, backed by the shared `log-novedu` Log
+  Analytics workspace; `docs/azure-runtime-env.md`), reached with the new
+  environment's `az` profile (`docs/azure-access.md`). Query it with the **`App*`
+  table names** (`AppRequests`, `AppDependencies`, `AppExceptions`, `AppEvents`, …);
+  in the shared workspace, filter by the stage's `_ResourceId`. The classic
+  component query API (`az monitor app-insights query -g rg-novedu-<stage> --app
+  appi-novedu-<stage>`, lowercase `requests`/`dependencies`/`exceptions`/
+  `customEvents`) reads the same data, scoped to one stage.
 - **Sampling:** `AppRequests` is sampled and holds one row per SERVER span (see
   above); the `http.server.duration` metric in `AppMetrics` is the unsampled
   request count.
@@ -330,7 +332,7 @@ production hosting of a non-Azure backend are out of scope.
   (`docs/diagnostics.md`) queries the LLM calls, failed chat turns and chat-turn
   durations of this resource through the App Insights query API, addressed by the
   `ApplicationId` in the connection string. The app's identity needs **Reader** on
-  the resource — the old App Service's managed identity on `novedu-chat-mvp-ai`.
+  the resource — `ca-novedu-<stage>` on its own `appi-novedu-<stage>`.
 
 ## Tests
 

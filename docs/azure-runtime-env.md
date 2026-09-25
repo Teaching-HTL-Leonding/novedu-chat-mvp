@@ -1,32 +1,18 @@
-# Azure runtime environment: how Novedu is run (new environment)
+# Azure runtime environment: how Novedu is run
 
-How the new two-stage Azure environment is put together, what each resource is
+How the two-stage Azure environment is put together, what each resource is
 for, how the `dev` and `prod` stages are kept apart, and how an image reaches
 them. Read it before running any `az` command against `rg-novedu-shared` /
 `rg-novedu-dev` / `rg-novedu-prod`, before touching
 `scripts/db/provision-stage.*`, and before touching the deployment workflows.
 
-> **Status: under construction, not in use.** Novedu is in the middle of a
-> transition period between two Azure environments. **Production is still the
-> old environment**, which serves `novedu.at` and is what every other doc in
-> this repo describes (`docs/database.md`, `docs/images.md`, the
-> `novedu-publish` skill, …). Both stages here run the Novedu image, but
-> neither serves a user. The dev stage holds a copy of the production data
-> ("Data in the dev stage" below); the prod stage is empty.
+> **`docs/azure-access.md` is the entry point**: it carries the rules, the
+> tenant / subscription / admin-group ids, the separate `az` profile, how to get
+> access, and the old environment kept on standby. Do not run anything here
+> before reading it.
 >
-> **`docs/azure-access.md` is the entry point**: it carries the rules for the
-> transition period, the tenant / subscription / admin-group ids, the separate
-> `az` profile, and how to get access. Do not run anything here before reading
-> it.
->
-> | | |
-> |---|---|
-> | **Built so far** | the three resource groups; the shared Log Analytics workspace, Container Apps environment (incl. both storage definitions), container registry and Postgres server; per stage a Key Vault, a storage account with a provisioned image root, an Application Insights resource, a container app running the Novedu image off the mounted share, and a GitHub OIDC identity; every role assignment and both Postgres stage databases; the complete configuration of both stages — Key Vault secret values, the apps' secret references and environment variables, and both sign-in app registrations; the GitHub pipeline (publish → dev, manual promote → prod); the custom domains `dev.novedu.at` and `app.novedu.at` with their DNS records and managed certificates |
-> | **Not built yet** | prod's fixed single replica; Azure Foundry in the new tenant; the production data in the prod stage |
->
-> This block is updated as the build-out proceeds and removed once the
-> environment is production. Each section below marks what is designed but not
-> built.
+> Still open: Azure Foundry in the new tenant — both stages run on SCCH only
+> (*Deliberately not set* below).
 
 ## The staging concept
 
@@ -47,7 +33,7 @@ database, so sharing a server or an environment never shares data.
 | Container app | `ca-novedu-dev`, 0.5 vCPU / 1 GiB | `ca-novedu-prod`, 1 vCPU / 2 GiB |
 | Database | `novedu_dev` | `novedu_prod` |
 | Hostname | `dev.novedu.at` | `app.novedu.at` |
-| Replicas | 0–1 (scales to zero) | 0–1 while the stage is empty; exactly 1 once live |
+| Replicas | 0–1 (scales to zero) | exactly 1 |
 
 Each hostname is a custom domain on its container app (SNI binding) with a
 managed certificate of the environment `cae-novedu`, validated by CNAME. The
@@ -120,7 +106,7 @@ environment*) — purging one of those leaves the stage unable to restart.
 | Network | public endpoint, TLS |
 | Authentication | **Entra-only — password authentication is disabled** |
 | Entra admin | the security group `novedu-dev` |
-| Databases | `novedu_dev`, `novedu_prod` — each migrated by its own stage at boot. `novedu_dev` holds the copy of the production data (*Data in the dev stage*), `novedu_prod` is empty |
+| Databases | `novedu_dev`, `novedu_prod` — each migrated by its own stage at boot. `novedu_dev` holds the copy of the old environment's data (*Data in the dev stage*) and serves local development (`docs/database.md`) |
 
 The firewall is an "allow Azure services" rule plus one rule per developer
 machine IP. Adding one:
@@ -166,9 +152,8 @@ dependency never restarts the container. Next.js answers requests only once
 boot-time migrations. `/api/health` is teacher-only and checks dependencies —
 unsuitable on both counts.
 
-Both scale 0–1 and are reached at their custom domain (*The staging
-concept*). Prod's fixed single replica is **not built
-yet**; it comes with cutover.
+Dev scales 0–1, prod runs exactly one replica (min = max = 1); both are reached
+at their custom domain (*The staging concept*).
 
 ### Key Vault `kv-novedu-<stage>`
 
@@ -232,8 +217,8 @@ Only the dev GitHub identity may push images; the prod one only pulls and
 updates its own app, so a promotion can never introduce a new image.
 
 Human access runs entirely on the group's rights — nobody needs a personal role
-assignment. Group membership therefore includes prod; see
-`docs/azure-access.md` for what that means during the transition period.
+assignment. Group membership therefore includes prod and its production data
+(`docs/azure-access.md`).
 
 The resource groups also **inherit every assignment made on the subscription**
 `Novedu`. There it is the subscription Owners only — no Contributor, no service
@@ -269,15 +254,15 @@ versionless, so a new secret version needs no change to the app.
 
 | Key Vault secret | App secret | Environment variable | Value |
 |---|---|---|---|
-| `AUTH-SECRET` | `auth-secret` | `AUTH_SECRET` | dev: the same value as the old environment. prod: its own, randomly generated (32 bytes, base64) |
+| `AUTH-SECRET` | `auth-secret` | `AUTH_SECRET` | dev: the same value as the old environment on standby. prod: its own, randomly generated (32 bytes, base64) |
 | `AZURE-CLIENT-SECRET` | `azure-client-secret` | `AZURE_CLIENT_SECRET` | dev: the secret of the registration *Novedu Chat MVP*, shared with the old environment, expiring 2028-06-08. prod: the secret `novedu-prod` of *Novedu Chat (prod)*, expiring 2028-09-20. The vault secret's `expires` attribute carries the same date |
-| `SCCH-API-KEY` | `scch-api-key` | `SCCH_API_KEY` | the one SCCH key — the **only** secret that is identical in both stages and the old environment |
+| `SCCH-API-KEY` | `scch-api-key` | `SCCH_API_KEY` | the one SCCH key — the **only** secret that is identical in both stages |
 | `APPLICATIONINSIGHTS-CONNECTION-STRING` | `appinsights-connection-string` | `APPLICATIONINSIGHTS_CONNECTION_STRING` | the stage's own `appi-novedu-<stage>` |
 
 Apart from the SCCH key no secret is shared between the stages, so
 compromising dev's vault tells nobody anything about prod. Dev's `AUTH_SECRET`
-and client secret are, however, the old environment's values: until cutover,
-whoever reads dev's vault holds two secrets of the live production.
+and client secret are, however, the values of the old environment on standby
+(`docs/azure-access.md`): whoever reads dev's vault holds two of its secrets.
 
 ### Environment variables
 
@@ -328,7 +313,7 @@ app registrations in it:
 
 | Registration | Client id | Used by | Redirect URIs |
 |---|---|---|---|
-| *Novedu Chat MVP* | `4d44fc4b-0434-4981-9765-62e2074ceecb` | `ca-novedu-dev`, the old environment, local development | `https://dev.novedu.at/api/auth/callback/microsoft` beside the old environment's and localhost's |
+| *Novedu Chat MVP* | `4d44fc4b-0434-4981-9765-62e2074ceecb` | `ca-novedu-dev`, local development | `https://dev.novedu.at/api/auth/callback/microsoft` beside localhost's (and the old environment's) |
 | *Novedu Chat (prod)* | `d36756ba-5d79-4809-8a01-896d02639a34` | `ca-novedu-prod` | `https://app.novedu.at/api/auth/callback/microsoft` |
 
 Both are single-tenant, carry `groupMembershipClaims: All` with the optional
@@ -417,12 +402,13 @@ such default; there the group is a plain admin.
 
 ## Data in the dev stage
 
-`novedu_dev` and the dev image share hold a **copy of the production data**, so
-the stage can be exercised with realistic content. It is real student and
+`novedu_dev` and the dev image share hold a **copy of the old environment's
+data**, taken when its app was stopped, so teachers and students can continue
+activities that started there (the prod stage started empty). It is real student and
 teacher data: treat the dev stage like production when it comes to exporting or
-sharing what is in it. The prod stage stays empty until cutover.
+sharing what is in it. Everything created on dev since then lives beside it.
 
-The copy differs from production in four deliberate ways:
+The copy differs from the old environment in four deliberate ways:
 
 - **No chat messages.** `mastra.mastra_messages` is empty; the threads exist, so
   a stored chat opens with an empty transcript.
@@ -434,15 +420,11 @@ The copy differs from production in four deliberate ways:
 - **App-hosted file URLs point at the dev stage.** `novedu_codes.file_url` is an
   absolute URL, and the app resolves it from its own database only when it
   starts with the stage's `CODE_ORIGIN`; any other origin is fetched over
-  HTTPS. Every `…/api/files/…` URL of the production hostnames is therefore
-  rewritten to the dev origin. Changing a stage's hostname needs the same
-  rewrite. The current copy predates the custom domain and carries the
-  generated origin `https://ca-novedu-dev.salmonmeadow-98d2bbff.austriaeast.azurecontainerapps.io`:
-  those files are fetched over HTTPS from that still-reachable host, which
-  works but bypasses the database shortcut. The final data transfer writes
-  the stage's hostname.
+  HTTPS. Every `…/api/files/…` URL of the old hostnames was therefore
+  rewritten to `https://dev.novedu.at`. Changing a stage's hostname needs the
+  same rewrite.
 - **Only active images.** The share holds the bytes of the active image rows
-  under `images/<key>/content`; closed rows have no bytes in production either.
+  under `images/<key>/content`; closed rows had no bytes in the old environment either.
 
 Sign-in needs no mapping: both environments authenticate against the same Entra
 tenant and teacher group, so a user's `oid` finds their copied
@@ -464,8 +446,8 @@ built one.
 
 | Step | Where | What happens |
 |---|---|---|
-| Publish | `.github/workflows/docker-publish.yml` | QA gate, then the image is built **once** under the version tag and released to production (the old environment — Docker Hub plus the App Service webhook; legacy, it goes away at cutover). |
-| Deploy to dev | its `deploy-dev` job | Copies that very image registry-to-registry into `crnovedu` (same digest) and deploys it to `ca-novedu-dev`. A **separate job**, so a problem in the new environment never blocks the production release, and a red `deploy-dev` leaves production untouched. |
+| Publish | `.github/workflows/docker-publish.yml` | QA gate, then the image is built **once** under the version tag and pushed to Docker Hub (`rstropek/novedu-chat-mvp`, the version tag plus `:latest`) — the build artifact the next step copies. |
+| Deploy to dev | its `deploy-dev` job | Copies that very image registry-to-registry into `crnovedu` (same digest) and deploys it to `ca-novedu-dev`. A red `deploy-dev` leaves production untouched. |
 | Promote to prod | `.github/workflows/promote.yml`, manual | Verifies the version exists in `crnovedu` and deploys it to `ca-novedu-prod`. **Nothing is built.** |
 
 Both deploy steps go through the composite action
@@ -507,8 +489,7 @@ custom domains, `https://dev.novedu.at` and `https://app.novedu.at`.
 
 ### Constraints the pipeline respects
 
-- **One replica per stage is a hard limit** (dev 0–1, prod exactly 1 once
-  live). The Drizzle migrator takes no lock, and the pool maximum of 20
+- **One replica per stage is a hard limit** (dev 0–1, prod exactly 1). The Drizzle migrator takes no lock, and the pool maximum of 20
   connections (`lib/db/pool.ts`) is sized against what a `Standard_B1ms`
   offers (50).
 - **Single-revision mode** keeps the old revision serving until the new one is

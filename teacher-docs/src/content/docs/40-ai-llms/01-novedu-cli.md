@@ -4,8 +4,9 @@ description: What the Novedu command-line companion does for you, and how to ins
 sidebar:
   order: 1
 audience: teacher
-keywords: [CLI, novedu-cli, command line, AI skill, skills.sh, install, update, assistant]
+keywords: [CLI, novedu-cli, command line, AI skill, skills.sh, install, update, assistant, PROD, DEV, --server, NOVEDU_SERVER]
 related:
+  - 00-introduction/07-environments
   - 40-ai-llms/02-llms-txt
   - 10-yaml-for-teachers/04-cli-validation
   - 10-yaml-for-teachers/05-see-the-prompt
@@ -24,6 +25,52 @@ You don't install the CLI permanently. With Node.js (version 22 or newer) on you
 ```bash
 npx @novedu/cli --help
 ```
+
+## Working with PROD or DEV
+
+Novedu runs in two environments: PROD at `https://app.novedu.at` for your classes, and DEV at `https://dev.novedu.at` for trying new features and experimenting with activities. Every CLI command that talks to Novedu works with one of them. Checking a file and printing its prompt work offline and don't need either.
+
+### PROD, the default
+
+The CLI works with PROD unless you tell it otherwise, so for your class work you don't add anything:
+
+```bash
+npx @novedu/cli@latest login
+npx @novedu/cli@latest whoami
+npx @novedu/cli@latest codes list
+```
+
+`whoami` shows your name and the environment you are signed in to, so it's a quick way to check where the next command will go. `@latest` makes sure `npx` runs the current CLI and not an old copy from your computer's cache.
+
+### DEV, one command at a time
+
+To send a single command to DEV, add `--server https://dev.novedu.at` to it:
+
+```bash
+npx @novedu/cli@latest login --server https://dev.novedu.at
+npx @novedu/cli@latest whoami --server https://dev.novedu.at
+npx @novedu/cli@latest codes list --server https://dev.novedu.at
+```
+
+The CLI remembers your sign-in per environment. Signing in to DEV doesn't sign you out of PROD, so you can stay signed in to both and switch between them command by command.
+
+### DEV, for a whole terminal session
+
+When you work on DEV for a while, set the variable `NOVEDU_SERVER` once. Every command in that terminal then goes to DEV without the extra option. On macOS or Linux:
+
+```bash
+export NOVEDU_SERVER=https://dev.novedu.at
+npx @novedu/cli@latest whoami
+```
+
+In Windows PowerShell:
+
+```powershell
+$env:NOVEDU_SERVER = "https://dev.novedu.at"
+npx @novedu/cli@latest whoami
+```
+
+The variable lasts until you close the terminal. A `--server` option on a single command still wins over it, so `--server https://app.novedu.at` sends that one command to PROD.
 
 ## Why there is an AI skill for it
 
