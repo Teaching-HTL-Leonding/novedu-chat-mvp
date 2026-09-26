@@ -1,0 +1,47 @@
+---
+import Default from "@astrojs/starlight/components/Banner.astro";
+
+// Keeps Starlight's own frontmatter banner and adds the environment ribbon: the
+// guide's counterpart to the app's ribbon (components/environment-ribbon.tsx),
+// same hostnames and colours, but only the environment's name. PROD gets none:
+// the app's PROD ribbon exists only to point at the moved prototype data, which
+// is irrelevant to reading the guide. The guide is a static export, so the host
+// is read in the browser.
+---
+
+<Default />
+<div id="novedu-env-ribbon" hidden data-pagefind-ignore></div>
+
+<script>
+  const ENVIRONMENTS: Record<string, string> = {
+    localhost: "LOCAL",
+    "127.0.0.1": "LOCAL",
+    "[::1]": "LOCAL",
+    "dev.novedu.at": "DEV",
+  };
+
+  const name = ENVIRONMENTS[window.location.hostname.toLowerCase()];
+  const ribbon = document.getElementById("novedu-env-ribbon");
+  if (name && ribbon) {
+    ribbon.dataset.env = name;
+    ribbon.textContent = `You are in the ${name} environment.`;
+    ribbon.hidden = false;
+  }
+</script>
+
+<style>
+  /* Tailwind's colours from the app ribbon, as literal values — the guide has no Tailwind. */
+  #novedu-env-ribbon {
+    padding: 0.375rem var(--sl-nav-pad-x);
+    font-size: var(--sl-text-sm);
+    font-weight: 600;
+  }
+  #novedu-env-ribbon[data-env="LOCAL"] {
+    background: oklch(49.1% 0.27 292.581); /* violet-700 */
+    color: white;
+  }
+  #novedu-env-ribbon[data-env="DEV"] {
+    background: oklch(82.8% 0.189 84.429); /* amber-400 */
+    color: oklch(20.8% 0.042 265.755); /* slate-900 */
+  }
+</style>

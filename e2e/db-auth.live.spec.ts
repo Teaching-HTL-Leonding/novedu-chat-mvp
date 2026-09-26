@@ -32,10 +32,13 @@ test("a passwordless DATABASE_URL authenticates via Entra ID", {
   const pool = new Pool(config);
   try {
     const result = await pool.query<{ who: string; db: string }>(
-      "SELECT current_user AS who, current_database() AS db",
+      "SELECT session_user AS who, current_database() AS db",
     );
     const row = result.rows[0];
 
+    // session_user, not current_user: a login may switch role by default (the
+    // local group login `novedu-dev` acts as `ca-novedu-dev`, docs/database.md),
+    // but it is the login that authenticated.
     expect(row?.who).toBe(decodeURIComponent(new URL(url as string).username));
     expect(row?.db).toBeTruthy();
   } finally {

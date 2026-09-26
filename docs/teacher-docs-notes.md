@@ -49,6 +49,10 @@ prose carries everything an editor needs.
   to PROD, where prototype codes do not exist.
 - Codes, uploaded files, and images are per environment; only the school account
   is shared. The CLI's default is PROD.
+- The environment strip under the top bar: green = PROD, yellow = DEV (a violet
+  LOCAL one exists only on a developer's machine; leave it out). Its × hides it
+  for the browser tab's session, not permanently and not per account. The guide
+  shows the strip only on DEV (no PROD strip there), without the ×.
 
 ## 10-yaml-for-teachers/06-testing-the-grader
 

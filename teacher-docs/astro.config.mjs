@@ -36,6 +36,7 @@ export default defineConfig({
       title: GUIDE_TITLE,
       plugins: [starlightThemeRapide()],
       components: {
+        Banner: "./src/components/Banner.astro",
         MarkdownContent: "./src/components/MarkdownContent.astro",
       },
       // Sections come from src/lib/sections.ts, which mirrors
