@@ -139,10 +139,11 @@ dead-link check.
 
 `src/components/Banner.astro` (a Starlight component override, rendered at the
 top of `<main>`) keeps Starlight's frontmatter banner and adds the environment
-ribbon: a small browser script maps `location.hostname` to LOCAL / DEV / PROD
-and shows "You are in the … environment." in the app ribbon's colours
-(`components/environment-ribbon.tsx`, see `docs/styling.md`). Any other host
-shows nothing. The hostnames and colours are a deliberate literal copy of the
+ribbon: a small browser script maps `location.hostname` to LOCAL / DEV and
+shows "You are in the … environment." in the app ribbon's colours
+(`components/environment-ribbon.tsx`, see `docs/styling.md`). PROD and any other
+host show nothing — the app's PROD ribbon only points at the prototype data that
+moved to DEV, which does not concern the guide. The hostnames and colours are a deliberate literal copy of the
 app's — the guide has no Tailwind and imports nothing from the app — so change
 both together.
 

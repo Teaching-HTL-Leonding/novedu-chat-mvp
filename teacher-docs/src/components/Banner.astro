@@ -3,8 +3,10 @@ import Default from "@astrojs/starlight/components/Banner.astro";
 
 // Keeps Starlight's own frontmatter banner and adds the environment ribbon: the
 // guide's counterpart to the app's ribbon (components/environment-ribbon.tsx),
-// same hostnames and colours, but only the environment's name. The guide is a
-// static export, so the host is read in the browser.
+// same hostnames and colours, but only the environment's name. PROD gets none:
+// the app's PROD ribbon exists only to point at the moved prototype data, which
+// is irrelevant to reading the guide. The guide is a static export, so the host
+// is read in the browser.
 ---
 
 <Default />
@@ -16,7 +18,6 @@ import Default from "@astrojs/starlight/components/Banner.astro";
     "127.0.0.1": "LOCAL",
     "[::1]": "LOCAL",
     "dev.novedu.at": "DEV",
-    "app.novedu.at": "PROD",
   };
 
   const name = ENVIRONMENTS[window.location.hostname.toLowerCase()];
@@ -42,9 +43,5 @@ import Default from "@astrojs/starlight/components/Banner.astro";
   #novedu-env-ribbon[data-env="DEV"] {
     background: oklch(82.8% 0.189 84.429); /* amber-400 */
     color: oklch(20.8% 0.042 265.755); /* slate-900 */
-  }
-  #novedu-env-ribbon[data-env="PROD"] {
-    background: oklch(95% 0.052 163.051); /* emerald-100 */
-    color: oklch(37.8% 0.077 168.94); /* emerald-900 */
   }
 </style>
