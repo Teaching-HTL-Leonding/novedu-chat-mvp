@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppChrome } from "@/components/app-chrome";
+import { EnvironmentRibbon } from "@/components/environment-ribbon";
 import { StatusBar } from "@/components/status-bar";
 import { BRAND } from "@/lib/brand";
 import "katex/dist/katex.min.css";
@@ -32,6 +33,7 @@ export default function RootLayout({
         <AppChrome>
           <StatusBar />
         </AppChrome>
+        <EnvironmentRibbon />
         {children}
       </body>
     </html>

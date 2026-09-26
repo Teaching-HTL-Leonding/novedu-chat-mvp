@@ -135,6 +135,17 @@ Two consequences worth knowing:
 title. An unresolvable slug **throws, failing the build** — this is the corpus's
 dead-link check.
 
+### Environment ribbon
+
+`src/components/Banner.astro` (a Starlight component override, rendered at the
+top of `<main>`) keeps Starlight's frontmatter banner and adds the environment
+ribbon: a small browser script maps `location.hostname` to LOCAL / DEV / PROD
+and shows "You are in the … environment." in the app ribbon's colours
+(`components/environment-ribbon.tsx`, see `docs/styling.md`). Any other host
+shows nothing. The hostnames and colours are a deliberate literal copy of the
+app's — the guide has no Tailwind and imports nothing from the app — so change
+both together.
+
 ### Verification
 
 The **corpus contract is pinned by
