@@ -32,6 +32,17 @@ test.describe("as a teacher", () => {
     await expect(page.getByRole("link", { name: "Today" })).toHaveAttribute("aria-current", "page");
   });
 
+  test("the Last hour preset is a link that becomes active", async ({ page }) => {
+    await page.goto("/diagnostics?range=today&tz=Europe/Vienna");
+    await page.getByRole("link", { name: "Last hour" }).click();
+
+    await expect(page).toHaveURL(/[?&]range=last1h/);
+    await expect(page.getByRole("link", { name: "Last hour" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
   test("the page renders its configured state", async ({ page }) => {
     await page.goto("/diagnostics?range=yesterday&tz=Europe/Vienna");
     await expect(page.getByTestId("diagnostics-range-controls")).toBeVisible();

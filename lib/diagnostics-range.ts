@@ -9,15 +9,17 @@
 // instants the browser already converted (lib/datetime-local.ts), so it needs no
 // zone at all.
 
-export type DiagnosticsPreset = "today" | "yesterday" | "last7d";
+export type DiagnosticsPreset = "last1h" | "today" | "yesterday" | "last7d";
 
 export const DIAGNOSTICS_PRESETS: readonly DiagnosticsPreset[] = [
+  "last1h",
   "today",
   "yesterday",
   "last7d",
 ] as const;
 
 export const PRESET_LABELS: Record<DiagnosticsPreset, string> = {
+  last1h: "Last hour",
   today: "Today",
   yesterday: "Yesterday",
   last7d: "Last 7 days",
@@ -183,11 +185,13 @@ function rollingWindow(spanMs: number, now: Date, tz?: string): BinnedWindow {
 /**
  * A preset's window in a zone, with its bin. `today` is local midnight → now;
  * `yesterday` is the whole previous local day (23 h or 25 h on a DST day); both
- * start at local midnight, which is already a bin boundary. `last7d` is a rolling
- * 7 × 24 h ending now whose start is floored to its 1 h bin (counted from local
- * midnight), so it is up to one bin longer.
+ * start at local midnight, which is already a bin boundary. `last1h` and `last7d`
+ * are rolling windows of 60 min / 7 × 24 h ending now whose start is floored to
+ * their bin (1 min / 1 h, counted from local midnight), so each is up to one bin
+ * longer.
  */
 export function resolvePreset(preset: DiagnosticsPreset, tz: string, now: Date): BinnedWindow {
+  if (preset === "last1h") return rollingWindow(HOUR_MS, now, tz);
   if (preset === "last7d") return rollingWindow(7 * DAY_MS, now, tz);
   const today = zonedDate(now, tz);
   const todayStart = zonedMidnightUtc(today, tz);

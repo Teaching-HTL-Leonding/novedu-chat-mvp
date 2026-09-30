@@ -39,6 +39,15 @@ describe("RangeControls", () => {
     expect(screen.getByText("Custom")).toHaveAttribute("aria-current", "page");
   });
 
+  it("offers the presets in order, Last hour first", () => {
+    render(<RangeControls active="today" />);
+    const bar = screen.getByRole("navigation", { name: "Time range" });
+    const labels = Array.from(bar.querySelectorAll("a")).map((a) => a.textContent);
+    expect(labels).toEqual(["Last hour", "Today", "Yesterday", "Last 7 days"]);
+    const href = screen.getByRole("link", { name: "Last hour" }).getAttribute("href") ?? "";
+    expect(new URLSearchParams(href.split("?")[1]).get("range")).toBe("last1h");
+  });
+
   it("marks the active preset", () => {
     render(<RangeControls active="today" />);
     expect(screen.getByRole("link", { name: "Today" })).toHaveAttribute("aria-current", "page");

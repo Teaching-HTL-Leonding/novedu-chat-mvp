@@ -34,11 +34,12 @@ minutes late — the page says both.
 
 The UI thinks in the **viewer's** time zone; the server learns it from the URL.
 
-- Presets: `?range=today|yesterday|last7d&tz=<IANA zone>`. **Today** is local
-  midnight → now, **Yesterday** the whole previous local day (23 h / 25 h on a DST
-  day), **Last 7 days** a rolling 7 × 24 h ending now whose start is floored to its
-  1 h bin, counted from local midnight (so a half-hour zone gets bins on its local
-  hours). The server resolves them with the pure
+- Presets: `?range=last1h|today|yesterday|last7d&tz=<IANA zone>`. **Last hour** is
+  a rolling 60 min ending now whose start is floored to its 1 min bin, **Today** is
+  local midnight → now, **Yesterday** the whole previous local day (23 h / 25 h on a
+  DST day), **Last 7 days** a rolling 7 × 24 h ending now whose start is floored to
+  its 1 h bin, counted from local midnight (so a half-hour zone gets bins on its
+  local hours). The server resolves them with the pure
   `lib/diagnostics-range.ts` (`now` injected; Node ships full ICU), so reloading
   "Today" always shows fresh data.
 - Custom: `?from=<ISO UTC>&to=<ISO UTC>`, converted in the browser from two
@@ -50,9 +51,10 @@ The UI thinks in the **viewer's** time zone; the server learns it from the URL.
   range falls back to the last 24 hours, an unknown preset to Today — each with an
   inline notice.
 - Bin size by span: ≤ 3 h → 1 min, ≤ 24 h → 5 min, ≤ 7 d → 1 h, else 6 h. A
-  rolling window (Last 7 days, the 24 h fallback) picks its bin from the nominal
-  span, then floors its start down to that bin — the fallback in UTC — and keeps
-  the bin, although the floored window is up to one bin longer; `to` stays now.
+  rolling window (Last hour, Last 7 days, the 24 h fallback) picks its bin from
+  the nominal span, then floors its start down to that bin — the fallback in UTC —
+  and keeps the bin, although the floored window is up to one bin longer; `to`
+  stays now.
   Today and Yesterday start at local midnight; a custom range is used as given.
   Bins are aligned to the range start (`bin_at(timestamp, <bin>, datetime(<from>))`),
   and `binStarts` produces the same keys, so every chart is zero-filled key for key.
