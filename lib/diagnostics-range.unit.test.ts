@@ -46,6 +46,34 @@ describe("resolvePreset", () => {
     expect(resolvePreset("yesterday", "Europe/Vienna", now).bin).toBe("5m");
   });
 
+  describe("last1h = a rolling 60 min ending now, its start floored to the 1 min bin", () => {
+    const odd = new Date("2026-09-25T09:47:15.123Z");
+
+    it("floors to the minute on 1 min bins", () => {
+      const { from, to, bin } = resolvePreset("last1h", "Europe/Vienna", odd);
+      // Nominal start 08:47:15.123Z → 08:47:00Z.
+      expect(iso(from)).toBe("2026-09-25T08:47:00.000Z");
+      expect(to).toBe(odd);
+      expect(bin).toBe("1m");
+    });
+
+    it("never starts later than the nominal 60 min, and at most one bin earlier", () => {
+      for (const tz of ["Europe/Vienna", "Asia/Kolkata", "Pacific/Chatham", "UTC"]) {
+        const { from } = resolvePreset("last1h", tz, odd);
+        const nominal = odd.getTime() - H;
+        expect(from.getTime()).toBeLessThanOrEqual(nominal);
+        expect(nominal - from.getTime()).toBeLessThan(60_000);
+      }
+    });
+
+    it("crosses local midnight without snapping to it", () => {
+      const early = new Date("2026-09-24T22:20:30Z"); // 00:20:30 in Vienna
+      expect(iso(resolvePreset("last1h", "Europe/Vienna", early).from)).toBe(
+        "2026-09-24T21:20:00.000Z",
+      );
+    });
+  });
+
   describe("last7d = a rolling 7 × 24 h ending now, its start floored to the 1 h bin", () => {
     // Non-zero minutes, seconds and ms, so the flooring is actually exercised.
     const odd = new Date("2026-09-25T09:47:15.123Z");
@@ -321,6 +349,19 @@ describe("parseDiagnosticsParams", () => {
     expect(range.binKeys).toHaveLength(289);
     expect(range.key).toBe("2026-09-24T09:45:00.000Z_2026-09-25T09:47:15.123Z");
     expect(notice).toContain("start before it ends");
+  });
+
+  it("resolves last1h to 61 one-minute bins keyed from the floored start", () => {
+    const odd = new Date("2026-09-25T09:47:15.123Z");
+    const { range, notice } = resolved(
+      parseDiagnosticsParams({ range: "last1h", tz: "Europe/Vienna" }, odd),
+    );
+    expect(notice).toBeUndefined();
+    expect(range.source).toEqual({ kind: "preset", preset: "last1h", tz: "Europe/Vienna" });
+    expect(range.bin).toBe("1m");
+    expect(range.binKeys[0]).toBe("2026-09-25T08:47:00.000Z");
+    expect(range.binKeys).toHaveLength(61);
+    expect(range.key).toBe("2026-09-25T08:47:00.000Z_2026-09-25T09:47:15.123Z");
   });
 
   it("keeps last7d on 1 h bins after flooring (regression: 7 d + 47 min is 6 h by span)", () => {
