@@ -46,7 +46,7 @@ teacher-docs/
   CHAPTERS.md          the chapter manifest = the information architecture
   src/content/docs/    human-owned markdown, the source of truth
   assets/              curated images (see screenshots note below)
-  src/ scripts/ astro.config.mjs   the Astro site that renders the corpus at /docs
+  src/ scripts/ astro.config.mjs   the Astro site that renders the corpus (docs.novedu.at)
 docs/
   teacher-docs-notes.md  per-chapter guardrails: reader job + facts easy to get wrong
 ```

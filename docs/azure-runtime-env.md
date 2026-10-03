@@ -21,7 +21,7 @@ state or its rights; everything stateless and expensive to duplicate is shared.
 
 | Per stage (isolated) | Shared between the stages |
 |---|---|
-| resource group, Key Vault, storage account + file share, Postgres database, App Insights, container app + its managed identity, GitHub deploy identity | Container Apps environment, Postgres *server*, container registry, Log Analytics workspace |
+| resource group, Key Vault, storage account + file share, Postgres database, App Insights, container app + its managed identity, GitHub deploy identity | Container Apps environment, Postgres *server*, container registry, Log Analytics workspace, the teacher guide's Static Web App |
 
 The isolation is what makes the shared parts safe: a stage's identity holds
 rights only on its own stage's resources and can only connect to its own
@@ -39,9 +39,11 @@ Each hostname is a custom domain on its container app (SNI binding) with a
 managed certificate of the environment `cae-novedu`, validated by CNAME. The
 apps still answer under their generated `*.austriaeast.azurecontainerapps.io`
 names, but the app's configuration (`AUTH_URL`, `CODE_ORIGIN`) names the custom
-domain, so sign-in works only there.
+domain, so sign-in works only there. The teacher guide has one version for both
+stages, at `docs.novedu.at` (`swa-novedu-docs` below).
 
-Everything is in **Austria East**, and every resource carries the tags
+Everything is in **Austria East** (except the Static Web App, which the Free
+plan does not offer there), and every resource carries the tags
 `project=novedu` and `stage=shared|dev|prod`. There is **no
 infrastructure-as-code**: the environment is built from an ordered runbook of
 `az` commands, dev first, prod as an exact replay with different values. That
@@ -115,6 +117,30 @@ machine IP. Adding one:
 AZURE_CONFIG_DIR=~/.htl-azure-novedu az postgres flexible-server firewall-rule create \
   -g rg-novedu-shared --server-name psql-novedu \
   --name <rule> --start-ip-address <ip> --end-ip-address <ip>
+```
+
+### `swa-novedu-docs` — Static Web App (teacher guide)
+
+| | |
+|---|---|
+| Plan / region | Free, West Europe |
+| Hostname | `docs.novedu.at`, a custom domain validated by CNAME to the default hostname `blue-sky-0a21f7b03.6.azurestaticapps.net`, with an SWA-managed certificate |
+| Source | none linked — content is uploaded by `promote.yml` only (`docs/teacher-docs.md`) |
+| Deploy rights | `id-novedu-gh-prod` holds Contributor on this resource, to read the deployment token at runtime |
+
+Serves the static teacher guide — one version, released with each promotion and
+built from the promoted image's commit. Recreating it from scratch:
+
+```bash
+AZURE_CONFIG_DIR=~/.htl-azure-novedu az staticwebapp create \
+  -n swa-novedu-docs -g rg-novedu-shared -l westeurope --sku Free \
+  --tags project=novedu stage=shared
+# the DNS CNAME docs.novedu.at → <new default hostname> (external DNS admin), then:
+AZURE_CONFIG_DIR=~/.htl-azure-novedu az staticwebapp hostname set \
+  -n swa-novedu-docs -g rg-novedu-shared --hostname docs.novedu.at
+AZURE_CONFIG_DIR=~/.htl-azure-novedu az role assignment create \
+  --assignee-object-id <principalId of id-novedu-gh-prod> --assignee-principal-type ServicePrincipal \
+  --role Contributor --scope <resource id of swa-novedu-docs>
 ```
 
 ## Per-stage resources
@@ -204,14 +230,15 @@ run from another branch — or a fork PR — cannot obtain one
 ## Identity and access
 
 The complete list of role assignments inside the environment — **no identity
-of one stage holds any right on the other stage's resources**:
+of one stage holds any right on the other stage's resources** (the docs Static
+Web App is a shared resource, not a stage's):
 
 | Principal | Rights |
 |---|---|
 | group `novedu-dev` | Owner on the three resource groups; Key Vault Secrets Officer on both vaults; Entra admin of `psql-novedu` |
 | `ca-novedu-<stage>` (system-assigned MI) | AcrPull on `crnovedu`; Key Vault Secrets User on **its own** stage's vault; a Postgres role in **its own** stage's database; Reader on **its own** stage's `appi-novedu-<stage>` |
 | `id-novedu-gh-dev` | AcrPush on `crnovedu`; Contributor on the resource `ca-novedu-dev` |
-| `id-novedu-gh-prod` | AcrPull on `crnovedu`; Contributor on the resource `ca-novedu-prod` |
+| `id-novedu-gh-prod` | AcrPull on `crnovedu`; Contributor on the resource `ca-novedu-prod`; Contributor on the resource `swa-novedu-docs` |
 
 Only the dev GitHub identity may push images; the prod one only pulls and
 updates its own app, so a promotion can never introduce a new image.
@@ -448,7 +475,7 @@ built one.
 |---|---|---|
 | Publish | `.github/workflows/docker-publish.yml` | QA gate, then the image is built **once** under the version tag and pushed to Docker Hub (`rstropek/novedu-chat-mvp`, the version tag plus `:latest`) — the build artifact the next step copies. |
 | Deploy to dev | its `deploy-dev` job | Copies that very image registry-to-registry into `crnovedu` (same digest) and deploys it to `ca-novedu-dev`. A red `deploy-dev` leaves production untouched. |
-| Promote to prod | `.github/workflows/promote.yml`, manual | Verifies the version exists in `crnovedu` and deploys it to `ca-novedu-prod`. **Nothing is built.** |
+| Promote to prod | `.github/workflows/promote.yml`, manual | Verifies the version exists in `crnovedu` and deploys it to `ca-novedu-prod`. **No image is built.** Then publishes the teacher guide, built from that image's commit (in a job without Azure access), to `swa-novedu-docs`. |
 
 Both deploy steps go through the composite action
 `.github/actions/deploy-stage`: `az containerapp update --image`, then poll the
@@ -465,8 +492,10 @@ gh workflow run promote.yml                        # the version dev currently r
 ```
 
 An empty `version` resolves to what dev reports at `/api/version`. **Rollback is
-the same command with an older version.** Migrations are forward-only, so
-rolling back across one only works if that migration was backward-compatible.
+the same command with an older version**, and it rolls the teacher guide back
+too — except to a version from before the guide had its own host, which leaves
+the guide as it is. Migrations are forward-only, so rolling back across one only
+works if that migration was backward-compatible.
 
 ### GitHub configuration
 
@@ -552,6 +581,9 @@ az containerapp show -g rg-novedu-<stage> -n ca-novedu-<stage> --query "{
   registries:properties.configuration.registries[].{server:server,identity:identity},
   volumes:properties.template.volumes[].{name:name,storage:storageName,type:storageType},
   mounts:properties.template.containers[0].volumeMounts }"
+
+# The teacher guide's Static Web App: custom domain and its status
+az staticwebapp hostname list -n swa-novedu-docs -g rg-novedu-shared -o table
 
 # The GitHub OIDC federated credentials, per stage
 az identity federated-credential list \

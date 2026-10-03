@@ -14,10 +14,9 @@ conventions here, never the other way round. Aim for correct and useful; a human
 reviews each change before it lands, so the odd rough edge is fine and gets fixed
 on the next pass.
 
-The site ships **publicly at `/docs` inside the Novedu web app**: the Docker image
-build compiles it (Astro `base: '/docs'`) and stages `dist/` into the app's
-`public/docs/`; `proxy.ts` deliberately excludes the prefix from the Entra gate.
-See `docs/teacher-docs.md` for the full serving + CI/CD mechanics.
+The site ships **publicly at https://docs.novedu.at**, an Azure Static Web App
+that `promote.yml` uploads `dist/` to, built from the promoted image's commit.
+See `docs/teacher-docs.md` for the full hosting + CI/CD mechanics.
 
 ## Layout
 
@@ -28,7 +27,7 @@ See `docs/teacher-docs.md` for the full serving + CI/CD mechanics.
 | `CHAPTERS.md` | human | the chapter manifest = the information architecture |
 | `src/content/docs/` | human | the markdown corpus, the source of truth |
 | `assets/` | curated | images (screenshots are curated, not auto-captured, for now) |
-| `src/`, `scripts/`, `astro.config.mjs` | app | the Astro Starlight site that renders the corpus and ships publicly at `/docs` |
+| `src/`, `scripts/`, `astro.config.mjs` | app | the Astro Starlight site that renders the corpus and ships publicly at docs.novedu.at |
 
 ## Before you edit a chapter
 
@@ -40,10 +39,9 @@ scope rule, the writing style) live in the **`novedu-teacher-docs` skill**.
 ## Commands (from the repo root)
 
 ```bash
-npm run docs:dev       # dev server, http://localhost:4321/docs/
+npm run docs:dev       # dev server, http://localhost:4321/
 npm run docs:build     # static build to teacher-docs/dist/
 npm run docs:preview   # serve the build output
-npm run docs:stage     # build + copy into public/docs so next dev/start serve /docs
 npm run typecheck      # includes this workspace's `astro check` leg
 ```
 
@@ -67,22 +65,21 @@ dead `related:` slugs (build failure), and a post-build output check
   — the [llms.txt](https://llmstxt.org) surface for AI agents, built from the same
   content collection the pages come from (so it follows chapter edits with no
   extra step):
-  - `/docs/llms.txt` — a table of contents: every chapter as
+  - `/llms.txt` — a table of contents: every chapter as
     `- [Title](absolute .md URL): description`, grouped under its section heading.
-  - `/docs/<section>/<chapter>.md` — each chapter's **Markdown twin**: appending
+  - `/<section>/<chapter>.md` — each chapter's **Markdown twin**: appending
     `.md` to any page URL returns that page's Markdown. The corpus is plain
     Markdown with no MDX or components, so a twin is the chapter body verbatim
     (any leading HTML comment stripped) plus its title, description and a footer
     linking back to the index and the HTML page.
-  - `/docs/llms-full.txt` — every chapter concatenated, for agents that prefer one
+  - `/llms-full.txt` — every chapter concatenated, for agents that prefer one
     fetch over following the index.
 
-  They are ordinary `src/pages/` routes, so they land in `dist/` unprefixed like
-  every page and end up under `/docs/` once `dist/` is staged into the app's
-  `public/docs/`.
+  They are ordinary `src/pages/` routes, so they land in `dist/` like every
+  page.
 - `scripts/verify-dist.mjs` — post-build guard run by the `build` script: fails
   loudly if any corpus chapter is missing its page in `dist/`, if the site chrome
-  (index, 404, Pagefind) is absent, or if any chapter is missing its Markdown twin
+  (index, 404, Pagefind, `staticwebapp.config.json`) is absent, or if any chapter is missing its Markdown twin
   or its entry in `llms.txt` / `llms-full.txt` — an empty or partial site can never
   build green.
 
@@ -98,8 +95,8 @@ dead `related:` slugs (build failure), and a post-build output check
   directory), not Ctrl-C alone.
 - The build logs `Entry docs → 404 was not found.` — Starlight looking for an
   optional custom 404 chapter in the corpus. Harmless.
-- **`site` is hardcoded to the public origin** (`https://app.novedu.at`, beside `base`
-  in `astro.config.mjs`), because the llms.txt link index needs absolute URLs.
+- **`site` is hardcoded to the public origin** (`https://docs.novedu.at`, in
+  `astro.config.mjs`), because the llms.txt link index needs absolute URLs.
   Two knock-on effects: Starlight's built-in `@astrojs/sitemap` — registered on
   every build — emits `dist/sitemap-index.xml` + `sitemap-0.xml`, and every page
   gets a `<link rel="canonical">` / `og:url` pointing at that origin regardless of
@@ -110,10 +107,10 @@ dead `related:` slugs (build failure), and a post-build output check
   HTML pages show Starlight's typographic ones (`don't` vs `don’t`) and keep
   Markdown constructs unexpanded. That is the point — an agent gets the source a
   teacher would edit.
-- **`/docs/**.md` needs `Content-Disposition: inline`** (a `headers()` rule in the
-  app's `next.config.ts`): Next serves `.md` as `text/markdown`, which browsers
-  download rather than display. Without that rule the twins still work for agents
-  but can't be read in a tab.
+- **`.md` needs `Content-Disposition: inline`** (the `/*.md` route in
+  `public/staticwebapp.config.json`, the Static Web App's config): `.md` is served
+  as `text/markdown`, which browsers download rather than display. Without that
+  rule the twins still work for agents but can't be read in a tab.
 - The injected "Related chapters" heading is not part of the right-hand "On this
   page" ToC (that ToC is built from the markdown headings).
 

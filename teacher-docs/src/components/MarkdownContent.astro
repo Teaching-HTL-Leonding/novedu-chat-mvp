@@ -2,7 +2,6 @@
 import { CardGrid, LinkCard } from "@astrojs/starlight/components";
 import Default from "@astrojs/starlight/components/MarkdownContent.astro";
 import { getEntry } from "astro:content";
-import { withBase } from "../lib/paths.ts";
 
 // Renders the frontmatter `related:` slugs as link cards after the chapter body.
 const { entry } = Astro.locals.starlightRoute;
@@ -17,7 +16,7 @@ const cards = await Promise.all(
         `[teacher-docs] related: slug "${slug}" in chapter "${entry.id}" matches no chapter`,
       );
     }
-    return { title: target.data.title, href: withBase(import.meta.env.BASE_URL, `${target.id}/`) };
+    return { title: target.data.title, href: `/${target.id}/` };
   }),
 );
 ---

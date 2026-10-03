@@ -1,5 +1,5 @@
 /**
- * /docs/<section>/<chapter>.md — the Markdown twin of every chapter: appending
+ * /<section>/<chapter>.md — the Markdown twin of every chapter: appending
  * `.md` to a page URL returns that page's source Markdown. This is what the
  * llms.txt table of contents links to.
  *

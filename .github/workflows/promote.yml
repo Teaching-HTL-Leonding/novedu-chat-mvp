@@ -2,13 +2,21 @@ name: Promote to prod
 
 # New Azure environment (docs/azure-runtime-env.md): deploys an image version
 # that docker-publish.yml already built — and the dev stage already ran — to the
-# prod stage. Nothing is built here. Rollback = run it with an older version
-# (migrations are forward-only, so rolling back across one needs that migration
-# to have been backward-compatible).
+# prod stage, then publishes the teacher guide built from that image's commit to
+# docs.novedu.at (docs/teacher-docs.md). No image is built here. Rollback = run
+# it with an older version (migrations are forward-only, so rolling back across
+# one needs that migration to have been backward-compatible); the guide rolls
+# back with it.
 #
-# SECURITY: no secrets. The prod identity accepts an OIDC token only for the
-# GitHub environment `production`, which is restricted to `main` — so neither a
-# push nor a run from another branch can reach prod (docs/ci-security.md).
+# The app deploys first, the guide second. If the guide step fails, re-run the
+# failed jobs: both deploys are idempotent.
+#
+# SECURITY: no stored credential. The prod identity accepts an OIDC token only
+# for the GitHub environment `production`, which is restricted to `main` — so
+# neither a push nor a run from another branch can reach prod. The guide is
+# built (npm ci + third-party build code) in `docs-build`, which holds NO
+# id-token; only `promote` can obtain the prod identity, and it builds nothing
+# (docs/ci-security.md).
 on:
   workflow_dispatch:
     inputs:
@@ -22,17 +30,16 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  id-token: write
   contents: read
 
 jobs:
-  promote:
+  docs-build:
     runs-on: ubuntu-latest
-    environment: production
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.sha.outputs.sha }}
+      docs: ${{ steps.layout.outputs.docs }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
       # The input reaches the shell through env, never inline in the script.
       - name: Resolve the version
         id: version
@@ -51,6 +58,88 @@ jobs:
           echo "Promoting $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      # The commit the image was built from (Dockerfile ARG APP_GIT_SHA), read
+      # anonymously from the public Docker Hub copy of the same image.
+      - name: Resolve the image's commit
+        id: sha
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          sha=$(docker buildx imagetools inspect "docker.io/rstropek/novedu-chat-mvp:$VERSION" --format '{{json .Image}}' \
+            | jq -r '.config.Env[] | select(startswith("APP_GIT_SHA=")) | sub("^APP_GIT_SHA="; "")')
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::image $VERSION carries no commit sha: '$sha'"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the image's commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.sha.outputs.sha }}
+
+      # An image from before the guide moved to its own host has no Static Web
+      # App config; its guide expects /docs. Leave docs.novedu.at as it is.
+      - name: Check the guide's layout
+        id: layout
+        run: |
+          if [ -f teacher-docs/public/staticwebapp.config.json ]; then
+            echo "docs=build" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::this commit predates docs.novedu.at — the teacher guide stays at its current version"
+            echo "docs=skip" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v6
+        if: steps.layout.outputs.docs == 'build'
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Build the teacher guide
+        if: steps.layout.outputs.docs == 'build'
+        env:
+          SHA: ${{ steps.sha.outputs.sha }}
+        run: |
+          npm ci
+          npm run docs:build
+          echo "$SHA" > teacher-docs/dist/version.txt
+
+      - uses: actions/upload-artifact@v7
+        if: steps.layout.outputs.docs == 'build'
+        with:
+          name: teacher-guide
+          path: teacher-docs/dist/
+          if-no-files-found: error
+
+  promote:
+    needs: docs-build
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      VERSION: ${{ needs.docs-build.outputs.version }}
+      SHA: ${{ needs.docs-build.outputs.sha }}
+      DOCS: ${{ needs.docs-build.outputs.docs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Fetched before anything deploys, so a broken handoff never leaves a half
+      # deployment.
+      - name: Download the teacher guide
+        if: env.DOCS == 'build'
+        uses: actions/download-artifact@v8
+        with:
+          name: teacher-guide
+          path: guide
+
+      - name: Check the teacher guide
+        if: env.DOCS == 'build'
+        run: test -f guide/staticwebapp.config.json
+
       - name: Log in to Azure (OIDC)
         uses: azure/login@v3
         with:
@@ -62,8 +151,6 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Verify the version exists in the registry
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
         run: |
           az acr login --name crnovedu
           docker buildx imagetools inspect "crnovedu.azurecr.io/novedu:$VERSION" > /dev/null
@@ -72,5 +159,47 @@ jobs:
         uses: ./.github/actions/deploy-stage
         with:
           stage: prod
-          version: ${{ steps.version.outputs.version }}
+          version: ${{ env.VERSION }}
           base-url: ${{ vars.PROD_BASE_URL }}
+
+      # The Static Web App's deployment token is fetched at runtime and never
+      # stored in GitHub (docs/ci-security.md).
+      - name: Fetch the guide's deployment token
+        if: env.DOCS == 'build'
+        run: |
+          token=$(az staticwebapp secrets list --name swa-novedu-docs --resource-group rg-novedu-shared \
+            --query properties.apiKey --output tsv)
+          if [ -z "$token" ]; then
+            echo "::error::no deployment token for swa-novedu-docs"
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "SWA_DOCS_TOKEN=$token" >> "$GITHUB_ENV"
+
+      - name: Deploy the teacher guide
+        if: env.DOCS == 'build'
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          action: upload
+          azure_static_web_apps_api_token: ${{ env.SWA_DOCS_TOKEN }}
+          app_location: guide
+          output_location: ""
+          api_location: ""
+          skip_app_build: true
+          skip_api_build: true
+
+      - name: Wait until the guide reports the commit
+        if: env.DOCS == 'build'
+        run: |
+          deadline=$((SECONDS + 300))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            running=$(curl -fsS -m 30 https://docs.novedu.at/version.txt 2>/dev/null || true)
+            if [ "$running" = "$SHA" ]; then
+              echo "docs.novedu.at serves $SHA"
+              exit 0
+            fi
+            echo "waiting: docs.novedu.at reports '${running:-no answer}'"
+            sleep 10
+          done
+          echo "::error::docs.novedu.at did not report $SHA within 5 minutes"
+          exit 1

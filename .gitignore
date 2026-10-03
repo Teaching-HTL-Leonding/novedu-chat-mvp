@@ -39,10 +39,9 @@ node_modules/
 # cli build output (published from dist; rebuilt by `npm run cli:build`)
 /cli/dist/
 
-# teacher-docs build artifacts (staged into the app via `npm run docs:stage`)
+# teacher-docs build artifacts
 /teacher-docs/.astro/
 /teacher-docs/dist/
-/public/docs/
 
 # misc
 .DS_Store

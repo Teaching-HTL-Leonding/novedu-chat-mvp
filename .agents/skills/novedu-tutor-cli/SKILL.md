@@ -25,9 +25,10 @@ like a newer flag or command might already cover it.
 
 For up-to-date teacher-facing documentation on any Novedu feature (activity
 YAML fields, codes, quizzes, providers, …), fetch the machine-readable teacher
-guide: <https://app.novedu.at/docs/llms.txt> is the index, `llms-full.txt` beside
+guide: <https://docs.novedu.at/llms.txt> is the index, `llms-full.txt` beside
 it the full corpus, and every chapter has a `.md` twin at its own URL. Prefer
-it over guessing — it is generated from the same corpus the `/docs` site serves.
+it over guessing — it is generated from the same corpus the guide's HTML pages
+at docs.novedu.at come from.
 
 ## Pick the invocation
 

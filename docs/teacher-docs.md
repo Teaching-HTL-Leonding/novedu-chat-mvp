@@ -5,18 +5,19 @@ One folder, `teacher-docs/`, holds two coupled pieces: the **corpus**
 Markdown — and the **site** (the rest of the folder) — an Astro Starlight workspace
 that renders it. The corpus is authoritative and site-agnostic: plain Markdown that
 would survive any renderer, and the site adapts to its conventions, never the
-reverse. Nothing in the Next.js app imports either.
+reverse. Nothing in the Next.js app imports either, and the app does not serve
+the guide: it is a separate static site at **https://docs.novedu.at**.
 
 > TL;DR: to change a chapter, edit it in `teacher-docs/src/content/docs/` — by hand or via
 > the `novedu-teacher-docs` skill — after reading its entry in
 > `docs/teacher-docs-notes.md`. Chapters are kept current by reasoning over the
 > git diff of a code change, with `teacher-docs/CHAPTERS.md` as the map from app
 > area to chapter. To see the guide, `npm run docs:dev`
-> (http://localhost:4321/docs/). In production it ships **publicly at `/docs`
-> inside the web app**, with `/docs/llms.txt` (a table of contents), a `.md` twin
-> of every chapter, and `/docs/llms-full.txt` alongside it for AI agents. The
-> corpus-contract unit test and the site build (`npm run docs:build`) are the
-> corpus's consistency checks.
+> (http://localhost:4321/). In production it ships **publicly at
+> https://docs.novedu.at** (an Azure Static Web App, released by `promote.yml`),
+> with `/llms.txt` (a table of contents), a `.md` twin of every chapter, and
+> `/llms-full.txt` alongside it for AI agents. The corpus-contract unit test and
+> the site build (`npm run docs:build`) are the corpus's consistency checks.
 
 ## The corpus (`teacher-docs/src/content/docs/`)
 
@@ -54,9 +55,9 @@ live in the **`novedu-teacher-docs` skill**. Note: `.claude` is a symlink to
 ## The site (`teacher-docs/`)
 
 Astro 7 + Starlight + `starlight-theme-rapide`, the `@novedu/teacher-docs` npm
-workspace next to `cli`. Root scripts: `docs:dev` / `docs:build` / `docs:preview` / `docs:stage` (stage
-into the app's `public/docs/` for local end-to-end testing). Ships at **`/docs`
-inside the web app** — see "Serving at `/docs`" below. No custom CSS.
+workspace next to `cli`. Root scripts: `docs:dev` / `docs:build` / `docs:preview`.
+Ships at the root of **https://docs.novedu.at** — see "Hosting on docs.novedu.at"
+below. No custom CSS.
 
 ### Content pipeline
 
@@ -80,10 +81,9 @@ inside the web app** — see "Serving at `/docs`" below. No custom CSS.
   `src/pages/` over one builder (`src/lib/llms.ts`), not a plugin — see "llms.txt
   and the Markdown twins" below.
 - Those routes need Astro's **`site`**, since the table of contents is nothing but
-  absolute URLs — hence the second single seam beside `base` in `astro.config.mjs`
-  (`https://app.novedu.at`, hardcoded; the CLI keeps its own overridable default in
-  `cli/src/server-url.ts`, and the root README's "Changing the public domain"
-  checklist ties every occurrence together). Knock-on effects to know about:
+  absolute URLs — the single seam for the guide's origin in `astro.config.mjs`
+  (`https://docs.novedu.at`, hardcoded; the root README's "Changing the public
+  domain" checklist ties every occurrence together). Knock-on effects to know about:
   Starlight registers `@astrojs/sitemap` on every build, and with a `site` set it
   emits `sitemap-index.xml` + `sitemap-0.xml` into `dist/` (HTML pages only — the
   `.md`/`.txt` routes are not listed), and every page gains a canonical / `og:url` tag pointing at that origin. Both are
@@ -95,11 +95,10 @@ inside the web app** — see "Serving at `/docs`" below. No custom CSS.
 - The schema extends Starlight's `docsSchema` with the corpus fields; `audience`
   and `keywords` are required, `related` defaults to `[]`. A chapter
   violating the contract fails the build with a zod error naming the file.
-- URL slugs keep the numeric prefixes (`/docs/30-sharing-activities/01-creating-codes`)
+- URL slugs keep the numeric prefixes (`/30-sharing-activities/01-creating-codes`)
   so they match `related:` slugs exactly.
-- Every internal link derives from the **single `base` constant in
-  `astro.config.mjs`** (`/docs`): the `.astro` components use
-  `import.meta.env.BASE_URL` and join through `src/lib/paths.ts` `withBase()`.
+- The site is served at the root of its origin (no Astro `base`), so internal
+  links are plain root-relative paths (`/<section>/<chapter>/`).
 
 ### llms.txt and the Markdown twins
 
@@ -113,9 +112,9 @@ alternatives fare worse — `@wave-rf/starlight-llm-tools` peer-depends on
 
 | Route | Output |
 | --- | --- |
-| `llms.txt.ts` | `/docs/llms.txt` — the table of contents: title, description, a preamble pointing agents at the `novedu-tutor-cli` skill chapter (the id is pinned as `CLI_CHAPTER_ID` in `src/lib/llms.ts` and build-verified against the corpus), then one `- [Title](absolute .md URL): description` line per chapter under its `## <section>` heading (sections from `sections.ts`, chapters by their frontmatter `sidebar.order` — the same key the Starlight sidebar sorts by). |
-| `[...slug].md.ts` | `/docs/<section>/<chapter>.md` — the chapter's **Markdown twin**: `# title`, `> description`, the body verbatim, and a footer linking the HTML page + the index. Pattern ends in `.md`, so it never collides with Starlight's `[...slug]` page catch-all. |
-| `llms-full.txt.ts` | `/docs/llms-full.txt` — every chapter concatenated in reading order behind a one-line `<SYSTEM>` header. |
+| `llms.txt.ts` | `/llms.txt` — the table of contents: title, description, a preamble pointing agents at the `novedu-tutor-cli` skill chapter (the id is pinned as `CLI_CHAPTER_ID` in `src/lib/llms.ts` and build-verified against the corpus), then one `- [Title](absolute .md URL): description` line per chapter under its `## <section>` heading (sections from `sections.ts`, chapters by their frontmatter `sidebar.order` — the same key the Starlight sidebar sorts by). |
+| `[...slug].md.ts` | `/<section>/<chapter>.md` — the chapter's **Markdown twin**: `# title`, `> description`, the body verbatim, and a footer linking the HTML page + the index. Pattern ends in `.md`, so it never collides with Starlight's `[...slug]` page catch-all. |
+| `llms-full.txt.ts` | `/llms-full.txt` — every chapter concatenated in reading order behind a one-line `<SYSTEM>` header. |
 
 Two consequences worth knowing:
 
@@ -134,18 +133,6 @@ Two consequences worth knowing:
 `related:` slug against the collection by entry id and showing the target's real
 title. An unresolvable slug **throws, failing the build** — this is the corpus's
 dead-link check.
-
-### Environment ribbon
-
-`src/components/Banner.astro` (a Starlight component override, rendered at the
-top of `<main>`) keeps Starlight's frontmatter banner and adds the environment
-ribbon: a small browser script maps `location.hostname` to LOCAL / DEV and
-shows "You are in the … environment." in the app ribbon's colours
-(`components/environment-ribbon.tsx`, see `docs/styling.md`). PROD and any other
-host show nothing — the app's PROD ribbon only points at the prototype data that
-moved to DEV, which does not concern the guide. The hostnames and colours are a deliberate literal copy of the
-app's — the guide has no Tailwind and imports nothing from the app — so change
-both together.
 
 ### Verification
 
@@ -168,61 +155,60 @@ except a `teacher-docs/**/*.astro`-scoped override in `biome.json`
 false-positive as unused; the scope keeps the rules live for any future
 `.astro` files elsewhere).
 
-## Serving at `/docs` inside the web app
+## Hosting on docs.novedu.at
 
-The guide is **public for everybody** at `https://<host>/docs` — deliberately no
-Entra sign-in in front of it. The moving parts:
+The guide is **public for everybody** — deliberately no Entra sign-in in front of
+it — and is not served by the Next.js app at all. The moving parts:
 
-- **Astro `base: '/docs'`** (the single constant in `astro.config.mjs`); local
-  `docs:dev` therefore serves at `http://localhost:4321/docs/`.
-- **The Docker image build compiles the site**: the `deps` stage copies
-  `teacher-docs/package.json` so `npm ci` installs the workspace, and the
-  `builder` stage runs `npm run docs:build` and copies `teacher-docs/dist` to
-  `public/docs/` before `next build`. The standalone runner serves it as plain static files —
-  same origin, no second deployment. The `builder` stage copies **both**
-  `node_modules` trees from `deps` — the root one *and*
-  `teacher-docs/node_modules`: npm cannot hoist a workspace dep whose root slot
-  is taken by an incompatible version, and the docs site has exactly one such
-  dep (`cookie@2`, shadowed at the root by express's `cookie@0.7.2` via
-  `@copilotkit/runtime`). Astro's static build resolves it from disk when it
-  imports the prerender entry back out of `dist/`, so the docs build fails in
-  the image without that second tree — and only there, since a local
-  `npm install` leaves the workspace tree in place. Always validate a change to
-  astro or that dependency with a real `docker build .`.
-- **`proxy.ts` excludes `docs(?:/|$)`** — the deliberate, path-bounded public
-  exclusion (see the AGENTS.md security block and `docs/auth.md`).
-- **`next.config.ts` `rewrites.afterFiles`** supply directory-index resolution
-  (Next's `public/` serving is exact-path only): `/docs` → `/docs/index.html`,
-  `/docs/:path+` → `/docs/:path+/index.html`. They run only when no real file
-  matched, so `_astro/*` and Pagefind assets are untouched; Astro's
-  trailing-slash links first hit Next's own `/x/` → `/x` 308.
-- **Local**: `npm run docs:stage` builds the site and copies it into
-  `public/docs/` (gitignored) so `next dev`/`next start` serve `/docs` like
-  production does.
-- **The non-HTML artifacts mostly need no wiring of their own.**
-  `/docs/llms.txt`, `/docs/llms-full.txt`, the per-chapter `/docs/<chapter>.md` twins,
-  `/docs/sitemap-index.xml` and `/docs/sitemap-0.xml` are public and correctly
-  typed purely by virtue of the mechanics above: the Dockerfile's
-  `cp -r teacher-docs/dist public/docs` carries them, `public/`'s exact-path serving matches them before the `afterFiles`
-  rewrites get a look in (so no `/index.html` suffix is ever appended), and the
-  `docs(?:/|$)` proxy exclusion covers the whole prefix. No `Dockerfile` or
-  `proxy.ts` change was needed.
-- **The one exception is `next.config.ts` `headers()`**: `/docs/:path*.md` gets
-  `Content-Disposition: inline`, because Next types `.md` as `text/markdown`, which
-  browsers download instead of rendering. Agents don't care, humans do — and it
-  matches how other docs sites serve their twins. Path-bounded like the rewrites;
-  the HTML pages and the `.txt` files are unaffected (verified by probing a
-  `docs:stage`d `next dev`).
+- **Azure Static Web App `swa-novedu-docs`** (Free, `rg-novedu-shared`, one
+  version for both stages) with the custom domain `docs.novedu.at`
+  (CNAME-validated, SWA-managed certificate). Resource, domain and the deploy
+  identity's role are in `docs/azure-runtime-env.md`.
+- **`teacher-docs/public/staticwebapp.config.json`**, copied into `dist/` by
+  Astro (and required by `scripts/verify-dist.mjs`), holds the only host
+  configuration:
+  - `.md` is served as `text/markdown; charset=utf-8` with
+    `Content-Disposition: inline` (route `/*.md`) — browsers would otherwise
+    download the twins instead of showing them. Agents don't care, humans do.
+  - `.txt` is served as `text/plain; charset=utf-8`.
+  - A 404 rewrites to Starlight's `404.html`.
+  Everything else is the host's default: directory `index.html` resolution with
+  and without a trailing slash, HTTPS, cache invalidation on deploy.
+- **The app's former `/docs` paths** permanently redirect (308) to the same path
+  on docs.novedu.at — `next.config.ts` `redirects()`, built from
+  `TEACHER_GUIDE_URL` (`lib/teacher-guide.ts`, which the nav menu and the
+  environment ribbon link through too). Redirects run before `proxy.ts`, so
+  signed-out visitors and agents get them without a matcher exclusion.
+- **Release = promotion.** `promote.yml` builds the guide from the commit of the
+  image it promotes (the image's `APP_GIT_SHA`), so docs.novedu.at describes the
+  app that app.novedu.at runs, and a rollback rolls the guide back too. The build
+  writes that commit to `/version.txt`, which the workflow polls after the upload.
+  A commit from before this hosting (no `staticwebapp.config.json`) leaves the
+  guide as it is. Because the image version is the release unit,
+  `docker-publish.yml` still builds an image for a guide-only change.
+- **`cookie@2`**: npm cannot hoist every workspace dep to the root — a package
+  whose root slot is taken by an incompatible version lands in the workspace's
+  own `node_modules`. The site has exactly one such dep (`cookie@2`, shadowed at
+  the root by express's `cookie@0.7.2` via `@copilotkit/runtime`), declared in
+  `teacher-docs/package.json` and pinned by the root `overrides`. Astro's static
+  build resolves it from disk when it imports the prerender entry back out of
+  `dist/`, so the docs build needs that workspace tree in place — which a plain
+  `npm ci` provides.
 
 ### CI/CD
 
 - `qa.yml` runs `npm run docs:build` (and the corpus-contract test rides
-  `test:unit`); the `prod-build` job exercises the full image build including
-  the docs stage.
+  `test:unit`).
 - `.github/workflows/docs.yml` is the light, **secret-free** gate for the PRs
   `qa.yml` skips via its `**.md` paths-ignore (docs-only changes): site unit
   tests + workspace typecheck + `docs:build` on `teacher-docs/**` changes.
 - `docker-publish.yml` re-includes `teacher-docs/**` in its push paths (last
-  matching pattern wins), so a merged corpus change publishes a fresh image —
-  otherwise production `/docs` would go stale. The `novedu-publish` skill notes
-  this.
+  matching pattern wins), so a merged corpus change publishes a fresh image
+  version — the unit `promote.yml` releases. The image itself does not contain
+  the guide.
+- `promote.yml` builds the guide in its `docs-build` job, which holds **no**
+  `id-token` (npm ci and the Astro build run third-party code), hands `dist/`
+  over as an artifact, and the `production` job uploads it with the Static Web
+  App's deployment token, fetched at runtime with the prod OIDC identity and
+  never stored in GitHub (`docs/ci-security.md`). The `novedu-publish` skill
+  notes this.

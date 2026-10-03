@@ -181,8 +181,9 @@ Finer-grained access is by Entra **group** membership, but the result is a plain
   YAML-hosting GET, the public `/api/coding` routes (gated by the per-user API key —
   `docs/coding.md`), the CLI/API bearer routes (`/api/me`, `/api/codes`, `/api/reports`,
   `/api/images`, `/api/eval` — each self-gates via `requireBearerUser`/`requireBearerTeacher`,
-  `docs/api.md`), `/docs` (the static teacher guide, public by intent —
-  `docs/teacher-docs.md`), and static assets. `GET /api/image-content/<id>` — the
+  `docs/api.md`), and static assets. The former teacher-guide paths `/docs/*` need no
+  exclusion: `next.config.ts` 308-redirects them to docs.novedu.at, and redirects run
+  before the proxy (`docs/teacher-docs.md`). `GET /api/image-content/<id>` — the
   route that serves app-hosted image bytes — is deliberately NOT excluded: it uses
   the normal cookie session, stays behind this gate like any page, and its handler
   calls `getSession()` itself on top of that. It applies no further authorization

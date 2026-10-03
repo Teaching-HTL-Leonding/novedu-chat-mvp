@@ -2,9 +2,7 @@
 .github
 node_modules
 **/node_modules
-teacher-docs/dist
-teacher-docs/.astro
-public/docs
+teacher-docs
 .next
 out
 build

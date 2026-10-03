@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { IconButton } from "@/components/ui/icon-button";
+import { TEACHER_GUIDE_URL } from "@/lib/teacher-guide";
 import { cn } from "@/lib/utils";
 
 // A coloured ribbon under the status bar naming the environment this page runs
@@ -9,8 +10,7 @@ import { cn } from "@/lib/utils";
 // read from the browser's own hostname — the server renders nothing and the
 // ribbon appears after hydration. The "X" hides it for the rest of the tab's
 // session; the root layout persists across client navigations, so it never
-// re-appears while someone works. The teacher guide shows the same colours in
-// teacher-docs/src/components/Banner.astro.
+// re-appears while someone works.
 
 export type AppEnvironment = "local" | "dev" | "prod";
 
@@ -29,7 +29,7 @@ export function environmentForHost(hostname: string): AppEnvironment | null {
   }
 }
 
-const ENVIRONMENTS_CHAPTER = "/docs/00-introduction/07-environments";
+const ENVIRONMENTS_CHAPTER = `${TEACHER_GUIDE_URL}/00-introduction/07-environments/`;
 
 const RIBBONS: Record<
   AppEnvironment,

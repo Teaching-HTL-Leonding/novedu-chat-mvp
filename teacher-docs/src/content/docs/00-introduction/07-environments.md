@@ -46,7 +46,7 @@ The Novedu command-line tool (the CLI) works with PROD unless you tell it otherw
 
 ## How to tell where you are
 
-A colored strip under the top bar names the environment on every page: green for PROD, yellow for DEV. The address in your browser shows it too, `app.novedu.at` or `dev.novedu.at`. If the strip gets in your way, select the **×** at its right end. It stays hidden until you open Novedu in a new tab or restart your browser. On DEV, this teacher guide shows a yellow strip too.
+A colored strip under the top bar names the environment on every page: green for PROD, yellow for DEV. The address in your browser shows it too, `app.novedu.at` or `dev.novedu.at`. If the strip gets in your way, select the **×** at its right end. It stays hidden until you open Novedu in a new tab or restart your browser. This teacher guide has an address of its own, `docs.novedu.at`, and is the same for PROD and DEV, so it shows no strip.
 
 ## What we had during the prototype phase
 

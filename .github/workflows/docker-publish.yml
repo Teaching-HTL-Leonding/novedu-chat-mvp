@@ -5,9 +5,10 @@ on:
     branches: [main]
     # A doc-only or sample-spec push doesn't change the image — skip the
     # build/publish/deploy entirely. Mixed pushes (code + docs) still publish.
-    # EXCEPTION: teacher-docs/** is re-included (last matching pattern wins) —
-    # the teacher guide ships INSIDE the image at /docs, so a corpus change must
-    # trigger a publish or the deployed docs go stale.
+    # EXCEPTION: teacher-docs/** is re-included (last matching pattern wins).
+    # The image no longer contains the guide, but its version is the release
+    # unit: promote.yml builds the guide from the promoted image's commit, so a
+    # corpus change needs an image of its own to ever reach docs.novedu.at.
     # Manual runs (workflow_dispatch) always build regardless of what changed.
     paths:
       - '**'
