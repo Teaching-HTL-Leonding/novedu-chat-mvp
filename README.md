@@ -1,4 +1,9 @@
-# Chat Prototype
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="novedu-brand-assets/svg/novedu-n-and-text-light.svg">
+  <img src="novedu-brand-assets/svg/novedu-n-and-text.svg" alt="Novedu" width="320">
+</picture>
+
+# Novedu
 
 A prototype web app for **YAML-defined AI learning activities**. A teacher authors an
 activity as YAML (hosted on a public URL or in-app), mints a short **code** for it, and

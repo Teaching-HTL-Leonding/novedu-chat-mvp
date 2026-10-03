@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">Novedu symbol</title>
+<desc id="desc">An angular N with a separated page fold, inspired by learning and HTL Leonding's folded ribbon geometry.</desc>
+<path fill="#0A529A" d="M32 224V32H80L176 128V80L224 32V224H176L80 128V224Z"/><path fill="#86B5D7" d="M80 32L176 128V224L80 128Z"/><path fill="#DC931A" d="M176 32H208L176 64Z"/>
+</svg>

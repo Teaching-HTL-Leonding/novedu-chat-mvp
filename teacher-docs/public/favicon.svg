@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+<title id="title">Novedu symbol</title>
+<desc id="desc">An angular N with a separated page fold, inspired by learning and HTL Leonding's folded ribbon geometry.</desc>
+<!-- Merges novedu-brand-assets/favicons/favicon.svg and its light/ variant (for dark backgrounds): the browser picks the palette that matches its tab bar. -->
+<style>
+.n{fill:#0A529A}.r{fill:#86B5D7}.f{fill:#DC931A}
+@media (prefers-color-scheme:dark){.n{fill:#C7E3F5}.f{fill:#F4B544}}
+</style>
+<path class="n" d="M32 224V32H80L176 128V80L224 32V224H176L80 128V224Z"/><path class="r" d="M80 32L176 128V224L80 128Z"/><path class="f" d="M176 32H208L176 64Z"/>
+</svg>

@@ -53,12 +53,16 @@ export const config = {
   // Image BYTES are served by GET /api/image-content/<id>, which deliberately
   // has NO exclusion: it is a cookie-session route, so it belongs under this
   // gate — and the `api/images(?:/|$)` boundary above keeps it there.
+  // The app icons (`app/favicon.ico`, `app/icon.svg`, `app/apple-icon.png`) are
+  // static assets every page links to, the signed-out /sign-in included, so
+  // they are excluded; `icon.svg` / `apple-icon.png` are anchored to the exact
+  // file so no route can ride them.
   // Without a matcher the proxy would also run on _next/static, blocking CSS/JS.
   // Every API exclusion is anchored with a path boundary (`(?:/|$)`) so none
   // can silently widen to a future sibling route (e.g. a hypothetical
   // /api/files-export must NOT ride the /api/files exclusion past the cookie
   // gate).
   matcher: [
-    "/((?!api/auth(?:/|$)|sign-in(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|api/reports(?:/|$)|api/images(?:/|$)|api/eval(?:/|$)|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth(?:/|$)|sign-in(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|api/reports(?:/|$)|api/images(?:/|$)|api/eval(?:/|$)|_next/static|_next/image|favicon.ico|icon\\.svg$|apple-icon\\.png$).*)",
   ],
 };
