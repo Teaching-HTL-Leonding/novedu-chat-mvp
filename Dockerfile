@@ -5,12 +5,9 @@
 
 FROM node:24-alpine AS deps
 WORKDIR /app
-# The teacher-docs workspace manifest comes along so `npm ci` also installs
-# the docs site's deps (astro/starlight) — the builder stage builds the teacher
-# guide into public/docs. The cli workspace stays out: nothing in the image
-# needs it.
+# The workspaces (cli, teacher-docs) stay out: nothing in the image needs them.
+# The teacher guide is a separate static site (docs/teacher-docs.md).
 COPY package.json package-lock.json ./
-COPY teacher-docs/package.json ./teacher-docs/package.json
 RUN npm ci
 
 FROM node:24-alpine AS builder
@@ -30,23 +27,10 @@ ENV AZURE_CLIENT_ID=build-placeholder \
     AUTH_SECRET=build-placeholder \
     DATABASE_URL=postgresql://build:placeholder@localhost:5432/build
 COPY --from=deps /app/node_modules ./node_modules
-# npm cannot hoist EVERY workspace dep to the root — a package whose root slot is
-# already taken by an incompatible version lands in the workspace's own
-# node_modules instead. The teacher-docs workspace has exactly one such dep
-# (cookie@2, shadowed at the root by express's cookie@0.7.2 via
-# @copilotkit/runtime), and astro's static build resolves it from disk at build
-# time, so the docs build dies without this tree. See docs/teacher-docs.md.
-COPY --from=deps /app/teacher-docs/node_modules ./teacher-docs/node_modules
 COPY . .
 # public/ is not git-tracked, so it is absent in CI checkouts; the runner stage
-# COPYs it unconditionally. The teacher guide (teacher-docs, an Astro
-# static export with base '/docs') is built here and staged into public/docs —
-# the standalone server serves it as plain static files, public by intent
-# (proxy.ts excludes /docs; see docs/teacher-docs.md).
-RUN mkdir -p public \
-    && npm run docs:build \
-    && cp -r teacher-docs/dist public/docs \
-    && npm run build
+# COPYs it unconditionally.
+RUN mkdir -p public && npm run build
 
 FROM node:24-alpine AS runner
 WORKDIR /app

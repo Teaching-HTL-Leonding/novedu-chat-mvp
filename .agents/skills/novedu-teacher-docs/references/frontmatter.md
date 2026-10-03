@@ -26,7 +26,7 @@ Field notes:
 - **title**: teacher-facing, task-shaped. Not the app's internal noun.
 - **description**: one sentence, ≤ ~160 chars. Serves as the page meta
   description and is published verbatim as the chapter's summary line in the
-  guide's machine-readable index (`/docs/llms.txt`, with `title` as the link
+  guide's machine-readable index (`/llms.txt`, with `title` as the link
   text), so make it a faithful summary, not marketing.
 - **sidebar.order**: position within the section; mirrors the chapter's numeric
   prefix. Section grouping comes from the folder. The published site sorts both

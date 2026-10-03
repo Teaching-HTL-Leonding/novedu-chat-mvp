@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { TEACHER_GUIDE_URL } from "./lib/teacher-guide";
 
 const nextConfig: NextConfig = {
   // Emit a self-contained server (.next/standalone) for the Docker image — see
@@ -36,38 +37,15 @@ const nextConfig: NextConfig = {
   // Code creation lives at `/codes/new` (the list page owns the "New code"
   // button). The old share entry points 308-redirect there so any lingering link
   // still lands somewhere useful (the teacher re-picks the file/module).
+  // The teacher guide lives on its own host; its former /docs paths map one to
+  // one onto it (chapters, .md twins, llms.txt). Redirects run before proxy.ts,
+  // so they reach signed-out visitors and agents without a matcher exclusion.
   async redirects() {
     return [
       { source: "/share-tutor", destination: "/codes/new", permanent: true },
       { source: "/share-quiz", destination: "/codes/new", permanent: true },
-    ];
-  },
-  // The teacher guide is a static Astro export in public/docs/ (built with
-  // base '/docs' — see teacher-docs/ and docs/teacher-docs.md). Next's
-  // public/ serving is exact-path only, so these afterFiles rewrites supply the
-  // directory-index resolution a static host would: they run only when no real
-  // file matched, so /docs/_astro/*.css and friends are untouched, while
-  // /docs/<chapter> lands on the exported <chapter>/index.html. (Astro's
-  // trailing-slash links first hit Next's own /docs/x/ → /docs/x 308.)
-  async rewrites() {
-    return {
-      afterFiles: [
-        { source: "/docs", destination: "/docs/index.html" },
-        { source: "/docs/:path+", destination: "/docs/:path+/index.html" },
-      ],
-    };
-  },
-  // Every guide chapter also ships as a Markdown twin at /docs/<chapter>.md for
-  // AI agents (see the llms.txt index). Next serves those with `Content-Type:
-  // text/markdown`, which browsers download instead of showing, so mark them
-  // inline — the twins are meant to be readable in a tab, like the .txt files
-  // beside them. Scoped to /docs/**.md; nothing else in the app serves Markdown.
-  async headers() {
-    return [
-      {
-        source: "/docs/:path*.md",
-        headers: [{ key: "Content-Disposition", value: "inline" }],
-      },
+      { source: "/docs", destination: `${TEACHER_GUIDE_URL}/`, permanent: true },
+      { source: "/docs/:path*", destination: `${TEACHER_GUIDE_URL}/:path*`, permanent: true },
     ];
   },
 };

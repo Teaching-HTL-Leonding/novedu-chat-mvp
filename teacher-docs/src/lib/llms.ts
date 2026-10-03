@@ -11,7 +11,6 @@
  */
 import { getCollection } from "astro:content";
 import { GUIDE_DESCRIPTION, GUIDE_TITLE } from "./guide";
-import { withBase } from "./paths";
 import { SECTIONS, sectionDir, sectionLabel } from "./sections";
 
 /** A corpus chapter, reduced to what the llms.txt surface needs. */
@@ -67,10 +66,9 @@ export async function loadChapters(): Promise<Chapter[]> {
     .map(({ chapter }) => chapter);
 }
 
-/** Absolute URL of a path under the deploy base, e.g. "llms.txt" or "<id>.md". */
+/** Absolute URL of a site-root path, e.g. "llms.txt" or "<id>.md". */
 export function docsUrl(site: URL | undefined, path: string): string {
-  const relative = withBase(import.meta.env.BASE_URL, path);
-  return site ? new URL(relative, site).href : relative;
+  return site ? new URL(path, site).href : `/${path}`;
 }
 
 /** Chapter rendered as Markdown: title, description blockquote, body. */

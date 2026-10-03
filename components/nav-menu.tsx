@@ -6,6 +6,7 @@ import { useState } from "react";
 import { iconButtonVariants } from "@/components/ui/icon-button";
 import { MENU_ITEM, MENU_PANEL } from "@/components/ui/menu";
 import { BRAND } from "@/lib/brand";
+import { TEACHER_GUIDE_URL } from "@/lib/teacher-guide";
 import { cn } from "@/lib/utils";
 import { rememberedListHref } from "./list-filter-memory";
 import { usePopover } from "./use-popover";
@@ -29,7 +30,7 @@ const NAV_ITEMS = [
   { href: "/health", label: "Health", heading: "Health", teacherOnly: true },
   { href: "/diagnostics", label: "Diagnostics", heading: "LLM Diagnostics", teacherOnly: true },
   {
-    href: "/docs",
+    href: TEACHER_GUIDE_URL,
     label: "Teacher Guide",
     heading: "Teacher Guide",
     teacherOnly: false,
@@ -111,10 +112,10 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
           <ul>
             {items.map((item) => (
               <li key={item.href}>
-                {item.href === "/docs" ? (
-                  // The guide is a static export outside Next's router, and it has
-                  // no navigation back into the app — so it gets its own tab and
-                  // the teacher returns by closing it.
+                {item.href === TEACHER_GUIDE_URL ? (
+                  // The guide is a separate site with no navigation back into the
+                  // app — so it gets its own tab and the teacher returns by
+                  // closing it.
                   <a
                     href={item.href}
                     target="_blank"

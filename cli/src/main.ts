@@ -10,7 +10,6 @@ import { registerPrompts } from "./commands/prompts";
 import { registerReports } from "./commands/reports";
 import { registerValidate } from "./commands/validate";
 import { registerWhoami } from "./commands/whoami";
-import { resolveServerUrl } from "./server-url";
 import { cliVersion } from "./version";
 
 // Entry point for the `novedu-cli` CLI. Each feature registers itself as a
@@ -19,16 +18,17 @@ import { cliVersion } from "./version";
 // management commands (`codes`, `files`).
 const program = new Command();
 
+// The teacher guide is its own static site, independent of --server/NOVEDU_SERVER.
+const DOCS_URL = "https://docs.novedu.at";
+
 program
   .name("novedu-cli")
   .description("Command-line companion for the Novedu chat app")
-  // Derived from the resolved server so a --server/NOVEDU_SERVER override (or a
-  // domain change via DEFAULT_SERVER) keeps the pointer correct automatically.
   .addHelpText(
     "after",
-    `\nDocs: the Novedu teacher guide lives at ${resolveServerUrl()}/docs — ` +
-      `machine-readable at ${resolveServerUrl()}/docs/llms.txt (index) and ` +
-      `${resolveServerUrl()}/docs/llms-full.txt (full corpus).`,
+    `\nDocs: the Novedu teacher guide lives at ${DOCS_URL} — ` +
+      `machine-readable at ${DOCS_URL}/llms.txt (index) and ` +
+      `${DOCS_URL}/llms-full.txt (full corpus).`,
   )
   .version(cliVersion());
 

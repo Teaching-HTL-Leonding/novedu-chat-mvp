@@ -24,7 +24,7 @@ run untrusted PR code.**
 | **`qa.yml`** | `pull_request` to `main`, `workflow_call` | **Yes** | **No** — secret-free |
 | **`docs.yml`** | `pull_request` to `main` (teacher-docs paths) | **Yes** | **No** — secret-free |
 | **`docker-publish.yml`** | `push` to `main`, `workflow_dispatch` | No | Yes — in `build-and-push` only |
-| **`promote.yml`** | `workflow_dispatch`, in the environment `production` | No | **No** — OIDC only |
+| **`promote.yml`** | `workflow_dispatch`; job `promote` in the environment `production` | No | **No stored secret** — OIDC only |
 
 - **`qa.yml`** is the per-PR quality gate (biome, typecheck, unit + component
   tests, `next build`, Playwright e2e — hermetic + DB-backed `@live-db` — and a
@@ -70,9 +70,15 @@ run untrusted PR code.**
     reaches Azure by OIDC (below) and holds none of the Docker Hub credentials
     above.
 - **`promote.yml`** deploys an image version that already sits in the Azure
-  registry to the prod stage; it builds nothing and runs no PR code. It is
-  **secret-free** for the same reason — OIDC only — and runs in the GitHub
-  environment `production`.
+  registry to the prod stage and publishes the teacher guide built from that
+  image's commit (already on `main` — no PR code). No image is rebuilt. Its
+  `docs-build` job runs `npm ci` + the Astro build and holds **no** `id-token`;
+  only the `promote` job, in the GitHub environment `production`, can obtain the
+  prod identity, and it builds nothing. That job fetches the docs Static Web
+  App's deployment token at runtime (`az staticwebapp secrets list`), masks it
+  and uses it for the upload — the token is long-lived on Azure's side but
+  **never stored in GitHub**. Rule: **no job that can obtain the production
+  Azure identity runs `npm ci` or a build.**
 
 ## Azure deploys: OIDC federation, no stored credential
 
@@ -81,8 +87,9 @@ run untrusted PR code.**
 short-lived OIDC token that GitHub mints for the run and Azure exchanges for an
 access token, against a user-assigned identity per stage.
 
-- **`id-token: write` is granted per job**, to those two and to
-  `publish-cli.yml`'s npm trusted publishing — nowhere else. A job cannot grant
+- **`id-token: write` is granted per job**, to those two (`deploy-dev` and
+  `promote.yml`'s `promote` job) and to `publish-cli.yml`'s npm trusted
+  publishing — nowhere else. A job cannot grant
   itself the permission, and the token is worthless without a matching
   federated subject on the other side.
 - **The federated subjects are exact.** The dev identity trusts only
@@ -92,7 +99,9 @@ access token, against a user-assigned identity per stage.
   subject any identity trusts** — the exchange fails before any Azure call.
   `deploy-dev` additionally carries `if: github.ref == 'refs/heads/main'`.
 - **The `production` environment is restricted to `main`** (deployment
-  branches), which is what makes the prod subject reachable only from `main`.
+  branches), which is what makes the prod subject reachable only from `main` —
+  by any job that declares that environment and `id-token: write`; today that is
+  only `promote.yml`'s `promote` job.
   That branch restriction is part of the trust chain — **do not loosen it**; a
   required reviewer may be added on top.
 - **Client, tenant and subscription ids are plain `vars.*`, not secrets.** They

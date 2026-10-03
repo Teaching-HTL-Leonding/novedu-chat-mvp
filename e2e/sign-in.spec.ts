@@ -1,10 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
+import { TEACHER_GUIDE_URL } from "../lib/teacher-guide";
 import { COOKIE_NAME } from "./auth.constants";
 import { sessionCookieValue } from "./session-cookie";
 
-// The app's ONE public page (besides the teacher guide): everything the proxy
+// The app's ONE public page: everything the proxy
 // bounces lands here. Cookie-free on purpose — with the project's minted session
 // state the redirect under test would never happen.
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -34,6 +35,17 @@ test("a gated page bounces here carrying where it wanted to go", async ({ page }
 
   await expect(page).toHaveURL("/sign-in?callbackURL=%2Fcodes");
   await expect(page.getByRole("button", { name: "Sign in with Microsoft" })).toBeVisible();
+});
+
+test("the former /docs paths redirect to the teacher guide, ahead of the gate", async ({
+  request,
+}) => {
+  // next.config.ts redirects run before proxy.ts, so signed-out agents following
+  // an old llms.txt link reach the guide's host instead of /sign-in.
+  const res = await request.get("/docs/llms.txt", { maxRedirects: 0 });
+
+  expect(res.status()).toBe(308);
+  expect(res.headers().location).toBe(`${TEACHER_GUIDE_URL}/llms.txt`);
 });
 
 test("a cookie the server cannot resolve lands on a page offering sign-in", async ({

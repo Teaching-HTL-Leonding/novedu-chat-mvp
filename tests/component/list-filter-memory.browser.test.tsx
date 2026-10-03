@@ -22,6 +22,7 @@ import { BackLink } from "@/components/back-link";
 import { listFilterKey, rememberedListHref } from "@/components/list-filter-memory";
 import { NavMenu } from "@/components/nav-menu";
 import { RememberListFilter } from "@/components/remember-list-filter";
+import { TEACHER_GUIDE_URL } from "@/lib/teacher-guide";
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -60,7 +61,7 @@ test("the teacher guide opens in its own tab", async () => {
   await screen.getByRole("button", { name: "Open navigation menu" }).click();
 
   const guide = screen.getByRole("link", { name: "Teacher Guide (opens in a new tab)" }).element();
-  expect(guide.getAttribute("href")).toBe("/docs");
+  expect(guide.getAttribute("href")).toBe(TEACHER_GUIDE_URL);
   expect(guide.getAttribute("target")).toBe("_blank");
   expect(guide.getAttribute("rel")).toBe("noopener");
 });

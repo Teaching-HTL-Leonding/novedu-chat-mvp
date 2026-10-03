@@ -53,16 +53,12 @@ export const config = {
   // Image BYTES are served by GET /api/image-content/<id>, which deliberately
   // has NO exclusion: it is a cookie-session route, so it belongs under this
   // gate — and the `api/images(?:/|$)` boundary above keeps it there.
-  // The /docs prefix is the teacher guide: a static export of teacher-docs,
-  // copied into public/docs/ at image build and PUBLIC BY INTENT (docs for
-  // everybody, no sign-in — see docs/teacher-docs.md). Path-bounded like the API
-  // exclusions so a future /docs-something route does not ride it.
   // Without a matcher the proxy would also run on _next/static, blocking CSS/JS.
   // Every API exclusion is anchored with a path boundary (`(?:/|$)`) so none
   // can silently widen to a future sibling route (e.g. a hypothetical
   // /api/files-export must NOT ride the /api/files exclusion past the cookie
   // gate).
   matcher: [
-    "/((?!api/auth(?:/|$)|sign-in(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|api/reports(?:/|$)|api/images(?:/|$)|api/eval(?:/|$)|docs(?:/|$)|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth(?:/|$)|sign-in(?:/|$)|api/version(?:/|$)|api/files(?:/|$)|api/coding(?:/|$)|api/me(?:/|$)|api/codes(?:/|$)|api/reports(?:/|$)|api/images(?:/|$)|api/eval(?:/|$)|_next/static|_next/image|favicon.ico).*)",
   ],
 };

@@ -1,5 +1,5 @@
 /**
- * /docs/llms.txt — the table of contents an AI agent starts from: one entry per
+ * /llms.txt — the table of contents an AI agent starts from: one entry per
  * chapter, grouped by section, each pointing at the chapter's Markdown twin
  * (see `[...slug].md.ts`). Absolute URLs, hence the `site` in astro.config.mjs.
  */

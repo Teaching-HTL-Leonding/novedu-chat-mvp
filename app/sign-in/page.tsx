@@ -4,7 +4,7 @@ import { BRAND } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 import { SignInButton } from "./sign-in-button";
 
-// The app's only public page besides the teacher guide: the proxy redirects every
+// The app's only public page: the proxy redirects every
 // unauthenticated request here with the path it wanted as `callbackURL`.
 //
 // It renders WITHOUT the app chrome (components/app-chrome.tsx), so it carries

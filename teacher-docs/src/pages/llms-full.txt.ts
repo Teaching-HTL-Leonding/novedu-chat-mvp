@@ -1,5 +1,5 @@
 /**
- * /docs/llms-full.txt — the whole guide as one Markdown document, for agents
+ * /llms-full.txt — the whole guide as one Markdown document, for agents
  * that would rather ingest everything than follow the llms.txt index.
  */
 import type { APIRoute } from "astro";

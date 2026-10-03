@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { STUDENT_MODE_COOKIE } from "../lib/student-mode-constants";
+import { TEACHER_GUIDE_URL } from "../lib/teacher-guide";
 import { STORAGE_STATE, TEACHER_STORAGE_STATE } from "./auth.constants";
 
 // "Student mode": a teacher temporarily experiences the app as a student. While
@@ -29,7 +30,10 @@ test("a teacher can enter student mode, is treated as a student, and can exit ag
   await expect(page.getByRole("img", { name: "Teacher" })).toHaveCount(0);
   await page.getByRole("button", { name: "Open navigation menu" }).click();
   await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Teacher Guide" })).toHaveAttribute("href", "/docs");
+  await expect(page.getByRole("link", { name: "Teacher Guide" })).toHaveAttribute(
+    "href",
+    TEACHER_GUIDE_URL,
+  );
   await expect(
     page.getByRole("navigation", { name: "Primary" }).getByRole("link").last(),
   ).toHaveText("Teacher Guide");

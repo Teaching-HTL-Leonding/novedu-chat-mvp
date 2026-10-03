@@ -1,6 +1,6 @@
 // Post-build guard: Starlight's docsLoader silently yields an empty collection
 // when src/content/docs is missing or unreadable, and an empty or partial site
-// would otherwise build green and ship to production /docs. This script fails
+// would otherwise build green and ship to docs.novedu.at. This script fails
 // the `build` script loudly unless every corpus chapter made it into dist/.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -77,11 +77,13 @@ if (missing.length > 0) {
 }
 
 // 3. Site chrome: root redirect, 404, search index (drop the pagefind check if
-// search is ever disabled), and the sitemap that `site` in astro.config.mjs
-// activates — docs/teacher-docs.md advertises it as part of the /docs surface.
+// search is ever disabled), the sitemap that `site` in astro.config.mjs
+// activates, and the Static Web App config copied from public/ — without it the
+// host would serve the .md twins as downloads and its own 404 page.
 for (const required of [
   "index.html",
   "404.html",
+  "staticwebapp.config.json",
   "pagefind",
   "sitemap-index.xml",
   "sitemap-0.xml",

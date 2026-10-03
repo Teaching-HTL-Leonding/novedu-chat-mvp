@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { TEACHER_GUIDE_URL } from "../lib/teacher-guide";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 
 // Authorization (not authentication) enforcement: signed-in students must be
@@ -53,7 +54,7 @@ test.describe("as a student", () => {
     await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Teacher Guide" })).toHaveAttribute(
       "href",
-      "/docs",
+      TEACHER_GUIDE_URL,
     );
     await expect(
       page.getByRole("navigation", { name: "Primary" }).getByRole("link").last(),
@@ -88,7 +89,7 @@ test.describe("as a teacher", () => {
 
     await expect(page.getByRole("link", { name: "Teacher Guide" })).toHaveAttribute(
       "href",
-      "/docs",
+      TEACHER_GUIDE_URL,
     );
     await expect(
       page.getByRole("navigation", { name: "Primary" }).getByRole("link").last(),
