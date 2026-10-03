@@ -25,6 +25,12 @@ export default defineConfig({
     starlight({
       title: GUIDE_TITLE,
       plugins: [starlightThemeRapide()],
+      // public/favicon.svg is Starlight's default `favicon`; these add the .ico
+      // fallback for browsers without SVG favicons and the iOS home-screen icon.
+      head: [
+        { tag: "link", attrs: { rel: "icon", href: "/favicon.ico", sizes: "32x32" } },
+        { tag: "link", attrs: { rel: "apple-touch-icon", href: "/apple-touch-icon.png" } },
+      ],
       components: {
         MarkdownContent: "./src/components/MarkdownContent.astro",
       },
