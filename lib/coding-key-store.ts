@@ -238,13 +238,14 @@ export function ownKeyDatesStatement(userId: string): SQL {
 }
 
 /**
- * The user ids holding a key for one of the teacher's codes — a subselect the
- * teacher facts store unions into its identified-students count (docs/home.md →
- * Teacher dashboard). Only user ids leave it; the caller counts them.
+ * `(user_id, code, at)` for every key on one of the teacher's codes, `at` = when
+ * it was issued — a subselect the teacher facts store unions into its
+ * identified-students counts (docs/home.md → Teacher dashboard). The caller only
+ * counts and dates them.
  */
 export function keyHoldersOfTeacherStatement(teacherId: string): SQL {
   return sql`
-    SELECT k.user_id FROM novedu_coding_keys k
+    SELECT k.user_id, k.code, k.created_at AS at FROM novedu_coding_keys k
     JOIN novedu_codes c ON c.code = k.code
     WHERE c.created_by = ${teacherId}
   `;

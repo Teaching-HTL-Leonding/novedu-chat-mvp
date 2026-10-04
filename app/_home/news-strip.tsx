@@ -1,12 +1,19 @@
-import { getStudentHome } from "@/lib/home-data";
+import { getStudentHome, getTeacherHome } from "@/lib/home-data";
+import type { Audience } from "./badges-section";
 import { plural } from "./home-ui";
 import { SeenMarker } from "./seen-marker";
 
-// The quiet "new badges" strip: a count, no overlay, nothing to click. It renders
-// only when there is something new; once rendered, the client marks those
-// badges as seen, so the next visit no longer shows it.
-export async function NewsStrip({ userId }: { userId: string }) {
-  const home = await getStudentHome(userId);
+// The quiet "new badges" strip, for both audiences: a count, no overlay,
+// nothing to click. It renders only when there is something new; once rendered,
+// the client marks those badges as seen, so the next visit no longer shows it.
+export async function NewsStrip({
+  userId,
+  audience = "student",
+}: {
+  userId: string;
+  audience?: Audience;
+}) {
+  const home = audience === "teacher" ? await getTeacherHome(userId) : await getStudentHome(userId);
   const ids = home.newIds ?? [];
   if (ids.length === 0) return null;
   return (

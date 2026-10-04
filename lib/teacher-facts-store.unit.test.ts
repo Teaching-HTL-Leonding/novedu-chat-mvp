@@ -4,8 +4,9 @@ import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The teacher facts store against a recording fake: every statement is keyed by
-// the teacher (codes they created), each group fails on its own, and a failure
-// is reported with a fixed message, never the raw error.
+// the teacher (codes they created, or their own report resolutions and file
+// versions), each group fails on its own, and a failure is reported with a
+// fixed message, never the raw error.
 
 const fake = vi.hoisted(() => {
   const state = {
@@ -52,6 +53,8 @@ vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 vi.mock("@/lib/telemetry", () => ({ recordError }));
 
 import { codes } from "@/lib/db/schema";
+import { writerVersionsStatement } from "@/lib/file-store";
+import { teacherReportsStatement } from "@/lib/report-store";
 import {
   conversationsStatement,
   loadTeacherFacts,
@@ -96,6 +99,7 @@ describe("loadTeacherFacts", () => {
         [
           {
             code: "C1",
+            date: "2026-10-01",
             interactions: "12",
             outsideSchool: "5",
             quizAnswers: "4",
@@ -105,8 +109,18 @@ describe("loadTeacherFacts", () => {
         ],
       ],
       ["mastra_threads", [{ conversations: "3" }]],
-      ["count(DISTINCT", [{ students: "8" }]],
-      ["novedu_reports", [{ code: "C1", open: "2" }]],
+      [
+        "WITH seen",
+        [
+          { code: "C1", students: "3", firstSeen: ["2026-09-01", "2026-09-01", "2026-09-02"] },
+          { code: null, students: "8", firstSeen: null },
+        ],
+      ],
+      [
+        "novedu_reports",
+        [{ open: [{ code: "C1", open: 2 }], resolved: "4", resolvedOn: ["2026-09-02"] }],
+      ],
+      ["novedu_files", [{ most: "6", reachedOn: "2026-09-03" }]],
     ];
     const facts = await loadTeacherFacts("t1", NOW);
     expect(facts).toEqual({
@@ -123,6 +137,7 @@ describe("loadTeacherFacts", () => {
       usage: [
         {
           code: "C1",
+          date: "2026-10-01",
           interactions: 12,
           outsideSchool: 5,
           quizAnswers: 4,
@@ -131,15 +146,19 @@ describe("loadTeacherFacts", () => {
         },
       ],
       conversations: 3,
-      students: 8,
-      reports: [{ code: "C1", open: 2 }],
+      students: {
+        total: 8,
+        perCode: [{ code: "C1", count: 3, firstSeen: ["2026-09-01", "2026-09-01", "2026-09-02"] }],
+      },
+      reports: { open: [{ code: "C1", open: 2 }], resolved: 4, resolvedOn: ["2026-09-02"] },
+      files: { most: 6, reachedOn: "2026-09-03" },
     });
     expect(fake.state.codesWhere).toEqual(eq(codes.createdBy, "t1"));
   });
 
-  it("runs every statement restricted to the teacher's own codes, the window from local midnight", async () => {
+  it("runs every statement restricted to the teacher's own rows, the window from local midnight", async () => {
     await loadTeacherFacts("t1", NOW);
-    expect(fake.state.executed).toHaveLength(4);
+    expect(fake.state.executed).toHaveLength(5);
     for (const statement of fake.state.executed) {
       const { sql, params } = render(statement);
       expect(sql).toContain("created_by");
@@ -147,29 +166,34 @@ describe("loadTeacherFacts", () => {
       // Never the students' saved quiz results.
       expect(sql).not.toContain("novedu_quiz_results");
     }
+    // Only the conversations are windowed in SQL; the usage comes per day.
     const windowed = fake.state.executed
       .map(render)
-      .filter(({ sql }) => sql.includes("hour >=") || sql.includes('"createdAtZ" >='));
-    expect(windowed).toHaveLength(2);
-    for (const { params } of windowed) expect(params).toContainEqual(START);
+      .filter(({ params }) => params.some((p) => p instanceof Date));
+    expect(windowed).toHaveLength(1);
+    expect(windowed[0]?.sql).toContain('"createdAtZ" >=');
+    expect(windowed[0]?.params).toContainEqual(START);
   });
 
   it("each group fails alone: the others still load, the failed one is undefined", async () => {
     fake.state.failing = ["mastra_threads"];
-    fake.state.rowsFor = [["count(DISTINCT", [{ students: "1" }]]];
+    fake.state.rowsFor = [["WITH seen", [{ code: null, students: "1", firstSeen: null }]]];
     const facts = await loadTeacherFacts("t1", NOW);
     expect(facts.conversations).toBeUndefined();
-    expect(facts.students).toBe(1);
+    expect(facts.students).toEqual({ total: 1, perCode: [] });
     expect(facts.codes).toEqual([]);
     expect(facts.usage).toEqual([]);
-    expect(facts.reports).toEqual([]);
+    // An empty result row still means "nothing", not "unavailable".
+    expect(facts.reports).toEqual({ open: [], resolved: 0, resolvedOn: [] });
+    expect(facts.files).toEqual({ most: 0 });
   });
 
   it.each([
     ["novedu_usage_by_code", "usage", "teacher-facts-store", "load usage"],
     ["mastra_threads", "conversations", "teacher-facts-store", "count conversations"],
-    ["count(DISTINCT", "students", "teacher-facts-store", "count students"],
-    ["novedu_reports", "reports", "report-store", "count open reports"],
+    ["WITH seen", "students", "teacher-facts-store", "load students"],
+    ["novedu_reports", "reports", "report-store", "load teacher reports"],
+    ["novedu_files", "files", "file-store", "load writer versions"],
   ] as const)(
     "a failing %s statement reports a fixed message, never the raw error",
     async (fragment, group, store, op) => {
@@ -194,11 +218,12 @@ describe("loadTeacherFacts", () => {
 });
 
 describe("statement shapes", () => {
-  it("usage: the outside-school rule matches isSchoolHour's constants", () => {
-    const { sql, params } = render(usageStatement("t1", START));
+  it("usage: per code and local day, the outside-school rule matches isSchoolHour's constants", () => {
+    const { sql, params } = render(usageStatement("t1"));
     expect(sql).toContain("isodow");
+    expect(sql).toMatch(/GROUP BY u\.code, 2\s+ORDER BY u\.code, 2/);
     // SCHOOL_DAY_START / SCHOOL_DAY_END and the time zone travel as parameters.
-    expect(params).toEqual(expect.arrayContaining([8, 17, "Europe/Vienna", "t1", START]));
+    expect(params).toEqual(expect.arrayContaining([8, 17, "Europe/Vienna", "t1"]));
   });
 
   it("conversations: threads with a user message in the window (the EXISTS shape)", () => {
@@ -215,5 +240,28 @@ describe("statement shapes", () => {
     expect(sql.match(/NOT c\.anonymous/g)).toHaveLength(2);
     expect(sql).toContain("s.user_id <>");
     expect(params.filter((p) => p === "t1")).toHaveLength(4);
+    // Per code: the first-seen dates of the first CROWD_MAX students; plus the overall row.
+    expect(sql).toContain("PARTITION BY code ORDER BY at");
+    expect(params).toContain(100);
+    expect(sql).toMatch(/UNION ALL\s+SELECT NULL, count\(DISTINCT user_id\), NULL FROM seen/);
+  });
+
+  it("reports: open on own codes, resolved by the teacher on any code, dates capped", () => {
+    const { sql, params } = render(teacherReportsStatement("t1", 10));
+    expect(sql).toContain("c.created_by");
+    expect(sql).toContain("r.resolved_at IS NULL");
+    expect(sql.match(/r\.resolved_by = \$\d+ AND r\.resolved_at IS NOT NULL/g)).toHaveLength(2);
+    expect(sql).toMatch(/LIMIT \$\d+/);
+    expect(params).toContain(10);
+    // Never the reporter or any content.
+    expect(sql).not.toMatch(/user_id|description|answer_text/);
+  });
+
+  it("files: the teacher's own versions per name, never content", () => {
+    const { sql, params } = render(writerVersionsStatement("t1", 5));
+    expect(sql).toContain("PARTITION BY f.name ORDER BY f.valid_from");
+    expect(sql).toContain("f.created_by =");
+    expect(sql).not.toContain("content");
+    expect(params).toEqual(expect.arrayContaining(["t1", 5]));
   });
 });

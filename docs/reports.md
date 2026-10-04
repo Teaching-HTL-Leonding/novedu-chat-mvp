@@ -65,7 +65,9 @@ code-delete path drops it explicitly (it does — see **Lifecycle**).
 | `resolved_at` | `timestamptz` | resolution timestamp — **resolved ⇔ NOT NULL** (single source of truth) |
 | `resolved_by` | `varchar(64)` | the resolving teacher's user id (null while open) |
 
-Indexes: `ix_novedu_reports_code` (the per-code drill-down) and
+Indexes: `ix_novedu_reports_code` (the per-code drill-down),
+`ix_novedu_reports_resolved_by` (partial, the reports a teacher resolved — their
+start page's Listener badge, `docs/home.md`) and
 `ix_novedu_reports_resolved_at` (open vs. resolved — the open rows are the working
 set). The schema header comment restates the sanctioned-exception rule.
 

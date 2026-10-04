@@ -1,17 +1,17 @@
 ---
 title: Your start page
-description: What the start page shows you as a teacher - the codes that need you, your numbers for the last 30 days, and your most-used activities.
+description: What the start page shows you as a teacher - the codes that need you, your numbers for the last 30 days, your most-used activities, and your badges.
 sidebar:
   order: 9
 audience: teacher
-keywords: [start page, home, dashboard, closing soon, open reports, never used, top activities, school hours]
+keywords: [start page, home, dashboard, closing soon, open reports, never used, top activities, school hours, badges, achievements]
 related:
   - 30-sharing-activities/02-viewing-usage
   - 30-sharing-activities/03-time-limitation
   - 30-sharing-activities/07-student-reports
 ---
 
-When you sign in, the start page gives you a quick look at the codes **you** created: what needs your attention, how much they were used in the last 30 days, and which activities your students use most. Other teachers' codes never appear here, and the page never names a student.
+When you sign in, the start page gives you a quick look at the codes **you** created: what needs your attention, how much they were used in the last 30 days, which activities your students use most, and the badges you have earned. Other teachers' codes never appear here, and the page never names a student.
 
 ## Needs you
 
@@ -40,6 +40,26 @@ Your five codes with the most interactions in the last 30 days. An interaction i
 
 For a breakdown by day, model, and kind of activity across the whole installation, select **Usage dashboard** below the list (see [Seeing how a code is used](/30-sharing-activities/02-viewing-usage/)).
 
+## Badges
+
+At the bottom of the page you collect badges for your work with Novedu. Each one shows the day you earned it; the ones you haven't earned yet show what they need and how close your best activity is. New badges are announced by a short line at the top of the page on your next visit.
+
+**Reach**
+
+- **First Code**: share your first activity.
+- **Full Toolkit**: share a tutor, a quiz, a writing and a coding activity.
+- **Small Crowd**, **Full Class**, **Packed House**: 10, 30 or 100 identified students on one activity. Students in anonymous activities can't be counted.
+- **Busy**, **Buzzing**, **Hive of Activity**: 100, 1,000 or 5,000 interactions on one activity.
+
+**Authoring**
+
+- **Evergreen**: one activity used in 8 different weeks.
+- **Iterator**: save 5 versions of one YAML file.
+- **Listener**: resolve 10 student reports, on any code.
+- **Homework Hit**: one activity with at least 50 interactions, at least half of them outside school hours.
+
+A badge stays earned even if you later delete the code or reopen a report. Badges are yours alone: other teachers and students never see them.
+
 ## Before your first code
 
-If you haven't shared an activity yet, the start page shows only a short greeting and a link to this guide. The counters and numbers appear once you have created a code.
+If you haven't shared an activity yet, the start page shows a short greeting, a link to this guide, and the badges you can earn, with **First Code** first. The counters and numbers appear once you have created a code.

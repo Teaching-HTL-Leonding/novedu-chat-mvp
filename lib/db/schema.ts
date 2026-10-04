@@ -230,6 +230,11 @@ export const reports = pgTable(
     index("ix_novedu_reports_user_id_resolved")
       .on(t.userId)
       .where(sql`${t.resolvedAt} IS NOT NULL`),
+    // The reports a teacher resolved — the teacher start page's Listener badge
+    // (docs/home.md). Partial: only resolved rows carry a resolver.
+    index("ix_novedu_reports_resolved_by")
+      .on(t.resolvedBy, t.resolvedAt)
+      .where(sql`${t.resolvedBy} IS NOT NULL`),
   ],
 );
 
@@ -344,6 +349,9 @@ export const files = pgTable(
     // "all active files" for the list page (active rows are the minority as
     // history accumulates, so an index on the discriminator pays off).
     index("ix_novedu_files_valid_until").on(t.validUntil),
+    // A writer's own versions — the teacher start page's Iterator badge
+    // (docs/home.md).
+    index("ix_novedu_files_created_by").on(t.createdBy),
   ],
 );
 

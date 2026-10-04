@@ -9,7 +9,8 @@ The start page (`/`) is every signed-in user's home, by **effective** role:
   family.
 - **Teachers**: a dashboard over the codes they created — what needs them
   (codes closing soon, open reports, codes never used), six KPIs over the last
-  30 days, and their most-used activities (*Teacher dashboard* below).
+  30 days, their most-used activities, and their own badges (*Teacher dashboard*
+  below).
 
 The Settings page (`/settings`) holds the per-user preferences. Visual design:
 `DESIGN.md`, `.impeccable/surfaces/app-page-tsx.md` (students) and
@@ -27,18 +28,18 @@ only counts — it never names a student.
 | `lib/achievements/time.ts` | pure | Vienna-local dates/hours from UTC instants, calendar arithmetic, ISO week keys |
 | `lib/achievements/derive.ts` | pure | usage days → weekly streak, lifetime milestones, running totals, the heatmap |
 | `lib/achievements/quiz.ts` | pure | saved results → exact scores, medals, best/last per quiz, refresh nudges, the Quiz-mastery dates |
-| `lib/achievements/catalog.ts` | pure, **server-only** | the achievement definitions |
+| `lib/achievements/catalog.ts` | pure, **server-only** | the achievement definitions for both audiences |
 | `lib/achievements/xp.ts` | pure | XP total and level |
 | `lib/achievements/evaluate.ts` | pure | catalog × facts × stored grants → earned / new / in progress; Almost there; the Badges view |
-| `lib/achievements/teacher.ts` | pure | the teacher's fact types, the 30-day window, the attention rules, top activities |
+| `lib/achievements/teacher.ts` | pure | the teacher's fact types, the 30-day window, the attention rules, top activities, the lifetime facts behind the teacher badges |
 | `lib/student-facts-store.ts` | server, never throws | the student's fact groups; each foreign table is read through its owning store (`lib/coding-key-store.ts`, `lib/quiz-result-store.ts`, `lib/report-store.ts`) |
-| `lib/teacher-facts-store.ts` | server, never throws | the teacher's fact groups over their own codes; the subselects on attributed tables come from their owning stores (`lib/user-chat-store.ts`, `lib/writing-store.ts`, `lib/coding-key-store.ts`, `lib/report-store.ts`) |
+| `lib/teacher-facts-store.ts` | server, never throws | the teacher's fact groups over their own codes and rows; the subselects on attributed tables and the reads of other tables come from their owning stores (`lib/user-chat-store.ts`, `lib/writing-store.ts`, `lib/coding-key-store.ts`, `lib/report-store.ts`, `lib/file-store.ts`) |
 | `lib/achievement-store.ts` | server, never throws | read grants, insert grants, mark seen |
 | `lib/quiz-result-store.ts` | server, never throws | save (with prune), list / count / delete own; `deleteResultsForCode` for the code-delete path — the only access to `novedu_quiz_results` |
 | `lib/user-settings-store.ts` | server, never throws | read and upsert the user's settings row — the only access to `novedu_user_settings` |
 | `lib/store-failure.ts` | server | fixed-message failure reporting for the stores above |
 | `lib/home-cache.ts` | server | the per-user cache (TTL, single flight, bound) |
-| `lib/home-data.ts` | server | student: load → evaluate → insert new grants → the page's plain view model; teacher: load → the dashboard's view model |
+| `lib/home-data.ts` | server | per audience: load → evaluate → insert new grants → the page's plain view model |
 | `lib/achievement-actions.ts` | `"use server"` | `markAchievementsSeen` |
 | `lib/quiz-actions.ts` → `saveQuizResult` | `"use server"` | the Finish page's save |
 | `lib/user-settings-actions.ts` | `"use server"` | `updateUserSettings`, `deleteMyQuizResults` |
@@ -89,7 +90,8 @@ on the page is a **Vienna-local** cut of them (`HOME_TIME_ZONE`).
 
 ## Catalog and rules
 
-An entry (`Achievement<F>` in `catalog.ts`) has a stable `id`, a family, an
+An entry (`Achievement<F, G>` in `catalog.ts`, over an audience's facts `F` and
+fact groups `G`) has a stable `id`, an audience, a family, an
 order, an icon key, name, criterion, `hidden`, `xp`, the fact groups it `needs`,
 and a pure `evaluate(facts)` that returns either `{ earned, qualifiedOn }` — the
 local date on which the evidence was **first** complete — or
@@ -134,11 +136,17 @@ catalog order breaking ties, at most four. The **Badges** section shows, per
 family, the earned badges first, then the next tier of each ladder; "Show all
 badges" reveals the rest.
 
-**XP** = 10 × active days + Σ `xp` of the stored grants. Level `n` starts at
+The teacher families (no XP, none hidden) are under *Teacher dashboard*.
+
+**XP** (students) = 10 × active days + Σ `xp` of the stored grants. Level `n` starts at
 `50 · n · (n − 1)` XP. Computed on every load, never stored; monotonic because
 neither active days nor grants are ever deleted.
 
 ## Evaluation flow
+
+The same for both audiences, each over its own catalog (`settleGrants` in
+`lib/home-data.ts`). Both share `novedu_achievements`: the ids of the two
+catalogs never collide (guard-tested), and each page evaluates only its own.
 
 1. `lib/home-data.ts` loads the facts and the stored grants in parallel.
 2. `evaluate` runs the catalog. A stored grant wins; a rule runs only when every
@@ -189,15 +197,17 @@ the last 30 Vienna-local days, today included (`windowStart`: local midnight 29
 days ago). A teacher's own test runs count in their codes' usage — the data
 cannot tell them apart.
 
-**Facts** (`loadTeacherFacts`, five statements in parallel, each failing alone):
+**Facts** (`loadTeacherFacts`, six statements in parallel, each failing alone;
+the grants are the seventh):
 
 - **Codes** (`listTeacherCodes`) — module, note, window, created-at; a scan of
   `ix_novedu_codes_created_by`. A code with an unknown module is dropped.
 - **Usage** (`loadTeacherUsage`) — `novedu_usage_by_code` joined to those codes,
-  per code: the window's interactions (messages + quiz answers + writing saves +
-  coding requests), the part of them outside school hours, quiz answers, input
-  tokens (new + cached) and output tokens. Every code with a usage row **ever** is
-  returned (zero sums outside the window), so "never used" means no row at all.
+  per code and Vienna-local day over the whole history: interactions (messages +
+  quiz answers + writing saves + coding requests), the part of them outside
+  school hours, quiz answers, input tokens (new + cached) and output tokens. The
+  window's sums are derived from it in pure code (`codeUsage`); every code with a
+  usage row **ever** has at least one day, so "never used" means no row at all.
   The school-hours cut in SQL uses the same constants as `isSchoolHour`.
 - **Conversations** — threads of those codes with a user message in the window
   (the `EXISTS` shape of `getDashboardKpis`, `docs/dashboard.md`).
@@ -206,14 +216,25 @@ cannot tell them apart.
   whose frozen `anonymous` flag is false, and the key holders of their coding
   codes (`novedu_coding_keys` — a key proves the activity was opened, not used);
   the teacher's own id excluded. Each subselect comes from the store that owns its
-  table; only the count leaves the statement.
-- **Reports** (`listOpenReportCounts`, `lib/report-store.ts`) — unresolved
-  reports per code.
+  table. Per code, the count and the local dates on which the first 100
+  students were first seen (a saved text keeps only its last save, so it dates
+  the student no earlier than that); plus the overall count. Only counts and
+  dates leave the statement.
+- **Reports** (`loadTeacherReports`, `lib/report-store.ts`) — one row of scalar
+  subselects: the unresolved reports per own code, and the reports the teacher
+  resolved (`resolved_by`, on any code — every teacher can review every code's
+  reports) with the local dates of the first ten, read through the partial
+  `ix_novedu_reports_resolved_by`.
+- **Files** (`loadWriterVersions`, `lib/file-store.ts`) — over the `novedu_files`
+  versions the teacher wrote (`ix_novedu_files_created_by`): the most versions of
+  one name, and the local date some name first reached five. No name or content
+  leaves the store.
 
 The teacher facts never read the students' saved quiz results (that store has no
 teacher reader at all) and never return a student id or name. The `@live-db`
-spec checks that every statement starts from `ix_novedu_codes_created_by` and has
-no sequential scan.
+spec checks that every statement starts from its index (`ix_novedu_codes_created_by`,
+plus the resolver and writer indexes for reports and files) and has no
+sequential scan.
 
 **Page** (`buildTeacherHome` → `TeacherHome`): the greeting with the Teacher Guide
 link (`TEACHER_GUIDE_URL`, a new tab), then:
@@ -238,8 +259,30 @@ link (`TEACHER_GUIDE_URL`, a new tab), then:
   (rounded percent; the column's info button explains the rule). Links to the
   usage dashboard (`/usage`), which covers every code.
 
-A teacher without any code sees only the greeting, the Teacher Guide and one line
-pointing to it. Achievements for teachers are not part of the dashboard yet.
+- **Badges** — the student page's Badges section and discs (`BadgesSection`
+  with `audience="teacher"`), with the teacher families in their own colours; no
+  XP, nothing hidden. New badges are announced by the student page's strip
+  (`NewsStrip`), above Needs you, and marked seen the same way.
+
+**Teacher achievements** (`TEACHER_CATALOG`; every rule over the teacher's own
+codes and rows, dated to the local day its evidence was first complete):
+
+| Family | Achievement | Rule |
+|---|---|---|
+| Reach | First Code | the first code created |
+| Reach | Full Toolkit | a tutor, a quiz, a writing and a coding code created (dated by the fourth kind's first code) |
+| Reach | Small Crowd / Full Class / Packed House (`crowd-10/30/100`) | 10 / 30 / 100 identified students on ONE activity — never added up across activities |
+| Reach | Busy / Buzzing / Hive of Activity (`busy-100/1000/5000`) | 100 / 1,000 / 5,000 interactions on one activity (a running total) |
+| Authoring | Evergreen | one activity used in 8 different ISO weeks |
+| Authoring | Iterator | 5 versions of one file written by the teacher |
+| Authoring | Listener | 10 reports resolved |
+| Authoring | Homework Hit | one activity with at least 50 interactions, at least half of them outside school hours (running totals; shows its criterion only, no count) |
+
+Facts that no longer hold (a deleted code, a reopened report) never take back a
+stored badge.
+
+A teacher without any code sees the greeting, the Teacher Guide, one line
+pointing to it, and the badges to earn (First Code first).
 
 ## Page and loading
 
@@ -252,13 +295,15 @@ once; each data section is an async server component behind its own
   own usage), in this order on every width: Continue (code field + Recently
   used), the new-badges strip, progress (level/XP + streak), the calendar, Time to
   refresh beside Almost there (stacked below `lg`), Badges.
-- **Teacher**: the header (with the no-codes line in its own boundary), Needs you,
-  Last 30 days, Top activities.
+- **Teacher**: the header (with the no-codes line in its own boundary), the
+  new-badges strip, Needs you, Last 30 days, Top activities, Badges. The strip and
+  the Badges section are the student page's components, given the audience.
 
 Without a resolvable session only the code field renders.
 
-Sections degrade independently: Level/XP, Almost there and Badges need usage and
-grants; the streak and the calendar need usage; the calendar's pins and the strip
+Sections degrade independently. Teacher: Badges and the strip need the grants; a
+badge whose group failed is left out unless already stored. Student: Level/XP,
+Almost there and Badges need usage and grants; the streak and the calendar need usage; the calendar's pins and the strip
 need grants. A section whose group failed shows the "could not be loaded" note,
 never zeros. Time to refresh needs only the quiz group. When only one of the
 keys / quiz / reports groups failed, the badges that read it are left out unless
@@ -271,8 +316,8 @@ A student refreshing in a loop must not load the database.
 - **Per-user cache** (`lib/home-cache.ts`): a completed result is reused for 60 s
   per `(userId, audience)` key (`<id>:student`, `<id>:teacher`) — a refresh inside
   the window runs no statement. The statement count per role is fixed (four
-  student groups plus grants, five teacher groups) and never grows with the number
-  of codes.
+  student groups plus grants, six teacher groups plus grants) and never grows
+  with the number of codes.
   In-process memory is correct because a stage runs at most one replica.
 - **Single flight**: concurrent loads of one key share one promise, held in a map
   separate from completed entries; a promise's cleanup removes only its own entry.
@@ -360,27 +405,33 @@ parameters (user ids, counts), so `reportStoreFailure` logs and records a fixed
 - Pure: `lib/achievements/*.unit.test.ts` (DST, New-Year weeks, school hours,
   local midnight, streaks, exact scores, medals, nudges, Refreshed across a pruned
   gap, every rule at/below/above its threshold, evaluation, XP boundaries, the
-  catalog guard; the teacher window, attention rules and ranking).
+  catalog guard; the teacher window, attention rules, ranking and every teacher
+  rule; the two catalogs' ids never colliding).
 - Cache: `lib/home-cache.unit.test.ts`. Stores and actions:
   `lib/achievement-store.unit.test.ts`, `lib/quiz-result-store.unit.test.ts`
   (transaction shape, fixed failure messages), `lib/achievement-actions.unit.test.ts`,
   `lib/user-settings-actions.unit.test.ts`, `saveQuizResult` in
   `lib/quiz-actions.unit.test.ts`, the guard `lib/quiz-result-isolation.unit.test.ts`.
   `lib/teacher-facts-store.unit.test.ts` (every statement keyed by the teacher,
-  groups failing alone, fixed failure messages). Loader: `lib/home-data.unit.test.ts`
-  (both view models, a failed group never read as 0, the cache keys).
+  groups failing alone, fixed failure messages, the reports and files statements'
+  shapes). Loader: `lib/home-data.unit.test.ts` (both view models with their
+  badges, new grants inserted before building for both audiences, a failed group
+  never read as 0, the cache keys).
 - Sections: `app/_home/sections.unit.test.tsx`, `app/_home/teacher-sections.unit.test.tsx`;
-  shell: `app/page.unit.test.tsx` (student, teacher, view-as-student, signed out).
+  shell: `app/page.unit.test.tsx` (student, teacher, view-as-student, signed out;
+  the shared strip and Badges given the teacher audience only on the teacher shell).
 - Browser: `app/_home/*.browser.test.tsx` (calendar keyboard/tooltip/phone layout,
   the seen marker, the disclosures, the attention counters, the school-hours
-  tooltip), `app/[code]/_quiz/save-result.browser.test.tsx`
+  tooltip, every badge family's disc colour and glyph contrast), `app/[code]/_quiz/save-result.browser.test.tsx`
   (the three choices, the automatic save), `app/settings/*.browser.test.tsx`.
 - E2E: `e2e/home.spec.ts` (hermetic smoke per visitor kind — the teacher gets the
   dashboard, view-as-student the student page — including a fresh student's and a
-  fresh teacher's empty state), `e2e/home-teacher.live.spec.ts` (`@live-db`: a
-  seeded teacher's counters, KPIs and ranking with another teacher's rows never
-  counted; the SQL school-hours cut against `isSchoolHour` across both clock
-  changes; the teacher statements' plans) and `e2e/home.live.spec.ts` (`@live-db`: seeded usage and
+  fresh teacher's empty state with the badges to earn), `e2e/home-teacher.live.spec.ts`
+  (`@live-db`: a seeded teacher's counters, KPIs and ranking with another
+  teacher's rows never counted; the SQL school-hours cut against `isSchoolHour`
+  across both clock changes; the teacher statements' plans; badges granted from
+  seeded rows with their dates, the strip cleared once seen, nothing granted
+  twice) and `e2e/home.live.spec.ts` (`@live-db`: seeded usage and
   grant, the strip cleared after the visit, DST grouping, both plans; seeded coding
   requests and a key earning the Coding badges and In the Zone), `e2e/settings.spec.ts`
   (`@live-db`: reached from the user menu, the switch persists) and

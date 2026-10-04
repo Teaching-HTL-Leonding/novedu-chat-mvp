@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { insertGrants, listGrants } from "@/lib/achievement-store";
 import {
+  type Achievement,
   availableGroups,
   type BadgeIcon,
   FACT_GROUPS,
@@ -8,6 +9,9 @@ import {
   STUDENT_FAMILIES,
   type StudentAchievement,
   type StudentFacts,
+  TEACHER_CATALOG,
+  TEACHER_FAMILIES,
+  type TeacherAchievement,
 } from "@/lib/achievements/catalog";
 import {
   activeDays,
@@ -33,7 +37,9 @@ import {
   scorePercent,
 } from "@/lib/achievements/quiz";
 import {
+  availableTeacherGroups,
   closingSoon,
+  codeUsage,
   LIST_MAX,
   neverUsed,
   outsideSchoolPercent,
@@ -52,11 +58,11 @@ import { createHomeCache } from "@/lib/home-cache";
 import { loadStudentFacts } from "@/lib/student-facts-store";
 import { loadTeacherFacts } from "@/lib/teacher-facts-store";
 
-// The start page's data (docs/home.md). Students: facts + stored grants →
-// evaluation → new grants inserted BEFORE returning → a plain view model; a
-// hidden achievement's name and criterion appear in it only once earned.
-// Teachers: the facts about their OWN codes → the dashboard's view model. Only
-// plain data leaves this module.
+// The start page's data (docs/home.md). Both audiences: facts + stored grants →
+// evaluation of the audience's catalog → new grants inserted BEFORE returning →
+// a plain view model; a hidden achievement's name and criterion appear in it
+// only once earned. Students get their progress; teachers the dashboard over
+// their OWN codes plus their badges. Only plain data leaves this module.
 //
 // SERVER-ONLY: uses the database. Never import from client components.
 
@@ -127,15 +133,18 @@ export interface StudentHome {
     nudges: QuizNudge[];
   };
   /** Needs usage and grants. */
-  badges?: {
-    earned: number;
-    families: { id: string; label: string; shown: BadgeItem[]; more: BadgeItem[] }[];
-  };
+  badges?: BadgeBoard;
   /** Every fact group loaded and every new grant stored — only then is the result cached. */
   complete: boolean;
 }
 
-function toItem({ achievement, status }: Evaluated<StudentFacts>): BadgeItem {
+/** The Badges section: family by family, the default view and the rest. */
+export interface BadgeBoard {
+  earned: number;
+  families: { id: string; label: string; shown: BadgeItem[]; more: BadgeItem[] }[];
+}
+
+function toItem<F, G extends string>({ achievement, status }: Evaluated<F, G>): BadgeItem {
   const base = {
     id: achievement.id,
     name: achievement.name,
@@ -215,11 +224,7 @@ export function buildStudentHome(
     };
   }
 
-  if (evaluated) {
-    home.newIds = earned
-      .filter((e) => e.status.kind === "earned" && e.status.isNew)
-      .map((e) => e.achievement.id);
-  }
+  if (evaluated) home.newIds = newIdsOf(evaluated);
 
   if (usage && evaluated) {
     home.level = levelFor(
@@ -229,22 +234,55 @@ export function buildStudentHome(
       ),
     );
     home.almostThere = almostThere(evaluated).map(toItem);
-    const labels = new Map<string, string>(STUDENT_FAMILIES.map((f) => [f.id, f.label]));
-    home.badges = {
-      earned: earned.length,
-      families: badgeView(
-        evaluated,
-        STUDENT_FAMILIES.map((f) => f.id),
-      ).map((view) => ({
-        id: view.family,
-        label: labels.get(view.family) ?? view.family,
-        shown: view.shown.map(toItem),
-        more: view.more.map(toItem),
-      })),
-    };
+    home.badges = badgeBoard(evaluated, STUDENT_FAMILIES);
   }
 
   return home;
+}
+
+/** The ids of earned grants not yet seen — the strip's count. */
+function newIdsOf<F, G extends string>(evaluated: readonly Evaluated<F, G>[]): string[] {
+  return evaluated
+    .filter((e) => e.status.kind === "earned" && e.status.isNew)
+    .map((e) => e.achievement.id);
+}
+
+/** The Badges section's data, family by family in `families` order. */
+function badgeBoard<F, G extends string>(
+  evaluated: readonly Evaluated<F, G>[],
+  families: readonly { id: string; label: string }[],
+): BadgeBoard {
+  const labels = new Map(families.map((f) => [f.id, f.label]));
+  return {
+    earned: evaluated.filter((e) => e.status.kind === "earned").length,
+    families: badgeView(
+      evaluated,
+      families.map((f) => f.id),
+    ).map((view) => ({
+      id: view.family,
+      label: labels.get(view.family) ?? view.family,
+      shown: view.shown.map(toItem),
+      more: view.more.map(toItem),
+    })),
+  };
+}
+
+/**
+ * Stores the grants a load newly qualifies for, before anything is built, so the
+ * page renders only durable state. Rules whose groups failed are `unavailable`,
+ * never granted from zeros. Returns the stored grants afterwards, or undefined
+ * when the grants could not be read or the insert failed.
+ */
+async function settleGrants<F, G extends string>(
+  userId: string,
+  catalog: readonly Achievement<F, G>[],
+  facts: F,
+  available: ReadonlySet<G>,
+  stored: Grant[] | undefined,
+): Promise<Grant[] | undefined> {
+  if (!stored) return undefined;
+  const pending = newGrants(evaluate(catalog, facts, available, stored));
+  return pending.length > 0 ? insertGrants(userId, pending, stored) : stored;
 }
 
 /**
@@ -255,12 +293,7 @@ export function buildStudentHome(
 export async function loadStudentHome(userId: string, now: Date): Promise<StudentHome> {
   const today = todayLocal(now);
   const [facts, stored] = await Promise.all([loadStudentFacts(userId), listGrants(userId)]);
-  let grants = stored;
-  if (stored) {
-    // Rules whose groups failed are `unavailable`, never granted from zeros.
-    const pending = newGrants(evaluate(STUDENT_CATALOG, facts, availableGroups(facts), stored));
-    if (pending.length > 0) grants = await insertGrants(userId, pending, stored);
-  }
+  const grants = await settleGrants(userId, STUDENT_CATALOG, facts, availableGroups(facts), stored);
   return buildStudentHome(facts, grants, today);
 }
 
@@ -340,7 +373,11 @@ export interface TeacherHome {
   kpis: TeacherKpis;
   /** Needs the codes and the usage. */
   top?: TopActivity[];
-  /** Every fact group loaded — only then is the result cached. */
+  /** Ids of earned badges not yet seen — the strip's count. Needs grants. */
+  newIds?: string[];
+  /** The teacher's badges: needs grants; a rule whose groups failed is left out. */
+  badges?: BadgeBoard;
+  /** Every fact group loaded and every new grant stored — only then is the result cached. */
   complete: boolean;
 }
 
@@ -356,19 +393,35 @@ function codeItem(code: TeacherCode): TeacherCodeItem {
 }
 
 /**
- * Builds the teacher dashboard from loaded facts. Every list and KPI is present
- * only when every fact group it needs loaded. Exported for tests.
+ * Builds the teacher dashboard from loaded facts and stored grants. Every list
+ * and KPI is present only when every fact group it needs loaded; `grants` is
+ * undefined when the grants group (or the new-grant insert) failed. Exported for
+ * tests.
  */
-export function buildTeacherHome(facts: TeacherFacts, now: Date): TeacherHome {
-  const { codes, usage, reports } = facts;
+export function buildTeacherHome(
+  facts: TeacherFacts,
+  grants: Grant[] | undefined,
+  now: Date,
+  catalog: readonly TeacherAchievement[] = TEACHER_CATALOG,
+): TeacherHome {
+  const { codes } = facts;
+  const usage = facts.usage && codeUsage(facts.usage, now);
+  const reports = facts.reports?.open;
   const home: TeacherHome = {
     today: todayLocal(now),
     kpis: {
       conversations: facts.conversations,
-      students: facts.students,
+      students: facts.students?.total,
     },
-    complete: TEACHER_FACT_GROUPS.every((group) => facts[group] !== undefined),
+    complete:
+      TEACHER_FACT_GROUPS.every((group) => facts[group] !== undefined) && grants !== undefined,
   };
+
+  if (grants) {
+    const evaluated = evaluate(catalog, facts, availableTeacherGroups(facts), grants);
+    home.newIds = newIdsOf(evaluated);
+    home.badges = badgeBoard(evaluated, TEACHER_FAMILIES);
+  }
 
   if (usage) Object.assign(home.kpis, usageTotals(usage));
   if (!codes) return home;
@@ -421,9 +474,20 @@ export function buildTeacherHome(facts: TeacherFacts, now: Date): TeacherHome {
   return home;
 }
 
-/** Loads one teacher's dashboard: the five fact groups in parallel, then the view model. */
+/**
+ * Loads one teacher's dashboard: the six fact groups and the grants in parallel,
+ * then the new grants stored, then the view model.
+ */
 export async function loadTeacherHome(userId: string, now: Date): Promise<TeacherHome> {
-  return buildTeacherHome(await loadTeacherFacts(userId, now), now);
+  const [facts, stored] = await Promise.all([loadTeacherFacts(userId, now), listGrants(userId)]);
+  const grants = await settleGrants(
+    userId,
+    TEACHER_CATALOG,
+    facts,
+    availableTeacherGroups(facts),
+    stored,
+  );
+  return buildTeacherHome(facts, grants, now);
 }
 
 const teacherCache = createHomeCache<TeacherHome>({ cacheable: (home) => home.complete });

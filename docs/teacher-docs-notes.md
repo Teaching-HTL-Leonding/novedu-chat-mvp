@@ -149,6 +149,10 @@ prose carries everything an editor needs.
   outside all day; holidays are not known.
 - A teacher in "view as student" mode sees the student start page, built from
   their own use, not the dashboard.
+- Teacher badges have no XP and none is hidden. Crowd counts identified students
+  on ONE activity (never summed across activities); Listener counts reports the
+  teacher resolved on ANY code; Iterator counts versions the teacher saved of one
+  file. A stored badge is never taken back. Badges are private to the teacher.
 
 ## 30-sharing-activities/06-coding-special-case
 

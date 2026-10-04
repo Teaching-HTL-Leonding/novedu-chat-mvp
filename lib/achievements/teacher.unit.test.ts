@@ -1,8 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  availableTeacherGroups,
+  busyReached,
+  type CodeDay,
   type CodeUsage,
   closingSoon,
+  codeUsage,
+  crowdReached,
+  homeworkReached,
+  kindsReached,
   LIST_MAX,
   neverUsed,
   outsideSchoolPercent,
@@ -10,6 +17,7 @@ import {
   type TeacherCode,
   topActivities,
   usageTotals,
+  weeksReached,
   windowOpen,
   windowStart,
 } from "./teacher";
@@ -154,5 +162,175 @@ describe("usageTotals", () => {
     ];
     expect(usageTotals(rows)).toEqual({ quizAnswers: 7, inputTokens: 300, outputTokens: 30 });
     expect(usageTotals([])).toEqual({ quizAnswers: 0, inputTokens: 0, outputTokens: 0 });
+  });
+});
+
+const codeDay = (id: string, date: string, extra: Partial<CodeDay> = {}): CodeDay => ({
+  code: id,
+  date,
+  interactions: 0,
+  outsideSchool: 0,
+  quizAnswers: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  ...extra,
+});
+
+describe("codeUsage", () => {
+  it("sums each code's days from the window's first local day (5 Sep) on", () => {
+    const days = [
+      codeDay("a", "2026-09-04", { interactions: 100, quizAnswers: 100 }),
+      codeDay("a", "2026-09-05", { interactions: 3, outsideSchool: 1, inputTokens: 7 }),
+      codeDay("a", "2026-10-04", { interactions: 2, quizAnswers: 2, outputTokens: 5 }),
+    ];
+    expect(codeUsage(days, NOW)).toEqual([
+      usage("a", {
+        interactions: 5,
+        outsideSchool: 1,
+        quizAnswers: 2,
+        inputTokens: 7,
+        outputTokens: 5,
+      }),
+    ]);
+  });
+
+  it("keeps a code used only before the window, with zeros — it was used", () => {
+    expect(codeUsage([codeDay("old", "2026-01-10", { interactions: 9 })], NOW)).toEqual([
+      usage("old"),
+    ]);
+  });
+});
+
+describe("availableTeacherGroups", () => {
+  it("lists exactly the groups that loaded", () => {
+    expect([...availableTeacherGroups({ codes: [], files: { most: 0 } })].sort()).toEqual([
+      "codes",
+      "files",
+    ]);
+  });
+});
+
+describe("kindsReached", () => {
+  it("dates each kind by its first code, ascending, one entry per kind", () => {
+    const codes = [
+      code("q2", { module: "quiz", createdAt: new Date("2026-09-20T10:00:00Z") }),
+      code("t", { module: "tutor", createdAt: new Date("2026-09-10T10:00:00Z") }),
+      code("q1", { module: "quiz", createdAt: new Date("2026-09-12T10:00:00Z") }),
+      // 23:30Z on 30 Sep is already 1 Oct in Vienna.
+      code("w", { module: "writing", createdAt: new Date("2026-09-30T23:30:00Z") }),
+    ];
+    expect(kindsReached(codes)).toEqual(["2026-09-10", "2026-09-12", "2026-10-01"]);
+  });
+});
+
+describe("crowdReached", () => {
+  const perCode = [
+    {
+      code: "a",
+      count: 12,
+      firstSeen: [
+        "2026-09-01",
+        "2026-09-02",
+        "2026-09-03",
+        "2026-09-04",
+        "2026-09-05",
+        "2026-09-06",
+        "2026-09-07",
+        "2026-09-08",
+        "2026-09-09",
+        "2026-09-20",
+        "2026-09-21",
+        "2026-09-22",
+      ],
+    },
+    { code: "b", count: 10, firstSeen: Array.from({ length: 10 }, () => "2026-09-15") },
+  ];
+
+  it("is the earliest day any one activity had its n-th student", () => {
+    expect(crowdReached({ total: 20, perCode }, 10)).toEqual({ reachedOn: "2026-09-15", best: 12 });
+  });
+
+  it("reports the best activity below the threshold — students never add up across activities", () => {
+    expect(crowdReached({ total: 22, perCode }, 30)).toEqual({ best: 12 });
+    expect(crowdReached({ total: 0, perCode: [] }, 10)).toEqual({ best: 0 });
+  });
+});
+
+describe("busyReached", () => {
+  it("is the earliest day one activity's running total reached n", () => {
+    const days = [
+      codeDay("a", "2026-09-03", { interactions: 60 }),
+      codeDay("a", "2026-09-01", { interactions: 50 }),
+      codeDay("b", "2026-09-02", { interactions: 99 }),
+    ];
+    // a: 50 on 1 Sep, 110 on 3 Sep (the days are sorted per code first).
+    expect(busyReached(days, 100)).toEqual({ reachedOn: "2026-09-03", best: 100 });
+    expect(busyReached(days, 1000)).toEqual({ best: 110 });
+  });
+
+  it("at the threshold exactly counts; activities never add up", () => {
+    expect(busyReached([codeDay("a", "2026-09-01", { interactions: 100 })], 100).reachedOn).toBe(
+      "2026-09-01",
+    );
+    expect(
+      busyReached(
+        [
+          codeDay("a", "2026-09-01", { interactions: 60 }),
+          codeDay("b", "2026-09-01", { interactions: 60 }),
+        ],
+        100,
+      ),
+    ).toEqual({ best: 60 });
+  });
+});
+
+describe("weeksReached", () => {
+  it("dates the n-th different ISO week of one activity, skipping idle days", () => {
+    const days = [
+      codeDay("a", "2026-08-31", { interactions: 1 }), // week of 31 Aug
+      codeDay("a", "2026-09-06", { interactions: 1 }), // same week (Sunday)
+      codeDay("a", "2026-09-07", { interactions: 0, inputTokens: 5 }), // tokens only
+      codeDay("a", "2026-09-08", { interactions: 1 }), // week of 7 Sep
+    ];
+    expect(weeksReached(days, 2)).toEqual({ reachedOn: "2026-09-08", best: 2 });
+    expect(weeksReached(days, 8)).toEqual({ best: 2 });
+  });
+
+  it("an ISO week crossing New Year is one week", () => {
+    const days = [
+      codeDay("a", "2026-12-31", { interactions: 1 }),
+      codeDay("a", "2027-01-02", { interactions: 1 }),
+    ];
+    expect(weeksReached(days, 2)).toEqual({ best: 1 });
+  });
+});
+
+describe("homeworkReached", () => {
+  it("needs at least 50 interactions, at least half of them outside school hours", () => {
+    const days = [
+      codeDay("a", "2026-09-01", { interactions: 40, outsideSchool: 40 }),
+      codeDay("a", "2026-09-02", { interactions: 10, outsideSchool: 0 }), // 50, 40 outside
+    ];
+    expect(homeworkReached(days)).toEqual({ reachedOn: "2026-09-02", best: 1 });
+  });
+
+  it("exactly half counts; below half or below 50 does not, and shows no count", () => {
+    expect(
+      homeworkReached([codeDay("a", "2026-09-01", { interactions: 50, outsideSchool: 25 })]),
+    ).toEqual({ reachedOn: "2026-09-01", best: 1 });
+    expect(
+      homeworkReached([codeDay("a", "2026-09-01", { interactions: 50, outsideSchool: 24 })]),
+    ).toEqual({ best: 0 });
+    expect(
+      homeworkReached([codeDay("a", "2026-09-01", { interactions: 49, outsideSchool: 49 })]),
+    ).toEqual({ best: 0 });
+  });
+
+  it("is a lifetime predicate: a day that met it stays the date even if later use was in school", () => {
+    const days = [
+      codeDay("a", "2026-09-01", { interactions: 60, outsideSchool: 60 }),
+      codeDay("a", "2026-09-02", { interactions: 500, outsideSchool: 0 }),
+    ];
+    expect(homeworkReached(days).reachedOn).toBe("2026-09-01");
   });
 });

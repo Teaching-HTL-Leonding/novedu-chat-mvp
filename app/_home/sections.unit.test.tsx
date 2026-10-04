@@ -341,6 +341,8 @@ describe("BadgesSection", () => {
   it("shows earned badges plus the next tier per ladder, the rest behind 'Show all'", async () => {
     const html = await render(BadgesSection, home());
     expect(html).toContain("5 earned");
+    // Five families spread over up to five columns.
+    expect(html).toMatch(/data-columns="5" class="[^"]*xl:grid-cols-5/);
     const shown = [...html.matchAll(/<li data-badge="([^"]+)" class="(?![^"]*hidden)/g)].map(
       (m) => m[1],
     );

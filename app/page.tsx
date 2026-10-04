@@ -16,8 +16,9 @@ import { TeacherKpiSection, TeacherKpiSkeleton } from "./_home/teacher-kpi-secti
 import { TopActivitiesSection, TopActivitiesSkeleton } from "./_home/top-activities-section";
 
 // The start page (docs/home.md), by EFFECTIVE role. A teacher gets the dashboard
-// over their OWN codes: the greeting with the Teacher Guide, the attention bar,
-// the KPIs and the top activities. Everyone else — students, and a teacher in
+// over their OWN codes: the greeting with the Teacher Guide, the new-badges
+// strip, the attention bar, the KPIs, the top activities and their badges (the
+// strip and the badges are the student page's own sections). Everyone else — students, and a teacher in
 // view-as-student mode — gets the student home built from their OWN usage:
 // Continue first, then the new-badges strip, progress, the season calendar, Time
 // to refresh beside Almost there, and the badges. The shell flushes at once;
@@ -55,6 +56,9 @@ export default async function Home() {
               </Suspense>
             }
           />
+          <Suspense fallback={null}>
+            <NewsStrip userId={userId} audience="teacher" />
+          </Suspense>
           <Suspense fallback={<AttentionSkeleton />}>
             <AttentionSection userId={userId} />
           </Suspense>
@@ -63,6 +67,9 @@ export default async function Home() {
           </Suspense>
           <Suspense fallback={<TopActivitiesSkeleton />}>
             <TopActivitiesSection userId={userId} />
+          </Suspense>
+          <Suspense fallback={<BadgesSkeleton />}>
+            <BadgesSection userId={userId} audience="teacher" />
           </Suspense>
         </PageBody>
       </Main>

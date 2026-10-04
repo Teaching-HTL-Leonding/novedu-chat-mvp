@@ -2,8 +2,8 @@ import { DataUnavailable } from "@/components/dashboard-ui";
 import { EyeOffIcon } from "@/components/icons";
 import { buttonVariants } from "@/components/ui/button";
 import { META_LABEL } from "@/components/ui/meta-label";
-import type { BadgeItem } from "@/lib/home-data";
-import { getStudentHome } from "@/lib/home-data";
+import type { BadgeBoard, BadgeItem } from "@/lib/home-data";
+import { getStudentHome, getTeacherHome } from "@/lib/home-data";
 import { cn } from "@/lib/utils";
 import { BadgeDisc } from "./badge-disc";
 import { Disclosure } from "./disclosure";
@@ -18,12 +18,32 @@ import {
 } from "./home-ui";
 
 // Badges, family by family: what you earned plus the next tier of each ladder;
-// "Show all badges" reveals the rest. Hidden badges are never in the data until
-// earned (lib/home-data.ts), so nothing here can leak one: the Secret column
-// holds only earned ones, plus a note that more exist.
+// "Show all badges" reveals the rest. One section for both audiences: students
+// get their families, teachers theirs (Reach, Authoring — no XP, none hidden).
+// Hidden badges are never in the data until earned (lib/home-data.ts), so
+// nothing here can leak one: the Secret column holds only earned ones, plus a
+// note that more exist.
 
-export async function BadgesSection({ userId }: { userId: string }) {
-  const { badges } = await getStudentHome(userId);
+export type Audience = "student" | "teacher";
+
+/** The audience's badges from its (shared, per-request) page data. */
+export async function loadBadges(
+  userId: string,
+  audience: Audience,
+): Promise<BadgeBoard | undefined> {
+  return audience === "teacher"
+    ? (await getTeacherHome(userId)).badges
+    : (await getStudentHome(userId)).badges;
+}
+
+export async function BadgesSection({
+  userId,
+  audience = "student",
+}: {
+  userId: string;
+  audience?: Audience;
+}) {
+  const badges = await loadBadges(userId, audience);
   if (!badges) {
     return (
       <section aria-labelledby="home-badges" className={cn(HOME_CARD, HOME_CARD_PAD)}>
@@ -38,7 +58,12 @@ export async function BadgesSection({ userId }: { userId: string }) {
   const families = (
     <div
       id="home-badge-families"
-      className="grid gap-x-7 gap-y-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+      data-columns={badges.families.length}
+      className={cn(
+        "grid gap-x-7 gap-y-5 md:grid-cols-2",
+        // The students' five families spread out; the teachers' two keep two wide columns.
+        badges.families.length > 2 && "lg:grid-cols-3 xl:grid-cols-5",
+      )}
     >
       {badges.families.map((family) => (
         <div key={family.id} data-family={family.id}>
@@ -120,7 +145,7 @@ function BadgeRow({ badge, extra = false }: { badge: BadgeItem; extra?: boolean 
         </div>
         <div className={HOME_CAPTION}>
           {badge.earned && badge.qualifiedOn
-            ? `Earned ${shortDayLabel(badge.qualifiedOn)} · +${badge.xp} XP`
+            ? `Earned ${shortDayLabel(badge.qualifiedOn)}${badge.xp > 0 ? ` · +${badge.xp} XP` : ""}`
             : `${badge.criterion}${badge.current ? ` · ${badge.current.toLocaleString("en")} / ${(badge.target ?? 0).toLocaleString("en")}` : ""}`}
         </div>
       </div>

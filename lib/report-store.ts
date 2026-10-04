@@ -455,7 +455,7 @@ export async function listOwnResolvedReportDates(userId: string): Promise<LocalD
   }
 }
 
-/** The open-reports statement — exported so the `@live-db` test can EXPLAIN the real one. */
+/** The open-reports statement — open reports per own code, a subselect of the teacher statement. */
 export function openReportsOfTeacherStatement(teacherId: string): SQL {
   return sql`
     SELECT r.code, count(*) AS open
@@ -467,22 +467,59 @@ export function openReportsOfTeacherStatement(teacherId: string): SQL {
 }
 
 /**
+ * The teacher statement — exported so the `@live-db` test can EXPLAIN the real
+ * one. One row of scalar subselects: the open reports per own code (as JSON),
+ * how many reports the teacher resolved (`resolved_by`, any code), and the
+ * local dates of the first `resolvedCap` of them. The resolved ones are read
+ * through the partial `resolved_by` index.
+ */
+export function teacherReportsStatement(teacherId: string, resolvedCap: number): SQL {
+  const resolvedByTeacher = sql`r.resolved_by = ${teacherId} AND r.resolved_at IS NOT NULL`;
+  return sql`
+    SELECT
+      (SELECT coalesce(json_agg(json_build_object('code', o.code, 'open', o.open)), '[]'::json)
+       FROM (${openReportsOfTeacherStatement(teacherId)}) o) AS open,
+      (SELECT count(*) FROM novedu_reports r WHERE ${resolvedByTeacher}) AS resolved,
+      (SELECT coalesce(array_agg(f.day ORDER BY f.at), '{}')
+       FROM (
+         SELECT r.resolved_at AS at,
+                ((r.resolved_at AT TIME ZONE ${HOME_TIME_ZONE})::date)::text AS day
+         FROM novedu_reports r
+         WHERE ${resolvedByTeacher}
+         ORDER BY r.resolved_at
+         LIMIT ${resolvedCap}
+       ) f) AS "resolvedOn"
+  `;
+}
+
+/**
  * The teacher start page's reports fact group (docs/home.md → Teacher
- * dashboard): the number of unresolved reports per code, for the teacher's OWN
- * codes only. Codes and counts leave this function — no reporter, no content.
+ * dashboard): the unresolved reports per code for the teacher's OWN codes, and
+ * the reports the teacher resolved (a count plus the first `resolvedCap` local
+ * dates). Codes, counts and dates leave this function — no reporter, no content.
  * Returns `undefined` on a database error (reported with a fixed message, never
  * the raw error). Never throws.
  */
-export async function listOpenReportCounts(
+export async function loadTeacherReports(
   teacherId: string,
-): Promise<{ code: string; open: number }[] | undefined> {
+  resolvedCap: number,
+): Promise<
+  { open: { code: string; open: number }[]; resolved: number; resolvedOn: LocalDate[] } | undefined
+> {
   try {
-    const res = await getDb().execute<{ code: string; open: number | string }>(
-      openReportsOfTeacherStatement(teacherId),
-    );
-    return res.rows.map((row) => ({ code: row.code, open: Number(row.open) }));
+    const res = await getDb().execute<{
+      open: { code: string; open: number | string }[];
+      resolved: number | string;
+      resolvedOn: LocalDate[];
+    }>(teacherReportsStatement(teacherId, resolvedCap));
+    const row = res.rows[0];
+    return {
+      open: (row?.open ?? []).map((o) => ({ code: o.code, open: Number(o.open) })),
+      resolved: Number(row?.resolved ?? 0),
+      resolvedOn: row?.resolvedOn ?? [],
+    };
   } catch (error) {
-    reportStoreFailure("report-store", "count open reports", error);
+    reportStoreFailure("report-store", "load teacher reports", error);
     return undefined;
   }
 }

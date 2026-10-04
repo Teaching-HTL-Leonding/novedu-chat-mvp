@@ -30,6 +30,8 @@ colors:
   fam-coding: "#4a3aa7"
   fam-secret: "#0f172a"
   fam-quiz: "#e3a21a"
+  fam-reach: "#0b7285"
+  fam-authoring: "#9c36b5"
   gold: "#e3a21a"
   gold-ink: "#3d2a00"
   silver: "#aab4c3"
@@ -210,7 +212,7 @@ Implementation rules (Tailwind v4 CSS-first setup, layer discipline, the `cn()` 
 
 **Creative North Star: "The Classroom Workbench"**
 
-Novedu is a working tool that a school uses mid-lesson. Its surfaces are near-black ink on white cards laid on a cool gray canvas, under a dark status bar. Everything is light, flat and hairline-bordered; controls are round pills; type is one family (Geist) at small, dense sizes. The teacher back office reads like a well-kept ledger: tables, forms, stat tiles, and colour only where it labels a kind or a status. A teacher's start page belongs to that ledger: one line of to-dos over a ranked board.
+Novedu is a working tool that a school uses mid-lesson. Its surfaces are near-black ink on white cards laid on a cool gray canvas, under a dark status bar. Everything is light, flat and hairline-bordered; controls are round pills; type is one family (Geist) at small, dense sizes. The teacher back office reads like a well-kept ledger: tables, forms, stat tiles, and colour only where it labels a kind or a status. A teacher's start page belongs to that ledger: one line of to-dos over a ranked board, with the student page's badge shelf, in the teacher's own family colours, at the foot.
 
 The student start page (`/`) is the one surface where the workbench is allowed to glow. It keeps the same shell, cards and type, and adds the brand blue, a family colour per badge ladder, and amber for "new since your last visit". The page's spine is a 26-week activity calendar with earned badges pinned to the day they were reached. Rewards are pinned, never popped: no overlay, no confetti, no motion beyond a small hover lift on the pins.
 
@@ -233,7 +235,7 @@ A neutral ink-and-paper base carries the whole app; saturated colour enters only
 
 ### Secondary
 - **Amber of the New** (`brand-amber`, with `amber-wash`, `amber-line`, `amber-halo`, `amber-ink`): reserved for "new since your last visit". The ring around a new badge disc or calendar pin, the dot and wash of the new-badges strip, and the small "New" chip next to a badge name.
-- **Badge family colours** (`fam-rhythm` Rhythm Green, `fam-practice` Practice Blue, `fam-coding` Coding Violet, `fam-secret` Secret Slate): one solid colour per badge family, filling earned badge discs, calendar pins, Almost-there meters and the weekly-streak squares (Rhythm Green). Glyphs on them are white, except on Secret Slate, where the glyph is `brand-amber`: a secret badge is the one earned surprise on the page. `fam-quiz` (Quiz Gold) shares the gold medal's colour and is light, so its glyph is the dark `gold-ink`.
+- **Badge family colours** (`fam-rhythm` Rhythm Green, `fam-practice` Practice Blue, `fam-coding` Coding Violet, `fam-secret` Secret Slate): one solid colour per badge family, filling earned badge discs, calendar pins, Almost-there meters and the weekly-streak squares (Rhythm Green). Glyphs on them are white, except on Secret Slate, where the glyph is `brand-amber`: a secret badge is the one earned surprise on the page. `fam-quiz` (Quiz Gold) shares the gold medal's colour and is light, so its glyph is the dark `gold-ink`. The teacher start page reuses the Badges section and discs for its own two families, `fam-reach` (Reach Teal) and `fam-authoring` (Authoring Grape), with white glyphs; they never appear on the student page.
 - **Medal colours** (`gold`, `silver`, `bronze`, each with its dark `-ink` glyph colour): the "Time to refresh" medal discs and the medal count dots. A quiz without a medal gets the outlined locked disc. Medals are practice results, never grades, and the section says so.
 
 ### Tertiary

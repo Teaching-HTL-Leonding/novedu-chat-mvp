@@ -1,0 +1,2 @@
+CREATE INDEX "ix_novedu_files_created_by" ON "novedu_files" ("created_by");--> statement-breakpoint
+CREATE INDEX "ix_novedu_reports_resolved_by" ON "novedu_reports" ("resolved_by","resolved_at") WHERE "resolved_by" IS NOT NULL;

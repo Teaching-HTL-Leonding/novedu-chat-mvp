@@ -20,8 +20,8 @@ export type Status =
   /** A fact group the rule needs failed to load. */
   | { kind: "unavailable" };
 
-export interface Evaluated<F> {
-  achievement: Achievement<F>;
+export interface Evaluated<F, G extends string = FactGroup> {
+  achievement: Achievement<F, G>;
   status: Status;
 }
 
@@ -30,12 +30,12 @@ export interface Evaluated<F> {
  * revoked); otherwise the rule runs only when every group in its `needs` is
  * available, so an unavailable group is never read as zero.
  */
-export function evaluate<F>(
-  catalog: readonly Achievement<F>[],
+export function evaluate<F, G extends string>(
+  catalog: readonly Achievement<F, G>[],
   facts: F,
-  available: ReadonlySet<FactGroup>,
+  available: ReadonlySet<G>,
   grants: readonly Grant[],
-): Evaluated<F>[] {
+): Evaluated<F, G>[] {
   const stored = new Map(grants.map((g) => [g.id, g]));
   return catalog.map((achievement) => {
     const grant = stored.get(achievement.id);
@@ -59,8 +59,8 @@ export function evaluate<F>(
 }
 
 /** The grants to insert: qualifying entries without a stored row. */
-export function newGrants<F>(
-  evaluated: readonly Evaluated<F>[],
+export function newGrants<F, G extends string>(
+  evaluated: readonly Evaluated<F, G>[],
 ): { id: string; qualifiedOn: LocalDate }[] {
   return evaluated.flatMap(({ achievement, status }) =>
     status.kind === "qualifies" ? [{ id: achievement.id, qualifiedOn: status.qualifiedOn }] : [],
@@ -75,7 +75,9 @@ export const ALMOST_THERE_MAX = 4;
  * earned first), listed (not hidden) and with progress, by `current / target`
  * descending, catalog order breaking ties, at most four.
  */
-export function almostThere<F>(evaluated: readonly Evaluated<F>[]): Evaluated<F>[] {
+export function almostThere<F, G extends string>(
+  evaluated: readonly Evaluated<F, G>[],
+): Evaluated<F, G>[] {
   const nextTaken = new Set<string>();
   return evaluated
     .map((entry, index) => ({ entry, index }))
@@ -95,16 +97,16 @@ export function almostThere<F>(evaluated: readonly Evaluated<F>[]): Evaluated<F>
     .map(({ entry }) => entry);
 }
 
-function ratio<F>({ status }: Evaluated<F>): number {
+function ratio<F, G extends string>({ status }: Evaluated<F, G>): number {
   return status.kind === "progress" ? status.current / status.target : 0;
 }
 
-export interface FamilyView<F> {
+export interface FamilyView<F, G extends string = FactGroup> {
   family: string;
   /** Earned entries plus the next unearned tier of each ladder (and each unearned one-off). */
-  shown: Evaluated<F>[];
+  shown: Evaluated<F, G>[];
   /** Everything else listable, revealed by "Show all badges". */
-  more: Evaluated<F>[];
+  more: Evaluated<F, G>[];
 }
 
 /**
@@ -112,13 +114,13 @@ export interface FamilyView<F> {
  * Hidden entries appear only once earned; entries whose rule is unavailable
  * are left out.
  */
-export function badgeView<F>(
-  evaluated: readonly Evaluated<F>[],
+export function badgeView<F, G extends string>(
+  evaluated: readonly Evaluated<F, G>[],
   families: readonly string[],
-): FamilyView<F>[] {
+): FamilyView<F, G>[] {
   return families.map((family) => {
-    const shown: Evaluated<F>[] = [];
-    const more: Evaluated<F>[] = [];
+    const shown: Evaluated<F, G>[] = [];
+    const more: Evaluated<F, G>[] = [];
     const nextTaken = new Set<string>();
     const members = evaluated
       .filter((e) => e.achievement.family === family)

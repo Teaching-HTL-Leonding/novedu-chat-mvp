@@ -54,6 +54,13 @@ async function expectTeacherHomeRendered(page: Page): Promise<"dashboard" | "no-
       await expect(page.getByRole("heading", { level: 2, name: title })).toBeVisible();
     }
   }
+  // The badges, with or without codes: the teacher's families, or the unavailable note.
+  const badges = page.getByRole("region", { name: "Badges" });
+  await expect(badges).toBeVisible();
+  await expect(
+    badges.locator('[data-family="reach"]').or(badges.getByText(/could not be loaded/)),
+  ).toBeVisible();
+  await expect(badges.locator('[data-family="rhythm"]')).toHaveCount(0);
   await expectNoErrorScreen(page);
   return state;
 }
@@ -167,7 +174,7 @@ test.describe("as a brand-new student", () => {
 test.describe("as a brand-new teacher", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test("without any code: only the greeting, the Teacher Guide and one line", async ({
+  test("without any code: the greeting, the Teacher Guide, one line and the badges to earn", async ({
     page,
     context,
   }) => {
@@ -176,7 +183,15 @@ test.describe("as a brand-new teacher", () => {
       const errors = watchErrors(page);
       expect(await expectTeacherHomeRendered(page)).toBe("no-codes");
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("Welcome back, Tina");
-      await expect(page.getByRole("heading", { level: 2 })).toHaveCount(0);
+      // No dashboard sections — only the badges, nothing earned, First Code first.
+      await expect(page.getByRole("heading", { level: 2 })).toHaveText(["Badges"]);
+      const badges = page.getByRole("region", { name: "Badges" });
+      await expect(badges.getByText("0 earned")).toBeVisible();
+      await expect(badges.locator("li[data-badge]").first()).toHaveAttribute(
+        "data-badge",
+        "first-code",
+      );
+      await expect(page.getByText(/new badges? since your last visit/)).toHaveCount(0);
       expect(errors).toEqual([]);
     } finally {
       await deletePrincipal(principal.id);
