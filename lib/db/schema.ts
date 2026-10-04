@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
+  date,
   index,
   integer,
   pgTable,
@@ -451,4 +452,22 @@ export const usageByUser = pgTable(
   },
   // The PK `(user_id, hour)` doubles as the per-user quota-window range-scan index.
   (t) => [primaryKey({ columns: [t.userId, t.hour] })],
+);
+
+// Earned achievements (the start page's badges — docs/home.md). One row per user
+// and catalog id; rows are never deleted, so an earned badge survives deleted
+// codes. The id is a generic catalog key (e.g. `weekly-streak-4`) and NEVER
+// contains a code: this table must not become a user↔code link.
+// `qualified_on` is the Vienna-local date on which the evidence was first
+// complete (the calendar pins the badge there); `seen_at` null = "new".
+export const achievements = pgTable(
+  "novedu_achievements",
+  {
+    userId: varchar("user_id", { length: 64 }).notNull(),
+    achievementId: varchar("achievement_id", { length: 64 }).notNull(),
+    earnedAt: timestamp("earned_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    qualifiedOn: date("qualified_on", { mode: "string" }).notNull(),
+    seenAt: timestamp("seen_at", { withTimezone: true, mode: "date" }),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.achievementId] })],
 );

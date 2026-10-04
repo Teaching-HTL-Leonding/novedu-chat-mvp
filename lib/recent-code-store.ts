@@ -18,12 +18,14 @@ export interface RecentCode {
   code: string;
   /** The teacher's note — the shortcut's label (fallback: the code itself). */
   note: string;
+  /** The code's stored module id (`tutor` / `quiz` / `writing` / `coding`). */
+  module: string;
   lastUsed: Date;
 }
 
 /**
  * The user's most recently used codes, newest first — joined with `novedu_codes`
- * for the note, so deleted codes drop out of the list by themselves (inner join).
+ * for the note and module, so deleted codes drop out of the list by themselves (inner join).
  * Includes currently expired or not-yet-started codes as long as their row
  * exists: clicking one shows the window error, and definitively dead ones are
  * removed there.
@@ -31,7 +33,12 @@ export interface RecentCode {
 export async function listRecentCodes(userId: string): Promise<RecentCode[]> {
   try {
     return await getDb()
-      .select({ code: recentCodes.code, note: codes.note, lastUsed: recentCodes.lastUsed })
+      .select({
+        code: recentCodes.code,
+        note: codes.note,
+        module: codes.module,
+        lastUsed: recentCodes.lastUsed,
+      })
       .from(recentCodes)
       .innerJoin(codes, eq(recentCodes.code, codes.code))
       .where(eq(recentCodes.userId, userId))

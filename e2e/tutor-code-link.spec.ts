@@ -20,7 +20,7 @@ test("the root URL shows the code entry form", async ({ page }) => {
   await page.goto("/");
 
   await expect(page).toHaveTitle(/Novedu/);
-  await expect(page.getByRole("heading", { name: "Enter your code" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome back, E2E" })).toBeVisible();
   await expect(page.getByLabel("Code")).toBeVisible();
   // No chat composer.
   await expect(page.getByPlaceholder("Type a message...")).toHaveCount(0);

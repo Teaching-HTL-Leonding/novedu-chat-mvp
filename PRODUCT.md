@@ -13,6 +13,7 @@ Scope: the Next.js web app at the repo root. The CLI and the teacher guide (docs
 What Novedu is and its four kinds of activity: [What is Novedu](teacher-docs/src/content/docs/00-introduction/01-what-is-novedu.md). How students get in: [What is a shareable code](teacher-docs/src/content/docs/00-introduction/02-shareable-codes.md).
 
 - **Students come first.** Students at an Austrian technical secondary school (HTL) arrive mid-lesson or on an assignment, through a link their teacher shared, with a task to finish. They didn't choose the tool and owe it no attention, so every student screen has to make the activity obvious and get out of the way.
+- **The start page is the one playful surface.** A student's own home (`/`) rewards coming back: XP, levels, a weekly streak, a 26-week calendar and badges, visible only to that student and never compared with anyone ([docs/home.md](docs/home.md)). Getting back into an activity still comes first on it.
 - **Teachers come second.** They use a power-user back office (codes, files, images, reports, usage) and often work from the CLI instead. They value density, scanability, and predictability over guidance.
 
 ## Product Purpose

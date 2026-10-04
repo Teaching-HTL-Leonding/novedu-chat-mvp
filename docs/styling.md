@@ -14,6 +14,7 @@ Research current Tailwind docs in context7 (`ctx7` CLI) before styling work — 
 
 Plain values live on `:root`, mapped onto Tailwind tokens via `@theme inline` — both in `app/globals.css`. Names follow **shadcn/ui** (`background`, `foreground`, `primary`, `muted`, `border`, `ring`, `radius`, …) so shadcn components drop in later unchanged; `success` / `warning` / `destructive` are the status colors (green-700 / amber-700 / red-700).
 
+- **Start-page tokens**: the brand symbol's colours (`brand-deep` / `brand-amber`), the calendar ramp (`heat-0`…`heat-3`), the badge families (`fam-*`) and the amber notice tints (`amber-wash` / `-line` / `-halo` / `-ink`) are tokens like the rest, used by the start page (`app/_home`, `docs/home.md`).
 - **Light-only by design**: `color-scheme: light` is forced; the theme is intentionally independent of the system scheme. Do not add dark-mode variants.
 - Fonts: Geist via `next/font` variables (`--font-geist-sans`/`--font-geist-mono` on `<html>`), wired to `--font-sans`/`--font-mono` in `@theme inline`. Preflight applies them; components never name fonts directly (`font-mono` where needed).
 - **Derived tints use the opacity ramp on `foreground`**, not new hex values:
