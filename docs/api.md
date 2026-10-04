@@ -240,7 +240,7 @@ any page, and its handler re-validates the session itself on top of that.
   non-empty, every entry UUID-shaped (the web bulk actions' guard); anything
   else → **`400 { message }`**. Stamps `resolved_at = now` + `resolved_by` = the
   token's user id via `setReportsResolved(ids, true, userId)`; unknown / already-resolved
-  ids are silent no-ops (the blanket update). `200` with `{ ok: true }`; store
+  ids are silent no-ops (an already-resolved report keeps its first resolver). `200` with `{ ok: true }`; store
   failure → `503`. **Resolve is the only mutation on this channel — reopen and
   delete stay web-only** (an agent should never destroy a student's report;
   `docs/reports.md`).

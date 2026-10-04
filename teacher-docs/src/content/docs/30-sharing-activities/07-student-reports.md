@@ -62,7 +62,7 @@ Every report also has a details view that shows the reaction, the student's name
 
 You handle reports in bulk from the Reports page. Tick the reports you want to act on, then use the buttons above the list:
 
-- **Mark resolved** clears the ones you've dealt with, so they drop out of the default open view.
+- **Mark resolved** clears the ones you've dealt with, so they drop out of the default open view. A report that is already resolved keeps the teacher who resolved it first.
 - **Reopen** brings a resolved report back if you need to look again.
 - **Delete Selected** removes reports you no longer need to keep.
 

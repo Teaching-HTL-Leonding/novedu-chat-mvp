@@ -182,8 +182,10 @@ error.
   `undefined` = DB error, never throws. Backs the bearer `GET /api/reports/<id>`
   (below).
 - `setReportsResolved(ids, resolved, teacherId)` — bulk resolve/reopen. Resolving
-  stamps `resolved_at = now` + `resolved_by = teacherId`; reopening **nulls both**
-  columns (`resolved_at` is the single source of truth). No-op for an empty id list.
+  stamps `resolved_at = now` + `resolved_by = teacherId` on the **open** reports
+  only — an already-resolved report keeps its first resolver and time (the
+  resolver's Listener badge, `docs/home.md`); reopening **nulls both** columns
+  (`resolved_at` is the single source of truth). No-op for an empty id list.
 - `deleteReports(ids)` — bulk DELETE, the inbox's "Delete Selected".
 
 ## Teacher inbox — `/reports`
@@ -241,8 +243,8 @@ reports-specific invariants:
 - **`resolved_by` is the token's user id.** `POST /api/reports/resolve` calls the existing
   `setReportsResolved(ids, true, userId)` with the verified token's user id, so a report an
   agent resolves is attributed exactly like the web action — to the teacher who ran
-  `novedu-cli login`. Unknown / already-resolved ids are silent no-ops (the same
-  blanket update the inbox uses).
+  `novedu-cli login`. Unknown / already-resolved ids are silent no-ops — an
+  already-resolved report keeps its first resolver (the same update the inbox uses).
 - **The identity discipline carries over.** The API surfaces only the **reporter's
   own** identity (`userId` + `displayName`), never a different student behind a
   reported thread — `getReportById` is the single-row twin of `listReports` and, like

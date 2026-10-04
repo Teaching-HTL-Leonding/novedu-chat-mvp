@@ -385,7 +385,9 @@ export async function getReportById(id: string): Promise<ReportListRow | null | 
 
 /**
  * Bulk-sets the resolution state of the given reports. `resolved: true` stamps
- * `resolvedAt = now` + `resolvedBy = teacherId`; `resolved: false` (reopen) nulls
+ * `resolvedAt = now` + `resolvedBy = teacherId` on the reports that are still
+ * OPEN — an already-resolved report keeps its first resolver and time (the
+ * resolver's Listener badge, docs/home.md); `resolved: false` (reopen) nulls
  * BOTH columns — `resolvedAt` is the single source of truth for resolution.
  * Returns `false` (never throws) on a database error. A no-op for an empty id list.
  */
@@ -403,7 +405,11 @@ export async function setReportsResolved(
           ? { resolvedAt: new Date(), resolvedBy: teacherId }
           : { resolvedAt: null, resolvedBy: null },
       )
-      .where(inArray(reports.id, ids));
+      .where(
+        resolved
+          ? and(inArray(reports.id, ids), isNull(reports.resolvedAt))
+          : inArray(reports.id, ids),
+      );
     return true;
   } catch (error) {
     console.error("report-store: updating report resolution failed", error);

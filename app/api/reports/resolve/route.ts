@@ -24,8 +24,9 @@ function isReportIdList(value: unknown): value is string[] {
 /**
  * Marks the given reports resolved. JSON body `{ ids: [uuid…] }` — non-empty,
  * every entry UUID-shaped; anything else → 400. Stamps `resolved_at = now` +
- * `resolved_by` = the token's user id via `setReportsResolved`. Already-resolved or
- * unknown ids are silent no-ops (the web action's blanket update). 200
+ * `resolved_by` = the token's user id via `setReportsResolved`. Already-resolved
+ * reports keep their first resolver, and unknown ids are silent no-ops (the web
+ * action's blanket update). 200
  * `{ ok: true }`; store failure → 503.
  */
 export async function POST(request: Request) {
