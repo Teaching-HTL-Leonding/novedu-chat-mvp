@@ -1,3 +1,4 @@
+import { type SQL, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { userChats } from "@/lib/db/schema";
 import type { FileKind } from "@/lib/file-name";
@@ -86,4 +87,18 @@ export async function recordUserChat(
     // NOT cached: a transient DB error should retry on the next run request.
     console.error("user-chat-store: failed to record user chat", error);
   }
+}
+
+/**
+ * The user ids attributed to a chat on one of the teacher's codes whose FROZEN
+ * `anonymous` flag is false — a subselect the teacher facts store unions into
+ * its identified-students count (docs/home.md → Teacher dashboard). Only user
+ * ids leave it; the caller counts them.
+ */
+export function chattersOfTeacherStatement(teacherId: string): SQL {
+  return sql`
+    SELECT uc.user_id FROM novedu_user_chats uc
+    JOIN novedu_codes c ON c.code = uc.code
+    WHERE c.created_by = ${teacherId} AND NOT c.anonymous
+  `;
 }

@@ -9,9 +9,10 @@ related:
   - 30-sharing-activities/01-creating-codes
   - 30-sharing-activities/04-anonymous-vs-per-user
   - 30-sharing-activities/05-deleting-codes
+  - 30-sharing-activities/09-your-start-page
 ---
 
-Novedu gives you two views on how your activities are being used: each code has its own statistics page, and a separate usage view sums up all AI use across the school. Both are visible to teachers only.
+Novedu gives you two views on how your activities are being used: each code has its own statistics page, and a separate usage view sums up all AI use across the school. Both are visible to teachers only. For a quick look at your own codes, your [start page](/30-sharing-activities/09-your-start-page/) sums them up.
 
 ## What counts as a use
 

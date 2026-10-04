@@ -185,12 +185,13 @@ Read before touching: `app/usage/**`, `lib/usage-stats-store.ts`, `lib/usage-ran
 
 ### Start page, achievements, saved quiz results & Settings → `docs/home.md`
 
-Read before touching: `app/page.tsx`, `app/_home/**`, `app/settings/**`, `app/[code]/_quiz/save-result.tsx`, `lib/achievements/**`, `lib/home-data.ts`, `lib/home-cache.ts`, `lib/student-facts-store.ts`, `lib/achievement-store.ts`, `lib/achievement-actions.ts`, `lib/quiz-result-store.ts`, `lib/user-settings-*.ts`, `novedu_achievements`, `novedu_quiz_results`, `novedu_user_settings`.
+Read before touching: `app/page.tsx`, `app/_home/**`, `app/settings/**`, `app/[code]/_quiz/save-result.tsx`, `lib/achievements/**`, `lib/home-data.ts`, `lib/home-cache.ts`, `lib/student-facts-store.ts`, `lib/teacher-facts-store.ts`, `lib/achievement-store.ts`, `lib/achievement-actions.ts`, `lib/quiz-result-store.ts`, `lib/user-settings-*.ts`, `novedu_achievements`, `novedu_quiz_results`, `novedu_user_settings`.
 
 - Progress (XP, streak, calendar, badges) is served ONLY to the session user about themselves — no teacher view, no comparison; every statement is keyed by the session user id.
 - `lib/achievements/catalog.ts` is server-only (guard-tested): hidden badges reach page data only once earned. Achievement ids never contain a code.
 - A failed fact group is never read as zero; the page renders earned state only from stored grants, and new grants are inserted before the load returns.
 - Saved quiz results are written only by `saveQuizResult` on the student's explicit choice (or their own "Always" setting), in one transaction under a `(user, code)` advisory lock with the code row `FOR SHARE`; the code delete locks its rows `FOR UPDATE` first. Settings act only on the session user's own row.
+- `/` picks the shell by the EFFECTIVE role (`effectiveTeacherForSession`): view-as-student gets the student page. The teacher dashboard's statements are restricted to codes with `created_by` = the session user, count students by the frozen `anonymous` flag (as `getCodeStats`), and return counts only — never a student id or name.
 
 ### LLM diagnostics → `docs/diagnostics.md`
 

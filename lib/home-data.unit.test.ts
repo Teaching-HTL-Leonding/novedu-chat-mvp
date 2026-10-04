@@ -5,8 +5,10 @@ const mocks = vi.hoisted(() => ({
   loadStudentFacts: vi.fn(),
   listGrants: vi.fn(),
   insertGrants: vi.fn(),
+  loadTeacherFacts: vi.fn(),
 }));
 vi.mock("@/lib/student-facts-store", () => ({ loadStudentFacts: mocks.loadStudentFacts }));
+vi.mock("@/lib/teacher-facts-store", () => ({ loadTeacherFacts: mocks.loadTeacherFacts }));
 vi.mock("@/lib/achievement-store", () => ({
   listGrants: mocks.listGrants,
   insertGrants: mocks.insertGrants,
@@ -14,9 +16,12 @@ vi.mock("@/lib/achievement-store", () => ({
 
 import type { StudentAchievement } from "@/lib/achievements/catalog";
 import type { UsageDay } from "@/lib/achievements/derive";
+import type { TeacherCode, TeacherFacts } from "@/lib/achievements/teacher";
 import {
   buildStudentHome,
+  buildTeacherHome,
   getStudentHome,
+  getTeacherHome,
   invalidateHome,
   loadStudentHome,
   resetHomeCacheForTests,
@@ -336,5 +341,205 @@ describe("getStudentHome (cached)", () => {
     await getStudentHome("u-fail");
     await getStudentHome("u-fail");
     expect(mocks.loadStudentFacts).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Teacher dashboard
+
+const T_NOW = new Date("2026-10-04T17:30:00Z"); // Sun 4 Oct, 19:30 Vienna
+const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const tAt = (offsetMs: number) => new Date(T_NOW.getTime() + offsetMs);
+
+const tCode = (id: string, extra: Partial<TeacherCode> = {}): TeacherCode => ({
+  code: id,
+  module: "quiz",
+  note: `Note ${id}`,
+  validFrom: null,
+  validUntil: null,
+  createdAt: tAt(-30 * DAY),
+  ...extra,
+});
+
+const FACTS: TeacherFacts = {
+  codes: [
+    // Ends today 21:59Z = 23:59 local; another one ends Tue 6 Oct 14:00 local.
+    tCode("TODAY", { validUntil: new Date("2026-10-04T21:59:00Z"), note: "  " }),
+    tCode("TUESDAY", { validUntil: new Date("2026-10-06T12:00:00Z"), module: "tutor" }),
+    tCode("UNUSED", { createdAt: tAt(-12 * DAY) }),
+    tCode("ENDED", { validUntil: tAt(-DAY) }),
+  ],
+  usage: [
+    {
+      code: "TUESDAY",
+      interactions: 40,
+      outsideSchool: 10,
+      quizAnswers: 5,
+      inputTokens: 1000,
+      outputTokens: 100,
+    },
+    {
+      code: "TODAY",
+      interactions: 0,
+      outsideSchool: 0,
+      quizAnswers: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    },
+    {
+      code: "ENDED",
+      interactions: 3,
+      outsideSchool: 3,
+      quizAnswers: 3,
+      inputTokens: 10,
+      outputTokens: 1,
+    },
+  ],
+  conversations: 7,
+  students: 12,
+  reports: [
+    { code: "TUESDAY", open: 2 },
+    { code: "TODAY", open: 1 },
+  ],
+};
+
+describe("buildTeacherHome", () => {
+  it("builds the KPIs over the teacher's codes", () => {
+    const home = buildTeacherHome(FACTS, T_NOW);
+    expect(home.complete).toBe(true);
+    expect(home.hasCodes).toBe(true);
+    expect(home.kpis).toEqual({
+      liveCodes: 3,
+      students: 12,
+      conversations: 7,
+      quizAnswers: 8,
+      inputTokens: 1010,
+      outputTokens: 101,
+    });
+  });
+
+  it("lists closing-soon codes with their Vienna-local end, the note-or-code label", () => {
+    const { closingSoon } = buildTeacherHome(FACTS, T_NOW);
+    expect(closingSoon).toEqual({
+      total: 2,
+      more: 0,
+      items: [
+        {
+          code: "TODAY",
+          label: "TODAY",
+          module: "quiz",
+          closesOn: "2026-10-04",
+          closesAt: "23:59",
+        },
+        {
+          code: "TUESDAY",
+          label: "Note TUESDAY",
+          module: "tutor",
+          closesOn: "2026-10-06",
+          closesAt: "14:00",
+        },
+      ],
+    });
+  });
+
+  it("counts open reports and lists their codes, most open first", () => {
+    const { openReports } = buildTeacherHome(FACTS, T_NOW);
+    expect(openReports?.total).toBe(3);
+    expect(openReports?.items.map((i) => [i.code, i.open])).toEqual([
+      ["TUESDAY", 2],
+      ["TODAY", 1],
+    ]);
+  });
+
+  it("lists never-used codes with their creation day; a code with a usage row is used", () => {
+    const { neverUsed } = buildTeacherHome(FACTS, T_NOW);
+    expect(neverUsed).toEqual({
+      total: 1,
+      more: 0,
+      items: [{ code: "UNUSED", label: "Note UNUSED", module: "quiz", createdOn: "2026-09-22" }],
+    });
+  });
+
+  it("ranks the top activities with the share outside school hours", () => {
+    const { top } = buildTeacherHome(FACTS, T_NOW);
+    expect(top).toEqual([
+      {
+        code: "TUESDAY",
+        label: "Note TUESDAY",
+        module: "tutor",
+        interactions: 40,
+        outsidePercent: 25,
+      },
+      { code: "ENDED", label: "Note ENDED", module: "quiz", interactions: 3, outsidePercent: 100 },
+    ]);
+  });
+
+  it("caps every list at five codes and says how many more there are", () => {
+    const codes = Array.from({ length: 7 }, (_, i) =>
+      tCode(`C${i}`, { validUntil: tAt((i + 1) * HOUR) }),
+    );
+    const home = buildTeacherHome({ ...FACTS, codes, reports: [] }, T_NOW);
+    expect(home.closingSoon?.total).toBe(7);
+    expect(home.closingSoon?.items.map((i) => i.code)).toEqual(["C0", "C1", "C2", "C3", "C4"]);
+    expect(home.closingSoon?.more).toBe(2);
+    expect(home.openReports).toEqual({ total: 0, more: 0, items: [] });
+  });
+
+  it("a teacher without codes has no codes, empty lists and zero live codes", () => {
+    const home = buildTeacherHome(
+      { codes: [], usage: [], conversations: 0, students: 0, reports: [] },
+      T_NOW,
+    );
+    expect(home.hasCodes).toBe(false);
+    expect(home.kpis.liveCodes).toBe(0);
+    expect(home.top).toEqual([]);
+  });
+
+  it("a failed group is unavailable where it is needed — never read as 0 or empty", () => {
+    const home = buildTeacherHome({ ...FACTS, usage: undefined, students: undefined }, T_NOW);
+    expect(home.complete).toBe(false);
+    expect(home.kpis.students).toBeUndefined();
+    expect(home.kpis.quizAnswers).toBeUndefined();
+    expect(home.kpis.inputTokens).toBeUndefined();
+    expect(home.neverUsed).toBeUndefined();
+    expect(home.top).toBeUndefined();
+    // Groups that loaded still render.
+    expect(home.kpis.liveCodes).toBe(3);
+    expect(home.closingSoon?.total).toBe(2);
+    expect(home.openReports?.total).toBe(3);
+  });
+
+  it("failed codes leave everything that names a code unavailable", () => {
+    const home = buildTeacherHome({ ...FACTS, codes: undefined }, T_NOW);
+    expect(home.hasCodes).toBeUndefined();
+    expect(home.kpis.liveCodes).toBeUndefined();
+    expect(home.closingSoon).toBeUndefined();
+    expect(home.openReports).toBeUndefined();
+    expect(home.neverUsed).toBeUndefined();
+    expect(home.top).toBeUndefined();
+    expect(home.kpis.conversations).toBe(7);
+  });
+});
+
+describe("getTeacherHome (cached)", () => {
+  it("loads the teacher's own facts once per minute, apart from the student home", async () => {
+    mocks.loadTeacherFacts.mockResolvedValue(FACTS);
+    await getTeacherHome("t-cache");
+    await getTeacherHome("t-cache");
+    expect(mocks.loadTeacherFacts).toHaveBeenCalledTimes(1);
+    expect(mocks.loadTeacherFacts).toHaveBeenCalledWith("t-cache", expect.any(Date));
+    expect(mocks.loadStudentFacts).not.toHaveBeenCalled();
+
+    invalidateHome("t-cache");
+    await getTeacherHome("t-cache");
+    expect(mocks.loadTeacherFacts).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache an incomplete load", async () => {
+    mocks.loadTeacherFacts.mockResolvedValue({ ...FACTS, conversations: undefined });
+    await getTeacherHome("t-fail");
+    await getTeacherHome("t-fail");
+    expect(mocks.loadTeacherFacts).toHaveBeenCalledTimes(2);
   });
 });

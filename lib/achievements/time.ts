@@ -82,3 +82,31 @@ export function monthOf(date: LocalDate): number {
 export function dayOfMonth(date: LocalDate): number {
   return Number(date.slice(8, 10));
 }
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * The instant a local date begins (its Vienna midnight). Vienna's clock changes
+ * at 02:00/03:00, so midnight always exists exactly once; the offset is +1 or +2.
+ */
+export function startOfLocalDay(date: LocalDate): Date {
+  for (const offsetHours of [2, 1]) {
+    const instant = new Date(toUtc(date) - offsetHours * HOUR_MS);
+    if (localDateOf(instant) === date && localHourOf(instant) === 0) return instant;
+  }
+  throw new Error(`no local midnight for ${date}`);
+}
+
+/** School hours: Monday to Friday, local hours `SCHOOL_DAY_START ≤ h < SCHOOL_DAY_END`. */
+export const SCHOOL_DAY_START = 8;
+export const SCHOOL_DAY_END = 17;
+
+/**
+ * Whether a usage bucket starting at `instant` lies in school hours. Hour buckets
+ * cannot resolve minutes, so the rule is stated on whole local hours; weekends
+ * are outside all day. School holidays are not known and count like any weekday.
+ */
+export function isSchoolHour(instant: Date): boolean {
+  const hour = localHourOf(instant);
+  return weekdayOf(localDateOf(instant)) < 5 && hour >= SCHOOL_DAY_START && hour < SCHOOL_DAY_END;
+}

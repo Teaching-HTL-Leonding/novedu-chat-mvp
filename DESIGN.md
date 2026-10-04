@@ -210,7 +210,7 @@ Implementation rules (Tailwind v4 CSS-first setup, layer discipline, the `cn()` 
 
 **Creative North Star: "The Classroom Workbench"**
 
-Novedu is a working tool that a school uses mid-lesson. Its surfaces are near-black ink on white cards laid on a cool gray canvas, under a dark status bar. Everything is light, flat and hairline-bordered; controls are round pills; type is one family (Geist) at small, dense sizes. The teacher back office reads like a well-kept ledger: tables, forms, stat tiles, and colour only where it labels a kind or a status.
+Novedu is a working tool that a school uses mid-lesson. Its surfaces are near-black ink on white cards laid on a cool gray canvas, under a dark status bar. Everything is light, flat and hairline-bordered; controls are round pills; type is one family (Geist) at small, dense sizes. The teacher back office reads like a well-kept ledger: tables, forms, stat tiles, and colour only where it labels a kind or a status. A teacher's start page belongs to that ledger: one line of to-dos over a ranked board.
 
 The student start page (`/`) is the one surface where the workbench is allowed to glow. It keeps the same shell, cards and type, and adds the brand blue, a family colour per badge ladder, and amber for "new since your last visit". The page's spine is a 26-week activity calendar with earned badges pinned to the day they were reached. Rewards are pinned, never popped: no overlay, no confetti, no motion beyond a small hover lift on the pins.
 
@@ -292,6 +292,12 @@ The start page stacks full-width cards in one column on every width: Continue, t
 - Almost there: two columns from md. Badges: one family per column, two from md, three from lg.
 - The calendar: 26 flexible 3:2 columns from md (min width 760px); on phones fixed 20px day cells that scroll horizontally inside the card, starting at today.
 
+A teacher's start page is a different stack, also one column of full-width blocks 16px apart:
+- The header: the h1 greeting on the left, the outline Teacher Guide pill on the right; it wraps under the greeting on phones. A teacher without any code sees only this header and one muted line.
+- The attention bar ("Needs you"): one card holding the title and three counters in a wrapping row; the open counter's codes unfold below a hairline inside the same card. On phones the title and every counter take the full width, one per row.
+- "Last 30 days", a bare section title with its scope caption on the right, over six stat tiles in a grid: six columns from lg, three from md, two on phones. A footnote caption sits under the grid.
+- Top activities: a card with a five-column table (rank, activity, kind, interactions, outside school hours) and a hairline-topped footer caption with the link to the usage dashboard. On phones the table head becomes screen-reader-only and each row folds into a grid entry: the rank on the left, the label with the kind pill on the right, then interactions and the share as plain lines.
+
 Card padding is 16px horizontal on phones and 24px from md, 20px vertical.
 
 ## Elevation & Depth
@@ -299,7 +305,7 @@ Card padding is 16px horizontal on phones and 24px from md, 20px vertical.
 The system is flat. Cards rest on the canvas with a 1px hairline (ink at 15 percent) and no shadow; depth is the tonal step from slate-100 canvas to white card. Inside a card, regions are separated by hairlines, never by nested shadows. Shadows exist only on things that float over other content.
 
 ### Shadow Vocabulary
-- **Floating panel** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`): dropdown menus and the calendar tooltip.
+- **Floating panel** (`box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)`): dropdown menus and the dark tooltip.
 - **Pin lift** (`box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)`): badge pins sitting on top of calendar cells.
 
 ### Named Rules
@@ -327,6 +333,8 @@ Confident, compact pills.
 ### Chips
 - **Style:** the shared Badge, a 12px semibold pill. Soft tones (10 to 20 percent tint, 800-weight ink) for statuses; `solid` (filled, white text) for module or kind identity; optional uppercase.
 - **On the start page:** Recently used rows carry the neutral activity-kind badge; a new badge carries a small "New" chip in `amber-wash` with `amber-ink` text.
+- **Module badge:** a code's kind on teacher pages (the Codes list, the teacher start page) is the one shared ModuleBadge: the solid, uppercase pill in the module's identity tone with its 12px icon before the label (Tutor teal-700, Quiz amber-700, Writing green-700, Coding blue-800). Teacher surfaces use it rather than restyling a kind.
+- **Count chip:** a small ink pill (22px high, at least 22px wide, bold 12px tabular figures, white text) holding a count inside a control, as on the attention counters.
 
 ### Cards / Containers
 - **Corner Style:** 8px (app card, dashboard card, stat tile); 12px (start-page card, dialog, centered notice).
@@ -354,7 +362,16 @@ The start page's spine: 26 ISO weeks by 7 days, one cell per day coloured by the
 - **Pin:** the disc shrunk to 24px (20px on phones) and centred on the calendar day it was earned, with a 2px card-coloured ring and the pin lift shadow; when a day holds several badges, an ink count bubble sits on its top-right corner. Pins are buttons: hover and focus scale them to 110 percent over 200ms ease-out, focus adds a 2px ink outline offset 4px, and hover, focus or tap shows the dark tooltip.
 
 ### Meter
-A pill track in `heat-0` with a pill fill scaled on the x axis (a transform fed by a CSS variable, never an animated width). 14px high for XP in `brand-deep`, 6px for Almost-there rows in the badge's family colour. Paired with a tabular ratio and, for XP, the "to next level" line.
+A pill track in `heat-0` with a pill fill scaled on the x axis (a transform fed by a CSS variable, never an animated width). 14px high for XP in `brand-deep`, 6px for Almost-there rows in the badge's family colour, and 6px by 72px in `chart-1` for a share column on the teacher start page (decorative there, beside its tabular percentage, and hidden on phones). Paired with a tabular ratio and, for XP, the "to next level" line.
+
+### Attention Counter (signature)
+The teacher start page's to-do list. Each counter is an outline pill button (36px) holding a 16px icon, its label, an ink count chip and a chevron. It opens its codes in place, one panel at a time: the open counter inverts to an ink fill with white label, its count chip turns white with ink figures, and the chevron turns half a turn over 200ms. The first counter with something in it starts open. The panel lists up to five codes as hover-washed rows (label in semibold 14px, the code in 12px mono at 65 percent ink, the detail right-aligned in tabular muted text), separated by 10 percent ink hairlines, with a caption footer explaining the list and how many codes are not shown.
+- **Empty:** a counter with nothing in it is not a button but a quiet green pill (emerald wash, emerald-800 semibold text, a `success` check icon) saying what is clear, so a calm week reads calm.
+- **Unavailable:** a neutral 5 percent ink pill naming the counter and saying it could not be loaded, never an error colour.
+- **Status colour:** a code whose window closes today shows its detail in semibold `destructive`; open reports carry the soft orange status badge. Nothing else on the bar is coloured.
+
+### Tooltip
+The dark floating label shared by the calendar pins and the info button beside a column header: `status-bar` fill, white 12px text at a snug line height, 8px corners, 8px by 10px padding, the floating-panel shadow, at most 256 to 288px wide. It opens on hover and keyboard focus, stays open while the pointer moves onto it, and closes on Escape. The info button is a 20px round ghost holding a 14px info icon at 60 percent ink, with a 5 percent wash and full ink on hover.
 
 ### New-badges Strip
 A single quiet line between Continue and Your progress, shown only when there is something new: `amber-wash` fill, `amber-line` border, 8px corners, `amber-ink` 14px text, led by a 10px `brand-amber` dot with a 3px `amber-halo` ring. It carries a count, nothing to click, and no animation.

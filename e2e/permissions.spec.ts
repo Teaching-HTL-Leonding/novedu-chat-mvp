@@ -87,17 +87,17 @@ test.describe("as a teacher", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Open navigation menu" }).click();
 
-    await expect(page.getByRole("link", { name: "Teacher Guide" })).toHaveAttribute(
+    // The menu's own entries: the teacher start page links the guide and Usage too.
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    await expect(nav.getByRole("link", { name: "Teacher Guide" })).toHaveAttribute(
       "href",
       TEACHER_GUIDE_URL,
     );
-    await expect(
-      page.getByRole("navigation", { name: "Primary" }).getByRole("link").last(),
-    ).toHaveText("Teacher Guide");
-    await expect(page.getByRole("link", { name: "YAML Files" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Codes", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Health" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Usage" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Diagnostics" })).toBeVisible();
+    await expect(nav.getByRole("link").last()).toHaveText("Teacher Guide");
+    await expect(nav.getByRole("link", { name: "YAML Files" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Codes", exact: true })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Health" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Usage" })).toBeVisible();
+    await expect(nav.getByRole("link", { name: "Diagnostics" })).toBeVisible();
   });
 });

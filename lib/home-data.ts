@@ -32,15 +32,31 @@ import {
   refreshNudges,
   scorePercent,
 } from "@/lib/achievements/quiz";
-import { type LocalDate, todayLocal } from "@/lib/achievements/time";
+import {
+  closingSoon,
+  LIST_MAX,
+  neverUsed,
+  outsideSchoolPercent,
+  reportedCodes,
+  TEACHER_FACT_GROUPS,
+  type TeacherCode,
+  type TeacherFacts,
+  topActivities,
+  usageTotals,
+  windowOpen,
+} from "@/lib/achievements/teacher";
+import { HOME_TIME_ZONE, type LocalDate, localDateOf, todayLocal } from "@/lib/achievements/time";
 import { levelFor, xpTotal } from "@/lib/achievements/xp";
+import type { CodeModule } from "@/lib/code-modules/types";
 import { createHomeCache } from "@/lib/home-cache";
 import { loadStudentFacts } from "@/lib/student-facts-store";
+import { loadTeacherFacts } from "@/lib/teacher-facts-store";
 
-// The student start page's data (docs/home.md): facts + stored grants →
-// evaluation → new grants inserted BEFORE returning → a plain view model. Only
-// plain data leaves this module; a hidden achievement's name and criterion
-// appear in it only once earned.
+// The start page's data (docs/home.md). Students: facts + stored grants →
+// evaluation → new grants inserted BEFORE returning → a plain view model; a
+// hidden achievement's name and criterion appear in it only once earned.
+// Teachers: the facts about their OWN codes → the dashboard's view model. Only
+// plain data leaves this module.
 //
 // SERVER-ONLY: uses the database. Never import from client components.
 
@@ -251,6 +267,7 @@ export async function loadStudentHome(userId: string, now: Date): Promise<Studen
 const homeCache = createHomeCache<StudentHome>({ cacheable: (home) => home.complete });
 
 const studentKey = (userId: string) => `${userId}:student`;
+const teacherKey = (userId: string) => `${userId}:teacher`;
 
 /**
  * The student home for the session user: reused for 60 s per user, one load in
@@ -262,12 +279,172 @@ export const getStudentHome = cache(
     homeCache.get(studentKey(userId), () => loadStudentHome(userId, new Date())),
 );
 
-/** Drops the user's cached home after one of their own writes. */
+// ---------------------------------------------------------------------------
+// Teacher dashboard
+
+/** One of the teacher's codes as the dashboard names it. */
+export interface TeacherCodeItem {
+  code: string;
+  /** The code's note, or the code when it has none. */
+  label: string;
+  module: CodeModule;
+}
+
+/** An attention counter: how many, the first `LIST_MAX` codes, and how many codes are not listed. */
+export interface AttentionList<T> {
+  total: number;
+  items: T[];
+  more: number;
+}
+
+export interface ClosingItem extends TeacherCodeItem {
+  /** The local date and time (`HH:MM`) the window ends. */
+  closesOn: LocalDate;
+  closesAt: string;
+}
+
+export interface ReportedItem extends TeacherCodeItem {
+  open: number;
+}
+
+export interface UnusedItem extends TeacherCodeItem {
+  createdOn: LocalDate;
+}
+
+export interface TopActivity extends TeacherCodeItem {
+  interactions: number;
+  /** Whole percent of the interactions outside school hours. */
+  outsidePercent: number;
+}
+
+/** Each KPI is undefined when the fact group it needs failed — never 0. */
+export interface TeacherKpis {
+  liveCodes?: number;
+  students?: number;
+  conversations?: number;
+  quizAnswers?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+export interface TeacherHome {
+  today: LocalDate;
+  /** Whether the teacher created any code; undefined when the codes group failed. */
+  hasCodes?: boolean;
+  /** Needs the codes. */
+  closingSoon?: AttentionList<ClosingItem>;
+  /** Needs the codes and the reports. */
+  openReports?: AttentionList<ReportedItem>;
+  /** Needs the codes and the usage. */
+  neverUsed?: AttentionList<UnusedItem>;
+  kpis: TeacherKpis;
+  /** Needs the codes and the usage. */
+  top?: TopActivity[];
+  /** Every fact group loaded — only then is the result cached. */
+  complete: boolean;
+}
+
+const localTime = new Intl.DateTimeFormat("en-GB", {
+  timeZone: HOME_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function codeItem(code: TeacherCode): TeacherCodeItem {
+  return { code: code.code, label: code.note.trim() || code.code, module: code.module };
+}
+
+/**
+ * Builds the teacher dashboard from loaded facts. Every list and KPI is present
+ * only when every fact group it needs loaded. Exported for tests.
+ */
+export function buildTeacherHome(facts: TeacherFacts, now: Date): TeacherHome {
+  const { codes, usage, reports } = facts;
+  const home: TeacherHome = {
+    today: todayLocal(now),
+    kpis: {
+      conversations: facts.conversations,
+      students: facts.students,
+    },
+    complete: TEACHER_FACT_GROUPS.every((group) => facts[group] !== undefined),
+  };
+
+  if (usage) Object.assign(home.kpis, usageTotals(usage));
+  if (!codes) return home;
+
+  home.hasCodes = codes.length > 0;
+  home.kpis.liveCodes = codes.filter((code) => windowOpen(code, now)).length;
+  const byCode = new Map(codes.map((code) => [code.code, code]));
+
+  const closing = closingSoon(codes, now);
+  home.closingSoon = {
+    total: closing.length,
+    more: Math.max(0, closing.length - LIST_MAX),
+    items: closing.slice(0, LIST_MAX).map((code) => ({
+      ...codeItem(code),
+      // closingSoon() keeps only codes with an end.
+      closesOn: localDateOf(code.validUntil as Date),
+      closesAt: localTime.format(code.validUntil as Date),
+    })),
+  };
+
+  if (reports) {
+    const reported = reportedCodes(reports).filter((r) => byCode.has(r.code));
+    home.openReports = {
+      total: reported.reduce((sum, r) => sum + r.open, 0),
+      more: Math.max(0, reported.length - LIST_MAX),
+      items: reported.slice(0, LIST_MAX).map((r) => ({
+        ...codeItem(byCode.get(r.code) as TeacherCode),
+        open: r.open,
+      })),
+    };
+  }
+
+  if (usage) {
+    const unused = neverUsed(codes, usage, now);
+    home.neverUsed = {
+      total: unused.length,
+      more: Math.max(0, unused.length - LIST_MAX),
+      items: unused.slice(0, LIST_MAX).map((code) => ({
+        ...codeItem(code),
+        createdOn: localDateOf(code.createdAt),
+      })),
+    };
+    home.top = topActivities(usage.filter((u) => byCode.has(u.code))).map((u) => ({
+      ...codeItem(byCode.get(u.code) as TeacherCode),
+      interactions: u.interactions,
+      outsidePercent: outsideSchoolPercent(u),
+    }));
+  }
+
+  return home;
+}
+
+/** Loads one teacher's dashboard: the five fact groups in parallel, then the view model. */
+export async function loadTeacherHome(userId: string, now: Date): Promise<TeacherHome> {
+  return buildTeacherHome(await loadTeacherFacts(userId, now), now);
+}
+
+const teacherCache = createHomeCache<TeacherHome>({ cacheable: (home) => home.complete });
+
+/**
+ * The teacher dashboard for the session user: reused for 60 s per user, one
+ * load in flight per user, shared by the page's sections within a request.
+ */
+export const getTeacherHome = cache(
+  (userId: string): Promise<TeacherHome> =>
+    teacherCache.get(teacherKey(userId), () => loadTeacherHome(userId, new Date())),
+);
+
+/** Drops the user's cached home (both shapes) after one of their own writes. */
 export function invalidateHome(userId: string): void {
   homeCache.invalidate(studentKey(userId));
+  teacherCache.invalidate(teacherKey(userId));
 }
 
 /** Test seam. */
 export function resetHomeCacheForTests(): void {
   homeCache.clear();
+  teacherCache.clear();
 }

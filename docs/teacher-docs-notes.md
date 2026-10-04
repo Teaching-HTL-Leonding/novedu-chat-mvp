@@ -138,6 +138,18 @@ prose carries everything an editor needs.
 
 - An orientation, not a full dashboard manual. Keep it short.
 
+## 30-sharing-activities/09-your-start-page
+
+- The teacher start page covers ONLY the codes the reading teacher created, and
+  shows counts, never a student's name. Do not suggest it shows the whole school.
+- "Identified students" undercounts by design: anonymous activities can't be
+  counted, and a coding key proves the student opened the activity, not that they
+  used it.
+- School hours are Monday to Friday, 8:00 up to 17:00 Austrian time; weekends are
+  outside all day; holidays are not known.
+- A teacher in "view as student" mode sees the student start page, built from
+  their own use, not the dashboard.
+
 ## 30-sharing-activities/06-coding-special-case
 
 - Sharing a coding code is NOT special any more: it gets the same share link as

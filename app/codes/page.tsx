@@ -1,16 +1,9 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { DataList, type ListColumn } from "@/components/data-list";
-import {
-  CodeIcon,
-  EditIcon,
-  ExternalLinkIcon,
-  FlagIcon,
-  HelpCircleIcon,
-  StatsIcon,
-} from "@/components/icons";
+import { EditIcon, ExternalLinkIcon, StatsIcon } from "@/components/icons";
 import { ListFilterBar, OwnerFilter } from "@/components/list-filter-bar";
 import { DeleteSelectedButton, SelectionProvider } from "@/components/list-selection";
+import { ModuleBadge } from "@/components/module-badge";
 import { AccessDenied, Notice } from "@/components/notice";
 import { ownerColumn } from "@/components/owner-column";
 import { Main } from "@/components/page-main";
@@ -98,14 +91,6 @@ function statusBadge(status: WindowStatus) {
     </Badge>
   );
 }
-
-// The module's tiny pill icon — decorative (the pill text carries the label).
-const MODULE_ICONS: Record<CodeModule, ReactNode> = {
-  tutor: <FlagIcon className="size-3" />,
-  quiz: <HelpCircleIcon className="size-3" />,
-  writing: <EditIcon className="size-3" />,
-  coding: <CodeIcon className="size-3" />,
-};
 
 // Left row stripe in the module's color — same hues as the solid module pills
 // (the Badge `solid` compound variants).
@@ -204,12 +189,7 @@ export default async function CodesPage({
     {
       header: "Module",
       sortKey: "module",
-      render: (row) => (
-        <Badge tone={codeModuleLabels[row.module].tone} solid caps>
-          {MODULE_ICONS[row.module]}
-          {codeModuleLabels[row.module].badge}
-        </Badge>
-      ),
+      render: (row) => <ModuleBadge module={row.module} />,
     },
     {
       header: "Note",

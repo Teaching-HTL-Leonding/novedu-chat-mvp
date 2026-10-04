@@ -80,9 +80,25 @@ export async function signInFreshStudent(
   context: BrowserContext,
   name: string,
 ): Promise<Principal> {
+  return signInFresh(context, name, false);
+}
+
+/** A fresh teacher with no codes and no history, signed in on `context` — see `signInFreshStudent`. */
+export async function signInFreshTeacher(
+  context: BrowserContext,
+  name: string,
+): Promise<Principal> {
+  return signInFresh(context, name, true);
+}
+
+async function signInFresh(
+  context: BrowserContext,
+  name: string,
+  isTeacher: boolean,
+): Promise<Principal> {
   const id = `e2e-${randomUUID()}`;
   const principal = { id, name, email: `${id}@example.com` };
-  await context.addCookies([await sessionCookie(await mintSession(principal, false))]);
+  await context.addCookies([await sessionCookie(await mintSession(principal, isTeacher))]);
   return principal;
 }
 
