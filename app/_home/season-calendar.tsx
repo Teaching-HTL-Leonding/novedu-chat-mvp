@@ -3,7 +3,7 @@
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CalendarCell } from "@/lib/home-data";
 import { cn } from "@/lib/utils";
-import { BadgeGlyph, FAMILY_BG } from "./badge-disc";
+import { BadgeGlyph, FAMILY_BG, familyInk } from "./badge-disc";
 import { dayLabel, HOME_CAPTION, monthLabel, plural } from "./home-ui";
 
 // The season calendar's interactive grid: 26 ISO weeks × 7 days, one cell per
@@ -256,8 +256,9 @@ export function SeasonCalendar({
                         showPin(index, event.currentTarget);
                       }}
                       className={cn(
-                        "absolute inset-0 z-10 m-auto grid size-5 cursor-pointer place-items-center rounded-full text-white shadow-md ring-2 ring-card transition-transform duration-200 ease-out hover:scale-110 focus-visible:scale-110 focus-visible:outline-2 focus-visible:outline-foreground focus-visible:outline-offset-4 md:size-6 [&_svg]:size-3 md:[&_svg]:size-3.5",
+                        "absolute inset-0 z-10 m-auto grid size-5 cursor-pointer place-items-center rounded-full shadow-md ring-2 ring-card transition-transform duration-200 ease-out hover:scale-110 focus-visible:scale-110 focus-visible:outline-2 focus-visible:outline-foreground focus-visible:outline-offset-4 md:size-6 [&_svg]:size-3 md:[&_svg]:size-3.5",
                         FAMILY_BG[top.family] ?? "bg-foreground",
+                        familyInk(top.family),
                         cell.pins.some((p) => p.isNew) &&
                           "ring-brand-amber ring-offset-2 ring-offset-card",
                       )}

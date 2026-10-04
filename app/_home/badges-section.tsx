@@ -1,4 +1,5 @@
 import { DataUnavailable } from "@/components/dashboard-ui";
+import { EyeOffIcon } from "@/components/icons";
 import { buttonVariants } from "@/components/ui/button";
 import { META_LABEL } from "@/components/ui/meta-label";
 import type { BadgeItem } from "@/lib/home-data";
@@ -18,7 +19,8 @@ import {
 
 // Badges, family by family: what you earned plus the next tier of each ladder;
 // "Show all badges" reveals the rest. Hidden badges are never in the data until
-// earned (lib/home-data.ts), so nothing here can leak one.
+// earned (lib/home-data.ts), so nothing here can leak one: the Secret column
+// holds only earned ones, plus a note that more exist.
 
 export async function BadgesSection({ userId }: { userId: string }) {
   const { badges } = await getStudentHome(userId);
@@ -34,18 +36,26 @@ export async function BadgesSection({ userId }: { userId: string }) {
   }
   const more = badges.families.reduce((n, f) => n + f.more.length, 0);
   const families = (
-    <div id="home-badge-families" className="grid gap-x-7 gap-y-5 md:grid-cols-2 lg:grid-cols-3">
+    <div id="home-badge-families" className="grid gap-x-7 gap-y-5 md:grid-cols-2 lg:grid-cols-4">
       {badges.families.map((family) => (
-        <div key={family.id}>
+        <div key={family.id} data-family={family.id}>
           <h3 className={cn(META_LABEL, "mb-2")}>{family.label}</h3>
-          <ul>
-            {family.shown.map((badge) => (
-              <BadgeRow key={badge.id} badge={badge} />
-            ))}
-            {family.more.map((badge) => (
-              <BadgeRow key={badge.id} badge={badge} extra />
-            ))}
-          </ul>
+          {family.shown.length + family.more.length > 0 ? (
+            <ul>
+              {family.shown.map((badge) => (
+                <BadgeRow key={badge.id} badge={badge} />
+              ))}
+              {family.more.map((badge) => (
+                <BadgeRow key={badge.id} badge={badge} extra />
+              ))}
+            </ul>
+          ) : null}
+          {family.id === "secret" ? (
+            <p className={cn(HOME_MUTED, "mt-1.5 flex items-center gap-2")}>
+              <EyeOffIcon className="size-3.5 flex-none" />
+              Secret badges show up here once you earn them.
+            </p>
+          ) : null}
         </div>
       ))}
     </div>

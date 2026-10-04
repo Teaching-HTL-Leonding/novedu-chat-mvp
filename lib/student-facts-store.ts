@@ -2,6 +2,7 @@ import { type SQL, sql } from "drizzle-orm";
 import type { StudentFacts } from "@/lib/achievements/catalog";
 import type { UsageDay } from "@/lib/achievements/derive";
 import { HOME_TIME_ZONE } from "@/lib/achievements/time";
+import { listOwnKeyDates } from "@/lib/coding-key-store";
 import { getDb } from "@/lib/db";
 import { reportStoreFailure } from "@/lib/store-failure";
 
@@ -16,17 +17,28 @@ import { reportStoreFailure } from "@/lib/store-failure";
 
 const STORE = "student-facts-store";
 
+// An active hour: any counted interaction; token-only buckets don't count.
+const ACTIVE = sql.raw(
+  "u.user_messages + u.quiz_answers + u.writing_saves + u.coding_requests > 0",
+);
+
+// `codingHours` counts distinct local hours: on the autumn clock change the two
+// buckets sharing local 02:00 are one hour of the day.
 /** The usage statement — exported so the `@live-db` test can EXPLAIN the real one. */
 export function usageStatement(userId: string): SQL {
   return sql`
     SELECT ((u.hour AT TIME ZONE ${HOME_TIME_ZONE})::date)::text AS day,
-           count(*) FILTER (WHERE u.user_messages + u.quiz_answers + u.writing_saves > 0) AS "activeHours",
+           count(*) FILTER (WHERE ${ACTIVE}) AS "activeHours",
+           sum(u.user_messages) AS "userMessages",
            sum(u.quiz_answers) AS "quizAnswers",
-           sum(u.writing_saves) AS "writingSaves"
+           sum(u.writing_saves) AS "writingSaves",
+           sum(u.coding_requests) AS "codingRequests",
+           count(DISTINCT extract(hour FROM u.hour AT TIME ZONE ${HOME_TIME_ZONE}))
+             FILTER (WHERE u.coding_requests > 0) AS "codingHours"
     FROM novedu_usage_by_user u
     WHERE u.user_id = ${userId}
     GROUP BY 1
-    HAVING count(*) FILTER (WHERE u.user_messages + u.quiz_answers + u.writing_saves > 0) > 0
+    HAVING count(*) FILTER (WHERE ${ACTIVE}) > 0
     ORDER BY 1
   `;
 }
@@ -43,14 +55,20 @@ export async function loadStudentUsage(userId: string): Promise<UsageDay[] | und
     const res = await getDb().execute<{
       day: string;
       activeHours: number | string;
+      userMessages: number | string;
       quizAnswers: number | string;
       writingSaves: number | string;
+      codingRequests: number | string;
+      codingHours: number | string;
     }>(usageStatement(userId));
     return res.rows.map((row) => ({
       date: row.day,
       activeHours: Number(row.activeHours),
+      userMessages: Number(row.userMessages),
       quizAnswers: Number(row.quizAnswers),
       writingSaves: Number(row.writingSaves),
+      codingRequests: Number(row.codingRequests),
+      codingHours: Number(row.codingHours),
     }));
   } catch (error) {
     reportStoreFailure(STORE, "load usage", error);
@@ -60,6 +78,6 @@ export async function loadStudentUsage(userId: string): Promise<UsageDay[] | und
 
 /** Every student fact group, loaded in parallel. */
 export async function loadStudentFacts(userId: string): Promise<StudentFacts> {
-  const [usage] = await Promise.all([loadStudentUsage(userId)]);
-  return { usage };
+  const [usage, keys] = await Promise.all([loadStudentUsage(userId), listOwnKeyDates(userId)]);
+  return { usage, keys };
 }

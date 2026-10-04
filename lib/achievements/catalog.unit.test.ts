@@ -10,8 +10,11 @@ import type { UsageDay } from "./derive";
 const day = (date: string, extra: Partial<UsageDay> = {}): UsageDay => ({
   date,
   activeHours: 1,
+  userMessages: 0,
   quizAnswers: 0,
   writingSaves: 0,
+  codingRequests: 0,
+  codingHours: 0,
   ...extra,
 });
 
@@ -21,7 +24,8 @@ function rule(id: string): StudentAchievement {
   return achievement;
 }
 
-const run = (id: string, usage: UsageDay[]) => rule(id).evaluate({ usage });
+const run = (id: string, usage: UsageDay[]) => rule(id).evaluate({ usage, keys: [] });
+const runKeys = (id: string, keys: string[]) => rule(id).evaluate({ usage: [], keys });
 
 /** Consecutive Mondays starting at `first`, one active day each. */
 function weeks(first: string, n: number): UsageDay[] {
@@ -57,10 +61,25 @@ describe("catalog shape", () => {
     }
   });
 
-  it("ships only the Rhythm and Practice families, none hidden, all for students", () => {
-    expect(new Set(STUDENT_CATALOG.map((a) => a.family))).toEqual(new Set(["rhythm", "practice"]));
-    expect(STUDENT_CATALOG.every((a) => !a.hidden && a.audience === "student")).toBe(true);
-    expect(STUDENT_CATALOG.every((a) => a.needs.length === 1 && a.needs[0] === "usage")).toBe(true);
+  it("ships the Rhythm, Practice, Coding and Secret families, all for students", () => {
+    expect(new Set(STUDENT_CATALOG.map((a) => a.family))).toEqual(
+      new Set(["rhythm", "practice", "coding", "secret"]),
+    );
+    expect(STUDENT_CATALOG.every((a) => a.audience === "student")).toBe(true);
+    expect(STUDENT_CATALOG.every((a) => a.needs.length === 1)).toBe(true);
+    expect(
+      STUDENT_CATALOG.filter((a) => a.needs[0] === "keys")
+        .map((a) => a.id)
+        .sort(),
+    ).toEqual(["coding-connected", "coding-toolbelt"]);
+  });
+
+  it("hides exactly the Secret family", () => {
+    expect(STUDENT_CATALOG.filter((a) => a.hidden).map((a) => a.id)).toEqual([
+      "full-stack",
+      "in-the-zone",
+    ]);
+    expect(STUDENT_CATALOG.every((a) => a.hidden === (a.family === "secret"))).toBe(true);
   });
 
   it("has no chat-message tiers and no time-of-day badges", () => {
@@ -75,6 +94,7 @@ describe("catalog shape", () => {
       "active-days",
       "quiz-answers",
       "writing-saves",
+      "coding-days",
     ]) {
       expect(source).toContain(`"${ladder}"`);
     }
@@ -143,6 +163,82 @@ describe("Practice rules", () => {
     const usage = [day("2026-09-01", { writingSaves: 7 })];
     expect(run("writing-saves-5", usage)).toEqual({ earned: true, qualifiedOn: "2026-09-01" });
     expect(run("writing-saves-25", usage)).toEqual({ earned: false, current: 7, target: 25 });
+  });
+});
+
+describe("Coding rules", () => {
+  const coded = (date: string, hours = 1) =>
+    day(date, { codingRequests: hours * 2, codingHours: hours });
+
+  it("Connected and Toolbelt: dated to the first and third key's issue day", () => {
+    expect(runKeys("coding-connected", [])).toEqual({ earned: false, current: 0, target: 1 });
+    expect(runKeys("coding-connected", ["2026-09-02"])).toEqual({
+      earned: true,
+      qualifiedOn: "2026-09-02",
+    });
+    expect(runKeys("coding-toolbelt", ["2026-09-02", "2026-09-05"])).toEqual({
+      earned: false,
+      current: 2,
+      target: 3,
+    });
+    const three = ["2026-09-02", "2026-09-05", "2026-09-09"];
+    expect(runKeys("coding-toolbelt", three)).toEqual({ earned: true, qualifiedOn: "2026-09-09" });
+    expect(runKeys("coding-toolbelt", [...three, "2026-09-20"])).toEqual({
+      earned: true,
+      qualifiedOn: "2026-09-09",
+    });
+  });
+
+  it("First Request: the first day with a coding request, not any active day", () => {
+    const usage = [day("2026-09-01", { quizAnswers: 3 }), coded("2026-09-04")];
+    expect(run("coding-first-request", usage)).toEqual({ earned: true, qualifiedOn: "2026-09-04" });
+    expect(run("coding-first-request", [day("2026-09-01")])).toEqual({
+      earned: false,
+      current: 0,
+      target: 1,
+    });
+  });
+
+  it("coding days: below, at and above the threshold", () => {
+    const four = ["2026-09-01", "2026-09-02", "2026-09-08", "2026-09-09"].map((d) => coded(d));
+    expect(run("coding-days-5", four)).toEqual({ earned: false, current: 4, target: 5 });
+    const five = [...four, coded("2026-09-15")];
+    expect(run("coding-days-5", five)).toEqual({ earned: true, qualifiedOn: "2026-09-15" });
+    expect(run("coding-days-5", [...five, coded("2026-09-16")])).toEqual({
+      earned: true,
+      qualifiedOn: "2026-09-15",
+    });
+    expect(run("coding-days-1", five)).toEqual({ earned: true, qualifiedOn: "2026-09-01" });
+  });
+});
+
+describe("Secret rules", () => {
+  it("Full Stack: chat, quiz, writing and coding inside ONE ISO week", () => {
+    // Mon 7 – Sun 13 Sep: chat Mon, quiz Tue, writing Sat, coding Sun → dated Sunday.
+    const week = [
+      day("2026-09-07", { userMessages: 2 }),
+      day("2026-09-08", { quizAnswers: 1 }),
+      day("2026-09-12", { writingSaves: 1 }),
+      day("2026-09-13", { codingRequests: 1, codingHours: 1 }),
+    ];
+    expect(run("full-stack", week)).toEqual({ earned: true, qualifiedOn: "2026-09-13" });
+    // The same four kinds spread over two weeks never count.
+    const split = [...week.slice(0, 3), day("2026-09-14", { codingRequests: 1, codingHours: 1 })];
+    expect(run("full-stack", split)).toEqual({ earned: false, current: 3, target: 4 });
+  });
+
+  it("In the Zone: coding in 3 different local hours of one day", () => {
+    expect(run("in-the-zone", [day("2026-09-01", { codingRequests: 9, codingHours: 2 })])).toEqual({
+      earned: false,
+      current: 2,
+      target: 3,
+    });
+    const usage = [
+      day("2026-09-01", { codingRequests: 9, codingHours: 2 }),
+      day("2026-09-03", { codingRequests: 3, codingHours: 3 }),
+      day("2026-09-04", { codingRequests: 3, codingHours: 5 }),
+    ];
+    expect(run("in-the-zone", usage)).toEqual({ earned: true, qualifiedOn: "2026-09-03" });
   });
 });
 

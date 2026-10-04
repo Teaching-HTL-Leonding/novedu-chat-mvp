@@ -28,8 +28,11 @@ const TODAY = "2026-10-04";
 const day = (date: string, extra: Partial<UsageDay> = {}): UsageDay => ({
   date,
   activeHours: 2,
+  userMessages: 0,
   quizAnswers: 0,
   writingSaves: 0,
+  codingRequests: 0,
+  codingHours: 0,
   ...extra,
 });
 
@@ -40,7 +43,7 @@ const USAGE = [day("2026-09-22", { quizAnswers: 12 }), day("2026-09-28"), day("2
 beforeEach(() => {
   vi.clearAllMocks();
   resetHomeCacheForTests();
-  mocks.loadStudentFacts.mockResolvedValue({ usage: USAGE });
+  mocks.loadStudentFacts.mockResolvedValue({ usage: USAGE, keys: [] });
   mocks.listGrants.mockResolvedValue([]);
   mocks.insertGrants.mockImplementation(
     async (_user, grants: { id: string; qualifiedOn: string }[]) =>
@@ -70,6 +73,41 @@ describe("loadStudentHome", () => {
     });
   });
 
+  it("grants Connected from the keys group, dated to the key's issue day", async () => {
+    mocks.loadStudentFacts.mockResolvedValue({ usage: USAGE, keys: ["2026-09-30"] });
+    const home = await loadStudentHome("u1", NOW);
+    expect(mocks.insertGrants).toHaveBeenCalledWith(
+      "u1",
+      expect.arrayContaining([{ id: "coding-connected", qualifiedOn: "2026-09-30" }]),
+      [],
+    );
+    expect(home.newIds).toContain("coding-connected");
+  });
+
+  it("a failed keys group is never read as zero: its badges are left out, the rest renders, nothing is cached", async () => {
+    mocks.loadStudentFacts.mockResolvedValue({ usage: USAGE, keys: undefined });
+    const home = await loadStudentHome("u1", NOW);
+    const inserted = (mocks.insertGrants.mock.calls[0]?.[1] ?? []) as { id: string }[];
+    expect(inserted.map((g) => g.id)).not.toContain("coding-connected");
+    expect(home.complete).toBe(false);
+    expect(home.level).toBeDefined();
+    const coding = home.badges?.families.find((f) => f.id === "coding");
+    const ids = [...(coding?.shown ?? []), ...(coding?.more ?? [])].map((b) => b.id);
+    expect(ids).not.toContain("coding-connected");
+    expect(ids).not.toContain("coding-toolbelt");
+    expect(ids).toContain("coding-first-request");
+  });
+
+  it("a failed usage group still grants from the keys group", async () => {
+    mocks.loadStudentFacts.mockResolvedValue({ usage: undefined, keys: ["2026-09-30"] });
+    await loadStudentHome("u1", NOW);
+    expect(mocks.insertGrants).toHaveBeenCalledWith(
+      "u1",
+      [{ id: "coding-connected", qualifiedOn: "2026-09-30" }],
+      [],
+    );
+  });
+
   it("runs no insert when nothing new qualifies", async () => {
     mocks.listGrants.mockResolvedValue([
       { id: "weekly-streak-2", qualifiedOn: "2026-09-28", seenAt: new Date() },
@@ -94,7 +132,7 @@ describe("loadStudentHome", () => {
   });
 
   it("a failed usage group is never read as zero: no streak, calendar or level — and no insert", async () => {
-    mocks.loadStudentFacts.mockResolvedValue({ usage: undefined });
+    mocks.loadStudentFacts.mockResolvedValue({ usage: undefined, keys: [] });
     mocks.listGrants.mockResolvedValue([
       { id: "weekly-streak-2", qualifiedOn: "2026-09-28", seenAt: null },
     ]);
@@ -113,7 +151,7 @@ describe("loadStudentHome", () => {
 describe("buildStudentHome", () => {
   it("pins grants on their qualified_on day inside the window, stacking same-day grants", () => {
     const home = buildStudentHome(
-      { usage: USAGE },
+      { usage: USAGE, keys: [] },
       [
         { id: "weekly-streak-2", qualifiedOn: "2026-09-28", seenAt: null },
         { id: "week-days-3", qualifiedOn: "2026-09-28", seenAt: new Date() },
@@ -143,7 +181,7 @@ describe("buildStudentHome", () => {
       needs: ["usage"],
       evaluate: () => ({ earned: false, current: 1, target: 2 }),
     };
-    const home = buildStudentHome({ usage: USAGE }, [], TODAY, [hidden]);
+    const home = buildStudentHome({ usage: USAGE, keys: [] }, [], TODAY, [hidden]);
     const json = JSON.stringify(home);
     expect(json).not.toContain("Very Secret Name");
     expect(json).not.toContain("A very secret criterion");
@@ -151,7 +189,7 @@ describe("buildStudentHome", () => {
   });
 
   it("an empty history yields level 1, no streak, an empty calendar and nothing new", () => {
-    const home = buildStudentHome({ usage: [] }, [], TODAY);
+    const home = buildStudentHome({ usage: [], keys: [] }, [], TODAY);
     expect(home.level).toEqual({ level: 1, xp: 0, levelStart: 0, nextLevelStart: 100 });
     expect(home.streak?.weeks).toBe(0);
     expect(home.calendar?.activeDays).toBe(0);

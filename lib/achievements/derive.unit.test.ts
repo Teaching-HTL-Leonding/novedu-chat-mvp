@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activeDaysThisWeek,
+  allKindsInAWeek,
   HEATMAP_WEEKS,
   heatLevel,
   heatmap,
@@ -17,8 +18,11 @@ import {
 const day = (date: string, activeHours = 1, extra: Partial<UsageDay> = {}): UsageDay => ({
   date,
   activeHours,
+  userMessages: 0,
   quizAnswers: 0,
   writingSaves: 0,
+  codingRequests: 0,
+  codingHours: 0,
   ...extra,
 });
 
@@ -156,5 +160,27 @@ describe("heatmap", () => {
     expect(inHeatmap("2026-04-06", "2026-10-04")).toBe(true);
     expect(inHeatmap("2026-04-05", "2026-10-04")).toBe(false);
     expect(inHeatmap("2026-10-05", "2026-10-04")).toBe(false);
+  });
+});
+
+describe("allKindsInAWeek", () => {
+  it("dates the first week that completed all four kinds, and reports the best week otherwise", () => {
+    const days = [
+      day("2026-09-07", 1, { userMessages: 1, quizAnswers: 1 }),
+      day("2026-09-09", 1, { writingSaves: 1 }),
+      // Next week: all four on one day.
+      day("2026-09-15", 1, { userMessages: 1, quizAnswers: 1, writingSaves: 1, codingRequests: 1 }),
+    ];
+    expect(allKindsInAWeek(days)).toEqual({ qualifiedOn: "2026-09-15", best: 4 });
+    expect(allKindsInAWeek(days.slice(0, 2))).toEqual({ qualifiedOn: undefined, best: 3 });
+    expect(allKindsInAWeek([])).toEqual({ qualifiedOn: undefined, best: 0 });
+  });
+
+  it("a week crossing New Year is one week", () => {
+    const days = [
+      day("2026-12-30", 1, { userMessages: 1, quizAnswers: 1 }),
+      day("2027-01-02", 1, { writingSaves: 1, codingRequests: 1 }),
+    ];
+    expect(allKindsInAWeek(days)).toEqual({ qualifiedOn: "2027-01-02", best: 4 });
   });
 });

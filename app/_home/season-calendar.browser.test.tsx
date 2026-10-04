@@ -13,6 +13,13 @@ import type { BadgeItem, CalendarCell } from "@/lib/home-data";
 import { SeasonCalendar } from "./season-calendar";
 
 const TODAY = "2026-10-01"; // a Thursday: Fri–Sun are future
+const EMPTY_DAY = {
+  userMessages: 0,
+  quizAnswers: 0,
+  writingSaves: 0,
+  codingRequests: 0,
+  codingHours: 0,
+};
 const DEFAULT_VIEWPORT = { width: 1280, height: 800 };
 
 function badge(id: string, name: string, extra: Partial<BadgeItem> = {}): BadgeItem {
@@ -32,8 +39,8 @@ function badge(id: string, name: string, extra: Partial<BadgeItem> = {}): BadgeI
 function cells(): CalendarCell[] {
   const map = heatmap(
     [
-      { date: "2026-09-29", activeHours: 3, quizAnswers: 0, writingSaves: 0 },
-      { date: TODAY, activeHours: 1, quizAnswers: 0, writingSaves: 0 },
+      { ...EMPTY_DAY, date: "2026-09-29", activeHours: 3 },
+      { ...EMPTY_DAY, date: TODAY, activeHours: 1 },
     ],
     TODAY,
   );

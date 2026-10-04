@@ -48,8 +48,9 @@ vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 vi.mock("@/lib/telemetry", () => ({ recordError }));
 
 import { insertGrants, listGrants, markSeen } from "@/lib/achievement-store";
+import { listOwnKeyDates } from "@/lib/coding-key-store";
 import { achievements } from "@/lib/db/schema";
-import { loadStudentFacts, loadStudentUsage } from "@/lib/student-facts-store";
+import { loadStudentUsage } from "@/lib/student-facts-store";
 
 /** A Drizzle-shaped failure whose message embeds SQL parameters (user id, counts). */
 function drizzleError() {
@@ -130,11 +131,34 @@ describe("achievement-store", () => {
 describe("student-facts-store", () => {
   it("maps the usage rows (string sums from Postgres) to usage days", async () => {
     fake.state.executeRows = [
-      { day: "2026-10-25", activeHours: "2", quizAnswers: "5", writingSaves: "0" },
+      {
+        day: "2026-10-25",
+        activeHours: "2",
+        userMessages: "3",
+        quizAnswers: "5",
+        writingSaves: "0",
+        codingRequests: "7",
+        codingHours: "1",
+      },
     ];
-    await expect(loadStudentFacts("u1")).resolves.toEqual({
-      usage: [{ date: "2026-10-25", activeHours: 2, quizAnswers: 5, writingSaves: 0 }],
-    });
+    await expect(loadStudentUsage("u1")).resolves.toEqual([
+      {
+        date: "2026-10-25",
+        activeHours: 2,
+        userMessages: 3,
+        quizAnswers: 5,
+        writingSaves: 0,
+        codingRequests: 7,
+        codingHours: 1,
+      },
+    ]);
+  });
+});
+
+describe("coding-key-store: own key dates", () => {
+  it("returns only the issue dates, oldest first as the statement orders them", async () => {
+    fake.state.executeRows = [{ day: "2026-09-01" }, { day: "2026-09-03" }];
+    await expect(listOwnKeyDates("u1")).resolves.toEqual(["2026-09-01", "2026-09-03"]);
   });
 });
 
@@ -149,6 +173,7 @@ describe("failures never throw and never pass the raw error on", () => {
     ],
     ["achievement-store", "mark seen", () => markSeen("u1", ["a-1"]), false],
     ["student-facts-store", "load usage", () => loadStudentUsage("u1"), undefined],
+    ["coding-key-store", "list own key dates", () => listOwnKeyDates("u1"), undefined],
   ];
 
   it.each(cases)("%s: %s", async (store, op, call, failed) => {

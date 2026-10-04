@@ -30,7 +30,9 @@ bucket). Trade-off: "student X's usage on code Y" is unanswerable, by design.
 
 Columns: `input_tokens_new` / `input_tokens_cached` / `output_tokens` are `bigint`
 token sums (`output_tokens` already includes reasoning tokens); `tool_calls` /
-`user_messages` / `quiz_answers` / `writing_saves` are `int` counts. `hour` is the
+`user_messages` / `quiz_answers` / `writing_saves` / `coding_requests` are `int`
+counts — the last three reveal only the *kind* of activity in an hour, never which
+activity. `hour` is the
 UTC top-of-hour bucket. `usage_by_code` additionally carries two nullable
 attribution columns — `provider` (the LLM provider label: `SCCH`,
 `Azure Foundry` or `OpenRouter`) and `model` (the raw model id / deployment name) — which only the
@@ -48,10 +50,11 @@ The **only** access to both tables. Mirrors `lib/user-chat-store.ts` discipline:
 writes run **off the response path** (the exporter is async; the route/action
 counters use `after()`; the coding tap is fire-and-forget).
 
-- `recordLlmUsage({ code, module, userId?, provider?, model?, inputNew, inputCached, output, toolCalls, at? })`
+- `recordLlmUsage({ code, module, userId?, provider?, model?, inputNew, inputCached, output, toolCalls, codingRequests?, at? })`
   — increments `usage_by_code` always, and `usage_by_user` **only when `userId` is
-  present** (absent ⇒ the coding-proxy path, metered per-code only).
-  `provider`/`model` feed `usage_by_code` alone.
+  present** (every current caller passes one). `provider`/`model` feed
+  `usage_by_code` alone; `codingRequests` (the coding proxy passes `1`) counts the
+  request in the same increment as its tokens.
 - `recordUserMessage` / `recordQuizAnswer` / `recordWritingSave` — `+1` on their
   counter in both tables; they carry no provider/model.
 
@@ -75,7 +78,7 @@ keeps its first-seen value — negligible for a cost aggregate).
 | Metric(s) | Where | How |
 |---|---|---|
 | tokens + tool calls — tutor, quiz discussion, writing, quiz grader | Mastra observability exporter | `MODEL_GENERATION` + tool-call spans, attributed via `requestContext` |
-| tokens — coding proxy | the coding route | taps the passthrough response for the `usage` chunk; per-code only |
+| tokens + coding requests — coding proxy | the coding route | taps the passthrough response for the `usage` chunk; both tables, `coding_requests` `+1` per metered response |
 | tokens — CLI grader evals | `POST /api/eval/grade` and `POST /api/eval/judge` | the same exporter path (they run `quizEvaluator` / `evalJudge`), both tagged with the `cli-eval` sentinel keys below — grading and feedback-judging tokens land in the SAME buckets on purpose (`docs/cli-eval.md`) |
 | user messages | CopilotKit route (`run`) | `after()` → `recordUserMessage` |
 | quiz answers | `submitAnswer` (`lib/quiz-actions.ts`) | `after()` → `recordQuizAnswer` on a successful grade |
@@ -142,6 +145,10 @@ API key (`lookupCodingKey`, `lib/coding-key-store.ts` — `docs/coding.md`); pro
 span to read them from). With `userId` present, this writes **both** buckets —
 `usage_by_code` (no user) and `usage_by_user` (no code) — exactly like the
 Mastra-backed modules; the passthrough (streaming + client tools) is unchanged.
+The same call passes `codingRequests: 1`, so each response whose `usage` was
+found counts as one coding request in both buckets (a response without a `usage`
+chunk is metered not at all). The start page reads that counter per user
+(`docs/home.md`).
 
 ## Cached input tokens
 

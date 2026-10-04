@@ -276,6 +276,8 @@ export const codingKeys = pgTable(
     // so two users can never share a key (a mint collision fails loudly and the
     // store re-mints).
     uniqueIndex("ux_novedu_coding_keys_api_key").on(t.apiKey),
+    // A user's own keys — the start page's coding facts (docs/home.md).
+    index("ix_novedu_coding_keys_user_id").on(t.userId),
   ],
 );
 
@@ -424,6 +426,8 @@ export const usageByCode = pgTable(
     userMessages: integer("user_messages").notNull().default(0),
     quizAnswers: integer("quiz_answers").notNull().default(0),
     writingSaves: integer("writing_saves").notNull().default(0),
+    // Requests through the coding proxy (the coding route's usage tap).
+    codingRequests: integer("coding_requests").notNull().default(0),
   },
   (t) => [
     // Per-code cost-over-time is the PK's natural read; the extra index serves the
@@ -449,6 +453,8 @@ export const usageByUser = pgTable(
     userMessages: integer("user_messages").notNull().default(0),
     quizAnswers: integer("quiz_answers").notNull().default(0),
     writingSaves: integer("writing_saves").notNull().default(0),
+    // Requests through the coding proxy (the coding route's usage tap).
+    codingRequests: integer("coding_requests").notNull().default(0),
   },
   // The PK `(user_id, hour)` doubles as the per-user quota-window range-scan index.
   (t) => [primaryKey({ columns: [t.userId, t.hour] })],

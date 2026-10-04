@@ -8,6 +8,7 @@
 // catalog.unit.test.ts). The page receives plain data built by lib/home-data.ts.
 
 import {
+  allKindsInAWeek,
   streakReached,
   totalReaching,
   type UsageDay,
@@ -17,15 +18,35 @@ import {
 import type { LocalDate } from "./time";
 
 /** A fact group: loaded by one statement, failing independently of the others. */
-export type FactGroup = "usage";
+export type FactGroup = "usage" | "keys";
 
 /** A student's facts; a group is `undefined` when its load failed (never read as zero). */
 export interface StudentFacts {
   usage: UsageDay[] | undefined;
+  /** The Vienna-local dates the user's coding keys were issued, ascending. */
+  keys: LocalDate[] | undefined;
 }
 
-/** Keys into the page's badge icon set (app/_home/badge-icon.tsx). */
-export type BadgeIcon = "flame" | "calendar" | "check" | "pen";
+/** The groups of `facts` that loaded. */
+export function availableGroups(facts: StudentFacts): Set<FactGroup> {
+  const groups = new Set<FactGroup>();
+  if (facts.usage) groups.add("usage");
+  if (facts.keys) groups.add("keys");
+  return groups;
+}
+
+/** Keys into the page's badge icon set (app/_home/badge-disc.tsx). */
+export type BadgeIcon =
+  | "flame"
+  | "calendar"
+  | "check"
+  | "pen"
+  | "key"
+  | "send"
+  | "code"
+  | "tool"
+  | "layers"
+  | "zap";
 
 export type Outcome =
   | { earned: true; qualifiedOn: LocalDate }
@@ -57,6 +78,8 @@ export type StudentAchievement = Achievement<StudentFacts>;
 export const STUDENT_FAMILIES = [
   { id: "rhythm", label: "Rhythm" },
   { id: "practice", label: "Practice" },
+  { id: "coding", label: "Coding" },
+  { id: "secret", label: "Secret" },
 ] as const;
 
 /** Reads a group the evaluator has already checked; reaching it unavailable is a bug. */
@@ -71,6 +94,7 @@ interface UsageStats {
   streaks: LocalDate[];
   weekDays: LocalDate[];
   activeDates: LocalDate[];
+  codingDates: LocalDate[];
 }
 const statsCache = new WeakMap<UsageDay[], UsageStats>();
 function usageStats(usage: UsageDay[]): UsageStats {
@@ -80,6 +104,9 @@ function usageStats(usage: UsageDay[]): UsageStats {
       streaks: streakReached(usage),
       weekDays: weekDaysReached(usage),
       activeDates: usageActiveDays(usage).map((d) => d.date),
+      codingDates: usageActiveDays(usage)
+        .filter((d) => d.codingRequests > 0)
+        .map((d) => d.date),
     };
     statsCache.set(usage, stats);
   }
@@ -126,6 +153,16 @@ function ladder(
   }));
 }
 
+/** A rule over one day's value: the first day reaching `target`, else the best day. */
+function bestDay(usage: UsageDay[], value: (d: UsageDay) => number, target: number): Outcome {
+  let best = 0;
+  for (const day of usageActiveDays(usage)) {
+    if (value(day) >= target) return { earned: true, qualifiedOn: day.date };
+    best = Math.max(best, value(day));
+  }
+  return { earned: false, current: best, target };
+}
+
 const rhythm = { audience: "student", family: "rhythm", hidden: false, needs: ["usage"] } as const;
 const practice = {
   audience: "student",
@@ -133,6 +170,10 @@ const practice = {
   hidden: false,
   needs: ["usage"],
 } as const;
+const coding = { audience: "student", family: "coding", hidden: false } as const;
+// Hidden until earned: never listed, never in Almost there, and their names stay
+// on the server until the grant exists.
+const secret = { audience: "student", family: "secret", hidden: true } as const;
 
 /** Every student achievement, in page order. */
 export const STUDENT_CATALOG: readonly StudentAchievement[] = [
@@ -196,6 +237,78 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     (n) => `Save your writing ${n} times`,
     (usage, n) => counter(usage, (d) => d.writingSaves, n),
   ),
+  {
+    ...coding,
+    id: "coding-connected",
+    order: 0,
+    icon: "key",
+    name: "Connected",
+    criterion: "Get your first coding key",
+    xp: 20,
+    needs: ["keys"],
+    evaluate: (facts) => milestone(need(facts.keys, "keys"), 1),
+  },
+  {
+    ...coding,
+    id: "coding-first-request",
+    order: 1,
+    icon: "send",
+    name: "First Request",
+    criterion: "Send a first request from your editor",
+    xp: 20,
+    needs: ["usage"],
+    evaluate: (facts) => milestone(usageStats(need(facts.usage, "usage")).codingDates, 1),
+  },
+  ...ladder(
+    { ...coding, icon: "code", needs: ["usage"] },
+    "coding-days",
+    10,
+    [
+      { n: 1, name: "First Coding Day", xp: 20 },
+      { n: 5, name: "Five Coding Days", xp: 50 },
+      { n: 20, name: "Twenty Coding Days", xp: 100 },
+    ],
+    (n) => `Code with Novedu on ${n} ${n === 1 ? "day" : "days"}`,
+    (usage, n) => milestone(usageStats(usage).codingDates, n),
+  ),
+  {
+    ...coding,
+    id: "coding-toolbelt",
+    order: 20,
+    icon: "tool",
+    name: "Toolbelt",
+    criterion: "Join 3 coding activities",
+    xp: 50,
+    needs: ["keys"],
+    evaluate: (facts) => milestone(need(facts.keys, "keys"), 3),
+  },
+  {
+    ...secret,
+    id: "full-stack",
+    order: 0,
+    icon: "layers",
+    name: "Full Stack",
+    criterion: "Chat, quiz, writing and coding in one week",
+    xp: 100,
+    needs: ["usage"],
+    evaluate: (facts) => {
+      const { qualifiedOn, best } = allKindsInAWeek(need(facts.usage, "usage"));
+      return qualifiedOn !== undefined
+        ? { earned: true, qualifiedOn }
+        : { earned: false, current: best, target: 4 };
+    },
+  },
+  {
+    ...secret,
+    id: "in-the-zone",
+    order: 1,
+    icon: "zap",
+    name: "In the Zone",
+    criterion: "Code in 3 different hours of one day",
+    xp: 50,
+    needs: ["usage"],
+    evaluate: (facts) => bestDay(need(facts.usage, "usage"), (d) => d.codingHours, 3),
+  },
 ];
 
 /** The ladder an id belongs to (`weekly-streak-4` → `weekly-streak`); a one-off is its own ladder. */

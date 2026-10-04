@@ -19,7 +19,7 @@ visible to you.").
 | `lib/achievements/catalog.ts` | pure, **server-only** | the achievement definitions |
 | `lib/achievements/xp.ts` | pure | XP total and level |
 | `lib/achievements/evaluate.ts` | pure | catalog × facts × stored grants → earned / new / in progress; Almost there; the Badges view |
-| `lib/student-facts-store.ts` | server, never throws | the student's fact groups |
+| `lib/student-facts-store.ts` | server, never throws | the student's fact groups (the keys group is read through `lib/coding-key-store.ts`, the only access to `novedu_coding_keys`) |
 | `lib/achievement-store.ts` | server, never throws | read grants, insert grants, mark seen |
 | `lib/store-failure.ts` | server | fixed-message failure reporting for the two stores above |
 | `lib/home-cache.ts` | server | the per-user cache (TTL, single flight, generations, bound) |
@@ -33,9 +33,11 @@ Usage buckets are UTC hours (`docs/usage-metering.md`); every day, week and hour
 on the page is a **Vienna-local** cut of them (`HOME_TIME_ZONE`).
 
 - **Active hour** — a `novedu_usage_by_user` bucket with
-  `user_messages + quiz_answers + writing_saves > 0`; token-only buckets don't
-  count. On the autumn clock change the two buckets sharing local 02:00 are two
-  hours; the missing spring hour has no bucket.
+  `user_messages + quiz_answers + writing_saves + coding_requests > 0`; token-only
+  buckets don't count. On the autumn clock change the two buckets sharing local
+  02:00 are two hours; the missing spring hour has no bucket.
+- **Coding hours of a day** — the distinct Vienna-local hours (0–23) with a coding
+  request; the two autumn 02:00 buckets are one hour here.
 - **Active day** — a local date with at least one active hour.
 - **Week** — ISO week, keyed by the local date of its Monday (a week crossing New
   Year is one key).
@@ -65,9 +67,18 @@ local date on which the evidence was **first** complete — or
   data only once earned, so their names never ship to the browser before that.
 - No achievement rewards a time of day or a chat-message count.
 
-Families on the page: **Rhythm** (weekly streak 2/4/8/16, 3 and 5 active days in a
-week, 10/30/100 active days) and **Practice** (quiz answers 10/100/500, writing
-saves 5/25/100).
+Families on the page:
+
+- **Rhythm** — weekly streak 2/4/8/16, 3 and 5 active days in a week, 10/30/100
+  active days.
+- **Practice** — quiz answers 10/100/500, writing saves 5/25/100.
+- **Coding** — Connected (a first coding key, dated to its issue day), First
+  Request, coding days 1/5/20, Toolbelt (keys for 3 coding activities).
+- **Secret** (`hidden`) — Full Stack (chat, quiz, writing and coding inside one
+  ISO week) and In the Zone (coding in 3 different local hours of one day). The
+  column shows only earned ones plus the note "Secret badges show up here once you
+  earn them."; an unearned secret badge is never in Almost there, the Badges
+  section, or any page data.
 
 **Almost there** lists the next unearned tier of each ladder (a higher tier can't
 be earned first) among listed entries with progress, closest to its target first,
@@ -100,9 +111,17 @@ Each group is one statement keyed by the session user id and fails
 independently.
 
 - **Usage** (`loadStudentUsage`) — `novedu_usage_by_user` grouped by Vienna-local
-  day over the whole history: active hours and the per-day counters. A range scan
-  on the PK `(user_id, hour)`; the `@live-db` home spec checks the plan.
+  day over the whole history: active hours, the per-day counters (messages, quiz
+  answers, writing saves, coding requests) and the coding hours. A range scan on
+  the PK `(user_id, hour)`; the `@live-db` home spec checks the plan.
+- **Keys** (`listOwnKeyDates`, `lib/coding-key-store.ts`) — the Vienna-local issue
+  dates of the user's own coding keys, oldest first; nothing else leaves the
+  store. A range scan on `ix_novedu_coding_keys_user_id`, plan-checked too.
 - **Grants** (`listGrants`) — the user's `novedu_achievements` rows.
+
+Coding is visible in the usage because the coding proxy counts each metered
+response in `coding_requests` (`docs/usage-metering.md`); requests before that
+counter existed are not counted.
 
 The student facts never read `novedu_user_chats`, `novedu_recent_codes` or any
 other user's rows. Recently used comes from `lib/recent-code-store.ts` and never
@@ -119,7 +138,9 @@ renders.
 Sections degrade independently: Level/XP, Almost there and Badges need usage and
 grants; the streak and the calendar need usage; the calendar's pins and the strip
 need grants. A section whose group failed shows the "could not be loaded" note,
-never zeros.
+never zeros. When only the keys group failed, the badges that read it (Connected,
+Toolbelt) are left out unless already stored, everything else renders, and the
+load is not cached.
 
 ## Load protection
 
@@ -159,4 +180,5 @@ parameters (user ids, counts), so `reportStoreFailure` logs and records a fixed
   the seen marker, the disclosures).
 - E2E: `e2e/home.spec.ts` (hermetic smoke per visitor kind, including a fresh
   student's empty state) and `e2e/home.live.spec.ts` (`@live-db`: seeded usage and
-  grant, the strip cleared after the visit, DST grouping, plan).
+  grant, the strip cleared after the visit, DST grouping, both plans; seeded coding
+  requests and a key earning the Coding badges and In the Zone).

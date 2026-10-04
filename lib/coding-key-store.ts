@@ -1,9 +1,11 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, type SQL, sql } from "drizzle-orm";
+import { HOME_TIME_ZONE, type LocalDate } from "@/lib/achievements/time";
 import { generateCodingKey, KEY_PATTERN } from "@/lib/coding-key";
 import { type DbExecutor, getDb } from "@/lib/db";
 import { authUsers } from "@/lib/db/auth-schema";
 import { isUniqueViolation } from "@/lib/db/errors";
 import { codingKeys } from "@/lib/db/schema";
+import { reportStoreFailure } from "@/lib/store-failure";
 
 // Persistence for the coding module's per-user API keys in the
 // `novedu_coding_keys` SQL table: one STABLE key per `(code, user)`, handed back
@@ -222,6 +224,33 @@ export async function listCodingKeys(code: string): Promise<CodingKeyIssuance[]>
   } catch (error) {
     console.error("coding-key-store: listing keys failed", error);
     return [];
+  }
+}
+
+/** The own-keys statement — exported so the `@live-db` test can EXPLAIN the real one. */
+export function ownKeyDatesStatement(userId: string): SQL {
+  return sql`
+    SELECT ((k.created_at AT TIME ZONE ${HOME_TIME_ZONE})::date)::text AS day
+    FROM novedu_coding_keys k
+    WHERE k.user_id = ${userId}
+    ORDER BY k.created_at
+  `;
+}
+
+/**
+ * The start page's keys fact group (docs/home.md): the Vienna-local dates on
+ * which the user's OWN keys were issued, oldest first — one range scan of the
+ * `user_id` index. Only dates leave this function: no code, no key value.
+ * Returns `undefined` on a database error (reported with a fixed message, never
+ * the raw error — it carries the user id). Never throws.
+ */
+export async function listOwnKeyDates(userId: string): Promise<LocalDate[] | undefined> {
+  try {
+    const res = await getDb().execute<{ day: string }>(ownKeyDatesStatement(userId));
+    return res.rows.map((row) => row.day);
+  } catch (error) {
+    reportStoreFailure("coding-key-store", "list own key dates", error);
+    return undefined;
   }
 }
 

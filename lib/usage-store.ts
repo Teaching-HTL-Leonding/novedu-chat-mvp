@@ -15,11 +15,11 @@ import { recordError } from "@/lib/telemetry";
 // neither table ever links a student to an activity (docs/codes.md,
 // docs/usage-metering.md). A caller with a `userId` meters BOTH tables (even for an
 // anonymous code — the user id is only ever stored against an hour bucket); a caller
-// without one (the coding proxy) meters `usage_by_code` alone.
+// without one meters `usage_by_code` alone.
 //
 // SERVER-ONLY: uses the database. Never import from client components.
 
-/** The seven metric deltas; any omitted field defaults to 0 (a no-op increment). */
+/** The eight metric deltas; any omitted field defaults to 0 (a no-op increment). */
 interface UsageDeltas {
   inputTokensNew?: number;
   inputTokensCached?: number;
@@ -28,6 +28,7 @@ interface UsageDeltas {
   userMessages?: number;
   quizAnswers?: number;
   writingSaves?: number;
+  codingRequests?: number;
 }
 
 /**
@@ -87,6 +88,7 @@ async function bumpByCode(
       userMessages: d.userMessages ?? 0,
       quizAnswers: d.quizAnswers ?? 0,
       writingSaves: d.writingSaves ?? 0,
+      codingRequests: d.codingRequests ?? 0,
     })
     .onConflictDoUpdate({
       target: [usageByCode.code, usageByCode.hour],
@@ -98,6 +100,7 @@ async function bumpByCode(
         userMessages: sql`${usageByCode.userMessages} + excluded.user_messages`,
         quizAnswers: sql`${usageByCode.quizAnswers} + excluded.quiz_answers`,
         writingSaves: sql`${usageByCode.writingSaves} + excluded.writing_saves`,
+        codingRequests: sql`${usageByCode.codingRequests} + excluded.coding_requests`,
         provider: sql`COALESCE(${usageByCode.provider}, excluded.provider)`,
         model: sql`COALESCE(${usageByCode.model}, excluded.model)`,
       },
@@ -120,6 +123,7 @@ async function bumpByUser(userId: string, hour: Date, d: UsageDeltas): Promise<v
       userMessages: d.userMessages ?? 0,
       quizAnswers: d.quizAnswers ?? 0,
       writingSaves: d.writingSaves ?? 0,
+      codingRequests: d.codingRequests ?? 0,
     })
     .onConflictDoUpdate({
       target: [usageByUser.userId, usageByUser.hour],
@@ -131,6 +135,7 @@ async function bumpByUser(userId: string, hour: Date, d: UsageDeltas): Promise<v
         userMessages: sql`${usageByUser.userMessages} + excluded.user_messages`,
         quizAnswers: sql`${usageByUser.quizAnswers} + excluded.quiz_answers`,
         writingSaves: sql`${usageByUser.writingSaves} + excluded.writing_saves`,
+        codingRequests: sql`${usageByUser.codingRequests} + excluded.coding_requests`,
       },
     });
 }
@@ -179,6 +184,8 @@ export interface LlmUsageInput {
   inputCached: number;
   output: number;
   toolCalls: number;
+  /** Requests through the coding proxy this generation counts as (the proxy passes 1). */
+  codingRequests?: number;
   /** The event time (e.g. the span end); defaults to now. Selects the hour bucket. */
   at?: Date;
 }
@@ -195,6 +202,7 @@ export function recordLlmUsage(input: LlmUsageInput): Promise<void> {
       inputTokensCached: input.inputCached,
       outputTokens: input.output,
       toolCalls: input.toolCalls,
+      codingRequests: input.codingRequests,
     },
     "recordLlmUsage",
     { provider: input.provider, model: input.model },

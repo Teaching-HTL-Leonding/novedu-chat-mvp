@@ -93,10 +93,13 @@ samples (the coding YAML under `activities/examples/`).
   `{ anonymous: true, definitive: true }` and the validator still freezes
   `anonymous: true` onto the row.
 - **Metering**: because the key resolves a real `userId`, the usage tap records
-  `recordLlmUsage({ code, module: "coding", userId, provider, model, … })`, which
+  `recordLlmUsage({ code, module: "coding", userId, provider, model, codingRequests: 1, … })`, which
   writes **both** independent hourly buckets — `usage_by_code` (no user) and
   `usage_by_user` (no code) — exactly like the Mastra-backed modules
   (`docs/usage-metering.md`). Never a `(user × code)` row.
+- **Start page**: `listOwnKeyDates(userId)` in the key store reads the session
+  user's OWN keys through the `user_id` index and returns only their Vienna-local
+  issue dates — no code, no key value — for the Coding badges (`docs/home.md`).
 - **Teacher visibility, read-only**: the teacher detail page lists who requested a
   key for the code and when, via `listCodingKeys`. There is **no revocation** —
   the availability window / code deletion is the only access control; a teacher
