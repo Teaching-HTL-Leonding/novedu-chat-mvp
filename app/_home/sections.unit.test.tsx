@@ -288,7 +288,7 @@ describe("BadgesSection", () => {
       "writing-saves-5",
       "coding-connected",
       "coding-first-request",
-      "coding-days-1",
+      "coding-days-5",
       "coding-toolbelt",
     ]);
     const more = [...html.matchAll(/<li data-badge="([^"]+)" class="[^"]*hidden/g)].map(
@@ -301,7 +301,6 @@ describe("BadgesSection", () => {
       "quiz-answers-500",
       "writing-saves-25",
       "writing-saves-100",
-      "coding-days-5",
       "coding-days-20",
     ]);
     expect(html).toContain(`Show all badges (${more.length} more)`);

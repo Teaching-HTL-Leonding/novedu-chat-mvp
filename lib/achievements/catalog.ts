@@ -264,11 +264,10 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     "coding-days",
     10,
     [
-      { n: 1, name: "First Coding Day", xp: 20 },
       { n: 5, name: "Five Coding Days", xp: 50 },
       { n: 20, name: "Twenty Coding Days", xp: 100 },
     ],
-    (n) => `Code with Novedu on ${n} ${n === 1 ? "day" : "days"}`,
+    (n) => `Code with Novedu on ${n} days`,
     (usage, n) => milestone(usageStats(usage).codingDates, n),
   ),
   {

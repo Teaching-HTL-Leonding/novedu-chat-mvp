@@ -208,7 +208,6 @@ describe("Coding rules", () => {
       earned: true,
       qualifiedOn: "2026-09-15",
     });
-    expect(run("coding-days-1", five)).toEqual({ earned: true, qualifiedOn: "2026-09-01" });
   });
 });
 

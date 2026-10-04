@@ -73,7 +73,8 @@ Families on the page:
   active days.
 - **Practice** — quiz answers 10/100/500, writing saves 5/25/100.
 - **Coding** — Connected (a first coding key, dated to its issue day), First
-  Request, coding days 1/5/20, Toolbelt (keys for 3 coding activities).
+  Request (the first day with a coding request), coding days 5/20, Toolbelt (keys
+  for 3 coding activities).
 - **Secret** (`hidden`) — Full Stack (chat, quiz, writing and coding inside one
   ISO week) and In the Zone (coding in 3 different local hours of one day). The
   column shows only earned ones plus the note "Secret badges show up here once you
