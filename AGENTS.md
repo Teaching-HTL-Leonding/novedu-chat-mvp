@@ -183,6 +183,14 @@ Read before touching: `app/usage/**`, `lib/usage-stats-store.ts`, `lib/usage-ran
 
 - Teacher-only, server-first read surface over `usage_by_code` — no `/api/usage/*` route; all windows UTC.
 
+### Start page & achievements → `docs/home.md`
+
+Read before touching: `app/page.tsx`, `app/_home/**`, `lib/achievements/**`, `lib/home-data.ts`, `lib/home-cache.ts`, `lib/student-facts-store.ts`, `lib/achievement-store.ts`, `lib/achievement-actions.ts`, `novedu_achievements`.
+
+- Progress (XP, streak, calendar, badges) is served ONLY to the session user about themselves — no teacher view, no comparison; every statement is keyed by the session user id.
+- `lib/achievements/catalog.ts` is server-only (guard-tested): hidden badges reach page data only once earned. Achievement ids never contain a code.
+- A failed fact group is never read as zero; the page renders earned state only from stored grants, and new grants are inserted before the load returns.
+
 ### LLM diagnostics → `docs/diagnostics.md`
 
 Read before touching: `app/diagnostics/**`, `lib/diagnostics-*.ts`, `buildMonitorCredential` in `lib/azure-credential.ts`.

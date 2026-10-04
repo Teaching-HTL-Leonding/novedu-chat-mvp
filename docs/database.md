@@ -361,6 +361,7 @@ Tables (details in `docs/codes.md`):
 | `novedu_images` | PK `id` (per-version); partial UK `name WHERE valid_until IS NULL` | App-hosted image metadata (bytes under the configured `IMAGE_STORAGE_ROOT` filesystem), **temporal/append-only** (details in `docs/images.md`) |
 | `novedu_usage_by_code` | PK (`code`, `hour`) | per-hour token/tool/activity counts by code, no user (details in `docs/usage-metering.md`) |
 | `novedu_usage_by_user` | PK (`user_id`, `hour`) | per-hour token/tool/activity counts by user, no code (details in `docs/usage-metering.md`) |
+| `novedu_achievements` | PK (`user_id`, `achievement_id`) | a user's earned start-page badges: generic catalog ids (never a code), the Vienna-local `qualified_on` date, `seen_at` (null = new); never deleted (details in `docs/home.md`) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping (schema `public`) |
 | `novedu_user` | PK `id` | one row per signed-in person: display name, email, `is_teacher`; the id every `user_id`/`created_by` column across the tables above stores by value (details in `docs/auth.md`) |
 | `novedu_session` | PK `id`; unique `token`; FK `user_id → novedu_user.id` cascade | one row per live session, shared by the cookie and bearer channels (details in `docs/auth.md`) |
@@ -382,7 +383,9 @@ and `lib/usage-stats-store.ts` do.
 
 ## Deletion (no garbage collection)
 
-There is **no** automatic garbage collection. Codes and their conversation
+There is **no** automatic garbage collection. `novedu_achievements` rows are
+never deleted at all: an earned badge holds no code, so deleting codes leaves it
+in place (`docs/home.md`). Codes and their conversation
 data live until a teacher deletes them on `/codes` via "Delete Selected" (the
 only delete path). The bulk delete (`deleteCodesAndData` in
 `lib/code-stats-store.ts`) removes, per selected code:

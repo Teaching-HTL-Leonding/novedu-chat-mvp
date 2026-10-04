@@ -67,6 +67,23 @@
   --chart-8: #eb6834;
   --chart-9: #7a5c3e;
   --chart-other: #898781;
+
+  /* Student start page (app/_home, docs/home.md) — the one deliberately playful
+     surface. The brand symbol's colours (app/icon.svg), the season calendar's
+     intensity ramp (0 / 1 / 2–3 / 4+ active hours, on the brand blue), the
+     badge families, and the amber tints of the "new badges" notices. */
+  --brand-deep: #0a529a;
+  --brand-amber: #dc931a;
+  --amber-wash: #fdf4e3;
+  --amber-line: #efd29a;
+  --amber-halo: #f6dfae;
+  --amber-ink: #5a3c06;
+  --heat-0: #e2e8f0;
+  --heat-1: #c3d9ee;
+  --heat-2: #74a8d6;
+  --heat-3: #0a529a;
+  --fam-rhythm: #13805a;
+  --fam-practice: #2a78d6;
 }
 
 @theme inline {
@@ -102,6 +119,18 @@
   --color-chart-8: var(--chart-8);
   --color-chart-9: var(--chart-9);
   --color-chart-other: var(--chart-other);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-amber: var(--brand-amber);
+  --color-amber-wash: var(--amber-wash);
+  --color-amber-line: var(--amber-line);
+  --color-amber-halo: var(--amber-halo);
+  --color-amber-ink: var(--amber-ink);
+  --color-heat-0: var(--heat-0);
+  --color-heat-1: var(--heat-1);
+  --color-heat-2: var(--heat-2);
+  --color-heat-3: var(--heat-3);
+  --color-fam-rhythm: var(--fam-rhythm);
+  --color-fam-practice: var(--fam-practice);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

@@ -68,3 +68,7 @@ next-env.d.ts
 # python (skill scripts)
 __pycache__/
 *.py[cod]
+
+# Impeccable design workspace (local briefs, mocks, review captures). The durable
+# results are DESIGN.md and PRODUCT.md at the repo root.
+.impeccable/
