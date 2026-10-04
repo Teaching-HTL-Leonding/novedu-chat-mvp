@@ -5,7 +5,7 @@ import { addDays, todayLocal } from "@/lib/achievements/time";
 import { ownKeyDatesStatement } from "@/lib/coding-key-store";
 import { loadStudentUsage, usageStatement } from "@/lib/student-facts-store";
 import { query } from "./db";
-import { planOf } from "./plan.utils";
+import { indexCondOf, planNodes, planOf } from "./plan.utils";
 import { deletePrincipal, signInFreshStudent } from "./principal.utils";
 
 // The start page against real rows (docs/home.md): seeded hourly usage and one
@@ -206,9 +206,10 @@ test("coding requests and a coding key earn the Coding badges and a secret one",
     });
 
     // The keys statement is a range scan on the user_id index.
-    const plan = await planOf(ownKeyDatesStatement(principal.id));
-    expect(plan).toContain("ix_novedu_coding_keys_user_id");
-    expect(plan).not.toContain('"Seq Scan"');
+    // In issue order straight from the user's range of the index.
+    const plan = await planOf(ownKeyDatesStatement(principal.id), { presorted: true });
+    expect(indexCondOf(plan, "ix_novedu_coding_keys_user_id")).toMatch(/user_id/);
+    expect(planNodes(plan).filter((n) => /Seq Scan|Sort/.test(n["Node Type"]))).toEqual([]);
   } finally {
     await query(`DELETE FROM novedu_usage_by_user WHERE user_id = $1`, [principal.id]).catch(
       () => {},

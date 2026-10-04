@@ -34,7 +34,10 @@ Five kinds of e2e, by the external infra they need beyond that baseline:
   beyond session minting (tutor-code minting, file CRUD, the password-auth
   path). **Run in CI** against an ephemeral `postgres:18` service container
   reached with password auth (see "DB-backed `@live-db` in CI" below), and
-  locally against real Azure Database for PostgreSQL.
+  locally against real Azure Database for PostgreSQL. A query-plan check goes
+  through `planOf` (`e2e/plan.utils.ts`), which plans from the statement's shape
+  (statistics cleared in a rolled-back transaction; it needs a superuser
+  connection) — never assert on a plan read from the live statistics.
 - **`@live-llm` e2e** — also need a real LLM endpoint (chat round-trips, vision,
   the health probe, the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`,
   the **coding-agent** round-trip in `e2e/coding-agent.spec.ts`, which drives

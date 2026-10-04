@@ -13,7 +13,7 @@ import { getUserSettings, updateUserSettings } from "@/lib/user-settings-store";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { mintCode } from "./code.utils";
 import { getPool, query } from "./db";
-import { planOf } from "./plan.utils";
+import { indexCondOf, planNodes, planOf } from "./plan.utils";
 import { deletePrincipal, signInFreshStudent } from "./principal.utils";
 
 // Saved quiz results against the real database (docs/home.md → Saving a quiz
@@ -294,12 +294,20 @@ test("seeded results show on the start page, the Settings page deletes them, bad
     expect(kept[0]?.n).toBe("2");
 
     // Both new fact statements are index scans over the user's rows.
-    const results = await planOf(ownResultsQuery(principal.id).getSQL());
-    expect(results).toMatch(/novedu_quiz_results_pkey|ix_novedu_quiz_results_user_code_finished/);
-    expect(results).not.toContain('"Seq Scan"');
-    const reports = await planOf(ownResolvedDatesStatement(principal.id));
-    expect(reports).toContain("ix_novedu_reports_user_id_resolved");
-    expect(reports).not.toContain('"Seq Scan"');
+    // Each comes in its ORDER BY straight from the user's range of its index —
+    // the user id is the index condition, never a filter over another index.
+    for (const [statement, index] of [
+      [ownResultsQuery(principal.id).getSQL(), "ix_novedu_quiz_results_user_code_finished"],
+      [ownResolvedDatesStatement(principal.id), "ix_novedu_reports_user_id_resolved"],
+    ] as const) {
+      const plan = await planOf(statement, { presorted: true });
+      expect(indexCondOf(plan, index), index).toMatch(/user_id/);
+      // No sequential scan, and no sort: the index delivers the order.
+      expect(
+        planNodes(plan).filter((n) => /Seq Scan|Sort/.test(n["Node Type"])),
+        index,
+      ).toEqual([]);
+    }
   } finally {
     await query(`DELETE FROM novedu_reports WHERE id = $1`, [reportId]).catch(() => {});
     await query(`DELETE FROM novedu_codes WHERE code = $1`, [code]).catch(() => {});

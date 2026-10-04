@@ -172,15 +172,17 @@ independently.
   the PK `(user_id, hour)`; the `@live-db` home spec checks the plan.
 - **Keys** (`listOwnKeyDates`, `lib/coding-key-store.ts`) — the Vienna-local issue
   dates of the user's own coding keys, oldest first; nothing else leaves the
-  store. A range scan on `ix_novedu_coding_keys_user_id`, plan-checked too.
+  store. A range scan on `ix_novedu_coding_keys_user_id` (`user_id, created_at`),
+  which also delivers the order; plan-checked too.
 - **Quiz** (`listOwnQuizResults`, `lib/quiz-result-store.ts`) — the user's saved
   results, each with its code's note and whether the code is open now (a left
   join on `novedu_codes`, the same window rule as `checkCode`). A range scan over
-  the user's rows, plan-checked.
+  the user's rows in `ix_novedu_quiz_results_user_code_finished`, which also
+  delivers the order; plan-checked.
 - **Reports** (`listOwnResolvedReportDates`, `lib/report-store.ts`) — the
   Vienna-local dates the user's OWN reports were resolved; nothing else leaves the
-  store. A scan of the partial index `ix_novedu_reports_user_id_resolved`,
-  plan-checked.
+  store. A range scan of the partial index `ix_novedu_reports_user_id_resolved`
+  (`user_id, resolved_at`), which also delivers the order; plan-checked.
 - **Grants** (`listGrants`) — the user's `novedu_achievements` rows.
 
 Coding activity is read from `coding_requests`, which the coding proxy counts
@@ -319,6 +321,13 @@ A student refreshing in a loop must not load the database.
   student groups plus grants, six teacher groups plus grants) and never grows
   with the number of codes.
   In-process memory is correct because a stage runs at most one replica.
+- **Plan checks** (`planOf` in `e2e/plan.utils.ts`, `@live-db`): each statement is
+  EXPLAINed with sequential scans off and every app and Mastra table's statistics
+  cleared inside a rolled-back transaction, so the plan follows the statement's
+  shape, not the rows a long-lived database happens to hold. A statement whose
+  ORDER BY an index serves is also planned with sorts off; the check then
+  asserts the user id is the index condition and no sort or sequential scan
+  remains.
 - **Single flight**: concurrent loads of one key share one promise, held in a map
   separate from completed entries; a promise's cleanup removes only its own entry.
 - **Invalidation wins**: invalidation drops both entries; a load publishes only

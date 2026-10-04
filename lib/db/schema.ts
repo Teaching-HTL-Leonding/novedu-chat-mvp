@@ -225,10 +225,11 @@ export const reports = pgTable(
     index("ix_novedu_reports_code").on(t.code),
     // … and filters open vs. resolved (open rows are the working set).
     index("ix_novedu_reports_resolved_at").on(t.resolvedAt),
-    // A reporter's own resolved reports — the start page's Bug Hunter badge
-    // (docs/home.md). Partial: only resolved rows are ever read by user.
+    // A reporter's own resolved reports in resolution order — the start page's
+    // Bug Hunter badge (docs/home.md). Partial: only resolved rows are ever read
+    // by user.
     index("ix_novedu_reports_user_id_resolved")
-      .on(t.userId)
+      .on(t.userId, t.resolvedAt)
       .where(sql`${t.resolvedAt} IS NOT NULL`),
     // The reports a teacher resolved — the teacher start page's Listener badge
     // (docs/home.md). Partial: only resolved rows carry a resolver.
@@ -286,8 +287,9 @@ export const codingKeys = pgTable(
     // so two users can never share a key (a mint collision fails loudly and the
     // store re-mints).
     uniqueIndex("ux_novedu_coding_keys_api_key").on(t.apiKey),
-    // A user's own keys — the start page's coding facts (docs/home.md).
-    index("ix_novedu_coding_keys_user_id").on(t.userId),
+    // A user's own keys in issue order — the start page's coding facts
+    // (docs/home.md): the index serves the ORDER BY, so no sort is needed.
+    index("ix_novedu_coding_keys_user_id").on(t.userId, t.createdAt),
   ],
 );
 
