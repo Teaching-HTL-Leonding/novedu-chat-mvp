@@ -67,7 +67,9 @@ code-delete path drops it explicitly (it does — see **Lifecycle**).
 
 Indexes: `ix_novedu_reports_code` (the per-code drill-down),
 `ix_novedu_reports_resolved_by` (partial, the reports a teacher resolved — their
-start page's Listener badge, `docs/home.md`) and
+start page's Listener badge, `docs/home.md`),
+`ix_novedu_reports_user_id_resolved` (partial, `(user_id, resolved_at)` — a
+reporter's own resolved reports, their start page's Bug Hunter badge) and
 `ix_novedu_reports_resolved_at` (open vs. resolved — the open rows are the working
 set). The schema header comment restates the sanctioned-exception rule.
 
@@ -132,16 +134,15 @@ the chat action (reaction + description validation), then:
 
 ### Why `lib/quiz-verify.ts` exists (the `"use server"` hazard)
 
-`verifyAndLoadQuestion` used to be private inside `lib/quiz-actions.ts`, a
-`"use server"` module. **Exporting it from there would mint a public server-action
-endpoint** that returns the loaded `Quiz` — which carries the server-only
-`evaluation` grading prompts (they may embed the expected answer). It was extracted
-verbatim into `lib/quiz-verify.ts`, a **server-only module deliberately WITHOUT the
-`"use server"` directive**, so both `quiz-actions.ts` (grading) and
-`report-actions.ts` (quiz reports) import it as plain server code. **`lib/quiz-verify.ts`
-must never gain the `"use server"` directive** — that would re-open the very endpoint
-the extraction closed. (`CODE_REJECTION_MESSAGES` and `effectiveImageInput` moved
-with it.)
+`verifyAndLoadQuestion` is shared by grading (`lib/quiz-actions.ts`, a
+`"use server"` module) and quiz reports (`lib/report-actions.ts`). **Exporting it
+from a `"use server"` module would mint a public server-action endpoint** that
+returns the loaded `Quiz` — which carries the server-only `evaluation` grading
+prompts (they may embed the expected answer). So it lives in `lib/quiz-verify.ts`,
+a **server-only module deliberately WITHOUT the `"use server"` directive**, together
+with `CODE_REJECTION_MESSAGES` and `effectiveImageInput`, and both callers import it
+as plain server code. **`lib/quiz-verify.ts` must never gain the `"use server"`
+directive** — that would open exactly that endpoint.
 
 ## Telemetry — content-free
 
@@ -187,6 +188,15 @@ error.
   resolver's Listener badge, `docs/home.md`); reopening **nulls both** columns
   (`resolved_at` is the single source of truth). No-op for an empty id list.
 - `deleteReports(ids)` — bulk DELETE, the inbox's "Delete Selected".
+- Start-page facts (`docs/home.md`), each one statement that returns dates and
+  counts, never a reporter or content, and never throws:
+  `listOwnResolvedReportDates(userId)` (the local dates the user's OWN reports were
+  resolved — Bug Hunter; statement `ownResolvedDatesStatement`) and
+  `loadTeacherReports(teacherId, resolvedCap)` (open reports per own code plus the
+  reports the teacher resolved — the dashboard's Open reports and Listener;
+  statement `teacherReportsStatement`, with the subselect
+  `openReportsOfTeacherStatement`). The statements are exported for the
+  `@live-db` plan checks.
 
 ## Teacher inbox — `/reports`
 

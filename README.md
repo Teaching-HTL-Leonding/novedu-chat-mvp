@@ -36,7 +36,7 @@ See [`docs/azure-runtime-env.md`](docs/azure-runtime-env.md).
 
 | Area | Description |
 | --- | --- |
-| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the code-entry page; `app/[code]/page.tsx` checks the code and **dispatches by its `module`** to the tutor/quiz/writing/coding renderer. Teachers create, list, and edit **codes** under `/codes` (new at `/codes/new`, edit at `/codes/edit/<code>`), author **app-hosted YAML files** under `/files` and **images** under `/images`, triage **student reports** under `/reports` ([`docs/reports.md`](docs/reports.md)), and see usage on the `/usage` dashboard. See [`docs/codes.md`](docs/codes.md). Lists filter in the DB — see [`docs/filtered-lists.md`](docs/filtered-lists.md). |
+| **Next.js 16 app** (`app/`) | App Router UI. `app/page.tsx` is the start page — by effective role a student's code field, progress and badges, or a teacher's dashboard over their own codes ([`docs/home.md`](docs/home.md)); students and teachers set their preferences on `/settings`; `app/[code]/page.tsx` checks the code and **dispatches by its `module`** to the tutor/quiz/writing/coding renderer. Teachers create, list, and edit **codes** under `/codes` (new at `/codes/new`, edit at `/codes/edit/<code>`), author **app-hosted YAML files** under `/files` and **images** under `/images`, triage **student reports** under `/reports` ([`docs/reports.md`](docs/reports.md)), and see usage on the `/usage` dashboard. See [`docs/codes.md`](docs/codes.md). Lists filter in the DB — see [`docs/filtered-lists.md`](docs/filtered-lists.md). |
 | **Prompt-fragment core** (`lib/prompt-fragments/`) | The shared, framework-agnostic pipeline every activity kind builds on: fetch → parse YAML → Zod schema-validate → consistency-check → assemble with Handlebars. `assembleFragmentPrompt` resolves a document-level fragment block into a prompt string (a structured result, never throws); tutor, quiz, writing, and coding all call it. Handlebars is confined to this module (grep-guard enforced). Fragment files can be referenced by absolute `http(s)` URL or by a path **relative** to the activity YAML, and fragment inputs may declare **defaults**. See [`docs/prompt-fragments.md`](docs/prompt-fragments.md) and [`activities/tutors/README.md`](activities/tutors/README.md) (the authoring guide). |
 | **Mastra agents** (`app/mastra/`) | The `tutor`, `quizDiscussion`, and `writing` agents resolve their instructions + model per request and persist conversations via Mastra `Memory`; the server-only `quizEvaluator` grader and the eval agents `evalJudge` + `evalTutor` are never web-reachable by students (their only web callers are the teacher-only `/api/eval/*` routes). Agents are registered in `app/mastra/index.ts`. Storage is **Azure Database for PostgreSQL** via `@mastra/pg`, on the app's one shared pool, authenticated with Microsoft Entra ID (`az login` locally, Managed Identity on Azure). (The `coding` module has **no** Mastra agent — it is a thin proxy.) |
 | **CopilotKit + AG-UI** | The chat UI is CopilotKit (`@copilotkit/react-core/v2`). Mastra agents are served to it through the AG-UI route handler at `app/api/copilotkit/[[...slug]]/route.ts`. See [`docs/chat.md`](docs/chat.md). |
@@ -44,8 +44,8 @@ See [`docs/azure-runtime-env.md`](docs/azure-runtime-env.md).
 | **Images** (`app/images/**`, `lib/image-*.ts`) | Teacher-uploaded images stored under a configured filesystem root (`IMAGE_STORAGE_ROOT` — an Azure Files mount in production), streamed through the app on upload and served through the app's own cookie-session route `GET /api/image-content/<id>` — no signed URL of any kind, no direct-to-storage traffic. See [`docs/images.md`](docs/images.md). |
 | **Usage metering** (`lib/usage-store.ts`, `app/mastra/usage-exporter.ts`) | Per-hour token / tool-call / activity counts written off the response path into two anonymity-preserving tables (`novedu_usage_by_code`, `novedu_usage_by_user`), surfaced on the teacher `/usage` dashboard. See [`docs/usage-metering.md`](docs/usage-metering.md) and [`docs/dashboard.md`](docs/dashboard.md). |
 | **LLM providers** (`lib/llm/`, `app/mastra/scch.ts`, `lib/scch-endpoint.ts`) | Three OpenAI-compatible upstreams behind one server-only seam: a self-hosted vLLM GPU server ("SCCH", the default) plus two optional ones — **Azure Foundry** when `AZURE_FOUNDRY_ENDPOINT` is set (passwordless Entra auth, no API key) and **OpenRouter** when `OPENROUTER_API_KEY` is set. The activity YAML's `llm:` block picks provider + model + an optional reasoning level, and a code can override the whole block; endpoints, keys, and tokens stay server-side. See [`docs/ai-models.md`](docs/ai-models.md). |
-| **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | **better-auth** with Microsoft Entra ID as the sign-in provider (Next 16 renamed `middleware` → `proxy.ts`, which checks only for a session cookie). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). Sessions are database-backed (`novedu_session`, no cookie cache). See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: the same **session token as a bearer**, obtained by the CLI's own OAuth device flow, validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
-| **Teacher docs** (`teacher-docs/`) | The teacher-facing guide as a **hand-maintained Markdown corpus** (`teacher-docs/src/content/docs/` — human-owned chapters, kept current from code changes by hand or via the `novedu-teacher-docs` skill) and an **Astro Starlight site** that renders it (the rest of `teacher-docs/`, an npm workspace) — as HTML pages plus an [llms.txt](https://llmstxt.org) surface for AI agents (`/llms.txt`, `/llms-full.txt`, and a `.md` twin of every chapter). Served **publicly at `https://docs.novedu.at`** from an Azure Static Web App, released by `promote.yml` from the promoted image's commit; the app 308-redirects its former `/docs/*` paths there. `npm run docs:dev` for local authoring; the corpus-contract test + site build are the consistency checks. See [`docs/teacher-docs.md`](docs/teacher-docs.md). |
+| **Auth** (`auth.ts`, `proxy.ts`, `lib/api-auth.ts`) | **better-auth** with Microsoft Entra ID as the sign-in provider (the gate is `proxy.ts`, Next 16's name for middleware, which checks only for a session cookie). Any signed-in user passes the gate; teacher-only operations are gated by `TEACHER_GROUP_ID` membership (`session.user.isTeacher`), enforced server-side via `requireEffectiveTeacher()` (which honors "view as student" mode). Sessions are database-backed (`novedu_session`, no cookie cache). See [`docs/auth.md`](docs/auth.md). A second, cookie-free channel serves CLI/API clients: the same **session token as a bearer**, obtained by the CLI's own OAuth device flow, validated on every request by `lib/api-auth.ts` (`requireBearerUser` / `requireBearerTeacher`; no student mode on this channel). See [`docs/api.md`](docs/api.md). |
+| **Teacher docs** (`teacher-docs/`) | The teacher-facing guide as a **hand-maintained Markdown corpus** (`teacher-docs/src/content/docs/` — human-owned chapters, kept current from code changes by hand or via the `novedu-teacher-docs` skill) and an **Astro Starlight site** that renders it (the rest of `teacher-docs/`, an npm workspace) — as HTML pages plus an [llms.txt](https://llmstxt.org) surface for AI agents (`/llms.txt`, `/llms-full.txt`, and a `.md` twin of every chapter). Served **publicly at `https://docs.novedu.at`** from an Azure Static Web App, released by `promote.yml` from the promoted image's commit; the app 308-redirects `/docs/*` there. `npm run docs:dev` for local authoring; the corpus-contract test + site build are the consistency checks. See [`docs/teacher-docs.md`](docs/teacher-docs.md). |
 | **API routes** (`app/api/`) | `copilotkit` (chat runtime), `coding/v1/chat/completions` + `coding/v1/models` (**public** OpenAI-compatible endpoints, per-user API key auth), `files/<name>` (**public** GET: serve an app-hosted YAML file as raw text; **bearer** PUT: upsert for `novedu-cli files upload`), `files` + `codes` (**bearer**, teacher-only: list/create/sync for the CLI — see [`docs/api.md`](docs/api.md)), `images` + `images/<name>` (**bearer**, teacher-only: image upload/list for the CLI), `eval/grade` + `eval/judge` + `eval/respond` (**bearer**, teacher-only: stateless one-shot grading / judging / tutor turns for `novedu-cli eval`), `reports` + `reports/<id>` + `reports/resolve` (**bearer**, teacher-only: report triage for the CLI; a chat report's detail embeds the conversation transcript), `auth` (sign-in), `me` (**bearer-token** identity probe backing `novedu-cli whoami`), `version` (public build-identity probe), `health` (teacher-gated probe). |
 
 ### Request flow
@@ -169,7 +169,7 @@ STORAGE_TENANT_ID=your-data-store-tenant-id
 # x-forwarded-host/-proto headers, which is only as reliable as the proxy chain
 # (and falls back to http://). Optional for local dev (localhost works). Display-only:
 # a code works on ANY origin that talks to the same database.
-# (The legacy name TUTOR_CODE_ORIGIN is still read as a fallback.)
+# (TUTOR_CODE_ORIGIN is read as a fallback name.)
 CODE_ORIGIN=https://your-public-origin
 
 # --- Images (optional) — filesystem root for teacher-uploaded images ---
@@ -252,7 +252,7 @@ others to the app. Moving a domain therefore means touching all of its rows:
 | --- | --- |
 | `AUTH_URL` — environment variable of each stage's container app, **not in the repo** | better-auth's `baseURL` and trusted origin (unset locally — better-auth infers the base URL from the request instead). Also what makes the session cookie carry the `__Secure-` prefix under https (`__Secure-novedu.session_token`). Sign-in breaks if it still names the old domain. |
 | Entra app registration redirect URI | The callback URL for the new origin (see the bullet above). |
-| `CODE_ORIGIN` — env / app setting | Origin shown in generated code URLs (`https://<origin>/<code>`) and in the coding endpoint's connection snippet; read by `lib/app-origin.ts` (legacy name `TUTOR_CODE_ORIGIN` still honored). Display-only — falls back to the request's `x-forwarded-host`. |
+| `CODE_ORIGIN` — env / app setting | Origin shown in generated code URLs (`https://<origin>/<code>`) and in the coding endpoint's connection snippet; read by `lib/app-origin.ts` (`TUTOR_CODE_ORIGIN` is read as a fallback name). Display-only — falls back to the request's `x-forwarded-host`. |
 | `cli/src/server-url.ts` → `DEFAULT_SERVER` | The CLI's default server. A *default* only: `--server` and `NOVEDU_SERVER` override it per invocation. |
 | `teacher-docs/astro.config.mjs` → `site` | **Docs domain.** Canonical origin baked into the teacher guide's `llms.txt` links, sitemap and canonical tags (build-time). |
 | `lib/teacher-guide.ts` → `TEACHER_GUIDE_URL` | **Docs domain.** The app's links to the guide (nav menu, environment ribbon) and the target of the `/docs/*` redirects in `next.config.ts`. |
@@ -299,7 +299,7 @@ npm run start
 | `npm run test:e2e` | Playwright end-to-end tests (all specs, incl. `@live`). |
 | `npm run test:e2e:ci` | Hermetic + `@live-db` (against a Postgres container); skips `@live-llm` and `@live-storage`. (`test:e2e:db` / `test:e2e:storage` run one live group.) |
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
-| `npm run qa` | `check` + `typecheck` + `test` + `build` + `docs:build`. (`qa:e2e` adds the e2e suite.) |
+| `npm run qa` | `check` + `typecheck` + `test` + `test:cli` + `build` + `docs:build`. (`qa:e2e` adds the e2e suite.) |
 | `npm run docs:dev` | Serve the teacher guide locally at `:4321/` (Astro Starlight; `docs:build` / `docs:preview` for the static build). |
 | `npm run cli` | Run the `@novedu/cli` companion CLI (workspace under `cli/`): `validate` activity YAML, `prompts` to dump the exact LLM prompts an activity produces, `eval` to run quiz/tutor evals, `login` / `logout` / `whoami` to sign in, and the teacher management commands `codes create/list/sync`, `files upload/list`, `images upload/list`, and `reports list/show/resolve` (JSON in/out) against the app's bearer-protected APIs. |
 
@@ -346,7 +346,13 @@ the same coding-workshop flow.
 ## Documentation
 
 Per-subsystem deep references live in [`docs/`](docs/): codes & modules
-([`codes.md`](docs/codes.md)), the shared [`prompt-fragments.md`](docs/prompt-fragments.md),
+([`codes.md`](docs/codes.md)), the start page, achievements, saved quiz results and
+Settings ([`home.md`](docs/home.md)), the registry and `codes sync`
+([`registry.md`](docs/registry.md)), tutor tools ([`tutor-tools.md`](docs/tutor-tools.md)),
+CLI prompt dumps and evals ([`cli-prompts.md`](docs/cli-prompts.md),
+[`cli-eval.md`](docs/cli-eval.md)), LLM diagnostics ([`diagnostics.md`](docs/diagnostics.md)),
+the Azure stages ([`azure-runtime-env.md`](docs/azure-runtime-env.md),
+[`azure-access.md`](docs/azure-access.md)), the shared [`prompt-fragments.md`](docs/prompt-fragments.md),
 [`writing.md`](docs/writing.md), [`coding.md`](docs/coding.md), student reports
 ([`reports.md`](docs/reports.md)),
 the chat surface ([`chat.md`](docs/chat.md)), app-hosted [`files.md`](docs/files.md) and
@@ -378,9 +384,11 @@ teacher guide corpus + docs site ([`teacher-docs.md`](docs/teacher-docs.md)).
   `resourceId`, so every thread is grouped under it. A user↔chat link is written to
   `novedu_user_chats` **only** for activities that opt out of anonymity
   (`anonymous: false`); the default is module-specific (tutor/quiz default anonymous,
-  writing does not). See `docs/codes.md`. The one sanctioned exception is a voluntary,
-  student-initiated **report**, which always records the reporter — behind an explicit
-  "reports are not anonymous" notice on the form (`docs/reports.md`). Full mechanics —
+  writing does not). See `docs/codes.md`. Three sanctioned exceptions record a user
+  beside a code, each behind an explicit on-page notice: a voluntary **report** always
+  records the reporter (`docs/reports.md`), a **coding key** records its holder
+  (`docs/coding.md`), and a student's **saved quiz result**, stored only on their own
+  choice and read only by them (`docs/home.md`). Full mechanics —
   the credential chain, the one shared pool, the privilege model — are in
   `docs/database.md`.
 - **Anonymity & metering** — usage is metered into two independent hourly tables that
@@ -393,8 +401,8 @@ teacher guide corpus + docs site ([`teacher-docs.md`](docs/teacher-docs.md)).
   ranges, and disable redirects.
 - **Authorization** — the Entra gate admits any signed-in user, but teacher-only
   operations (creating/listing codes, authoring files/images, the
-  usage dashboard) are gated by membership in `TEACHER_GROUP_ID`, surfaced as
+  usage dashboard, the teacher dashboard on `/`) are gated by membership in `TEACHER_GROUP_ID`, surfaced as
   `session.user.isTeacher` and enforced server-side via `requireEffectiveTeacher()`
   (`lib/student-mode.ts`, which also honors "view as student" mode). The public coding
-  endpoint instead authenticates with the code as its bearer key. The public teacher
+  endpoints instead authenticate with a per-user API key (`docs/coding.md`). The public teacher
   guide is a separate static site (`docs/teacher-docs.md`). See `docs/auth.md`.

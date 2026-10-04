@@ -353,7 +353,7 @@ Tables (details in `docs/codes.md`):
 | --- | --- | --- |
 | `novedu_codes` | PK `code` | Shareable codes across modules: `module` discriminator, file URL, window, note, creating teacher, frozen `anonymous` flag |
 | `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only when the activity opts out of anonymity) |
-| `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (entry-page shortcuts) |
+| `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (the start page's Recently used) |
 | `novedu_writing_submissions` | PK (`code`, `user_id`) | a student's saved writing text — one upserted row per student per code, non-anonymous codes only (details in `docs/writing.md`) |
 | `novedu_reports` | PK `id`; indexes on `code`, `resolved_at`; partial index on (`user_id`, `resolved_at`) `WHERE resolved_at IS NOT NULL`; partial index on (`resolved_by`, `resolved_at`) `WHERE resolved_by IS NOT NULL` | student-submitted reports on an AI interaction, always attributed to the reporter's user id even under an anonymous code (details in `docs/reports.md`); the partial indexes serve the reporter's and the resolving teacher's start pages (`docs/home.md`) |
 | `novedu_coding_keys` | PK (`code`, `user_id`); unique index on `api_key`; index on (`user_id`, `created_at`) | the coding module's per-user API keys — one stable `nvk-…` key per student per coding code, the second sanctioned user↔code attribution (details in `docs/coding.md`) |

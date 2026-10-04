@@ -24,9 +24,11 @@ Two more folders hold editor schemas without being modules:
   `novedu-cli codes sync`. It is not an activity and has no authoring guide here; the
   format is documented in [`../docs/registry.md`](../docs/registry.md) and
   [`../cli/README.md`](../cli/README.md).
-- [`evals/`](evals/README.md) carries `eval-yaml.schema.json` for a **golden-answer
-  eval** — a test file for a quiz's grading: made-up student answers plus the verdict
-  each must get, replayed through the real grader by `novedu-cli eval`. Students never
+- [`evals/`](evals/README.md) carries `eval-yaml.schema.json` for the two **eval**
+  kinds run by `novedu-cli eval`: a **quiz** eval tests a quiz's grading (made-up
+  student answers plus the verdict each must get, replayed through the real grader),
+  a **tutor** eval replays scripted conversations and has a judge rate the tutor's
+  next reply. Students never
   see it and it never gets a code. Guide: [evals/README.md](evals/README.md),
   engineering reference: [`../docs/cli-eval.md`](../docs/cli-eval.md).
 

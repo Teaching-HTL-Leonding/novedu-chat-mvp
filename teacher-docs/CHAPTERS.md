@@ -13,7 +13,7 @@ _What Novedu is. Concepts and pedagogy, no deep configuration detail._
 
 | # | Chapter | Where to look (hints) |
 | --- | --- | --- |
-| 01 | What is Novedu | `README.md`, `activities/README.md`, `activities/tutors/README.md` |
+| 01 | What is Novedu | `README.md`, `activities/README.md`, `activities/tutors/README.md`, `docs/home.md` (achievements) |
 | 02 | What is a shareable code | `docs/codes.md` (behavioral parts), `README.md` |
 | 03 | Tutors overview | `activities/tutors/README.md` |
 | 04 | Quizzes overview | `activities/quizzes/README.md` |

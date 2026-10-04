@@ -517,7 +517,7 @@ any page, and its handler re-validates the session itself on top of that.
 - **CLI unit tests** (`cli/src/auth.unit.test.ts`) exercise the device-flow
   request shape, the pending→success and `slow_down`/expired/denied poll
   outcomes, and the sessions-file round trip (mode `0600`, per-origin keys,
-  `NOVEDU_TOKEN` precedence, the legacy cache file being removed) against a
+  `NOVEDU_TOKEN` precedence, a stray `token-cache.json` beside it being deleted) against a
   fake `fetchImpl`/`sleep` — no real network or timers.
   `login.unit.test.ts`/`logout.unit.test.ts` mock `../auth` and assert the
   already-signed-in short-circuit, the printed link/code, and that `logout`

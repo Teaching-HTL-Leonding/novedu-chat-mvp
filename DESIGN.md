@@ -288,17 +288,19 @@ Every page renders inside `Main` (a centered column, max 1280px) and, when it sc
 
 Breakpoints are Tailwind's defaults, mobile-first; `md` (48rem) is the main switch and is shared with JavaScript on the writing surface.
 
-The start page stacks full-width cards in one column on every width: Continue, then the new-badges strip (only when there is something new), Your progress, the 26-week calendar, Almost there, Badges. Inside cards it splits with internal hairline dividers rather than separate cards:
+The student start page stacks full-width blocks in one column: Continue, then the new-badges strip (only when there is something new), Your progress, the 26-week calendar, Time to refresh beside Almost there (two columns from lg, stacked below), Badges. Inside cards it splits with internal hairline dividers rather than separate cards:
 - Continue: 5 of 12 columns for greeting and code field, 7 for Recently used (two columns from md), from lg; stacked below lg with a bottom hairline.
 - Your progress: level and XP on the left, the streak in a fixed panel (min 288px) on the right from md; stacked with a top hairline on phones.
-- Almost there: two columns from md. Badges: one family per column, two from md, three from lg.
+- Almost there: its items in two columns from md, one again from lg, where it shares the row with Time to refresh. Badges: one family per column, two from md; the students' five families three from lg and five from xl, the teachers' two stay two.
 - The calendar: 26 flexible 3:2 columns from md (min width 760px); on phones fixed 20px day cells that scroll horizontally inside the card, starting at today.
 
 A teacher's start page is a different stack, also one column of full-width blocks 16px apart:
-- The header: the h1 greeting on the left, the outline Teacher Guide pill on the right; it wraps under the greeting on phones. A teacher without any code sees only this header and one muted line.
+- The header: the h1 greeting on the left, the outline Teacher Guide pill on the right; it wraps under the greeting on phones. A teacher without any code sees this header with one muted line, and the Badges card.
+- The new-badges strip, as on the student page, only when there is something new.
 - The attention bar ("Needs you"): one card holding the title and three counters in a wrapping row; the open counter's codes unfold below a hairline inside the same card. On phones the title and every counter take the full width, one per row.
 - "Last 30 days", a bare section title with its scope caption on the right, over six stat tiles in a grid: six columns from lg, three from md, two on phones. A footnote caption sits under the grid.
 - Top activities: a card with a five-column table (rank, activity, kind, interactions, outside school hours) and a hairline-topped footer caption with the link to the usage dashboard. On phones the table head becomes screen-reader-only and each row folds into a grid entry: the rank on the left, the label with the kind pill on the right, then interactions and the share as plain lines.
+- Badges: the student page's Badges card with the teacher's two families (Reach, Authoring); no XP on earned badges.
 
 Card padding is 16px horizontal on phones and 24px from md, 20px vertical.
 
@@ -376,7 +378,7 @@ The teacher start page's to-do list. Each counter is an outline pill button (36p
 The dark floating label shared by the calendar pins and the info button beside a column header: `status-bar` fill, white 12px text at a snug line height, 8px corners, 8px by 10px padding, the floating-panel shadow, at most 256 to 288px wide. It opens on hover and keyboard focus, stays open while the pointer moves onto it, and closes on Escape. The info button is a 20px round ghost holding a 14px info icon at 60 percent ink, with a 5 percent wash and full ink on hover.
 
 ### New-badges Strip
-A single quiet line between Continue and Your progress, shown only when there is something new: `amber-wash` fill, `amber-line` border, 8px corners, `amber-ink` 14px text, led by a 10px `brand-amber` dot with a 3px `amber-halo` ring. It carries a count, nothing to click, and no animation.
+A single quiet line, shown only when there is something new — between Continue and Your progress on the student page, under the header on the teacher page: `amber-wash` fill, `amber-line` border, 8px corners, `amber-ink` 14px text, led by a 10px `brand-amber` dot with a 3px `amber-halo` ring. It carries a count, nothing to click, and no animation.
 
 ### Icons
 Feather-style inline SVGs: 24px viewBox, 2px round-capped stroke in `currentColor`, always decorative (`aria-hidden`), sized by the parent (16px in buttons, 14px beside muted text, 28px beside the streak count).
@@ -389,7 +391,7 @@ Feather-style inline SVGs: 24px viewBox, 2px round-capped stroke in `currentColo
 - **Do** keep controls and chips fully round and 36px high (32px small), with the 2px `ring` focus outline offset 2px.
 - **Do** set changing numbers in tabular figures, and use the 12px uppercase META_LABEL to name a value or a group.
 - **Do** reserve `brand-amber` and its tints for "new since your last visit", shown as a ring, a dot, a wash or a "New" chip — the one other use is the glyph on a secret badge's slate disc.
-- **Do** colour badge discs, pins and their meters by family token (`fam-rhythm`, `fam-practice`, `fam-quiz`, `fam-coding`, `fam-secret`), and calendar intensity by the `heat-0` to `heat-3` ramp.
+- **Do** colour badge discs, pins and their meters by family token (`fam-rhythm`, `fam-practice`, `fam-quiz`, `fam-coding`, `fam-secret`; the teachers' `fam-reach`, `fam-authoring`), and calendar intensity by the `heat-0` to `heat-3` ramp.
 - **Do** separate regions inside a card with hairlines, and stack start-page sections as full-width cards 16px apart.
 - **Do** promote any look used in two places into `components/ui/` or the owning shared recipe (`app/_home/home-ui.ts` for the start page), as docs/styling.md requires.
 

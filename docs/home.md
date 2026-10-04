@@ -12,7 +12,8 @@ The start page (`/`) is every signed-in user's home, by **effective** role:
   30 days, their most-used activities, and their own badges (*Teacher dashboard*
   below).
 
-The Settings page (`/settings`) holds the per-user preferences. Visual design:
+The burger menu's first item, **Home**, leads to `/` for both roles. The Settings
+page (`/settings`) holds the per-user preferences. Visual design:
 `DESIGN.md`, `.impeccable/surfaces/app-page-tsx.md` (students) and
 `.impeccable/surfaces/app-home-teacher-home-tsx.md` (teachers).
 
@@ -238,13 +239,15 @@ spec checks that every statement starts from its index (`ix_novedu_codes_created
 plus the resolver and writer indexes for reports and files) and has no
 sequential scan.
 
-**Page** (`buildTeacherHome` → `TeacherHome`): the greeting with the Teacher Guide
+**Page** (`buildTeacherHome` builds the `TeacherHome` view model): the greeting with the Teacher Guide
 link (`TEACHER_GUIDE_URL`, a new tab), then:
 
 - **Needs you** — three counters, each listing up to five codes linked to their
   detail page (`/codes/<code>`) plus how many more there are. The first counter
-  with something in it starts open; one panel at a time; an empty counter reads
-  "all clear" and is no button; a counter whose group failed says so.
+  with something in it starts open; one panel at a time; an empty counter is no
+  button and says it is all clear in its own words ("Nothing closes in the next 3
+  days", "No open reports", "Every code has been used"); a counter whose group
+  failed says so.
   - *Closing soon*: open now and the window ends within 3 days, soonest first;
     "Closes today" is shown in the destructive tone.
   - *Open reports*: the number of unresolved reports; the codes with the most

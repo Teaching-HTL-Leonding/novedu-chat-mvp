@@ -519,8 +519,9 @@ The CLI lives in the app repo as an npm workspace.
 ```bash
 npm run cli -- validate ./activities/examples/sorting-algorithms/sorting-tutor.yaml   # run from source via tsx
 npm run cli:build                                    # bundle to cli/dist via tsdown
-npm run test:cli                                     # build + integration tests (local & live URLs)
+npm run test:cli                                     # build + integration tests (offline, local fixtures server)
 ```
 
-The fast in-process unit tests (`cli/src/commands/*.unit.test.ts`) run in CI;
-the integration tests hit the network and are local-only.
+The fast in-process unit tests (`cli/src/commands/*.unit.test.ts`) and the
+integration tests (`cli/test/*.integration.test.ts`, which drive the built binary
+against a local fixtures server, fully offline) both run in CI (`qa.yml`).

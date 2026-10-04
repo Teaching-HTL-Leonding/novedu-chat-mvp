@@ -122,9 +122,8 @@ prose carries everything an editor needs.
 
 ## 20-building-activities/07-fragments
 
-- There is no `priority` and no separate `fragments:` list any more; order is
-  simply where you place the marker. If an older activity still has them, it is
-  the old format. Do not describe priority ordering.
+- There is no `priority` and no separate `fragments:` list; order is simply where
+  you place the marker. Do not describe priority ordering.
 - Keep this the one deep fragment chapter: the tutors, quiz, writing and coding
   chapters cover placing fragments from the consumer side and should stay lighter.
 
@@ -156,8 +155,8 @@ prose carries everything an editor needs.
 
 ## 30-sharing-activities/06-coding-special-case
 
-- Sharing a coding code is NOT special any more: it gets the same share link as
-  every other kind of activity. What is still special is what a student does
+- Sharing a coding code is NOT special: it gets the same share link as every
+  other kind of activity. What is still special is what a student does
   after opening it (sign in, then get a personal connection key) — do not revive
   "the code is the key" framing.
 - A student's personal key is stable: the same key comes back on every visit,
