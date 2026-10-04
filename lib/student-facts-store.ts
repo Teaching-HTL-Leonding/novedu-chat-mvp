@@ -26,8 +26,8 @@ const ACTIVE = sql.raw(
 
 // `codingHours` counts distinct local hours: on the autumn clock change the two
 // buckets sharing local 02:00 are one hour of the day.
-/** The usage statement — exported so the `@live-db` test can EXPLAIN the real one. */
-export function usageStatement(userId: string): SQL {
+/** The usage statement: a range scan of the PK, whose leading column is `user_id`. */
+function usageStatement(userId: string): SQL {
   return sql`
     SELECT ((u.hour AT TIME ZONE ${HOME_TIME_ZONE})::date)::text AS day,
            count(*) FILTER (WHERE ${ACTIVE}) AS "activeHours",

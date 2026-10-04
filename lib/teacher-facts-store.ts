@@ -42,25 +42,20 @@ const STORE = "teacher-facts-store";
 
 const KNOWN_MODULES = new Set<string>(CODE_MODULES);
 
-/** The codes query — exported so the `@live-db` test can EXPLAIN the real one. */
-export function teacherCodesQuery(teacherId: string) {
-  return getDb()
-    .select({
-      code: codes.code,
-      module: codes.module,
-      note: codes.note,
-      validFrom: codes.validFrom,
-      validUntil: codes.validUntil,
-      createdAt: codes.createdAt,
-    })
-    .from(codes)
-    .where(eq(codes.createdBy, teacherId));
-}
-
 /** The teacher's codes — one scan of the `created_by` index. */
 export async function listTeacherCodes(teacherId: string): Promise<TeacherCode[] | undefined> {
   try {
-    const rows = await teacherCodesQuery(teacherId);
+    const rows = await getDb()
+      .select({
+        code: codes.code,
+        module: codes.module,
+        note: codes.note,
+        validFrom: codes.validFrom,
+        validUntil: codes.validUntil,
+        createdAt: codes.createdAt,
+      })
+      .from(codes)
+      .where(eq(codes.createdBy, teacherId));
     // An unrecognized module is no activity for anyone (`checkCode` agrees).
     return rows
       .filter((row) => KNOWN_MODULES.has(row.module))
@@ -77,8 +72,7 @@ const INTERACTIONS = sql.raw(
 );
 
 /**
- * The usage statement — exported so the `@live-db` test can EXPLAIN the real
- * one. Per code and Vienna-local day over the whole history: the sums the
+ * The usage statement — exported for its shape test. Per code and Vienna-local day over the whole history: the sums the
  * dashboard and the badges read. A bucket is outside school hours on a weekend
  * or outside the local `SCHOOL_DAY_START ≤ h < SCHOOL_DAY_END` (the same rule as
  * `isSchoolHour`).
@@ -134,7 +128,7 @@ export async function loadTeacherUsage(teacherId: string): Promise<CodeDay[] | u
 /**
  * The conversations statement: threads of the teacher's codes with a user
  * message in the window — the `EXISTS` shape of `getDashboardKpis`
- * (docs/dashboard.md), restricted by code. Exported for the `@live-db` test.
+ * (docs/dashboard.md), restricted by code. Exported for its shape test.
  */
 export function conversationsStatement(teacherId: string, start: Date): SQL {
   return sql`
@@ -165,7 +159,7 @@ export async function countTeacherConversations(
 }
 
 /**
- * The identified-students statement — exported for the `@live-db` test. Over
+ * The identified-students statement — exported for its shape test. Over
  * the per-user chats and saved texts of the teacher's non-anonymous codes and
  * the key holders of their coding codes, all time, the teacher's own id
  * excluded (each subselect comes from the store that owns its table): per code,

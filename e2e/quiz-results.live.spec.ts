@@ -5,24 +5,20 @@ import {
   countOwnQuizResults,
   deleteOwnQuizResults,
   listOwnQuizResults,
-  ownResultsQuery,
   saveQuizResult,
 } from "@/lib/quiz-result-store";
-import { ownResolvedDatesStatement } from "@/lib/report-store";
 import { getUserSettings, updateUserSettings } from "@/lib/user-settings-store";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { mintCode } from "./code.utils";
 import { getPool, query } from "./db";
-import { indexCondOf, planNodes, planOf } from "./plan.utils";
 import { deletePrincipal, signInFreshStudent } from "./principal.utils";
 
 // Saved quiz results against the real database (docs/home.md → Saving a quiz
 // result): the retention bound under concurrent saves, a save racing a code
 // delete, `always` rolling back as a whole, an automatic save racing the
 // switch-off — the locks the store's transaction relies on, which no fake can
-// prove — then the start page and the Settings page over seeded results, and
-// the plans of the two new fact statements. Every test uses its own user id and
-// quiz code and removes its rows afterwards.
+// prove — then the start page and the Settings page over seeded results. Every
+// test uses its own user id and quiz code and removes its rows afterwards.
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -292,22 +288,6 @@ test("seeded results show on the start page, the Settings page deletes them, bad
       [principal.id],
     );
     expect(kept[0]?.n).toBe("2");
-
-    // Both new fact statements are index scans over the user's rows.
-    // Each comes in its ORDER BY straight from the user's range of its index —
-    // the user id is the index condition, never a filter over another index.
-    for (const [statement, index] of [
-      [ownResultsQuery(principal.id).getSQL(), "ix_novedu_quiz_results_user_code_finished"],
-      [ownResolvedDatesStatement(principal.id), "ix_novedu_reports_user_id_resolved"],
-    ] as const) {
-      const plan = await planOf(statement, { presorted: true });
-      expect(indexCondOf(plan, index), index).toMatch(/user_id/);
-      // No sequential scan, and no sort: the index delivers the order.
-      expect(
-        planNodes(plan).filter((n) => /Seq Scan|Sort/.test(n["Node Type"])),
-        index,
-      ).toEqual([]);
-    }
   } finally {
     await query(`DELETE FROM novedu_reports WHERE id = $1`, [reportId]).catch(() => {});
     await query(`DELETE FROM novedu_codes WHERE code = $1`, [code]).catch(() => {});

@@ -227,8 +227,8 @@ export async function listCodingKeys(code: string): Promise<CodingKeyIssuance[]>
   }
 }
 
-/** The own-keys statement — exported so the `@live-db` test can EXPLAIN the real one. */
-export function ownKeyDatesStatement(userId: string): SQL {
+/** The own-keys statement: a range scan of the `user_id` index. */
+function ownKeyDatesStatement(userId: string): SQL {
   return sql`
     SELECT ((k.created_at AT TIME ZONE ${HOME_TIME_ZONE})::date)::text AS day
     FROM novedu_coding_keys k

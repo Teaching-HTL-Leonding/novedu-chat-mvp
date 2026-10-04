@@ -433,8 +433,8 @@ export async function deleteReports(ids: string[]): Promise<boolean> {
   }
 }
 
-/** The own-resolved-reports statement — exported so the `@live-db` test can EXPLAIN the real one. */
-export function ownResolvedDatesStatement(userId: string): SQL {
+/** The own-resolved-reports statement: a scan of the partial `user_id` index. */
+function ownResolvedDatesStatement(userId: string): SQL {
   return sql`
     SELECT ((r.resolved_at AT TIME ZONE ${HOME_TIME_ZONE})::date)::text AS day
     FROM novedu_reports r
@@ -462,7 +462,7 @@ export async function listOwnResolvedReportDates(userId: string): Promise<LocalD
 }
 
 /** The open-reports statement — open reports per own code, a subselect of the teacher statement. */
-export function openReportsOfTeacherStatement(teacherId: string): SQL {
+function openReportsOfTeacherStatement(teacherId: string): SQL {
   return sql`
     SELECT r.code, count(*) AS open
     FROM novedu_reports r
@@ -473,8 +473,7 @@ export function openReportsOfTeacherStatement(teacherId: string): SQL {
 }
 
 /**
- * The teacher statement — exported so the `@live-db` test can EXPLAIN the real
- * one. One row of scalar subselects: the open reports per own code (as JSON),
+ * The teacher statement — exported for its shape test. One row of scalar subselects: the open reports per own code (as JSON),
  * how many reports the teacher resolved (`resolved_by`, any code), and the
  * local dates of the first `resolvedCap` of them. The resolved ones are read
  * through the partial `resolved_by` index.

@@ -68,8 +68,8 @@ code-delete path drops it explicitly (it does — see **Lifecycle**).
 Indexes: `ix_novedu_reports_code` (the per-code drill-down),
 `ix_novedu_reports_resolved_by` (partial, the reports a teacher resolved — their
 start page's Listener badge, `docs/home.md`),
-`ix_novedu_reports_user_id_resolved` (partial, `(user_id, resolved_at)` — a
-reporter's own resolved reports, their start page's Bug Hunter badge) and
+`ix_novedu_reports_user_id_resolved` (partial, `user_id` — a reporter's own
+resolved reports, their start page's Bug Hunter badge) and
 `ix_novedu_reports_resolved_at` (open vs. resolved — the open rows are the working
 set). The schema header comment restates the sanctioned-exception rule.
 
@@ -191,12 +191,10 @@ error.
 - Start-page facts (`docs/home.md`), each one statement that returns dates and
   counts, never a reporter or content, and never throws:
   `listOwnResolvedReportDates(userId)` (the local dates the user's OWN reports were
-  resolved — Bug Hunter; statement `ownResolvedDatesStatement`) and
-  `loadTeacherReports(teacherId, resolvedCap)` (open reports per own code plus the
-  reports the teacher resolved — the dashboard's Open reports and Listener;
-  statement `teacherReportsStatement`, with the subselect
-  `openReportsOfTeacherStatement`). The statements are exported for the
-  `@live-db` plan checks.
+  resolved — Bug Hunter) and `loadTeacherReports(teacherId, resolvedCap)` (open
+  reports per own code plus the reports the teacher resolved — the dashboard's
+  Open reports and Listener; one row of scalar subselects,
+  `teacherReportsStatement`).
 
 ## Teacher inbox — `/reports`
 

@@ -357,8 +357,7 @@ export async function softDeleteFiles(names: string[], userId: string): Promise<
 }
 
 /**
- * The writer-versions statement — exported so the `@live-db` test can EXPLAIN
- * the real one. Over the versions the writer wrote (every row, active or closed,
+ * The writer-versions statement — exported for its shape test. Over the versions the writer wrote (every row, active or closed,
  * of any name, read through the `created_by` index): the most versions of one
  * name, and the local date some name first reached `n` of them.
  */

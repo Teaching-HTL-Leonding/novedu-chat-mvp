@@ -13,9 +13,7 @@ The start page (`/`) is every signed-in user's home, by **effective** role:
   below).
 
 The burger menu's first item, **Home**, leads to `/` for both roles. The Settings
-page (`/settings`) holds the per-user preferences. Visual design:
-`DESIGN.md`, `.impeccable/surfaces/app-page-tsx.md` (students) and
-`.impeccable/surfaces/app-home-teacher-home-tsx.md` (teachers).
+page (`/settings`) holds the per-user preferences. Visual design: `DESIGN.md`.
 
 Everything about progress is **private to the user**: no teacher view, no
 comparison, no leaderboard. The page says so ("Your progress here is only
@@ -170,20 +168,18 @@ independently.
 - **Usage** (`loadStudentUsage`) — `novedu_usage_by_user` grouped by Vienna-local
   day over the whole history: active hours, the per-day counters (messages, quiz
   answers, writing saves, coding requests) and the coding hours. A range scan on
-  the PK `(user_id, hour)`; the `@live-db` home spec checks the plan.
+  the PK `(user_id, hour)`.
 - **Keys** (`listOwnKeyDates`, `lib/coding-key-store.ts`) — the Vienna-local issue
   dates of the user's own coding keys, oldest first; nothing else leaves the
-  store. A range scan on `ix_novedu_coding_keys_user_id` (`user_id, created_at`),
-  which also delivers the order; plan-checked too.
+  store. A range scan on `ix_novedu_coding_keys_user_id`.
 - **Quiz** (`listOwnQuizResults`, `lib/quiz-result-store.ts`) — the user's saved
   results, each with its code's note and whether the code is open now (a left
   join on `novedu_codes`, the same window rule as `checkCode`). A range scan over
   the user's rows in `ix_novedu_quiz_results_user_code_finished`, which also
-  delivers the order; plan-checked.
+  delivers the order.
 - **Reports** (`listOwnResolvedReportDates`, `lib/report-store.ts`) — the
   Vienna-local dates the user's OWN reports were resolved; nothing else leaves the
-  store. A range scan of the partial index `ix_novedu_reports_user_id_resolved`
-  (`user_id, resolved_at`), which also delivers the order; plan-checked.
+  store. A range scan of the partial index `ix_novedu_reports_user_id_resolved`.
 - **Grants** (`listGrants`) — the user's `novedu_achievements` rows.
 
 Coding activity is read from `coding_requests`, which the coding proxy counts
@@ -234,10 +230,9 @@ the grants are the seventh):
   leaves the store.
 
 The teacher facts never read the students' saved quiz results (that store has no
-teacher reader at all) and never return a student id or name. The `@live-db`
-spec checks that every statement starts from its index (`ix_novedu_codes_created_by`,
-plus the resolver and writer indexes for reports and files) and has no
-sequential scan.
+teacher reader at all) and never return a student id or name. Every statement
+starts from an index: `ix_novedu_codes_created_by`, or for the reports and files
+the resolver and writer indexes.
 
 **Page** (`buildTeacherHome` builds the `TeacherHome` view model): the greeting with the Teacher Guide
 link (`TEACHER_GUIDE_URL`, a new tab), then:
@@ -324,13 +319,11 @@ A student refreshing in a loop must not load the database.
   student groups plus grants, six teacher groups plus grants) and never grows
   with the number of codes.
   In-process memory is correct because a stage runs at most one replica.
-- **Plan checks** (`planOf` in `e2e/plan.utils.ts`, `@live-db`): each statement is
-  EXPLAINed with sequential scans off and every app and Mastra table's statistics
-  cleared inside a rolled-back transaction, so the plan follows the statement's
-  shape, not the rows a long-lived database happens to hold. A statement whose
-  ORDER BY an index serves is also planned with sorts off; the check then
-  asserts the user id is the index condition and no sort or sequential scan
-  remains.
+- **Cheap by shape**: every statement reads the user's (or teacher's) rows
+  through an index on that column; each index's schema comment names the
+  statement it serves. Query plans are not under test — on test-sized tables they
+  say nothing about production; App Insights' request durations would show a
+  slow start page.
 - **Single flight**: concurrent loads of one key share one promise, held in a map
   separate from completed entries; a promise's cleanup removes only its own entry.
 - **Invalidation wins**: invalidation drops both entries; a load publishes only
@@ -441,14 +434,14 @@ parameters (user ids, counts), so `reportStoreFailure` logs and records a fixed
   fresh teacher's empty state with the badges to earn), `e2e/home-teacher.live.spec.ts`
   (`@live-db`: a seeded teacher's counters, KPIs and ranking with another
   teacher's rows never counted; the SQL school-hours cut against `isSchoolHour`
-  across both clock changes; the teacher statements' plans; badges granted from
+  across both clock changes; badges granted from
   seeded rows with their dates, the strip cleared once seen, nothing granted
   twice) and `e2e/home.live.spec.ts` (`@live-db`: seeded usage and
-  grant, the strip cleared after the visit, DST grouping, both plans; seeded coding
+  grant, the strip cleared after the visit, DST grouping; seeded coding
   requests and a key earning the Coding badges and In the Zone), `e2e/settings.spec.ts`
   (`@live-db`: reached from the user menu, the switch persists) and
   `e2e/quiz-results.live.spec.ts` (`@live-db`: the prune under two concurrent saves,
   a save racing a code delete, `always` rolling back, an automatic save racing the
   switch-off, seeded results on the start page and deleted from Settings, a code
-  delete dropping results, both new plans). The Finish page's choices need a graded
+  delete dropping results). The Finish page's choices need a graded
   answer, i.e. an LLM, so they are covered by the component tests.

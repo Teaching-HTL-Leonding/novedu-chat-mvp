@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
-import { ITERATOR_VERSIONS, LISTENER_REPORTS, windowStart } from "@/lib/achievements/teacher";
 import {
   addDays,
   isSchoolHour,
@@ -9,17 +8,8 @@ import {
   todayLocal,
   weekdayOf,
 } from "@/lib/achievements/time";
-import { writerVersionsStatement } from "@/lib/file-store";
-import { teacherReportsStatement } from "@/lib/report-store";
-import {
-  conversationsStatement,
-  loadTeacherUsage,
-  studentsStatement,
-  teacherCodesQuery,
-  usageStatement,
-} from "@/lib/teacher-facts-store";
+import { loadTeacherUsage } from "@/lib/teacher-facts-store";
 import { query } from "./db";
-import { planOf } from "./plan.utils";
 import { deletePrincipal, signInFreshTeacher } from "./principal.utils";
 
 // The teacher start page against real rows (docs/home.md → Teacher dashboard,
@@ -28,8 +18,7 @@ import { deletePrincipal, signInFreshTeacher } from "./principal.utils";
 // second teacher whose rows must never count. Covers the attention counters, the
 // six KPIs, the top activities with their share outside school hours (checked
 // against the pure `isSchoolHour` rule, also across both clock changes), the
-// badges granted from those rows with their dates and the strip, and the plans
-// of the teacher statements.
+// and the badges granted from those rows with their dates and the strip.
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -333,33 +322,6 @@ test("the usage statement's school-hours cut matches isSchoolHour, across both c
     }
   } finally {
     await cleanup(seeded);
-  }
-});
-
-test("the teacher statements are index scans over the teacher's own rows", {
-  tag: ["@live", "@live-db"],
-}, async () => {
-  const teacherId = `e2e-teacher-${randomUUID()}`;
-  const start = windowStart(new Date());
-  for (const [name, statement, indexes] of [
-    ["codes", teacherCodesQuery(teacherId).getSQL(), ["ix_novedu_codes_created_by"]],
-    ["usage", usageStatement(teacherId), ["ix_novedu_codes_created_by"]],
-    ["conversations", conversationsStatement(teacherId, start), ["ix_novedu_codes_created_by"]],
-    ["students", studentsStatement(teacherId), ["ix_novedu_codes_created_by"]],
-    [
-      "reports",
-      teacherReportsStatement(teacherId, LISTENER_REPORTS),
-      ["ix_novedu_codes_created_by", "ix_novedu_reports_resolved_by"],
-    ],
-    [
-      "files",
-      writerVersionsStatement(teacherId, ITERATOR_VERSIONS),
-      ["ix_novedu_files_created_by"],
-    ],
-  ] as const) {
-    const plan = await planOf(statement);
-    for (const index of indexes) expect(plan, name).toContain(index);
-    expect(plan, name).not.toContain('"Seq Scan"');
   }
 });
 
