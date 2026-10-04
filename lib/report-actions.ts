@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { checkCode } from "@/lib/code-store";
+import { invalidateHome } from "@/lib/home-data";
 import type { QuizVerdict } from "@/lib/quiz-types";
 import { CODE_REJECTION_MESSAGES, verifyAndLoadQuestion } from "@/lib/quiz-verify";
 import {
@@ -208,6 +209,13 @@ function isReportIdList(ids: unknown): ids is string[] {
   );
 }
 
+// A report write changes the acting teacher's "Open reports" counter: drop their
+// cached start page on the server and in the browser's router cache (docs/home.md).
+function refreshTeacherHome(userId: string): void {
+  invalidateHome(userId);
+  revalidatePath("/");
+}
+
 async function requireReportsTeacher(): Promise<
   { ok: true; userId: string } | { ok: false; message: string }
 > {
@@ -233,6 +241,7 @@ export async function markSelectedReportsResolvedAction(
     return { ok: false, message: "Some reports could not be updated. Try again." };
   }
   revalidatePath("/reports");
+  refreshTeacherHome(gate.userId);
   return { ok: true };
 }
 
@@ -246,6 +255,7 @@ export async function reopenSelectedReportsAction(ids: string[]): Promise<Submit
     return { ok: false, message: "Some reports could not be updated. Try again." };
   }
   revalidatePath("/reports");
+  refreshTeacherHome(gate.userId);
   return { ok: true };
 }
 
@@ -259,5 +269,6 @@ export async function deleteSelectedReportsAction(ids: string[]): Promise<Submit
     return { ok: false, message: "Some reports could not be deleted. Try again." };
   }
   revalidatePath("/reports");
+  refreshTeacherHome(gate.userId);
   return { ok: true };
 }

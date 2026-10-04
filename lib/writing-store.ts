@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, type SQL, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { authUsers } from "@/lib/db/auth-schema";
 import { writingSubmissions } from "@/lib/db/schema";
@@ -130,4 +130,18 @@ export async function listSavers(code: string, opts?: { search?: string }): Prom
     console.error("writing-store: listing savers failed", error);
     return [];
   }
+}
+
+/**
+ * The user ids with a saved text on one of the teacher's codes whose FROZEN
+ * `anonymous` flag is false — a subselect the teacher facts store unions into
+ * its identified-students count (docs/home.md → Teacher dashboard). Only user
+ * ids leave it; the caller counts them.
+ */
+export function writersOfTeacherStatement(teacherId: string): SQL {
+  return sql`
+    SELECT ws.user_id FROM novedu_writing_submissions ws
+    JOIN novedu_codes c ON c.code = ws.code
+    WHERE c.created_by = ${teacherId} AND NOT c.anonymous
+  `;
 }

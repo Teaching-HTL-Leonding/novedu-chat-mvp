@@ -238,6 +238,19 @@ export function ownKeyDatesStatement(userId: string): SQL {
 }
 
 /**
+ * The user ids holding a key for one of the teacher's codes — a subselect the
+ * teacher facts store unions into its identified-students count (docs/home.md →
+ * Teacher dashboard). Only user ids leave it; the caller counts them.
+ */
+export function keyHoldersOfTeacherStatement(teacherId: string): SQL {
+  return sql`
+    SELECT k.user_id FROM novedu_coding_keys k
+    JOIN novedu_codes c ON c.code = k.code
+    WHERE c.created_by = ${teacherId}
+  `;
+}
+
+/**
  * The start page's keys fact group (docs/home.md): the Vienna-local dates on
  * which the user's OWN keys were issued, oldest first — one range scan of the
  * `user_id` index. Only dates leave this function: no code, no key value.

@@ -454,3 +454,35 @@ export async function listOwnResolvedReportDates(userId: string): Promise<LocalD
     return undefined;
   }
 }
+
+/** The open-reports statement — exported so the `@live-db` test can EXPLAIN the real one. */
+export function openReportsOfTeacherStatement(teacherId: string): SQL {
+  return sql`
+    SELECT r.code, count(*) AS open
+    FROM novedu_reports r
+    JOIN novedu_codes c ON c.code = r.code
+    WHERE c.created_by = ${teacherId} AND r.resolved_at IS NULL
+    GROUP BY r.code
+  `;
+}
+
+/**
+ * The teacher start page's reports fact group (docs/home.md → Teacher
+ * dashboard): the number of unresolved reports per code, for the teacher's OWN
+ * codes only. Codes and counts leave this function — no reporter, no content.
+ * Returns `undefined` on a database error (reported with a fixed message, never
+ * the raw error). Never throws.
+ */
+export async function listOpenReportCounts(
+  teacherId: string,
+): Promise<{ code: string; open: number }[] | undefined> {
+  try {
+    const res = await getDb().execute<{ code: string; open: number | string }>(
+      openReportsOfTeacherStatement(teacherId),
+    );
+    return res.rows.map((row) => ({ code: row.code, open: Number(row.open) }));
+  } catch (error) {
+    reportStoreFailure("report-store", "count open reports", error);
+    return undefined;
+  }
+}

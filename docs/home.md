@@ -1,16 +1,24 @@
 # Start page, achievements engine, saved quiz results & Settings
 
-The start page (`/`) is every signed-in user's home: the code field and Recently
-used, then the user's own progress — XP and level, a weekly streak, a 26-week
-calendar with badges pinned to their days, medals and retake reminders from saved
-quiz results, the badges closest to being earned, and all badges by family.
-Teachers see the same page, built from their own usage. The Settings page
-(`/settings`) holds the per-user preferences.
-Visual design: `DESIGN.md` and `.impeccable/surfaces/app-page-tsx.md`.
+The start page (`/`) is every signed-in user's home, by **effective** role:
+
+- **Students** (and a teacher in view-as-student mode): the code field and
+  Recently used, then the user's own progress — XP and level, a weekly streak, a
+  26-week calendar with badges pinned to their days, medals and retake reminders
+  from saved quiz results, the badges closest to being earned, and all badges by
+  family.
+- **Teachers**: a dashboard over the codes they created — what needs them
+  (codes closing soon, open reports, codes never used), six KPIs over the last
+  30 days, and their most-used activities (*Teacher dashboard* below).
+
+The Settings page (`/settings`) holds the per-user preferences. Visual design:
+`DESIGN.md`, `.impeccable/surfaces/app-page-tsx.md` (students) and
+`.impeccable/surfaces/app-home-teacher-home-tsx.md` (teachers).
 
 Everything about progress is **private to the user**: no teacher view, no
 comparison, no leaderboard. The page says so ("Your progress here is only
-visible to you.").
+visible to you."). The teacher dashboard reads only the teacher's own codes and
+only counts — it never names a student.
 
 ## Files
 
@@ -22,17 +30,19 @@ visible to you.").
 | `lib/achievements/catalog.ts` | pure, **server-only** | the achievement definitions |
 | `lib/achievements/xp.ts` | pure | XP total and level |
 | `lib/achievements/evaluate.ts` | pure | catalog × facts × stored grants → earned / new / in progress; Almost there; the Badges view |
+| `lib/achievements/teacher.ts` | pure | the teacher's fact types, the 30-day window, the attention rules, top activities |
 | `lib/student-facts-store.ts` | server, never throws | the student's fact groups; each foreign table is read through its owning store (`lib/coding-key-store.ts`, `lib/quiz-result-store.ts`, `lib/report-store.ts`) |
+| `lib/teacher-facts-store.ts` | server, never throws | the teacher's fact groups over their own codes; the subselects on attributed tables come from their owning stores (`lib/user-chat-store.ts`, `lib/writing-store.ts`, `lib/coding-key-store.ts`, `lib/report-store.ts`) |
 | `lib/achievement-store.ts` | server, never throws | read grants, insert grants, mark seen |
 | `lib/quiz-result-store.ts` | server, never throws | save (with prune), list / count / delete own; `deleteResultsForCode` for the code-delete path — the only access to `novedu_quiz_results` |
 | `lib/user-settings-store.ts` | server, never throws | read and upsert the user's settings row — the only access to `novedu_user_settings` |
 | `lib/store-failure.ts` | server | fixed-message failure reporting for the stores above |
-| `lib/home-cache.ts` | server | the per-user cache (TTL, single flight, generations, bound) |
-| `lib/home-data.ts` | server | load → evaluate → insert new grants → the page's plain view model |
+| `lib/home-cache.ts` | server | the per-user cache (TTL, single flight, bound) |
+| `lib/home-data.ts` | server | student: load → evaluate → insert new grants → the page's plain view model; teacher: load → the dashboard's view model |
 | `lib/achievement-actions.ts` | `"use server"` | `markAchievementsSeen` |
 | `lib/quiz-actions.ts` → `saveQuizResult` | `"use server"` | the Finish page's save |
 | `lib/user-settings-actions.ts` | `"use server"` | `updateUserSettings`, `deleteMyQuizResults` |
-| `app/page.tsx`, `app/_home/**` | UI | the shell and its Suspense sections |
+| `app/page.tsx`, `app/_home/**` | UI | the role switch, both shells and their Suspense sections |
 | `app/[code]/_quiz/save-result.tsx` | UI | the Finish page's consent and automatic save |
 | `app/settings/**` | UI | the Settings page |
 
@@ -58,6 +68,10 @@ on the page is a **Vienna-local** cut of them (`HOME_TIME_ZONE`).
   4+ active hours; days after today are marked future.
 - **Day distance** — the difference of local calendar dates, not elapsed hours;
   every "≥ n days" rule uses it.
+- **School hours** — Monday to Friday, local hours `8 ≤ h < 17`
+  (`SCHOOL_DAY_START` / `SCHOOL_DAY_END`, `isSchoolHour`). A bucket outside them —
+  a weekend, or a weekday before 08:00 or from 17:00 — is *outside school hours*.
+  Whole hours only; school holidays are not known and count like any weekday.
 
 ## Quiz scores, medals and nudges
 
@@ -168,12 +182,79 @@ The student facts never read `novedu_user_chats`, `novedu_recent_codes` or any
 other user's rows. Recently used comes from `lib/recent-code-store.ts` and never
 depends on the engine.
 
+## Teacher dashboard
+
+Everything covers the codes with `created_by` = the session user; the window is
+the last 30 Vienna-local days, today included (`windowStart`: local midnight 29
+days ago). A teacher's own test runs count in their codes' usage — the data
+cannot tell them apart.
+
+**Facts** (`loadTeacherFacts`, five statements in parallel, each failing alone):
+
+- **Codes** (`listTeacherCodes`) — module, note, window, created-at; a scan of
+  `ix_novedu_codes_created_by`. A code with an unknown module is dropped.
+- **Usage** (`loadTeacherUsage`) — `novedu_usage_by_code` joined to those codes,
+  per code: the window's interactions (messages + quiz answers + writing saves +
+  coding requests), the part of them outside school hours, quiz answers, input
+  tokens (new + cached) and output tokens. Every code with a usage row **ever** is
+  returned (zero sums outside the window), so "never used" means no row at all.
+  The school-hours cut in SQL uses the same constants as `isSchoolHour`.
+- **Conversations** — threads of those codes with a user message in the window
+  (the `EXISTS` shape of `getDashboardKpis`, `docs/dashboard.md`).
+- **Identified students** — distinct user ids, all time, over the per-user chats
+  (`novedu_user_chats`) and saved texts (`novedu_writing_submissions`) of codes
+  whose frozen `anonymous` flag is false, and the key holders of their coding
+  codes (`novedu_coding_keys` — a key proves the activity was opened, not used);
+  the teacher's own id excluded. Each subselect comes from the store that owns its
+  table; only the count leaves the statement.
+- **Reports** (`listOpenReportCounts`, `lib/report-store.ts`) — unresolved
+  reports per code.
+
+The teacher facts never read the students' saved quiz results (that store has no
+teacher reader at all) and never return a student id or name. The `@live-db`
+spec checks that every statement starts from `ix_novedu_codes_created_by` and has
+no sequential scan.
+
+**Page** (`buildTeacherHome` → `TeacherHome`): the greeting with the Teacher Guide
+link (`TEACHER_GUIDE_URL`, a new tab), then:
+
+- **Needs you** — three counters, each listing up to five codes linked to their
+  detail page (`/codes/<code>`) plus how many more there are. The first counter
+  with something in it starts open; one panel at a time; an empty counter reads
+  "all clear" and is no button; a counter whose group failed says so.
+  - *Closing soon*: open now and the window ends within 3 days, soonest first;
+    "Closes today" is shown in the destructive tone.
+  - *Open reports*: the number of unresolved reports; the codes with the most
+    first; the panel links to `/reports` (which defaults to open reports on your
+    own codes).
+  - *Never used*: created more than 7 days ago, open now, no usage row ever;
+    oldest first.
+- **Last 30 days** — Live codes (open now, the `checkCode` window rule),
+  Identified students (labelled: anonymous activities cannot be counted),
+  Conversations, Quiz answers, Input tokens, Output tokens. A KPI whose group
+  failed says "Unavailable", never 0.
+- **Top activities** — the five codes with the most interactions in the window
+  (ties by code): note, kind, interactions, and the share outside school hours
+  (rounded percent; the column's info button explains the rule). Links to the
+  usage dashboard (`/usage`), which covers every code.
+
+A teacher without any code sees only the greeting, the Teacher Guide and one line
+pointing to it. Achievements for teachers are not part of the dashboard yet.
+
 ## Page and loading
 
-`app/page.tsx` renders the shell at once; each data section is an async server
-component behind its own `<Suspense>`. Order on every width: Continue (code field
-+ Recently used), the new-badges strip, progress (level/XP + streak), the
-calendar, Time to refresh beside Almost there (stacked below `lg`), Badges.
+`app/page.tsx` resolves the session and the **effective** role
+(`effectiveTeacherForSession`, `docs/auth.md`) and renders one of two shells at
+once; each data section is an async server component behind its own
+`<Suspense>`.
+
+- **Student** (also a teacher in view-as-student mode, built from the teacher's
+  own usage), in this order on every width: Continue (code field + Recently
+  used), the new-badges strip, progress (level/XP + streak), the calendar, Time to
+  refresh beside Almost there (stacked below `lg`), Badges.
+- **Teacher**: the header (with the no-codes line in its own boundary), Needs you,
+  Last 30 days, Top activities.
+
 Without a resolvable session only the code field renders.
 
 Sections degrade independently: Level/XP, Almost there and Badges need usage and
@@ -188,7 +269,10 @@ already stored, everything else renders, and the load is not cached.
 A student refreshing in a loop must not load the database.
 
 - **Per-user cache** (`lib/home-cache.ts`): a completed result is reused for 60 s
-  per `(userId, audience)` key — a refresh inside the window runs no statement.
+  per `(userId, audience)` key (`<id>:student`, `<id>:teacher`) — a refresh inside
+  the window runs no statement. The statement count per role is fixed (four
+  student groups plus grants, five teacher groups) and never grows with the number
+  of codes.
   In-process memory is correct because a stage runs at most one replica.
 - **Single flight**: concurrent loads of one key share one promise, held in a map
   separate from completed entries; a promise's cleanup removes only its own entry.
@@ -202,8 +286,11 @@ A student refreshing in a loop must not load the database.
   (`markAchievementsSeen` does not: it would re-render the page being viewed).
 - **Not cached**: a load with any failed group (or a failed grant insert).
 - **Invalidation**: `markAchievementsSeen`, `saveQuizResult`,
-  `updateUserSettings` and `deleteMyQuizResults` invalidate the user's key;
-  everything else is at most 60 s stale.
+  `updateUserSettings` and `deleteMyQuizResults` invalidate the user's keys; so do
+  the acting teacher's code writes (`createCodeAction`, `updateCodeAction`,
+  `deleteSelectedCodesAction`) and report writes (mark resolved, reopen, delete),
+  which also call `revalidatePath("/")`. Everything else — another teacher's edit,
+  a code created through the API or `codes sync` — is at most 60 s stale.
 - React `cache()` shares one load between the sections of a request.
 
 ## Saving a quiz result
@@ -270,21 +357,30 @@ parameters (user ids, counts), so `reportStoreFailure` logs and records a fixed
 
 ## Tests
 
-- Pure: `lib/achievements/*.unit.test.ts` (DST, New-Year weeks, streaks, exact
-  scores, medals, nudges, Refreshed across a pruned gap, every rule at/below/above
-  its threshold, evaluation, XP boundaries, the catalog guard).
+- Pure: `lib/achievements/*.unit.test.ts` (DST, New-Year weeks, school hours,
+  local midnight, streaks, exact scores, medals, nudges, Refreshed across a pruned
+  gap, every rule at/below/above its threshold, evaluation, XP boundaries, the
+  catalog guard; the teacher window, attention rules and ranking).
 - Cache: `lib/home-cache.unit.test.ts`. Stores and actions:
   `lib/achievement-store.unit.test.ts`, `lib/quiz-result-store.unit.test.ts`
   (transaction shape, fixed failure messages), `lib/achievement-actions.unit.test.ts`,
   `lib/user-settings-actions.unit.test.ts`, `saveQuizResult` in
   `lib/quiz-actions.unit.test.ts`, the guard `lib/quiz-result-isolation.unit.test.ts`.
-  Loader: `lib/home-data.unit.test.ts`.
-- Sections: `app/_home/sections.unit.test.tsx`, shell: `app/page.unit.test.tsx`.
+  `lib/teacher-facts-store.unit.test.ts` (every statement keyed by the teacher,
+  groups failing alone, fixed failure messages). Loader: `lib/home-data.unit.test.ts`
+  (both view models, a failed group never read as 0, the cache keys).
+- Sections: `app/_home/sections.unit.test.tsx`, `app/_home/teacher-sections.unit.test.tsx`;
+  shell: `app/page.unit.test.tsx` (student, teacher, view-as-student, signed out).
 - Browser: `app/_home/*.browser.test.tsx` (calendar keyboard/tooltip/phone layout,
-  the seen marker, the disclosures), `app/[code]/_quiz/save-result.browser.test.tsx`
+  the seen marker, the disclosures, the attention counters, the school-hours
+  tooltip), `app/[code]/_quiz/save-result.browser.test.tsx`
   (the three choices, the automatic save), `app/settings/*.browser.test.tsx`.
-- E2E: `e2e/home.spec.ts` (hermetic smoke per visitor kind, including a fresh
-  student's empty state) and `e2e/home.live.spec.ts` (`@live-db`: seeded usage and
+- E2E: `e2e/home.spec.ts` (hermetic smoke per visitor kind — the teacher gets the
+  dashboard, view-as-student the student page — including a fresh student's and a
+  fresh teacher's empty state), `e2e/home-teacher.live.spec.ts` (`@live-db`: a
+  seeded teacher's counters, KPIs and ranking with another teacher's rows never
+  counted; the SQL school-hours cut against `isSchoolHour` across both clock
+  changes; the teacher statements' plans) and `e2e/home.live.spec.ts` (`@live-db`: seeded usage and
   grant, the strip cleared after the visit, DST grouping, both plans; seeded coding
   requests and a key earning the Coding badges and In the Zone), `e2e/settings.spec.ts`
   (`@live-db`: reached from the user menu, the switch persists) and

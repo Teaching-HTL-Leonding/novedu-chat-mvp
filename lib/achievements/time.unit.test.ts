@@ -4,8 +4,10 @@ import {
   addDays,
   dayDistance,
   isoWeekKey,
+  isSchoolHour,
   localDateOf,
   localHourOf,
+  startOfLocalDay,
   todayLocal,
   weekdayOf,
 } from "./time";
@@ -61,5 +63,47 @@ describe("calendar arithmetic", () => {
     expect(isoWeekKey("2026-12-31")).toBe("2026-12-28");
     expect(isoWeekKey("2027-01-03")).toBe("2026-12-28");
     expect(isoWeekKey("2027-01-04")).toBe("2027-01-04");
+  });
+});
+
+describe("local midnight", () => {
+  it("is 22:00Z in summer and 23:00Z in winter", () => {
+    expect(startOfLocalDay("2026-07-01").toISOString()).toBe("2026-06-30T22:00:00.000Z");
+    expect(startOfLocalDay("2026-12-01").toISOString()).toBe("2026-11-30T23:00:00.000Z");
+  });
+
+  it("holds on both clock-change days", () => {
+    // The changes happen at 02:00/03:00, so midnight keeps the previous offset.
+    expect(startOfLocalDay("2026-03-29").toISOString()).toBe("2026-03-28T23:00:00.000Z");
+    expect(startOfLocalDay("2026-10-25").toISOString()).toBe("2026-10-24T22:00:00.000Z");
+    expect(startOfLocalDay("2026-10-26").toISOString()).toBe("2026-10-25T23:00:00.000Z");
+  });
+});
+
+describe("school hours", () => {
+  // Mon 5 Oct 2026, CEST (UTC+2): local h = UTC h + 2.
+  const monday = (utcHour: number) =>
+    new Date(`2026-10-05T${String(utcHour).padStart(2, "0")}:00:00Z`);
+
+  it("are Monday to Friday from 08:00 up to, not including, 17:00", () => {
+    expect(isSchoolHour(monday(5))).toBe(false); // 07:00
+    expect(isSchoolHour(monday(6))).toBe(true); // 08:00
+    expect(isSchoolHour(monday(14))).toBe(true); // 16:00
+    expect(isSchoolHour(monday(15))).toBe(false); // 17:00
+    expect(isSchoolHour(new Date("2026-10-09T10:00:00Z"))).toBe(true); // Fri 12:00
+  });
+
+  it("never include a weekend hour", () => {
+    expect(isSchoolHour(new Date("2026-10-03T10:00:00Z"))).toBe(false); // Sat 12:00
+    expect(isSchoolHour(new Date("2026-10-04T10:00:00Z"))).toBe(false); // Sun 12:00
+  });
+
+  it("use the local hour and day, not UTC", () => {
+    // Winter (UTC+1): 07:00Z is local 08:00 on Mon 7 Dec.
+    expect(isSchoolHour(new Date("2026-12-07T07:00:00Z"))).toBe(true);
+    // Sunday 23:00Z is local Monday 00:00 — a weekday, but not a school hour.
+    expect(isSchoolHour(new Date("2026-12-06T23:00:00Z"))).toBe(false);
+    // Friday 16:00Z in winter is local 17:00: outside.
+    expect(isSchoolHour(new Date("2026-12-11T16:00:00Z"))).toBe(false);
   });
 });

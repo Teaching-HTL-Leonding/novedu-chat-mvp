@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { TOOLTIP_SURFACE } from "@/components/ui/tooltip";
 import type { CalendarCell } from "@/lib/home-data";
 import { cn } from "@/lib/utils";
 import { BadgeGlyph, FAMILY_BG, familyInk } from "./badge-disc";
@@ -320,7 +321,7 @@ export function SeasonCalendar({
         hidden={!tip}
         onPointerEnter={cancelHide}
         onPointerLeave={hideSoon}
-        className="fixed z-50 max-w-64 rounded-lg bg-slate-900 px-2.5 py-2 text-white text-xs leading-snug shadow-lg"
+        className={cn(TOOLTIP_SURFACE, "fixed z-50 max-w-64")}
       >
         {tip?.content}
       </div>

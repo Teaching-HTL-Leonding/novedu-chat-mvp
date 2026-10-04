@@ -2,12 +2,13 @@ import { expect, type Page, test } from "@playwright/test";
 import { BRAND } from "../lib/brand";
 import { STUDENT_MODE_COOKIE } from "../lib/student-mode-constants";
 import { STORAGE_STATE, TEACHER_STORAGE_STATE } from "./auth.constants";
-import { deletePrincipal, signInFreshStudent } from "./principal.utils";
+import { deletePrincipal, signInFreshStudent, signInFreshTeacher } from "./principal.utils";
 
 // Smoke: the start page opens without an error for every kind of visitor — a
-// student, a teacher, a teacher viewing as a student, and a brand-new student
-// with no history at all (the empty state). Hermetic: the fresh principal's
-// auth rows are the only writes, removed again afterwards.
+// student, a teacher (the dashboard), a teacher viewing as a student (the
+// student page), and a brand-new student and teacher with no history at all
+// (the empty states). Hermetic: the fresh principals' auth rows are the only
+// writes, removed again afterwards.
 
 /** Collects uncaught page errors and console errors for the whole visit. */
 function watchErrors(page: Page): string[] {
@@ -17,6 +18,44 @@ function watchErrors(page: Page): string[] {
     if (message.type() === "error") errors.push(`console: ${message.text()}`);
   });
   return errors;
+}
+
+/** No Next.js error overlay (dev) and no error boundary. */
+async function expectNoErrorScreen(page: Page) {
+  await expect(page.locator("[data-nextjs-dialog-root]")).toHaveCount(0);
+  await expect(page.getByText(/Application error|Something went wrong/)).toHaveCount(0);
+}
+
+/**
+ * The teacher dashboard: the greeting and the Teacher Guide, then either every
+ * section (rendered, or showing its "unavailable" note) or — for a teacher
+ * without any code — the one getting-started line. The shared teacher principal
+ * may or may not own codes, depending on which specs ran before.
+ */
+async function expectTeacherHomeRendered(page: Page): Promise<"dashboard" | "no-codes"> {
+  const response = await page.goto("/");
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { level: 1, name: /^Welcome back/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Teacher Guide/ })).toHaveAttribute(
+    "href",
+    "https://docs.novedu.at",
+  );
+  await expect(page.getByText(`${BRAND} / Home`, { exact: true })).toBeVisible();
+  // No student parts: no code field, no progress.
+  await expect(page.getByLabel("Code")).toHaveCount(0);
+  await expect(page.getByText("Your progress here is only visible to you.")).toHaveCount(0);
+
+  const intro = page.getByText("You haven't shared an activity yet.", { exact: false });
+  const attention = page.getByRole("heading", { level: 2, name: "Needs you" });
+  await expect(intro.or(attention)).toBeVisible();
+  const state = (await intro.isVisible()) ? "no-codes" : "dashboard";
+  if (state === "dashboard") {
+    for (const title of ["Last 30 days", "Top activities"]) {
+      await expect(page.getByRole("heading", { level: 2, name: title })).toBeVisible();
+    }
+  }
+  await expectNoErrorScreen(page);
+  return state;
 }
 
 /** Every section rendered, or showing its "unavailable" note — never an error boundary. */
@@ -45,9 +84,7 @@ async function expectHomeRendered(page: Page) {
   // The privacy promise is part of the page, not a detail.
   await expect(page.getByText("Your progress here is only visible to you.")).toBeVisible();
 
-  // No Next.js error overlay (dev) and no error boundary.
-  await expect(page.locator("[data-nextjs-dialog-root]")).toHaveCount(0);
-  await expect(page.getByText(/Application error|Something went wrong/)).toHaveCount(0);
+  await expectNoErrorScreen(page);
 }
 
 test.describe("as the student principal", () => {
@@ -63,13 +100,13 @@ test.describe("as the student principal", () => {
 test.describe("as the teacher principal", () => {
   test.use({ storageState: TEACHER_STORAGE_STATE });
 
-  test("the start page opens without errors", async ({ page }) => {
+  test("the start page is the teacher dashboard and opens without errors", async ({ page }) => {
     const errors = watchErrors(page);
-    await expectHomeRendered(page);
+    await expectTeacherHomeRendered(page);
     expect(errors).toEqual([]);
   });
 
-  test("in view-as-student mode the start page opens without errors", async ({ page, context }) => {
+  test("in view-as-student mode the start page is the student page", async ({ page, context }) => {
     await context.addCookies([
       { name: STUDENT_MODE_COOKIE, value: "1", domain: "localhost", path: "/" },
     ]);
@@ -120,6 +157,26 @@ test.describe("as a brand-new student", () => {
       await expect(page.locator('[data-family="secret"]')).toHaveText(
         "SecretSecret badges show up here once you earn them.",
       );
+      expect(errors).toEqual([]);
+    } finally {
+      await deletePrincipal(principal.id);
+    }
+  });
+});
+
+test.describe("as a brand-new teacher", () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  test("without any code: only the greeting, the Teacher Guide and one line", async ({
+    page,
+    context,
+  }) => {
+    const principal = await signInFreshTeacher(context, "Tina Newteacher");
+    try {
+      const errors = watchErrors(page);
+      expect(await expectTeacherHomeRendered(page)).toBe("no-codes");
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText("Welcome back, Tina");
+      await expect(page.getByRole("heading", { level: 2 })).toHaveCount(0);
       expect(errors).toEqual([]);
     } finally {
       await deletePrincipal(principal.id);

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createCodeForUser } from "@/lib/code-service";
 import { deleteCodesAndData } from "@/lib/code-stats-store";
 import { getCode, updateCode, validateCodeRequest } from "@/lib/code-store";
+import { invalidateHome } from "@/lib/home-data";
 import { providerUnavailableReason } from "@/lib/llm/availability";
 import type { ValidationError } from "@/lib/prompt-fragments";
 import { requireTeacherUserId } from "@/lib/student-mode";
@@ -58,7 +59,17 @@ export async function createCodeAction(
   // Land on the new code's edit page — it shows the shareable URL (with a copy
   // button) and lets the teacher tweak the note/window straight away.
   revalidatePath("/codes");
+  refreshTeacherHome(gate.userId);
   redirect(`/codes/edit/${result.entry.code}`);
+}
+
+// A code write changes the acting teacher's start page (live codes, the attention
+// counters): drop their cached dashboard on the server and in the browser's
+// router cache (docs/home.md). A code of another teacher refreshes on its owner's
+// next uncached visit, at most a minute later.
+function refreshTeacherHome(userId: string): void {
+  invalidateHome(userId);
+  revalidatePath("/");
 }
 
 /** The uniform shape every list's "Delete Selected" action returns. */
@@ -89,6 +100,7 @@ export async function deleteSelectedCodesAction(codes: string[]): Promise<Delete
   }
 
   revalidatePath("/codes");
+  refreshTeacherHome(gate.userId);
   return { ok: true, deleted: result.deleted };
 }
 
@@ -158,5 +170,6 @@ export async function updateCodeAction(
 
   revalidatePath("/codes");
   revalidatePath(`/codes/edit/${code}`);
+  refreshTeacherHome(gate.userId);
   return { status: "saved" };
 }
