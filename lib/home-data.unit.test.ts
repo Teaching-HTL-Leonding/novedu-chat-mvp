@@ -43,7 +43,7 @@ const USAGE = [day("2026-09-22", { quizAnswers: 12 }), day("2026-09-28"), day("2
 beforeEach(() => {
   vi.clearAllMocks();
   resetHomeCacheForTests();
-  mocks.loadStudentFacts.mockResolvedValue({ usage: USAGE, keys: [] });
+  mocks.loadStudentFacts.mockResolvedValue({ usage: USAGE, keys: [], quiz: [], reports: [] });
   mocks.listGrants.mockResolvedValue([]);
   mocks.insertGrants.mockImplementation(
     async (_user, grants: { id: string; qualifiedOn: string }[]) =>
@@ -74,7 +74,12 @@ describe("loadStudentHome", () => {
   });
 
   it("grants Connected from the keys group, dated to the key's issue day", async () => {
-    mocks.loadStudentFacts.mockResolvedValue({ usage: USAGE, keys: ["2026-09-30"] });
+    mocks.loadStudentFacts.mockResolvedValue({
+      usage: USAGE,
+      keys: ["2026-09-30"],
+      quiz: [],
+      reports: [],
+    });
     const home = await loadStudentHome("u1", NOW);
     expect(mocks.insertGrants).toHaveBeenCalledWith(
       "u1",
@@ -85,7 +90,12 @@ describe("loadStudentHome", () => {
   });
 
   it("a failed keys group is never read as zero: its badges are left out, the rest renders, nothing is cached", async () => {
-    mocks.loadStudentFacts.mockResolvedValue({ usage: USAGE, keys: undefined });
+    mocks.loadStudentFacts.mockResolvedValue({
+      usage: USAGE,
+      keys: undefined,
+      quiz: [],
+      reports: [],
+    });
     const home = await loadStudentHome("u1", NOW);
     const inserted = (mocks.insertGrants.mock.calls[0]?.[1] ?? []) as { id: string }[];
     expect(inserted.map((g) => g.id)).not.toContain("coding-connected");
@@ -99,7 +109,12 @@ describe("loadStudentHome", () => {
   });
 
   it("a failed usage group still grants from the keys group", async () => {
-    mocks.loadStudentFacts.mockResolvedValue({ usage: undefined, keys: ["2026-09-30"] });
+    mocks.loadStudentFacts.mockResolvedValue({
+      usage: undefined,
+      keys: ["2026-09-30"],
+      quiz: [],
+      reports: [],
+    });
     await loadStudentHome("u1", NOW);
     expect(mocks.insertGrants).toHaveBeenCalledWith(
       "u1",
@@ -132,7 +147,7 @@ describe("loadStudentHome", () => {
   });
 
   it("a failed usage group is never read as zero: no streak, calendar or level — and no insert", async () => {
-    mocks.loadStudentFacts.mockResolvedValue({ usage: undefined, keys: [] });
+    mocks.loadStudentFacts.mockResolvedValue({ usage: undefined, keys: [], quiz: [], reports: [] });
     mocks.listGrants.mockResolvedValue([
       { id: "weekly-streak-2", qualifiedOn: "2026-09-28", seenAt: null },
     ]);
@@ -151,7 +166,7 @@ describe("loadStudentHome", () => {
 describe("buildStudentHome", () => {
   it("pins grants on their qualified_on day inside the window, stacking same-day grants", () => {
     const home = buildStudentHome(
-      { usage: USAGE, keys: [] },
+      { usage: USAGE, keys: [], quiz: [], reports: [] },
       [
         { id: "weekly-streak-2", qualifiedOn: "2026-09-28", seenAt: null },
         { id: "week-days-3", qualifiedOn: "2026-09-28", seenAt: new Date() },
@@ -181,7 +196,9 @@ describe("buildStudentHome", () => {
       needs: ["usage"],
       evaluate: () => ({ earned: false, current: 1, target: 2 }),
     };
-    const home = buildStudentHome({ usage: USAGE, keys: [] }, [], TODAY, [hidden]);
+    const home = buildStudentHome({ usage: USAGE, keys: [], quiz: [], reports: [] }, [], TODAY, [
+      hidden,
+    ]);
     const json = JSON.stringify(home);
     expect(json).not.toContain("Very Secret Name");
     expect(json).not.toContain("A very secret criterion");
@@ -189,12 +206,116 @@ describe("buildStudentHome", () => {
   });
 
   it("an empty history yields level 1, no streak, an empty calendar and nothing new", () => {
-    const home = buildStudentHome({ usage: [], keys: [] }, [], TODAY);
+    const home = buildStudentHome({ usage: [], keys: [], quiz: [], reports: [] }, [], TODAY);
     expect(home.level).toEqual({ level: 1, xp: 0, levelStart: 0, nextLevelStart: 100 });
     expect(home.streak?.weeks).toBe(0);
     expect(home.calendar?.activeDays).toBe(0);
     expect(home.newIds).toEqual([]);
     expect(home.almostThere).toEqual([]);
+  });
+});
+
+describe("the quiz band", () => {
+  const attempt = (code: string, date: string, correct: number, total: number, note = "") => ({
+    id: `id-${code}-${date}`,
+    code,
+    correct,
+    partial: 0,
+    incorrect: total - correct,
+    unanswered: 0,
+    total,
+    finishedAt: new Date(`${date}T10:00:00Z`),
+    finishedOn: date,
+    note,
+    open: true,
+  });
+
+  it("builds medals and nudges from the quiz group, labelled by note or code", () => {
+    const quiz = [
+      attempt("linked", "2026-09-18", 4, 5, "Linked lists"),
+      attempt("linked", "2026-09-25", 3, 5, "Linked lists"),
+      attempt("recursion", "2026-09-17", 5, 5),
+      attempt("sorting", "2026-09-15", 1, 5, "  "),
+    ];
+    const home = buildStudentHome({ usage: USAGE, keys: [], quiz, reports: [] }, [], TODAY);
+    expect(home.quiz).toEqual({
+      quizzes: 3,
+      medals: { gold: 1, silver: 1, bronze: 0 },
+      nudges: [
+        // Oldest last attempt first; recursion is gold and only 17 days old → listed too.
+        {
+          code: "sorting",
+          label: "sorting",
+          medal: undefined,
+          lastPercent: 20,
+          lastOn: "2026-09-15",
+          bestPercent: 20,
+        },
+        {
+          code: "recursion",
+          label: "recursion",
+          medal: "gold",
+          lastPercent: 100,
+          lastOn: "2026-09-17",
+          bestPercent: 100,
+        },
+        {
+          code: "linked",
+          label: "Linked lists",
+          medal: "silver",
+          lastPercent: 60,
+          lastOn: "2026-09-25",
+          bestPercent: 80,
+        },
+      ],
+    });
+  });
+
+  it("a failed quiz group is never read as zero: no band, no quiz badges, not cached", async () => {
+    mocks.loadStudentFacts.mockResolvedValue({
+      usage: USAGE,
+      keys: [],
+      quiz: undefined,
+      reports: [],
+    });
+    const home = await loadStudentHome("u1", NOW);
+    expect(home.quiz).toBeUndefined();
+    expect(home.complete).toBe(false);
+    const family = home.badges?.families.find((f) => f.id === "quiz");
+    expect([...(family?.shown ?? []), ...(family?.more ?? [])]).toEqual([]);
+    // The other sections render.
+    expect(home.level).toBeDefined();
+  });
+
+  it("a failed reports group leaves only Bug Hunter unevaluated", async () => {
+    mocks.loadStudentFacts.mockResolvedValue({
+      usage: USAGE,
+      keys: [],
+      quiz: [],
+      reports: undefined,
+    });
+    const home = await loadStudentHome("u1", NOW);
+    expect(home.complete).toBe(false);
+    expect(home.quiz).toEqual({
+      quizzes: 0,
+      medals: { gold: 0, silver: 0, bronze: 0 },
+      nudges: [],
+    });
+  });
+
+  it("grants Bug Hunter from the reports group, dated to the resolution day", async () => {
+    mocks.loadStudentFacts.mockResolvedValue({
+      usage: USAGE,
+      keys: [],
+      quiz: [],
+      reports: ["2026-10-02"],
+    });
+    await loadStudentHome("u1", NOW);
+    expect(mocks.insertGrants).toHaveBeenCalledWith(
+      "u1",
+      expect.arrayContaining([{ id: "bug-hunter", qualifiedOn: "2026-10-02" }]),
+      [],
+    );
   });
 });
 

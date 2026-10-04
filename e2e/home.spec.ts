@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { BRAND } from "../lib/brand";
 import { STUDENT_MODE_COOKIE } from "../lib/student-mode-constants";
 import { STORAGE_STATE, TEACHER_STORAGE_STATE } from "./auth.constants";
 import { deletePrincipal, signInFreshStudent } from "./principal.utils";
@@ -33,11 +34,14 @@ async function expectHomeRendered(page: Page) {
     "Recently used",
     "Your progress",
     "Your last 26 weeks",
+    "Time to refresh",
     "Almost there",
     "Badges",
   ]) {
     await expect(headings.filter({ hasText: title })).toBeVisible();
   }
+  // The status bar names the page; the burger menu's first item is Home.
+  await expect(page.getByText(`${BRAND} / Home`, { exact: true })).toBeVisible();
   // The privacy promise is part of the page, not a detail.
   await expect(page.getByText("Your progress here is only visible to you.")).toBeVisible();
 
@@ -107,10 +111,12 @@ test.describe("as a brand-new student", () => {
 
       await expect(page.getByText(/new badges? since your last visit/)).toHaveCount(0);
       await expect(page.getByText("Badges you're close to will show up here.")).toBeVisible();
+      await expect(page.getByText(/^Save a result on a quiz's summary page/)).toBeVisible();
       await expect(page.getByText("Activities you open show up here")).toBeVisible();
       await expect(page.getByText("0 earned")).toBeVisible();
       // Coding is listed like every family; the Secret column only says more exist.
       await expect(page.locator('[data-family="coding"]')).toContainText("Connected");
+      await expect(page.locator('[data-family="quiz"]')).toContainText("First Result");
       await expect(page.locator('[data-family="secret"]')).toHaveText(
         "SecretSecret badges show up here once you earn them.",
       );
@@ -118,5 +124,20 @@ test.describe("as a brand-new student", () => {
     } finally {
       await deletePrincipal(principal.id);
     }
+  });
+});
+
+test.describe("navigation", () => {
+  test.use({ storageState: STORAGE_STATE });
+
+  test("the burger menu's Home item leads back to the start page", async ({ page }) => {
+    await page.goto("/settings");
+    await expect(page.getByText(`${BRAND} / Settings`, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Open navigation menu" }).click();
+    await page.getByRole("link", { name: "Home" }).click();
+    await expect(page).toHaveURL(/\/$/);
+    await expect(page.getByRole("heading", { level: 1, name: /^Welcome back/ })).toBeVisible();
+    await page.getByRole("button", { name: "Open navigation menu" }).click();
+    await expect(page.getByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
   });
 });

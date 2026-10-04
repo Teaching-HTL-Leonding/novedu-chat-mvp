@@ -87,6 +87,15 @@
   --fam-coding: #4a3aa7;
   /* Secret badges: the status bar's slate-900 disc with a brand-amber glyph. */
   --fam-secret: #0f172a;
+  /* Quiz mastery shares the gold medal's colour; light discs (quiz, the three
+     medals) carry a dark glyph of their own hue instead of white. */
+  --fam-quiz: #e3a21a;
+  --gold: #e3a21a;
+  --gold-ink: #3d2a00;
+  --silver: #aab4c3;
+  --silver-ink: #1e2633;
+  --bronze: #c07a45;
+  --bronze-ink: #2e1606;
 }
 
 @theme inline {
@@ -136,6 +145,13 @@
   --color-fam-practice: var(--fam-practice);
   --color-fam-coding: var(--fam-coding);
   --color-fam-secret: var(--fam-secret);
+  --color-fam-quiz: var(--fam-quiz);
+  --color-gold: var(--gold);
+  --color-gold-ink: var(--gold-ink);
+  --color-silver: var(--silver);
+  --color-silver-ink: var(--silver-ink);
+  --color-bronze: var(--bronze);
+  --color-bronze-ink: var(--bronze-ink);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

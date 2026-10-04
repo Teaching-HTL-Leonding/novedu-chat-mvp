@@ -337,12 +337,16 @@ novedu_reports.user_id      = novedu_user.id (the reporting student — see belo
 - **user → userchat → history**: filter `novedu_user_chats` by `user_id`, join
   `mastra_threads`/`mastra_messages` via `thread_id`.
 
-`novedu_user_chats` is the ONLY place tying users to chats — with **two
+`novedu_user_chats` is the ONLY place tying users to chats — with **three
 sanctioned exceptions**: `novedu_reports`, where a student who files a report
 voluntarily waives anonymity (their user id is stored even under an anonymous code,
-behind an explicit on-form notice; `docs/reports.md`), and `novedu_coding_keys`,
+behind an explicit on-form notice; `docs/reports.md`); `novedu_coding_keys`,
 where requesting a coding activity's personal API key stores the requester's user id
-behind an explicit on-page notice (`docs/coding.md`). It is
+behind an explicit on-page notice (`docs/coding.md`); and `novedu_quiz_results`,
+where a student who chooses to save a finished quiz's counts on the Finish page
+(behind the notice that only they can see it) stores them with their user id even
+under an anonymous code. That store has no teacher reader at all — not even an
+aggregate — and is deleted with its code (`docs/home.md`). It is
 privacy-gated by the activity YAML's **`anonymous` flag, whose default is
 module-specific** (tutor/quiz default `true`; **writing defaults `false`** —
 `docs/writing.md`): when anonymous, nothing is written — chats cannot be attributed

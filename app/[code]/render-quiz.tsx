@@ -6,6 +6,7 @@ import { loadQuiz } from "@/lib/quiz-fetch";
 import { immediateFeedbackConfigured } from "@/lib/quiz-immediate-feedback";
 import type { ResolvedQuiz, ResolvedQuizQuestion } from "@/lib/quiz-types";
 import { toPublicQuiz } from "@/lib/quiz-yaml";
+import { getUserSettings } from "@/lib/user-settings-store";
 import { QuizRunner } from "./_quiz/quiz-runner";
 
 // The quiz module's student render: load + leniently parse the quiz YAML from the
@@ -13,8 +14,18 @@ import { QuizRunner } from "./_quiz/quiz-runner";
 // grading prompts) to the client runner. The submitAnswer / startDiscussion
 // actions and the runtime route re-verify the code on every touch. Invoked by the
 // thin module switch in app/[code]/page.tsx.
-export async function RenderQuiz({ entry, code }: { entry: CodeEntry; code: string }) {
-  const loaded = await loadQuiz(entry.fileUrl);
+export async function RenderQuiz({
+  entry,
+  code,
+  userId,
+}: {
+  entry: CodeEntry;
+  code: string;
+  userId: string;
+}) {
+  // The user's quiz-save setting only picks what the Finish page shows first;
+  // `saveQuizResult` re-reads it inside its transaction. A failed read asks.
+  const [loaded, settings] = await Promise.all([loadQuiz(entry.fileUrl), getUserSettings(userId)]);
   if (!loaded.ok) {
     return (
       <Main>
@@ -46,7 +57,7 @@ export async function RenderQuiz({ entry, code }: { entry: CodeEntry; code: stri
       {/* PageBody gives the runner the shared page canvas + window-edge
           scrollbar; the runner column centers itself (block flow). */}
       <PageBody className="block">
-        <QuizRunner code={code} quiz={quiz} />
+        <QuizRunner code={code} quiz={quiz} autoSave={settings?.saveQuizResults ?? false} />
       </PageBody>
     </Main>
   );

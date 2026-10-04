@@ -117,6 +117,15 @@ export function UserMenu({
               </button>
             </form>
           )}
+          {/* Every signed-in user, either role: the per-user preferences (docs/home.md). */}
+          <Link
+            href="/settings"
+            role="menuitem"
+            className={MENU_ITEM}
+            onClick={() => setOpen(false)}
+          >
+            Settings
+          </Link>
           <form action={signOutAction}>
             <button type="submit" role="menuitem" className={MENU_ACTION}>
               Sign out

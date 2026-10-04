@@ -15,8 +15,11 @@ const fake = vi.hoisted(() => {
     executeCalls: 0,
     deleteError: undefined as unknown,
     // The drizzle table objects passed to db.delete(), in call order — so a test
-    // can assert WHICH tables were deleted and in what sequence.
+    // can assert WHICH tables were deleted and in what sequence. A row lock
+    // (`SELECT … FOR <strength>`) lands here too, as `"lock <table> for <strength>"`.
     deletedTables: [] as unknown[],
+    // The codes the row lock was asked to order by (asserted: code order).
+    lockedTables: [] as unknown[],
   };
   const db = {
     execute: async () => {
@@ -34,6 +37,20 @@ const fake = vi.hoisted(() => {
     // hands the callback is the same delete-tracking handle, so a thrown delete
     // rejects the transaction (the all-or-nothing rollback the real DB gives).
     transaction: async (cb: (t: unknown) => unknown) => cb(db),
+    // The delete's `SELECT code FROM novedu_codes … ORDER BY code FOR UPDATE`.
+    select: () => ({
+      from: (table: unknown) => ({
+        where: () => ({
+          orderBy: () => ({
+            for: async (strength: string) => {
+              state.lockedTables.push(table);
+              state.deletedTables.push(`lock for ${strength}`);
+              return [];
+            },
+          }),
+        }),
+      }),
+    }),
   };
   return { state, db };
 });
@@ -73,6 +90,7 @@ import {
 import {
   codes,
   codingKeys,
+  quizResults,
   recentCodes,
   reports,
   userChats,
@@ -90,6 +108,7 @@ beforeEach(() => {
   fake.state.executeCalls = 0;
   fake.state.deleteError = undefined;
   fake.state.deletedTables = [];
+  fake.state.lockedTables = [];
   mastra.state.threads = [];
   mastra.state.deletedThreadIds = [];
   mastra.state.storageNull = false;
@@ -338,19 +357,25 @@ describe("deleteCodesAndData", () => {
     expect(result).toEqual({ ok: true, deleted: 2 });
     // One thread listed+deleted per code (the fake lists the same set each time).
     expect(mastra.state.deletedThreadIds).toEqual(["th1", "th1"]);
-    // All in one transaction: the selection's coding keys in ONE batched
+    // All in one transaction: the selected code rows locked FOR UPDATE first
+    // (so a concurrent quiz-result save, holding its row FOR SHARE, finishes or
+    // finds the code gone), the selection's coding keys in ONE batched
     // statement, then the same delete-safe order repeated once per code.
+    expect(fake.state.lockedTables).toEqual([codes]);
     expect(fake.state.deletedTables).toEqual([
+      "lock for update",
       codingKeys,
       userChats,
       recentCodes,
       writingSubmissions,
       reports,
+      quizResults,
       codes,
       userChats,
       recentCodes,
       writingSubmissions,
       reports,
+      quizResults,
       codes,
     ]);
   });
@@ -368,16 +393,19 @@ describe("deleteCodesAndData", () => {
     const result = await deleteCodesAndData(["aaaaaaaaaa", "bbbbbbbbbb"]);
     expect(result).toEqual({ ok: false, deleted: 2 });
     expect(fake.state.deletedTables).toEqual([
+      "lock for update",
       codingKeys,
       userChats,
       recentCodes,
       writingSubmissions,
       reports,
+      quizResults,
       codes,
       userChats,
       recentCodes,
       writingSubmissions,
       reports,
+      quizResults,
       codes,
     ]);
   });
@@ -388,11 +416,13 @@ describe("deleteCodesAndData", () => {
     expect(result).toEqual({ ok: false, deleted: 1 });
     expect(mastra.state.deletedThreadIds).toEqual([]);
     expect(fake.state.deletedTables).toEqual([
+      "lock for update",
       codingKeys,
       userChats,
       recentCodes,
       writingSubmissions,
       reports,
+      quizResults,
       codes,
     ]);
   });

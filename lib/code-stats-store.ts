@@ -1,5 +1,5 @@
 import type { Message } from "@ag-ui/core";
-import { eq, sql } from "drizzle-orm";
+import { asc, eq, inArray, sql } from "drizzle-orm";
 import { mastra } from "@/app/mastra";
 import { deleteCodingKeysForCodes } from "@/lib/coding-key-store";
 import { collapseReplayedRuns, toAguiMessage } from "@/lib/conversation-collapse";
@@ -11,6 +11,7 @@ import {
   userChats,
   writingSubmissions,
 } from "@/lib/db/schema";
+import { deleteResultsForCode } from "@/lib/quiz-result-store";
 
 // Read-side queries (and the destructive delete) behind a code's stats — shared
 // by every module (tutor conversations, quiz discussions, …).
@@ -298,8 +299,9 @@ async function deleteCodeConversations(code: string): Promise<boolean> {
 /**
  * Deletes ONE code's app-owned Drizzle rows on the given executor — user_chats
  * (attribution), recent_codes (shortcuts), writing_submissions (the writing
- * module's saved texts), and reports (student-submitted reports, which have NO FK
- * to the code and so must be dropped explicitly) first, then the code row LAST
+ * module's saved texts), reports (student-submitted reports, which have NO FK
+ * to the code and so must be dropped explicitly) and saved quiz results (through
+ * their store, which reveals nothing about them) first, then the code row LAST
  * (while it exists the code still appears in the list, so a mid-way failure is
  * safe to retry). The coding module's key rows are NOT here — `deleteCodesAndData`
  * drops them for the whole batch in one statement before this loop. Throws on a
@@ -310,6 +312,7 @@ async function deleteCodeRows(executor: DbExecutor, code: string): Promise<void>
   await executor.delete(recentCodes).where(eq(recentCodes.code, code));
   await executor.delete(writingSubmissions).where(eq(writingSubmissions.code, code));
   await executor.delete(reports).where(eq(reports.code, code));
+  await deleteResultsForCode(executor, code);
   await executor.delete(codesTable).where(eq(codesTable.code, code));
 }
 
@@ -322,7 +325,11 @@ export type DeleteCodesResult = { ok: boolean; deleted: number };
  * Drizzle transaction); all the app-owned ROW deletes then run in ONE Drizzle
  * transaction (all-or-nothing): the coding keys for the whole selection first (a
  * single batched statement — this is the ONLY path that deletes them, so the
- * codes' API keys die with their codes), then each code's remaining rows. `ok` is
+ * codes' API keys die with their codes), then each code's remaining rows. The
+ * transaction first locks every selected code row `FOR UPDATE` (in code order,
+ * so two deletes cannot deadlock): a quiz-result save holds its code row `FOR
+ * SHARE`, so a save either commits before the delete removes its row, or finds
+ * the code gone and writes nothing. `ok` is
  * false if any Mastra step failed or the row transaction rolled back; `deleted` is
  * the number of codes whose rows were processed (0 if the transaction rolled
  * back). Never throws.
@@ -339,6 +346,12 @@ export async function deleteCodesAndData(codes: string[]): Promise<DeleteCodesRe
   // 2. All app-owned rows in ONE transaction so the set commits or rolls back together.
   try {
     await getDb().transaction(async (tx) => {
+      await tx
+        .select({ code: codesTable.code })
+        .from(codesTable)
+        .where(inArray(codesTable.code, codes))
+        .orderBy(asc(codesTable.code))
+        .for("update");
       await deleteCodingKeysForCodes(tx, codes);
       for (const code of codes) await deleteCodeRows(tx, code);
     });

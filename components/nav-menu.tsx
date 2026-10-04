@@ -16,7 +16,8 @@ import { usePopover } from "./use-popover";
 // from the menu for non-teachers (the pages themselves enforce the rule
 // server-side; this is just honest navigation).
 const NAV_ITEMS = [
-  { href: "/", label: "Chat", heading: "Chat Prototype", teacherOnly: false },
+  // The start page: the student home today, the teacher dashboard later — "Home" for both.
+  { href: "/", label: "Home", heading: "Home", teacherOnly: false },
   {
     href: "/codes",
     label: "Codes",
@@ -60,6 +61,8 @@ function dynamicHeading(pathname: string): string | undefined {
     if (segments[1] === "edit" && segments.length >= 3) return "Edit YAML File";
   }
   if (segments[0] === "images" && segments[1] === "new") return "New Image";
+  // Reached from the user menu, not from this one.
+  if (pathname === "/settings") return "Settings";
   return undefined;
 }
 
@@ -129,6 +132,7 @@ export function NavMenu({ isTeacher }: { isTeacher: boolean }) {
                 ) : (
                   <Link
                     href={hrefs[item.href] ?? item.href}
+                    aria-current={item.href === pathname ? "page" : undefined}
                     className={cn(
                       MENU_ITEM,
                       item.href === pathname && "bg-foreground/5 font-semibold",

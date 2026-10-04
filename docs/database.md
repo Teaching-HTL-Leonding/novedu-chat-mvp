@@ -355,13 +355,15 @@ Tables (details in `docs/codes.md`):
 | `novedu_user_chats` | PK `thread_id` | user↔chat attribution (only when the activity opts out of anonymity) |
 | `novedu_recent_codes` | PK (`user_id`, `code`) | a user's recently used codes (entry-page shortcuts) |
 | `novedu_writing_submissions` | PK (`code`, `user_id`) | a student's saved writing text — one upserted row per student per code, non-anonymous codes only (details in `docs/writing.md`) |
-| `novedu_reports` | PK `id` | student-submitted reports on an AI interaction, always attributed to the reporter's user id even under an anonymous code (details in `docs/reports.md`) |
+| `novedu_reports` | PK `id`; indexes on `code`, `resolved_at`; partial index on `user_id WHERE resolved_at IS NOT NULL` | student-submitted reports on an AI interaction, always attributed to the reporter's user id even under an anonymous code (details in `docs/reports.md`); the partial index serves the reporter's own start page (`docs/home.md`) |
 | `novedu_coding_keys` | PK (`code`, `user_id`); unique index on `api_key`; index on `user_id` | the coding module's per-user API keys — one stable `nvk-…` key per student per coding code, the second sanctioned user↔code attribution (details in `docs/coding.md`) |
 | `novedu_files` | PK `id` (per-version); partial UK `name WHERE valid_until IS NULL` | App-hosted YAML files, **temporal/append-only** (details in `docs/files.md`) |
 | `novedu_images` | PK `id` (per-version); partial UK `name WHERE valid_until IS NULL` | App-hosted image metadata (bytes under the configured `IMAGE_STORAGE_ROOT` filesystem), **temporal/append-only** (details in `docs/images.md`) |
 | `novedu_usage_by_code` | PK (`code`, `hour`) | per-hour token/tool/activity counts by code, no user (details in `docs/usage-metering.md`) |
 | `novedu_usage_by_user` | PK (`user_id`, `hour`) | per-hour token/tool/activity counts by user, no code (details in `docs/usage-metering.md`) |
 | `novedu_achievements` | PK (`user_id`, `achievement_id`) | a user's earned start-page badges: generic catalog ids (never a code), the Vienna-local `qualified_on` date, `seen_at` (null = new); never deleted (details in `docs/home.md`) |
+| `novedu_quiz_results` | PK (`user_id`, `id`); indexes on (`user_id`, `code`, `finished_at`, `id`) and `code` | a student's saved quiz attempts — slot counts only, written only on the student's explicit choice; the third sanctioned user↔code link, read only by the student (details in `docs/home.md`) |
+| `novedu_user_settings` | PK `user_id` | per-user preferences of the Settings page (`save_quiz_results`); a missing row means every default (details in `docs/home.md`) |
 | `novedu_drizzle_migrations` | — | Drizzle migration bookkeeping (schema `public`) |
 | `novedu_user` | PK `id` | one row per signed-in person: display name, email, `is_teacher`; the id every `user_id`/`created_by` column across the tables above stores by value (details in `docs/auth.md`) |
 | `novedu_session` | PK `id`; unique `token`; FK `user_id → novedu_user.id` cascade | one row per live session, shared by the cookie and bearer channels (details in `docs/auth.md`) |
@@ -394,10 +396,14 @@ only delete path). The bulk delete (`deleteCodesAndData` in
    Mastra's OWN storage API (`getStore("memory").deleteThread`, which deletes a
    thread's messages and the thread in one transaction), so we never mutate the
    `mastra.*` schema by hand;
-2. the app-owned rows via Drizzle, all in **one transaction**: the selected codes'
-   `novedu_coding_keys` rows first (one batched statement for the whole selection —
+2. the app-owned rows via Drizzle, all in **one transaction**: the selected
+   `novedu_codes` rows locked `FOR UPDATE` first (in code order — a quiz-result
+   save holds its code row `FOR SHARE`, so it either commits before the delete or
+   finds the code gone), then the selected codes'
+   `novedu_coding_keys` rows (one batched statement for the whole selection —
    the only path that ever deletes them), then per code `novedu_user_chats`,
-   `novedu_recent_codes`, `novedu_writing_submissions`, `novedu_reports`, and
+   `novedu_recent_codes`, `novedu_writing_submissions`, `novedu_reports`,
+   `novedu_quiz_results` (through `deleteResultsForCode`), and
    finally the `novedu_codes` row LAST (so a mid-way failure leaves the code
    still listed and the operation safe to retry; it is idempotent).
 

@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { sql } from "drizzle-orm";
 import { insertGrants } from "@/lib/achievement-store";
 import { addDays, todayLocal } from "@/lib/achievements/time";
 import { ownKeyDatesStatement } from "@/lib/coding-key-store";
-import { getDb } from "@/lib/db";
 import { loadStudentUsage, usageStatement } from "@/lib/student-facts-store";
 import { query } from "./db";
+import { planOf } from "./plan.utils";
 import { deletePrincipal, signInFreshStudent } from "./principal.utils";
 
 // The start page against real rows (docs/home.md): seeded hourly usage and one
@@ -139,17 +138,6 @@ test("the start page shows seeded activity, pins a badge on its day, and clears 
     await deletePrincipal(principal.id).catch(() => {});
   }
 });
-
-/** The plan of a statement with sequential scans off, so a usable index must show. */
-async function planOf(statement: ReturnType<typeof usageStatement>): Promise<string> {
-  return getDb().transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL enable_seqscan = off`);
-    const res = await tx.execute<{ "QUERY PLAN": unknown }>(
-      sql`EXPLAIN (FORMAT JSON) ${statement}`,
-    );
-    return JSON.stringify(res.rows[0]?.["QUERY PLAN"]);
-  });
-}
 
 test("coding requests and a coding key earn the Coding badges and a secret one", {
   tag: ["@live", "@live-db"],

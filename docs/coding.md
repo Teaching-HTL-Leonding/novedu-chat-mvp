@@ -79,9 +79,9 @@ samples (the coding YAML under `activities/examples/`).
   a bare activity code sent as a bearer — gets the byte-identical `401` body. No
   oracle distinguishes them; a leaked code string alone opens nothing without an
   Entra sign-in.
-- **Attribution**: `novedu_coding_keys` is the **second sanctioned exception** to
+- **Attribution**: `novedu_coding_keys` is one of **three sanctioned exceptions** to
   "`novedu_user_chats` is the only user↔chat link" (alongside `novedu_reports`,
-  `docs/reports.md`) — key issuance always records the requesting user's id,
+  `docs/reports.md`, and `novedu_quiz_results`, `docs/home.md`) — key issuance always records the requesting user's id,
   disclosed by an explicit, visually prominent notice on **both** issuing surfaces:
   the student connection page (`render-coding.tsx`) and, beside the teacher's own
   "Get my API key" button, the detail page (`_coding/coding-detail.tsx`). Neither

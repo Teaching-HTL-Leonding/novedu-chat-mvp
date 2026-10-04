@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, type SQL, sql } from "drizzle-orm";
+import { HOME_TIME_ZONE, type LocalDate } from "@/lib/achievements/time";
 import { getDb } from "@/lib/db";
 import { authUsers } from "@/lib/db/auth-schema";
 import { countRows } from "@/lib/db/count";
@@ -10,6 +11,7 @@ import type { Sort } from "@/lib/db/sorting";
 import { containsAny } from "@/lib/db/text-filter";
 import type { QuizVerdict } from "@/lib/quiz-types";
 import type { ReportKind, ReportReaction } from "@/lib/report-types";
+import { reportStoreFailure } from "@/lib/store-failure";
 
 // Persistence for student-submitted reports in the `novedu_reports` SQL table
 // (GH issue #24) — a student flags exceptional behavior in a chat or a graded
@@ -422,5 +424,33 @@ export async function deleteReports(ids: string[]): Promise<boolean> {
   } catch (error) {
     console.error("report-store: deleting reports failed", error);
     return false;
+  }
+}
+
+/** The own-resolved-reports statement — exported so the `@live-db` test can EXPLAIN the real one. */
+export function ownResolvedDatesStatement(userId: string): SQL {
+  return sql`
+    SELECT ((r.resolved_at AT TIME ZONE ${HOME_TIME_ZONE})::date)::text AS day
+    FROM novedu_reports r
+    WHERE r.user_id = ${userId} AND r.resolved_at IS NOT NULL
+    ORDER BY r.resolved_at
+  `;
+}
+
+/**
+ * The start page's reports fact group (docs/home.md → Bug Hunter): the
+ * Vienna-local dates on which the user's OWN reports were resolved, oldest
+ * first — one scan of the partial `user_id` index. Only dates leave this
+ * function: no code, no report content. Returns `undefined` on a database error
+ * (reported with a fixed message, never the raw error — it carries the user
+ * id). Never throws.
+ */
+export async function listOwnResolvedReportDates(userId: string): Promise<LocalDate[] | undefined> {
+  try {
+    const res = await getDb().execute<{ day: string }>(ownResolvedDatesStatement(userId));
+    return res.rows.map((row) => row.day);
+  } catch (error) {
+    reportStoreFailure("report-store", "list own resolved dates", error);
+    return undefined;
   }
 }

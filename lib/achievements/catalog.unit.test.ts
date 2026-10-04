@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { importSpecifiers, REPO_ROOT, resolveImport, walkClosure } from "@/tests/import-graph";
 import { STUDENT_CATALOG, type StudentAchievement } from "./catalog";
 import type { UsageDay } from "./derive";
+import type { QuizAttempt } from "./quiz";
 
 const day = (date: string, extra: Partial<UsageDay> = {}): UsageDay => ({
   date,
@@ -24,8 +25,10 @@ function rule(id: string): StudentAchievement {
   return achievement;
 }
 
-const run = (id: string, usage: UsageDay[]) => rule(id).evaluate({ usage, keys: [] });
-const runKeys = (id: string, keys: string[]) => rule(id).evaluate({ usage: [], keys });
+const run = (id: string, usage: UsageDay[]) =>
+  rule(id).evaluate({ usage, keys: [], quiz: [], reports: [] });
+const runKeys = (id: string, keys: string[]) =>
+  rule(id).evaluate({ usage: [], keys, quiz: [], reports: [] });
 
 /** Consecutive Mondays starting at `first`, one active day each. */
 function weeks(first: string, n: number): UsageDay[] {
@@ -61,9 +64,9 @@ describe("catalog shape", () => {
     }
   });
 
-  it("ships the Rhythm, Practice, Coding and Secret families, all for students", () => {
+  it("ships the Rhythm, Practice, Quiz mastery, Coding and Secret families, all for students", () => {
     expect(new Set(STUDENT_CATALOG.map((a) => a.family))).toEqual(
-      new Set(["rhythm", "practice", "coding", "secret"]),
+      new Set(["rhythm", "practice", "quiz", "coding", "secret"]),
     );
     expect(STUDENT_CATALOG.every((a) => a.audience === "student")).toBe(true);
     expect(STUDENT_CATALOG.every((a) => a.needs.length === 1)).toBe(true);
@@ -72,12 +75,19 @@ describe("catalog shape", () => {
         .map((a) => a.id)
         .sort(),
     ).toEqual(["coding-connected", "coding-toolbelt"]);
+    expect(
+      STUDENT_CATALOG.filter((a) => a.family === "quiz").every((a) => a.needs[0] === "quiz"),
+    ).toBe(true);
+    expect(STUDENT_CATALOG.filter((a) => a.needs[0] === "reports").map((a) => a.id)).toEqual([
+      "bug-hunter",
+    ]);
   });
 
   it("hides exactly the Secret family", () => {
     expect(STUDENT_CATALOG.filter((a) => a.hidden).map((a) => a.id)).toEqual([
       "full-stack",
       "in-the-zone",
+      "bug-hunter",
     ]);
     expect(STUDENT_CATALOG.every((a) => a.hidden === (a.family === "secret"))).toBe(true);
   });
@@ -94,6 +104,7 @@ describe("catalog shape", () => {
       "active-days",
       "quiz-answers",
       "writing-saves",
+      "quiz-golds",
       "coding-days",
     ]) {
       expect(source).toContain(`"${ladder}"`);
@@ -238,6 +249,83 @@ describe("Secret rules", () => {
       day("2026-09-04", { codingRequests: 3, codingHours: 5 }),
     ];
     expect(run("in-the-zone", usage)).toEqual({ earned: true, qualifiedOn: "2026-09-03" });
+  });
+});
+
+describe("Quiz mastery rules", () => {
+  let seq = 0;
+  const result = (code: string, date: string, correct: number, total: number): QuizAttempt => {
+    seq += 1;
+    return {
+      id: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
+      code,
+      correct,
+      partial: 0,
+      incorrect: total - correct,
+      unanswered: 0,
+      total,
+      finishedAt: new Date(`${date}T10:00:00Z`),
+      finishedOn: date,
+      note: "",
+      open: true,
+    };
+  };
+  const runQuiz = (id: string, quiz: QuizAttempt[]) =>
+    rule(id).evaluate({ usage: [], keys: [], quiz, reports: [] });
+
+  it("First Result: the first saved result's day", () => {
+    expect(runQuiz("quiz-first-result", [])).toEqual({ earned: false, current: 0, target: 1 });
+    expect(
+      runQuiz("quiz-first-result", [
+        result("b", "2026-09-05", 0, 2),
+        result("a", "2026-09-02", 0, 2),
+      ]),
+    ).toEqual({ earned: true, qualifiedOn: "2026-09-02" });
+  });
+
+  it("golds: 1 / 3 / 10 distinct quizzes, below, at and above", () => {
+    const golds = ["a", "b", "c", "d"].map((code, i) => result(code, `2026-09-0${i + 1}`, 3, 3));
+    expect(runQuiz("quiz-golds-1", [result("a", "2026-09-01", 2, 3)])).toEqual({
+      earned: false,
+      current: 0,
+      target: 1,
+    });
+    expect(runQuiz("quiz-golds-1", golds)).toEqual({ earned: true, qualifiedOn: "2026-09-01" });
+    expect(runQuiz("quiz-golds-3", golds.slice(0, 2))).toEqual({
+      earned: false,
+      current: 2,
+      target: 3,
+    });
+    expect(runQuiz("quiz-golds-3", golds)).toEqual({ earned: true, qualifiedOn: "2026-09-03" });
+    expect(runQuiz("quiz-golds-10", golds)).toEqual({ earned: false, current: 4, target: 10 });
+  });
+
+  it("Improved and Refreshed: one-offs dated to the qualifying attempt", () => {
+    const attempts = [
+      result("q", "2026-09-01", 1, 4),
+      result("q", "2026-09-03", 3, 4),
+      result("q", "2026-09-10", 2, 4),
+    ];
+    expect(runQuiz("quiz-improved", attempts)).toEqual({ earned: true, qualifiedOn: "2026-09-03" });
+    expect(runQuiz("quiz-refreshed", attempts)).toEqual({
+      earned: true,
+      qualifiedOn: "2026-09-10",
+    });
+    expect(runQuiz("quiz-refreshed", attempts.slice(0, 2))).toEqual({
+      earned: false,
+      current: 0,
+      target: 1,
+    });
+  });
+
+  it("Bug Hunter: the day an own report was first resolved", () => {
+    const runReports = (reports: string[]) =>
+      rule("bug-hunter").evaluate({ usage: [], keys: [], quiz: [], reports });
+    expect(runReports([])).toEqual({ earned: false, current: 0, target: 1 });
+    expect(runReports(["2026-09-12", "2026-09-20"])).toEqual({
+      earned: true,
+      qualifiedOn: "2026-09-12",
+    });
   });
 });
 

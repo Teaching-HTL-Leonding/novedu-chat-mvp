@@ -1,5 +1,7 @@
 import type { ComponentType, SVGProps } from "react";
 import {
+  AwardIcon,
+  BugIcon,
   CalendarIcon,
   CheckSquareIcon,
   CodeIcon,
@@ -7,8 +9,11 @@ import {
   FlameIcon,
   KeyIcon,
   LayersIcon,
+  RotateCcwIcon,
   SendIcon,
+  StarIcon,
   ToolIcon,
+  TrendingUpIcon,
   ZapIcon,
 } from "@/components/icons";
 import type { BadgeIcon } from "@/lib/achievements/catalog";
@@ -29,19 +34,30 @@ const ICONS: Record<BadgeIcon, ComponentType<SVGProps<SVGSVGElement>>> = {
   tool: ToolIcon,
   layers: LayersIcon,
   zap: ZapIcon,
+  award: AwardIcon,
+  star: StarIcon,
+  trend: TrendingUpIcon,
+  rotate: RotateCcwIcon,
+  bug: BugIcon,
 };
 
 /** Family → its colour as a background utility (tokens in app/globals.css). */
 export const FAMILY_BG: Record<string, string> = {
   rhythm: "bg-fam-rhythm",
   practice: "bg-fam-practice",
+  quiz: "bg-fam-quiz",
   coding: "bg-fam-coding",
   secret: "bg-fam-secret",
 };
 
-/** Family → the glyph colour on its disc: white, except the secret family's amber. */
+/**
+ * Family → the glyph colour on its disc: white, except the secret family's
+ * amber and the quiz family's dark gold (white fails contrast on its light disc).
+ */
 export function familyInk(family: string): string {
-  return family === "secret" ? "text-brand-amber" : "text-white";
+  if (family === "secret") return "text-brand-amber";
+  if (family === "quiz") return "text-gold-ink";
+  return "text-white";
 }
 
 export function BadgeGlyph({ icon, className }: { icon: BadgeIcon; className?: string }) {

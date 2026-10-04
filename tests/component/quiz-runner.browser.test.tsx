@@ -29,7 +29,23 @@ import type { ResolvedQuiz } from "@/lib/quiz-types";
 const submitAnswer = vi.hoisted(() => vi.fn());
 const startDiscussion = vi.hoisted(() => vi.fn());
 const precheckAnswer = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/quiz-actions", () => ({ submitAnswer, startDiscussion, precheckAnswer }));
+const saveQuizResult = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/quiz-actions", () => ({
+  submitAnswer,
+  startDiscussion,
+  precheckAnswer,
+  saveQuizResult,
+}));
+// next/link reads Next-server globals that don't exist in the browser test
+// runner — a plain anchor keeps the href the assertions read.
+vi.mock("next/link", () => ({
+  __esModule: true,
+  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
 
 // The hook's two tunables, pinned here: the timings every assertion below is
 // written against are these, not whatever the module happens to hold.
@@ -283,6 +299,42 @@ test("Finish now ends the quiz early with the partial tally", async () => {
   await screen.getByRole("button", { name: "Finish now" }).click();
   await expect.element(screen.getByRole("heading", { name: "Quiz summary" })).toBeVisible();
   await expect.element(screen.getByText("You answered 1 of 3 questions.")).toBeVisible();
+
+  // The save step carries the attempt's counts — unreached slots as unanswered —
+  // under one uuid minted when the attempt started (SaveResult's own behaviour is
+  // in app/[code]/_quiz/save-result.browser.test.tsx).
+  saveQuizResult.mockResolvedValue({ ok: true, saved: true });
+  await screen.getByRole("button", { name: "This time" }).click();
+  await expect.element(screen.getByText(/Saved to your personal statistics/)).toBeVisible();
+  expect(saveQuizResult).toHaveBeenCalledExactlyOnceWith({
+    code: CODE,
+    attemptId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    counts: { correct: 1, partial: 0, incorrect: 0, unanswered: 2 },
+    total: 3,
+    mode: "this-time",
+  });
+});
+
+test("an attempt finished with nothing answered offers no save", async () => {
+  const screen = await render(<QuizRunner code={CODE} quiz={quizOf(3)} autoSave />);
+  await expect.element(screen.getByText("QUESTION-1")).toBeVisible();
+  await screen.getByRole("button", { name: "Finish" }).click();
+  await expect.element(screen.getByText("You answered 0 of 3 questions.")).toBeVisible();
+  expect(screen.getByRole("button", { name: "This time" }).query()).toBeNull();
+  expect(saveQuizResult).not.toHaveBeenCalled();
+});
+
+test("with the setting on, Finish saves automatically", async () => {
+  saveQuizResult.mockResolvedValue({ ok: true, saved: true });
+  const screen = await render(<QuizRunner code={CODE} quiz={quizOf(1)} autoSave />);
+  submitAnswer.mockResolvedValueOnce({ ok: true, result: "correct", feedback: "FB-1" });
+  await screen.getByRole("textbox").fill("a1");
+  await screen.getByRole("button", { name: "Submit answer" }).click();
+  await screen.getByRole("button", { name: "Finish" }).click();
+  await expect.element(screen.getByText(/Saved to your personal statistics/)).toBeVisible();
+  expect(saveQuizResult).toHaveBeenCalledWith(
+    expect.objectContaining({ mode: "automatic", total: 1 }),
+  );
 });
 
 // --- skipping ---------------------------------------------------------------------

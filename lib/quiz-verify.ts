@@ -6,7 +6,7 @@ import { getSession } from "@/lib/session";
 
 // The shared quiz-verification preamble — SERVER-ONLY, but deliberately WITHOUT a
 // `"use server"` directive. It is imported by the `"use server"` file
-// `lib/quiz-actions.ts` (grading) AND, later, by the report action; if this code
+// `lib/quiz-actions.ts` (grading, saving a result) AND by the report action; if this code
 // lived in a `"use server"` module, exporting `verifyAndLoadQuestion` would mint a
 // public server-action endpoint that returns the loaded `Quiz` — which carries the
 // server-only `evaluation` grading prompts (they may embed the expected answer).
@@ -38,12 +38,15 @@ export const CODE_REJECTION_MESSAGES: Record<CodeRejection, string> = {
   "lookup-failed": "Quiz codes cannot be checked right now — try again in a moment.",
 };
 
-// Shared preamble for both actions: authenticated session + valid, in-window quiz
-// code + the (server-authoritative) quiz question by id. Returns a ready-to-show
-// message on any failure.
-export async function verifyAndLoadQuestion(
-  input: QuizCodeInput & { questionId: string },
-): Promise<LoadedQuestion | { ok: false; message: string }> {
+export type LoadedQuiz = Omit<LoadedQuestion, "question">;
+
+// The quiz-level preamble: authenticated session + valid, in-window quiz code +
+// the (server-authoritative) quiz re-loaded from the code's file. Returns a
+// ready-to-show message on any failure. `saveQuizResult` uses it directly (it
+// needs the attempt length, not a question).
+export async function verifyAndLoadQuiz(
+  input: QuizCodeInput,
+): Promise<LoadedQuiz | { ok: false; message: string }> {
   const session = await getSession();
   const userId = session?.user?.id;
   if (!userId) return { ok: false, message: "Please sign in to continue." };
@@ -60,18 +63,37 @@ export async function verifyAndLoadQuestion(
   const loaded = await loadQuiz(entry.fileUrl);
   if (!loaded.ok) return { ok: false, message: loaded.message };
 
-  const question = loaded.quiz.questions.find((q) => q.id === input.questionId);
-  if (!question) return { ok: false, message: "That question is no longer part of this quiz." };
-
   return {
     ok: true,
     userId,
     code: input.code,
     fileUrl: entry.fileUrl,
     quiz: loaded.quiz,
-    question,
     llm: effectiveLlm(entry, loaded.quiz),
   };
+}
+
+// The per-question preamble of the grading/discussion actions: the quiz-level
+// checks above, plus the question by id.
+export async function verifyAndLoadQuestion(
+  input: QuizCodeInput & { questionId: string },
+): Promise<LoadedQuestion | { ok: false; message: string }> {
+  const ctx = await verifyAndLoadQuiz(input);
+  if (!ctx.ok) return ctx;
+
+  const question = ctx.quiz.questions.find((q) => q.id === input.questionId);
+  if (!question) return { ok: false, message: "That question is no longer part of this quiz." };
+
+  return { ...ctx, question };
+}
+
+/**
+ * The attempt length the server derives from the re-loaded quiz: the authored
+ * `question_count`, else every pool question once — the same rule the client's
+ * sequence builder applies (`toPublicQuiz`).
+ */
+export function attemptLength(quiz: Quiz): number {
+  return quiz.questionCount ?? quiz.questions.length;
 }
 
 // The question's EFFECTIVE photo-answers flag now lives in the pure `lib/quiz-yaml.ts`

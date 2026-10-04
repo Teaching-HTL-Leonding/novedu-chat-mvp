@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { ContentImage } from "@/components/content-image";
 import { ImageErrorNotice } from "@/components/image-error-notice";
 import { ReportButton } from "@/components/report-button";
@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "../../markdown-renderer";
 import { PrecheckIndicator } from "./precheck-indicator";
 import { QuizDiscussion } from "./quiz-discussion";
+import { SaveResult } from "./save-result";
 import { useAnswerPrecheck } from "./use-answer-precheck";
 
 // The quiz page column: centered and capped inside the PageBody canvas (which
@@ -65,16 +66,27 @@ const VERDICT_VARS: Record<QuizVerdict, string> = {
 // sequence semantics (shuffle passes, `question_count` truncation/repeats) live in
 // the pure `buildQuestionSequence` (lib/quiz-sequence.ts), the walk and skip rules
 // in the pure lib/quiz-attempt.ts; the runner only calls them. The quiz CODE
-// travels with every action so the server re-verifies it each time. NOTHING is
-// stored about the run — skips never reach the server, the summary is client-only
-// and a reload restarts the quiz.
+// travels with every action so the server re-verifies it each time. Nothing is
+// stored about the run while it lasts — skips never reach the server and a
+// reload restarts the quiz. Only on the summary may the student save the
+// attempt's COUNTS to their own statistics (`SaveResult`, docs/home.md), under
+// the attempt's uuid minted here when the attempt starts.
 
 type VerdictCounts = Record<QuizVerdict, number>;
 type AnswerImage = { name: string; dataUrl: string };
 /** An unsent answer, parked while its question waits after a skip. */
 type Draft = { answer: string; images: AnswerImage[] };
 
-export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string }) {
+export function QuizRunner({
+  quiz,
+  code,
+  autoSave = false,
+}: {
+  quiz: ResolvedQuiz;
+  code: string;
+  /** The user's "save my quiz results" setting at page render (the server re-reads it). */
+  autoSave?: boolean;
+}) {
   // Build the sequence on the CLIENT after mount: server and first client render
   // both use the authored order (no hydration mismatch), then the effect applies
   // the real sequence once. `ready` gates the questions so the first visible
@@ -82,6 +94,8 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
   const [order, setOrder] = useState<ResolvedQuizQuestion[]>(quiz.questions);
   const [attempt, setAttempt] = useState<AttemptState>(() => startAttempt(quiz.questions.length));
   const [ready, setReady] = useState(false);
+  // The attempt's identity for a saved result: a repeated save of it is a no-op.
+  const [attemptId, setAttemptId] = useState("");
   useEffect(() => {
     const sequence = buildQuestionSequence(quiz.questions, {
       shuffle: quiz.shuffle,
@@ -89,6 +103,7 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
     });
     setOrder(sequence);
     setAttempt(startAttempt(sequence.length));
+    setAttemptId(crypto.randomUUID());
     setReady(true);
   }, [quiz]);
 
@@ -158,6 +173,17 @@ export function QuizRunner({ quiz, code }: { quiz: ResolvedQuiz; code: string })
         answered={answered}
         total={total}
         skipped={skippedUnanswered(attempt)}
+        save={
+          answered > 0 ? (
+            <SaveResult
+              code={code}
+              attemptId={attemptId}
+              counts={{ ...counts, unanswered: total - answered }}
+              total={total}
+              autoSave={autoSave}
+            />
+          ) : null
+        }
       />
     );
   }
@@ -499,11 +525,14 @@ function Summary({
   answered,
   total,
   skipped,
+  save,
 }: {
   counts: VerdictCounts;
   answered: number;
   total: number;
   skipped: number;
+  /** The save-to-statistics step; absent when nothing was answered. */
+  save: ReactNode;
 }) {
   return (
     <div className={RUNNER}>
@@ -520,6 +549,7 @@ function Summary({
           <SummaryStat verdict="partial" count={counts.partial} label="partly correct" />
           <SummaryStat verdict="incorrect" count={counts.incorrect} label="wrong" />
         </div>
+        {save}
         <p className={PROGRESS}>
           Reload the page to take the quiz again. Your answers are not stored.
         </p>

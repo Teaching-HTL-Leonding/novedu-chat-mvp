@@ -3,6 +3,7 @@ import { insertGrants, listGrants } from "@/lib/achievement-store";
 import {
   availableGroups,
   type BadgeIcon,
+  FACT_GROUPS,
   STUDENT_CATALOG,
   STUDENT_FAMILIES,
   type StudentAchievement,
@@ -24,6 +25,13 @@ import {
   type Grant,
   newGrants,
 } from "@/lib/achievements/evaluate";
+import {
+  type Medal,
+  medalCounts,
+  quizSummaries,
+  refreshNudges,
+  scorePercent,
+} from "@/lib/achievements/quiz";
 import { type LocalDate, todayLocal } from "@/lib/achievements/time";
 import { levelFor, xpTotal } from "@/lib/achievements/xp";
 import { createHomeCache } from "@/lib/home-cache";
@@ -64,6 +72,19 @@ export interface CalendarCell {
   pins: BadgeItem[];
 }
 
+/** One "Time to refresh" entry: a saved quiz worth retaking. */
+export interface QuizNudge {
+  code: string;
+  /** The code's note, or the code when it has none. */
+  label: string;
+  /** The best attempt's medal; undefined = none yet. */
+  medal?: Medal;
+  /** Whole percent, rounded down. */
+  lastPercent: number;
+  lastOn: LocalDate;
+  bestPercent: number;
+}
+
 export interface StudentHome {
   today: LocalDate;
   /** Level + XP: needs usage and grants. */
@@ -82,6 +103,13 @@ export interface StudentHome {
   newIds?: string[];
   /** Needs usage and grants. */
   almostThere?: BadgeItem[];
+  /** Medals and refresh nudges from the saved quiz results: needs the quiz group. */
+  quiz?: {
+    /** Quizzes with at least one saved result. */
+    quizzes: number;
+    medals: Record<Medal, number>;
+    nudges: QuizNudge[];
+  };
   /** Needs usage and grants. */
   badges?: {
     earned: number;
@@ -123,7 +151,7 @@ export function buildStudentHome(
   const available = availableGroups(facts);
   const home: StudentHome = {
     today,
-    complete: usage !== undefined && facts.keys !== undefined && grants !== undefined,
+    complete: FACT_GROUPS.every((group) => available.has(group)) && grants !== undefined,
   };
 
   const evaluated = grants ? evaluate(catalog, facts, available, grants) : undefined;
@@ -152,6 +180,22 @@ export function buildStudentHome(
       activeDays: cells.filter((c) => c.activeHours > 0).length,
       badges: cells.reduce((n, c) => n + c.pins.length, 0),
       pinsAvailable: grants !== undefined,
+    };
+  }
+
+  if (facts.quiz) {
+    const quizzes = quizSummaries(facts.quiz);
+    home.quiz = {
+      quizzes: quizzes.length,
+      medals: medalCounts(quizzes),
+      nudges: refreshNudges(quizzes, today).map((q) => ({
+        code: q.code,
+        label: q.note.trim() || q.code,
+        medal: q.medal,
+        lastPercent: scorePercent(q.last),
+        lastOn: q.last.finishedOn,
+        bestPercent: scorePercent(q.best),
+      })),
     };
   }
 

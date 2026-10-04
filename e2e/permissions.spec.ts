@@ -51,7 +51,7 @@ test.describe("as a student", () => {
     await page.goto("/");
     await page.getByRole("button", { name: "Open navigation menu" }).click();
 
-    await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Home" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Teacher Guide" })).toHaveAttribute(
       "href",
       TEACHER_GUIDE_URL,

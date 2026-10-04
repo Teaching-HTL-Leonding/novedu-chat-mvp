@@ -15,16 +15,29 @@ import {
   activeDays as usageActiveDays,
   weekDaysReached,
 } from "./derive";
+import {
+  goldsReached,
+  improvedOn,
+  type QuizAttempt,
+  quizSummaries,
+  refreshedOn,
+  resultsReached,
+} from "./quiz";
 import type { LocalDate } from "./time";
 
 /** A fact group: loaded by one statement, failing independently of the others. */
-export type FactGroup = "usage" | "keys";
+export const FACT_GROUPS = ["usage", "keys", "quiz", "reports"] as const;
+export type FactGroup = (typeof FACT_GROUPS)[number];
 
 /** A student's facts; a group is `undefined` when its load failed (never read as zero). */
 export interface StudentFacts {
   usage: UsageDay[] | undefined;
   /** The Vienna-local dates the user's coding keys were issued, ascending. */
   keys: LocalDate[] | undefined;
+  /** The user's saved quiz results. */
+  quiz: QuizAttempt[] | undefined;
+  /** The Vienna-local dates the user's own reports were resolved, ascending. */
+  reports: LocalDate[] | undefined;
 }
 
 /** The groups of `facts` that loaded. */
@@ -32,6 +45,8 @@ export function availableGroups(facts: StudentFacts): Set<FactGroup> {
   const groups = new Set<FactGroup>();
   if (facts.usage) groups.add("usage");
   if (facts.keys) groups.add("keys");
+  if (facts.quiz) groups.add("quiz");
+  if (facts.reports) groups.add("reports");
   return groups;
 }
 
@@ -46,7 +61,12 @@ export type BadgeIcon =
   | "code"
   | "tool"
   | "layers"
-  | "zap";
+  | "zap"
+  | "award"
+  | "star"
+  | "trend"
+  | "rotate"
+  | "bug";
 
 export type Outcome =
   | { earned: true; qualifiedOn: LocalDate }
@@ -78,6 +98,7 @@ export type StudentAchievement = Achievement<StudentFacts>;
 export const STUDENT_FAMILIES = [
   { id: "rhythm", label: "Rhythm" },
   { id: "practice", label: "Practice" },
+  { id: "quiz", label: "Quiz mastery" },
   { id: "coding", label: "Coding" },
   { id: "secret", label: "Secret" },
 ] as const;
@@ -113,6 +134,36 @@ function usageStats(usage: UsageDay[]): UsageStats {
   return stats;
 }
 
+// Derived quiz facts, likewise once per attempts array.
+interface QuizStats {
+  results: LocalDate[];
+  golds: LocalDate[];
+  improved: LocalDate | undefined;
+  refreshed: LocalDate | undefined;
+}
+const quizStatsCache = new WeakMap<QuizAttempt[], QuizStats>();
+function quizStats(attempts: QuizAttempt[]): QuizStats {
+  let stats = quizStatsCache.get(attempts);
+  if (!stats) {
+    const quizzes = quizSummaries(attempts);
+    stats = {
+      results: resultsReached(attempts),
+      golds: goldsReached(quizzes),
+      improved: improvedOn(quizzes),
+      refreshed: refreshedOn(quizzes),
+    };
+    quizStatsCache.set(attempts, stats);
+  }
+  return stats;
+}
+
+/** A one-off earned on the first date of a "first reached" check. */
+function once(date: LocalDate | undefined): Outcome {
+  return date !== undefined
+    ? { earned: true, qualifiedOn: date }
+    : { earned: false, current: 0, target: 1 };
+}
+
 /** A tier earned when the k-th milestone of a "first reached" list exists. */
 function milestone(reached: LocalDate[], target: number): Outcome {
   const qualifiedOn = reached[target - 1];
@@ -140,7 +191,7 @@ function ladder(
   firstOrder: number,
   tiers: Tier[],
   criterion: (n: number) => string,
-  rule: (usage: UsageDay[], n: number) => Outcome,
+  rule: (facts: StudentFacts, n: number) => Outcome,
 ): StudentAchievement[] {
   return tiers.map((tier, i) => ({
     ...base,
@@ -149,9 +200,15 @@ function ladder(
     name: tier.name,
     criterion: criterion(tier.n),
     xp: tier.xp,
-    evaluate: (facts) => rule(need(facts.usage, "usage"), tier.n),
+    evaluate: (facts) => rule(facts, tier.n),
   }));
 }
+
+/** A ladder rule over the usage group. */
+const onUsage =
+  (rule: (usage: UsageDay[], n: number) => Outcome) =>
+  (facts: StudentFacts, n: number): Outcome =>
+    rule(need(facts.usage, "usage"), n);
 
 /** A rule over one day's value: the first day reaching `target`, else the best day. */
 function bestDay(usage: UsageDay[], value: (d: UsageDay) => number, target: number): Outcome {
@@ -171,6 +228,7 @@ const practice = {
   needs: ["usage"],
 } as const;
 const coding = { audience: "student", family: "coding", hidden: false } as const;
+const quiz = { audience: "student", family: "quiz", hidden: false, needs: ["quiz"] } as const;
 // Hidden until earned: never listed, never in Almost there, and their names stay
 // on the server until the grant exists.
 const secret = { audience: "student", family: "secret", hidden: true } as const;
@@ -188,7 +246,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
       { n: 16, name: "A Whole Season", xp: 200 },
     ],
     (n) => `Active ${n} weeks in a row`,
-    (usage, n) => milestone(usageStats(usage).streaks, n),
+    onUsage((usage, n) => milestone(usageStats(usage).streaks, n)),
   ),
   ...ladder(
     { ...rhythm, icon: "calendar" },
@@ -199,7 +257,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
       { n: 5, name: "Five-Day Week", xp: 50 },
     ],
     (n) => `Active on ${n} days of one week`,
-    (usage, n) => milestone(usageStats(usage).weekDays, n),
+    onUsage((usage, n) => milestone(usageStats(usage).weekDays, n)),
   ),
   ...ladder(
     { ...rhythm, icon: "calendar" },
@@ -211,7 +269,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
       { n: 100, name: "A Hundred Days", xp: 100 },
     ],
     (n) => `${n} active days`,
-    (usage, n) => milestone(usageStats(usage).activeDates, n),
+    onUsage((usage, n) => milestone(usageStats(usage).activeDates, n)),
   ),
   ...ladder(
     { ...practice, icon: "check" },
@@ -223,7 +281,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
       { n: 500, name: "Answer Machine", xp: 100 },
     ],
     (n) => `Submit ${n} quiz answers`,
-    (usage, n) => counter(usage, (d) => d.quizAnswers, n),
+    onUsage((usage, n) => counter(usage, (d) => d.quizAnswers, n)),
   ),
   ...ladder(
     { ...practice, icon: "pen" },
@@ -235,8 +293,50 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
       { n: 100, name: "Hundred Saves", xp: 100 },
     ],
     (n) => `Save your writing ${n} times`,
-    (usage, n) => counter(usage, (d) => d.writingSaves, n),
+    onUsage((usage, n) => counter(usage, (d) => d.writingSaves, n)),
   ),
+  {
+    ...quiz,
+    id: "quiz-first-result",
+    order: 0,
+    icon: "award",
+    name: "First Result",
+    criterion: "Save a quiz result",
+    xp: 20,
+    evaluate: (facts) => milestone(quizStats(need(facts.quiz, "quiz")).results, 1),
+  },
+  ...ladder(
+    { ...quiz, icon: "star" },
+    "quiz-golds",
+    10,
+    [
+      { n: 1, name: "Gold", xp: 50 },
+      { n: 3, name: "Three Golds", xp: 50 },
+      { n: 10, name: "Ten Golds", xp: 100 },
+    ],
+    (n) => (n === 1 ? "Every answer of a quiz fully correct" : `Gold in ${n} different quizzes`),
+    (facts, n) => milestone(quizStats(need(facts.quiz, "quiz")).golds, n),
+  ),
+  {
+    ...quiz,
+    id: "quiz-improved",
+    order: 20,
+    icon: "trend",
+    name: "Improved",
+    criterion: "Beat your best score on a retake",
+    xp: 50,
+    evaluate: (facts) => once(quizStats(need(facts.quiz, "quiz")).improved),
+  },
+  {
+    ...quiz,
+    id: "quiz-refreshed",
+    order: 21,
+    icon: "rotate",
+    name: "Refreshed",
+    criterion: "Retake a quiz 5 or more days later",
+    xp: 50,
+    evaluate: (facts) => once(quizStats(need(facts.quiz, "quiz")).refreshed),
+  },
   {
     ...coding,
     id: "coding-connected",
@@ -268,7 +368,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
       { n: 20, name: "Twenty Coding Days", xp: 100 },
     ],
     (n) => `Code with Novedu on ${n} days`,
-    (usage, n) => milestone(usageStats(usage).codingDates, n),
+    onUsage((usage, n) => milestone(usageStats(usage).codingDates, n)),
   ),
   {
     ...coding,
@@ -307,6 +407,17 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     xp: 50,
     needs: ["usage"],
     evaluate: (facts) => bestDay(need(facts.usage, "usage"), (d) => d.codingHours, 3),
+  },
+  {
+    ...secret,
+    id: "bug-hunter",
+    order: 2,
+    icon: "bug",
+    name: "Bug Hunter",
+    criterion: "A problem you reported was fixed",
+    xp: 50,
+    needs: ["reports"],
+    evaluate: (facts) => milestone(need(facts.reports, "reports"), 1),
   },
 ];
 

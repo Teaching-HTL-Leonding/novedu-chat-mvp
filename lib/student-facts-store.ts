@@ -4,6 +4,8 @@ import type { UsageDay } from "@/lib/achievements/derive";
 import { HOME_TIME_ZONE } from "@/lib/achievements/time";
 import { listOwnKeyDates } from "@/lib/coding-key-store";
 import { getDb } from "@/lib/db";
+import { listOwnQuizResults } from "@/lib/quiz-result-store";
+import { listOwnResolvedReportDates } from "@/lib/report-store";
 import { reportStoreFailure } from "@/lib/store-failure";
 
 // The facts behind a student's start page (docs/home.md → Facts queries). Every
@@ -76,8 +78,17 @@ export async function loadStudentUsage(userId: string): Promise<UsageDay[] | und
   }
 }
 
-/** Every student fact group, loaded in parallel. */
+/**
+ * Every student fact group, loaded in parallel — each one statement through its
+ * owning store (the coding keys, the saved quiz results and the own resolved
+ * reports are read only by their stores).
+ */
 export async function loadStudentFacts(userId: string): Promise<StudentFacts> {
-  const [usage, keys] = await Promise.all([loadStudentUsage(userId), listOwnKeyDates(userId)]);
-  return { usage, keys };
+  const [usage, keys, quiz, reports] = await Promise.all([
+    loadStudentUsage(userId),
+    listOwnKeyDates(userId),
+    listOwnQuizResults(userId),
+    listOwnResolvedReportDates(userId),
+  ]);
+  return { usage, keys, quiz, reports };
 }

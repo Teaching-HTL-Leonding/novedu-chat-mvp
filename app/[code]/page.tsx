@@ -77,7 +77,7 @@ export default async function CodePage({ params }: { params: Promise<{ code: str
         <RenderTutor entry={entry} code={code} threadId={threadId} threadToken={threadToken} />
       );
     case "quiz":
-      return <RenderQuiz entry={entry} code={code} />;
+      return <RenderQuiz entry={entry} code={code} userId={userId} />;
     case "writing":
       return (
         <RenderWriting entry={entry} code={code} threadId={threadId} threadToken={threadToken} />

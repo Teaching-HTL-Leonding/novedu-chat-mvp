@@ -12,6 +12,7 @@ import {
   QUIZ_VERDICT_SCHEMA,
 } from "@/app/mastra/quiz-agents";
 import { validateAnswerImages } from "@/lib/answer-images";
+import { invalidateHome } from "@/lib/home-data";
 import { askJev } from "@/lib/llm/jev-client";
 import { buildQuestionSeed, buildVerdictSeed } from "@/lib/quiz-discussion-prompt";
 import { buildAnswerMessage, buildGradingPrompt } from "@/lib/quiz-grading-prompt";
@@ -21,9 +22,16 @@ import {
   mapPrecheckAnswer,
   PRECHECK_MAX_ANSWER_CHARS,
 } from "@/lib/quiz-precheck";
+import { type SaveMode, saveQuizResult as storeQuizResult } from "@/lib/quiz-result-store";
 import { gradeWithTruncationRetry } from "@/lib/quiz-truncation-retry";
 import type { PrecheckHint, QuizVerdict } from "@/lib/quiz-types";
-import { effectiveImageInput, type QuizCodeInput, verifyAndLoadQuestion } from "@/lib/quiz-verify";
+import {
+  attemptLength,
+  effectiveImageInput,
+  type QuizCodeInput,
+  verifyAndLoadQuestion,
+  verifyAndLoadQuiz,
+} from "@/lib/quiz-verify";
 import { emitEvent, recordError } from "@/lib/telemetry";
 import { getThreadTokenSecret, signThreadToken } from "@/lib/thread-token";
 import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
@@ -55,6 +63,9 @@ export type SubmitAnswerResult =
 
 /** The live hint, or nothing at all — the pre-check has no error UI to show. */
 export type PrecheckResult = { ok: true; hint: PrecheckHint } | { ok: false };
+
+/** `saved: false` = an automatic save found the setting off; the Finish page asks instead. */
+export type SaveQuizResultResult = { ok: true; saved: boolean } | { ok: false; message: string };
 
 export type StartDiscussionResult =
   | { ok: true; threadId: string; threadToken: string }
@@ -319,4 +330,93 @@ export async function startDiscussion(
       message: "The discussion could not be started right now. Please try again.",
     };
   }
+}
+
+// Saving a finished attempt to the student's own statistics (docs/home.md →
+// Saving a quiz result). Only on the student's explicit choice on the Finish
+// page ("This time" / "Always") or — with the setting on — automatically. The
+// row is the THIRD sanctioned user↔code link (docs/codes.md); only the student
+// ever sees it. The counts come from the browser, so a student can forge their
+// OWN result — accepted: nobody else sees it and the XP it can reach is
+// bounded. Nothing about the quiz is returned.
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const INT4_MAX = 2_147_483_647;
+const SAVE_MODES: readonly SaveMode[] = ["this-time", "always", "automatic"];
+const SAVE_FAILED = "Your result could not be saved right now. Please try again.";
+const SAVE_REJECTED = "This result cannot be saved.";
+const CODE_GONE = "This quiz no longer exists, so the result cannot be saved.";
+
+function isCount(value: unknown): value is number {
+  return (
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && value <= INT4_MAX
+  );
+}
+
+/**
+ * Saves the session user's finished attempt. Runs the same verification as
+ * `submitAnswer` on every call (session, the stored code row, module = quiz, the
+ * quiz re-loaded) and REJECTS — never clamps — a malformed attempt id, a count
+ * that is not a non-negative int4, counts that don't sum to `total`, an attempt
+ * with nothing answered, and a `total` above the attempt length the server
+ * derives from the re-loaded quiz.
+ */
+export async function saveQuizResult(
+  input: QuizCodeInput & {
+    attemptId: string;
+    counts: { correct: number; partial: number; incorrect: number; unanswered: number };
+    total: number;
+    mode: SaveMode;
+  },
+): Promise<SaveQuizResultResult> {
+  // Cheap checks before any I/O.
+  const counts = input?.counts;
+  if (
+    typeof input?.attemptId !== "string" ||
+    !UUID.test(input.attemptId) ||
+    !SAVE_MODES.includes(input.mode) ||
+    typeof counts !== "object" ||
+    counts === null ||
+    ![counts.correct, counts.partial, counts.incorrect, counts.unanswered, input.total].every(
+      isCount,
+    )
+  ) {
+    return { ok: false, message: SAVE_REJECTED };
+  }
+  const { correct, partial, incorrect, unanswered } = counts;
+  if (correct + partial + incorrect + unanswered !== input.total) {
+    return { ok: false, message: SAVE_REJECTED };
+  }
+  if (correct + partial + incorrect === 0) {
+    return { ok: false, message: "Answer at least one question to save a result." };
+  }
+
+  const ctx = await verifyAndLoadQuiz(input);
+  if (!ctx.ok) return ctx;
+  if (input.total > attemptLength(ctx.quiz)) {
+    return {
+      ok: false,
+      message:
+        "This quiz changed while you were taking it, so this result cannot be saved. You can take it again.",
+    };
+  }
+
+  const outcome = await storeQuizResult(
+    ctx.userId,
+    {
+      id: input.attemptId.toLowerCase(),
+      code: ctx.code,
+      correct,
+      partial,
+      incorrect,
+      unanswered,
+      total: input.total,
+    },
+    input.mode,
+  );
+  if (outcome === undefined) return { ok: false, message: SAVE_FAILED };
+  if (outcome === "code-gone") return { ok: false, message: CODE_GONE };
+  if (outcome === "not-saved") return { ok: true, saved: false };
+  invalidateHome(ctx.userId);
+  return { ok: true, saved: true };
 }
