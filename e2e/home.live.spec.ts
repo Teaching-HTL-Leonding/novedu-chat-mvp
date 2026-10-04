@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { sql } from "drizzle-orm";
 import { insertGrants } from "@/lib/achievement-store";
 import { addDays, todayLocal } from "@/lib/achievements/time";
+import { ownKeyDatesStatement } from "@/lib/coding-key-store";
 import { getDb } from "@/lib/db";
 import { loadStudentUsage, usageStatement } from "@/lib/student-facts-store";
 import { query } from "./db";
@@ -13,6 +15,8 @@ import { deletePrincipal, signInFreshStudent } from "./principal.utils";
 // and that the strip is gone once the badges were marked seen — plus the facts
 // store against the real database: the Vienna-day grouping across the autumn
 // clock change, the idempotent grant insert, and the usage statement's plan.
+// The second test covers coding: requests, a key, the two coding badges that
+// read them, a secret badge, and the keys statement's plan.
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -105,8 +109,11 @@ test("the start page shows seeded activity, pins a badge on its day, and clears 
     expect(usage?.find((d) => d.date === "2025-10-26")).toEqual({
       date: "2025-10-26",
       activeHours: 2,
+      userMessages: 2,
       quizAnswers: 0,
       writingSaves: 0,
+      codingRequests: 0,
+      codingHours: 0,
     });
     expect(usage?.some((d) => d.date === addDays(today, -3))).toBe(false);
 
@@ -119,17 +126,106 @@ test("the start page shows seeded activity, pins a badge on its day, and clears 
     expect(grants?.find((g) => g.id === "week-days-3")?.qualifiedOn).toBe(pinDay);
 
     // The usage statement is a range scan on the PK (its leading column is user_id).
-    const plan = await getDb().transaction(async (tx) => {
-      await tx.execute(sql`SET LOCAL enable_seqscan = off`);
-      const res = await tx.execute<{ "QUERY PLAN": unknown }>(
-        sql`EXPLAIN (FORMAT JSON) ${usageStatement(principal.id)}`,
-      );
-      return JSON.stringify(res.rows[0]?.["QUERY PLAN"]);
-    });
+    const plan = await planOf(usageStatement(principal.id));
     expect(plan).toContain("novedu_usage_by_user_pkey");
     expect(plan).not.toContain('"Seq Scan"');
   } finally {
     await query(`DELETE FROM novedu_usage_by_user WHERE user_id = $1`, [principal.id]).catch(
+      () => {},
+    );
+    await query(`DELETE FROM novedu_achievements WHERE user_id = $1`, [principal.id]).catch(
+      () => {},
+    );
+    await deletePrincipal(principal.id).catch(() => {});
+  }
+});
+
+/** The plan of a statement with sequential scans off, so a usable index must show. */
+async function planOf(statement: ReturnType<typeof usageStatement>): Promise<string> {
+  return getDb().transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL enable_seqscan = off`);
+    const res = await tx.execute<{ "QUERY PLAN": unknown }>(
+      sql`EXPLAIN (FORMAT JSON) ${statement}`,
+    );
+    return JSON.stringify(res.rows[0]?.["QUERY PLAN"]);
+  });
+}
+
+test("coding requests and a coding key earn the Coding badges and a secret one", {
+  tag: ["@live", "@live-db"],
+}, async ({ page, context }) => {
+  const principal = await signInFreshStudent(context, "Coding Student");
+  const today = todayLocal(new Date());
+  const zoneDay = addDays(today, -1);
+  const keyDay = addDays(today, -4);
+
+  try {
+    // zoneDay: coding in three different hours — In the Zone, and an active day
+    // made of coding alone.
+    for (const hour of [8, 9, 11]) {
+      await query(
+        `INSERT INTO novedu_usage_by_user (user_id, hour, coding_requests, output_tokens)
+         VALUES ($1, $2, 2, 300)`,
+        [principal.id, bucket(zoneDay, hour)],
+      );
+    }
+    // The autumn clock change of 2025: two buckets, ONE local hour of coding.
+    for (const hour of ["2025-10-26T00:00:00Z", "2025-10-26T01:00:00Z"]) {
+      await query(
+        `INSERT INTO novedu_usage_by_user (user_id, hour, coding_requests) VALUES ($1, $2, 1)`,
+        [principal.id, hour],
+      );
+    }
+    // One key, issued on keyDay (no code row needed: the table has no FK).
+    await query(
+      `INSERT INTO novedu_coding_keys (code, user_id, api_key, created_at)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        `e2e${randomUUID().slice(0, 8)}`,
+        principal.id,
+        `nvk-e2e-${randomUUID()}`,
+        bucket(keyDay, 10),
+      ],
+    );
+
+    await page.goto("/");
+
+    await expect(page.locator(`[data-date="${zoneDay}"]`)).toHaveAttribute("data-level", "2");
+    const coding = page.locator('[data-family="coding"]');
+    await expect(coding.locator('[data-badge="coding-connected"]')).toContainText("Earned");
+    await expect(coding.locator('[data-badge="coding-first-request"]')).toContainText("Earned");
+    const secret = page.locator('[data-family="secret"]');
+    await expect(secret.locator('[data-badge="in-the-zone"]')).toContainText("In the Zone");
+    await expect(secret).not.toContainText("Full Stack");
+
+    const stored = await query<{ achievement_id: string; qualified_on: string }>(
+      `SELECT achievement_id, qualified_on::text AS qualified_on FROM novedu_achievements
+       WHERE user_id = $1 AND achievement_id IN ('coding-connected', 'in-the-zone')
+       ORDER BY achievement_id`,
+      [principal.id],
+    );
+    expect(stored).toEqual([
+      { achievement_id: "coding-connected", qualified_on: keyDay },
+      { achievement_id: "in-the-zone", qualified_on: zoneDay },
+    ]);
+
+    // The facts store: the two autumn 02:00 buckets are one local coding hour.
+    const usage = await loadStudentUsage(principal.id);
+    expect(usage?.find((d) => d.date === "2025-10-26")).toMatchObject({
+      activeHours: 2,
+      codingRequests: 2,
+      codingHours: 1,
+    });
+
+    // The keys statement is a range scan on the user_id index.
+    const plan = await planOf(ownKeyDatesStatement(principal.id));
+    expect(plan).toContain("ix_novedu_coding_keys_user_id");
+    expect(plan).not.toContain('"Seq Scan"');
+  } finally {
+    await query(`DELETE FROM novedu_usage_by_user WHERE user_id = $1`, [principal.id]).catch(
+      () => {},
+    );
+    await query(`DELETE FROM novedu_coding_keys WHERE user_id = $1`, [principal.id]).catch(
       () => {},
     );
     await query(`DELETE FROM novedu_achievements WHERE user_id = $1`, [principal.id]).catch(

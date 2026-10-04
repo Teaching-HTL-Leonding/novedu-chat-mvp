@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usageByCode, usageByUser } from "@/lib/db/schema";
 
 // The usage-store write seam: hour bucketing, the increment-UPSERT column mapping,
-// the userId-absent gate (coding proxy meters only usage_by_code), and the
+// the userId-absent gate (only usage_by_code is metered), and the
 // never-throws contract. The DB is mocked — the real UPSERT/concurrency is a
 // @live-db concern (docs/testing.md); here we assert WHICH table + WHICH deltas.
 
@@ -56,6 +56,7 @@ const COUNTER_KEYS = [
   "userMessages",
   "quizAnswers",
   "writingSaves",
+  "codingRequests",
 ];
 
 beforeEach(() => {
@@ -110,7 +111,7 @@ describe("recordLlmUsage", () => {
     expect(userRow).not.toHaveProperty("module");
   });
 
-  it("meters ONLY usage_by_code when there is no userId (the coding-proxy path)", async () => {
+  it("meters ONLY usage_by_code when there is no userId", async () => {
     await recordLlmUsage({
       code: CODE,
       module: "coding",
@@ -159,6 +160,44 @@ describe("recordLlmUsage", () => {
     expect(setOf(0)).toHaveProperty("model");
   });
 
+  it("counts a coding request on BOTH tables in the same increment as the tokens", async () => {
+    await recordLlmUsage({
+      code: CODE,
+      module: "coding",
+      userId: USER,
+      inputNew: 10,
+      inputCached: 0,
+      output: 5,
+      toolCalls: 0,
+      codingRequests: 1,
+    });
+    expect(mocks.insert).toHaveBeenCalledTimes(2);
+    expect(mocks.insertValues).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ module: "coding", codingRequests: 1, outputTokens: 5 }),
+    );
+    expect(mocks.insertValues).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ userId: USER, codingRequests: 1, outputTokens: 5 }),
+    );
+  });
+
+  it("a generation outside the coding proxy counts no coding request", async () => {
+    await recordLlmUsage({
+      code: CODE,
+      module: "tutor",
+      userId: USER,
+      inputNew: 10,
+      inputCached: 0,
+      output: 5,
+      toolCalls: 0,
+    });
+    expect(mocks.insertValues).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ codingRequests: 0 }),
+    );
+  });
+
   it("never throws on a database error and routes it to recordError", async () => {
     mocks.onConflictDoUpdate.mockRejectedValue(new Error("connection lost"));
     await expect(
@@ -189,7 +228,7 @@ describe("discrete counters", () => {
     );
   });
 
-  it("the by-code ON CONFLICT set carries the 7 counters plus provider/model; by-user carries only the 7", async () => {
+  it("the by-code ON CONFLICT set carries the 8 counters plus provider/model; by-user carries only the 8", async () => {
     await recordUserMessage({ code: CODE, module: "writing", userId: USER });
     expect(Object.keys(setOf(0)).sort()).toEqual([...COUNTER_KEYS, "provider", "model"].sort());
     expect(Object.keys(setOf(1)).sort()).toEqual([...COUNTER_KEYS].sort());

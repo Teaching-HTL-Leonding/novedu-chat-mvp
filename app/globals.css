@@ -84,6 +84,9 @@
   --heat-3: #0a529a;
   --fam-rhythm: #13805a;
   --fam-practice: #2a78d6;
+  --fam-coding: #4a3aa7;
+  /* Secret badges: the status bar's slate-900 disc with a brand-amber glyph. */
+  --fam-secret: #0f172a;
 }
 
 @theme inline {
@@ -131,6 +134,8 @@
   --color-heat-3: var(--heat-3);
   --color-fam-rhythm: var(--fam-rhythm);
   --color-fam-practice: var(--fam-practice);
+  --color-fam-coding: var(--fam-coding);
+  --color-fam-secret: var(--fam-secret);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

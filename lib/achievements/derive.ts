@@ -9,8 +9,14 @@ export interface UsageDay {
   date: LocalDate;
   /** UTC-hour buckets of that local day with any counted interaction. */
   activeHours: number;
+  /** Chat messages of every kind (tutor, quiz discussion, writing coach). */
+  userMessages: number;
   quizAnswers: number;
   writingSaves: number;
+  /** Requests through the coding proxy. */
+  codingRequests: number;
+  /** Distinct Vienna-local hours of the day with a coding request. */
+  codingHours: number;
 }
 
 /** Weeks shown in the heatmap (the current ISO week and the 25 before it). */
@@ -94,6 +100,37 @@ export function totalReaching(
     if (reachedOn === undefined && total >= target) reachedOn = day.date;
   }
   return { total, reachedOn };
+}
+
+/** The four kinds of activity a usage day can show. */
+const KINDS: readonly ((day: UsageDay) => boolean)[] = [
+  (d) => d.userMessages > 0,
+  (d) => d.quizAnswers > 0,
+  (d) => d.writingSaves > 0,
+  (d) => d.codingRequests > 0,
+];
+
+/**
+ * All four kinds of activity (chat, quiz, writing, coding) in one ISO week:
+ * the date the first such week completed the set, and the most kinds any week
+ * reached.
+ */
+export function allKindsInAWeek(days: readonly UsageDay[]): {
+  qualifiedOn: LocalDate | undefined;
+  best: number;
+} {
+  let best = 0;
+  for (const [, list] of byWeek(days)) {
+    const seen = new Set<number>();
+    for (const day of list) {
+      KINDS.forEach((kind, i) => {
+        if (kind(day)) seen.add(i);
+      });
+      best = Math.max(best, seen.size);
+      if (seen.size === KINDS.length) return { qualifiedOn: day.date, best };
+    }
+  }
+  return { qualifiedOn: undefined, best };
 }
 
 /** Active-day count of the current ISO week. */

@@ -40,7 +40,9 @@ const MAX_TAP_CHARS = 64 * 1024;
 // Reads the upstream response copy to completion (off the client path), extracts the
 // final token usage, and meters it — like every other module — against BOTH buckets:
 // the CODE (with the activity's provider + pinned model) and the USER the API key was
-// issued to. The two rows stay independent; neither links a user to a code.
+// issued to. The two rows stay independent; neither links a user to a code. The
+// same increment counts the request (`coding_requests`), so coding activity shows
+// up in the user's hour bucket like quiz answers and writing saves do.
 // Best-effort: never throws into the request.
 async function tapCodingUsage(
   stream: ReadableStream<Uint8Array>,
@@ -74,6 +76,7 @@ async function tapCodingUsage(
       inputCached: usage.cachedInputTokens,
       output: usage.outputTokens,
       toolCalls: 0,
+      codingRequests: 1,
     });
   } catch (error) {
     recordError(error, { route: "coding-proxy", stage: "usage-tap" });

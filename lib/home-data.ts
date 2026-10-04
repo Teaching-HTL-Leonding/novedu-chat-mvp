@@ -1,8 +1,8 @@
 import { cache } from "react";
 import { insertGrants, listGrants } from "@/lib/achievement-store";
 import {
+  availableGroups,
   type BadgeIcon,
-  type FactGroup,
   STUDENT_CATALOG,
   STUDENT_FAMILIES,
   type StudentAchievement,
@@ -120,8 +120,11 @@ export function buildStudentHome(
   catalog: readonly StudentAchievement[] = STUDENT_CATALOG,
 ): StudentHome {
   const usage = facts.usage;
-  const available = new Set<FactGroup>(usage ? ["usage"] : []);
-  const home: StudentHome = { today, complete: usage !== undefined && grants !== undefined };
+  const available = availableGroups(facts);
+  const home: StudentHome = {
+    today,
+    complete: usage !== undefined && facts.keys !== undefined && grants !== undefined,
+  };
 
   const evaluated = grants ? evaluate(catalog, facts, available, grants) : undefined;
   const earned = evaluated?.filter((e) => e.status.kind === "earned") ?? [];
@@ -193,9 +196,9 @@ export async function loadStudentHome(userId: string, now: Date): Promise<Studen
   const today = todayLocal(now);
   const [facts, stored] = await Promise.all([loadStudentFacts(userId), listGrants(userId)]);
   let grants = stored;
-  if (stored && facts.usage) {
-    const available = new Set<FactGroup>(["usage"]);
-    const pending = newGrants(evaluate(STUDENT_CATALOG, facts, available, stored));
+  if (stored) {
+    // Rules whose groups failed are `unavailable`, never granted from zeros.
+    const pending = newGrants(evaluate(STUDENT_CATALOG, facts, availableGroups(facts), stored));
     if (pending.length > 0) grants = await insertGrants(userId, pending, stored);
   }
   return buildStudentHome(facts, grants, today);

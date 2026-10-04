@@ -109,6 +109,11 @@ test.describe("as a brand-new student", () => {
       await expect(page.getByText("Badges you're close to will show up here.")).toBeVisible();
       await expect(page.getByText("Activities you open show up here")).toBeVisible();
       await expect(page.getByText("0 earned")).toBeVisible();
+      // Coding is listed like every family; the Secret column only says more exist.
+      await expect(page.locator('[data-family="coding"]')).toContainText("Connected");
+      await expect(page.locator('[data-family="secret"]')).toHaveText(
+        "SecretSecret badges show up here once you earn them.",
+      );
       expect(errors).toEqual([]);
     } finally {
       await deletePrincipal(principal.id);

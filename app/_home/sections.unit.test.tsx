@@ -41,8 +41,11 @@ const TODAY = "2026-10-04";
 const day = (date: string, extra: Partial<UsageDay> = {}): UsageDay => ({
   date,
   activeHours: 2,
+  userMessages: 0,
   quizAnswers: 0,
   writingSaves: 0,
+  codingRequests: 0,
+  codingHours: 0,
   ...extra,
 });
 
@@ -70,8 +73,8 @@ const GRANTS: Grant[] = [
 /** The page data; pass `undefined` explicitly for a failed group. */
 const home = (...args: [usage: UsageDay[] | undefined, grants: Grant[] | undefined] | []) =>
   args.length === 0
-    ? buildStudentHome({ usage: USAGE }, GRANTS, TODAY)
-    : buildStudentHome({ usage: args[0] }, args[1], TODAY);
+    ? buildStudentHome({ usage: USAGE, keys: [] }, GRANTS, TODAY)
+    : buildStudentHome({ usage: args[0], keys: [] }, args[1], TODAY);
 
 async function render(
   Section: (props: { userId: string }) => Promise<React.ReactElement | null>,
@@ -154,7 +157,7 @@ describe("ProgressSection", () => {
 
   it("a student exactly on a level boundary starts the new level at zero", async () => {
     // 10 active days, no grants → 100 XP = the start of level 2.
-    const data = buildStudentHome({ usage: daysUntil("2026-10-01", 10) }, [], TODAY);
+    const data = buildStudentHome({ usage: daysUntil("2026-10-01", 10), keys: [] }, [], TODAY);
     data.level = { level: 2, xp: 100, levelStart: 100, nextLevelStart: 300 };
     const html = await render(ProgressSection, data);
     expect(html).toMatch(/>Level<\/span><b[^>]*>2</);
@@ -201,7 +204,7 @@ describe("CalendarSection", () => {
   });
 
   it("marks the days after today as future", async () => {
-    const data = buildStudentHome({ usage: USAGE }, GRANTS, "2026-10-01");
+    const data = buildStudentHome({ usage: USAGE, keys: [] }, GRANTS, "2026-10-01");
     const html = await render(CalendarSection, data);
     expect(html.match(/data-level="future"/g)).toHaveLength(3);
   });
@@ -283,6 +286,10 @@ describe("BadgesSection", () => {
       "quiz-answers-10",
       "quiz-answers-100",
       "writing-saves-5",
+      "coding-connected",
+      "coding-first-request",
+      "coding-days-1",
+      "coding-toolbelt",
     ]);
     const more = [...html.matchAll(/<li data-badge="([^"]+)" class="[^"]*hidden/g)].map(
       (m) => m[1],
@@ -294,9 +301,31 @@ describe("BadgesSection", () => {
       "quiz-answers-500",
       "writing-saves-25",
       "writing-saves-100",
+      "coding-days-5",
+      "coding-days-20",
     ]);
     expect(html).toContain(`Show all badges (${more.length} more)`);
     expect(html).toContain('aria-controls="home-badge-families"');
+  });
+
+  it("an unearned secret badge appears nowhere; the Secret column only says more exist", async () => {
+    const html = await render(BadgesSection, home());
+    for (const leak of ["Full Stack", "full-stack", "In the Zone", "in-the-zone", "3 different"]) {
+      expect(html).not.toContain(leak);
+    }
+    expect(html).toMatch(
+      /data-family="secret">.*Secret<\/h3><p[^>]*>.*Secret badges show up here once you earn them\.<\/p>/,
+    );
+  });
+
+  it("an earned secret badge is listed in the Secret column, dated", async () => {
+    const html = await render(
+      BadgesSection,
+      home(USAGE, [...GRANTS, { id: "in-the-zone", qualifiedOn: "2026-09-30", seenAt: null }]),
+    );
+    expect(html).toMatch(/data-family="secret">.*data-badge="in-the-zone".*In the Zone/);
+    expect(html).toContain("Earned 30 Sep · +50 XP");
+    expect(html).not.toContain("Full Stack");
   });
 
   it("marks new badges and dates earned ones", async () => {

@@ -242,6 +242,7 @@ describe("POST /api/coding/v1/chat/completions — usage metering", () => {
       inputCached: 30,
       output: 20,
       toolCalls: 0,
+      codingRequests: 1,
     });
   });
 
@@ -264,7 +265,13 @@ describe("POST /api/coding/v1/chat/completions — usage metering", () => {
 
     await vi.waitFor(() => expect(recordLlmUsage).toHaveBeenCalledTimes(1));
     expect(recordLlmUsage).toHaveBeenCalledWith(
-      expect.objectContaining({ code: CODE, module: "coding", userId: USER_ID, output: 7 }),
+      expect.objectContaining({
+        code: CODE,
+        module: "coding",
+        userId: USER_ID,
+        output: 7,
+        codingRequests: 1,
+      }),
     );
   });
 });
