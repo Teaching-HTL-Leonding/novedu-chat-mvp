@@ -225,6 +225,11 @@ export const reports = pgTable(
     index("ix_novedu_reports_code").on(t.code),
     // … and filters open vs. resolved (open rows are the working set).
     index("ix_novedu_reports_resolved_at").on(t.resolvedAt),
+    // A reporter's own resolved reports — the start page's Bug Hunter badge
+    // (docs/home.md). Partial: only resolved rows are ever read by user.
+    index("ix_novedu_reports_user_id_resolved")
+      .on(t.userId)
+      .where(sql`${t.resolvedAt} IS NOT NULL`),
   ],
 );
 
@@ -477,3 +482,51 @@ export const achievements = pgTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.achievementId] })],
 );
+
+// Saved quiz results (docs/home.md → Saving a quiz result): one row per finished
+// attempt a student CHOSE to save — the slot counts only, never an answer. The
+// THIRD sanctioned user↔code link beside `novedu_reports` and
+// `novedu_coding_keys`: written only by an explicit student action behind an
+// on-page notice, even under an anonymous code, and read ONLY for the student
+// themselves — `lib/quiz-result-store.ts` is the only access and has no teacher
+// reader (guard-tested). `id` is the attempt's uuid, minted in the browser when
+// the attempt starts, so a repeated save of one attempt is a no-op. Per
+// `(user, code)` the store keeps the newest 50 attempts plus the best one. NO
+// foreign keys: rows are dropped with their code (lib/code-stats-store.ts).
+export const quizResults = pgTable(
+  "novedu_quiz_results",
+  {
+    id: varchar("id", { length: 36 }).notNull(),
+    userId: varchar("user_id", { length: 64 }).notNull(),
+    code: varchar("code", { length: 32 }).notNull(),
+    correct: integer("correct").notNull(),
+    partial: integer("partial").notNull(),
+    incorrect: integer("incorrect").notNull(),
+    unanswered: integer("unanswered").notNull(),
+    // The full attempt length (the sum of the four counts).
+    total: integer("total").notNull(),
+    // Server time of the save.
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // One user's uuid can never block another user's save.
+    primaryKey({ columns: [t.userId, t.id] }),
+    // The per-quiz reads and the prune. "Newest" orders by `(finished_at DESC,
+    // id DESC)`, which a backward scan of this ascending index serves exactly
+    // (an index declared DESC would be NULLS LAST and match no plain DESC).
+    index("ix_novedu_quiz_results_user_code_finished").on(t.userId, t.code, t.finishedAt, t.id),
+    // The code-delete path.
+    index("ix_novedu_quiz_results_code").on(t.code),
+  ],
+);
+
+// Per-user preferences (the Settings page, docs/home.md). A table of its own
+// because `novedu_user` is owned by better-auth. A missing row means every
+// default; `lib/user-settings-store.ts` is the only access.
+export const userSettings = pgTable("novedu_user_settings", {
+  userId: varchar("user_id", { length: 64 }).primaryKey(),
+  // The Finish page's "Always": save every quiz result without asking.
+  saveQuizResults: boolean("save_quiz_results").notNull().default(false),
+});

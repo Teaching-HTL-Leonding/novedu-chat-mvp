@@ -28,6 +28,9 @@ const askJev = vi.hoisted(() => vi.fn());
 const immediateFeedbackConfigured = vi.hoisted(() => vi.fn());
 const emitEvent = vi.hoisted(() => vi.fn());
 const recordError = vi.hoisted(() => vi.fn());
+// The result-save seams: the store and the start page's cache invalidation.
+const storeQuizResult = vi.hoisted(() => vi.fn());
+const invalidateHome = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/session", () => ({ getSession }));
 vi.mock("@/lib/code-store", async (importOriginal) => ({
@@ -42,6 +45,10 @@ vi.mock("@/app/mastra", () => ({
 }));
 vi.mock("@/lib/usage-store", () => ({ recordQuizAnswer: vi.fn() }));
 vi.mock("@/lib/llm/jev-client", () => ({ askJev }));
+vi.mock("@/lib/quiz-result-store", () => ({ saveQuizResult: storeQuizResult }));
+vi.mock("@/lib/home-data", () => ({ invalidateHome }));
+const revalidatePath = vi.hoisted(() => vi.fn());
+vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/quiz-immediate-feedback", () => ({ immediateFeedbackConfigured }));
 // Also reached by lib/quiz-truncation-retry.ts (emitEvent) — both exports stay here.
 vi.mock("@/lib/telemetry", () => ({ emitEvent, recordError }));
@@ -63,7 +70,7 @@ import {
   QUIZ_EVAL_MODEL,
   QUIZ_EVAL_PROVIDER,
 } from "@/app/mastra/quiz-agents";
-import { precheckAnswer, startDiscussion, submitAnswer } from "@/lib/quiz-actions";
+import { precheckAnswer, saveQuizResult, startDiscussion, submitAnswer } from "@/lib/quiz-actions";
 
 const entry = {
   code: "a1b2c3d4e5",
@@ -122,6 +129,7 @@ beforeEach(() => {
   generate.mockResolvedValue({ object: { result: "correct", feedback: "Well done." } });
   immediateFeedbackConfigured.mockReturnValue(true);
   askJev.mockResolvedValue(jevAnswer("partial", 0.8));
+  storeQuizResult.mockResolvedValue("saved");
 });
 
 describe("submitAnswer LLM selection", () => {
@@ -586,5 +594,128 @@ describe("quiz-verify stays free of 'use server'", () => {
     // all — a `"use server"` directive in that file would publish it.
     const source = readFileSync(join(__dirname, "quiz-verify.ts"), "utf8");
     expect(source).not.toMatch(/^\s*["']use server["']/m);
+  });
+});
+
+describe("saveQuizResult", () => {
+  const ATTEMPT = "0F8FAD5B-D9CB-469F-A165-70867728950E";
+  // The mocked quiz has one question and no question_count: an attempt of 1.
+  const valid = {
+    code: entry.code,
+    attemptId: ATTEMPT,
+    counts: { correct: 1, partial: 0, incorrect: 0, unanswered: 0 },
+    total: 1,
+    mode: "this-time" as const,
+  };
+
+  it("saves the session user's attempt for the verified code and invalidates their home", async () => {
+    await expect(saveQuizResult(valid)).resolves.toEqual({ ok: true, saved: true });
+    expect(storeQuizResult).toHaveBeenCalledWith(
+      "student-1",
+      {
+        id: ATTEMPT.toLowerCase(),
+        code: entry.code,
+        correct: 1,
+        partial: 0,
+        incorrect: 0,
+        unanswered: 0,
+        total: 1,
+      },
+      "this-time",
+    );
+    expect(invalidateHome).toHaveBeenCalledWith("student-1");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
+    // Nothing about the quiz comes back.
+    expect(JSON.stringify(await saveQuizResult(valid))).not.toContain("evaluation");
+  });
+
+  it.each(["this-time", "always", "automatic"] as const)(
+    "passes mode %s to the store",
+    async (mode) => {
+      await saveQuizResult({ ...valid, mode });
+      expect(storeQuizResult).toHaveBeenCalledWith("student-1", expect.anything(), mode);
+    },
+  );
+
+  it("an automatic save with the setting off is not an error: saved = false, nothing invalidated", async () => {
+    storeQuizResult.mockResolvedValue("not-saved");
+    await expect(saveQuizResult({ ...valid, mode: "automatic" })).resolves.toEqual({
+      ok: true,
+      saved: false,
+    });
+    expect(invalidateHome).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an attempt id that is not a uuid", { attemptId: "attempt-1" }],
+    ["an unknown mode", { mode: "forever" }],
+    ["a negative count", { counts: { correct: 2, partial: 0, incorrect: -1, unanswered: 0 } }],
+    ["a fractional count", { counts: { correct: 0.5, partial: 0, incorrect: 0.5, unanswered: 0 } }],
+    [
+      "a count beyond int4",
+      { counts: { correct: 2 ** 31, partial: 0, incorrect: 0, unanswered: 0 }, total: 2 ** 31 },
+    ],
+    [
+      "a count that is a string",
+      { counts: { correct: "1", partial: 0, incorrect: 0, unanswered: 0 } },
+    ],
+    ["counts that don't sum to total", { total: 2 }],
+    ["nothing answered", { counts: { correct: 0, partial: 0, incorrect: 0, unanswered: 1 } }],
+    ["missing counts", { counts: undefined }],
+  ])("rejects %s — before any I/O", async (_name, override) => {
+    const result = await saveQuizResult({ ...valid, ...override } as typeof valid);
+    expect(result.ok).toBe(false);
+    expect(getSession).not.toHaveBeenCalled();
+    expect(storeQuizResult).not.toHaveBeenCalled();
+  });
+
+  it("rejects a total above the attempt length the server derives from the re-loaded quiz", async () => {
+    const result = await saveQuizResult({
+      ...valid,
+      counts: { correct: 1, partial: 0, incorrect: 0, unanswered: 1 },
+      total: 2,
+    });
+    expect(result).toEqual({ ok: false, message: expect.stringContaining("quiz changed") });
+    expect(storeQuizResult).not.toHaveBeenCalled();
+  });
+
+  it("accepts a total up to the authored question_count (drill mode)", async () => {
+    loadQuiz.mockResolvedValue({ ok: true, quiz: { ...quiz, questionCount: 3 } });
+    await expect(
+      saveQuizResult({
+        ...valid,
+        counts: { correct: 1, partial: 1, incorrect: 0, unanswered: 1 },
+        total: 3,
+      }),
+    ).resolves.toEqual({ ok: true, saved: true });
+  });
+
+  it.each([
+    ["no session", () => getSession.mockResolvedValue(null)],
+    ["an unknown code", () => checkCode.mockResolvedValue({ ok: false, reason: "unknown-code" })],
+    ["an expired code", () => checkCode.mockResolvedValue({ ok: false, reason: "expired" })],
+    [
+      "a code of another module",
+      () => checkCode.mockResolvedValue({ ok: true, entry: { ...entry, module: "tutor" } }),
+    ],
+  ])("rejects %s without touching the store", async (_name, arrange) => {
+    arrange();
+    const result = await saveQuizResult(valid);
+    expect(result.ok).toBe(false);
+    expect(storeQuizResult).not.toHaveBeenCalled();
+  });
+
+  it("reports a deleted code and a store failure as messages, never throws", async () => {
+    storeQuizResult.mockResolvedValue("code-gone");
+    await expect(saveQuizResult(valid)).resolves.toEqual({
+      ok: false,
+      message: expect.stringContaining("no longer exists"),
+    });
+    storeQuizResult.mockResolvedValue(undefined);
+    await expect(saveQuizResult(valid)).resolves.toEqual({
+      ok: false,
+      message: expect.stringContaining("could not be saved"),
+    });
+    expect(invalidateHome).not.toHaveBeenCalled();
   });
 });

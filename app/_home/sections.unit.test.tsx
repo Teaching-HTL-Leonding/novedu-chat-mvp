@@ -28,6 +28,7 @@ vi.mock("next/link", () => ({
 
 import type { UsageDay } from "@/lib/achievements/derive";
 import type { Grant } from "@/lib/achievements/evaluate";
+import type { QuizAttempt } from "@/lib/achievements/quiz";
 import { buildStudentHome, type StudentHome } from "@/lib/home-data";
 import { AlmostThereSection } from "./almost-there-section";
 import { BadgesSection } from "./badges-section";
@@ -35,6 +36,7 @@ import { CalendarSection } from "./calendar-section";
 import { NewsStrip } from "./news-strip";
 import { ProgressSection } from "./progress-section";
 import { RecentList } from "./recent-list";
+import { RefreshSection } from "./refresh-section";
 
 const TODAY = "2026-10-04";
 
@@ -73,8 +75,8 @@ const GRANTS: Grant[] = [
 /** The page data; pass `undefined` explicitly for a failed group. */
 const home = (...args: [usage: UsageDay[] | undefined, grants: Grant[] | undefined] | []) =>
   args.length === 0
-    ? buildStudentHome({ usage: USAGE, keys: [] }, GRANTS, TODAY)
-    : buildStudentHome({ usage: args[0], keys: [] }, args[1], TODAY);
+    ? buildStudentHome({ usage: USAGE, keys: [], quiz: [], reports: [] }, GRANTS, TODAY)
+    : buildStudentHome({ usage: args[0], keys: [], quiz: [], reports: [] }, args[1], TODAY);
 
 async function render(
   Section: (props: { userId: string }) => Promise<React.ReactElement | null>,
@@ -157,7 +159,11 @@ describe("ProgressSection", () => {
 
   it("a student exactly on a level boundary starts the new level at zero", async () => {
     // 10 active days, no grants → 100 XP = the start of level 2.
-    const data = buildStudentHome({ usage: daysUntil("2026-10-01", 10), keys: [] }, [], TODAY);
+    const data = buildStudentHome(
+      { usage: daysUntil("2026-10-01", 10), keys: [], quiz: [], reports: [] },
+      [],
+      TODAY,
+    );
     data.level = { level: 2, xp: 100, levelStart: 100, nextLevelStart: 300 };
     const html = await render(ProgressSection, data);
     expect(html).toMatch(/>Level<\/span><b[^>]*>2</);
@@ -204,7 +210,11 @@ describe("CalendarSection", () => {
   });
 
   it("marks the days after today as future", async () => {
-    const data = buildStudentHome({ usage: USAGE, keys: [] }, GRANTS, "2026-10-01");
+    const data = buildStudentHome(
+      { usage: USAGE, keys: [], quiz: [], reports: [] },
+      GRANTS,
+      "2026-10-01",
+    );
     const html = await render(CalendarSection, data);
     expect(html.match(/data-level="future"/g)).toHaveLength(3);
   });
@@ -268,6 +278,65 @@ describe("AlmostThereSection", () => {
   });
 });
 
+describe("RefreshSection", () => {
+  let seq = 0;
+  const saved = (code: string, date: string, correct: number, total: number, note = "") => {
+    seq += 1;
+    return {
+      id: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`,
+      code,
+      correct,
+      partial: 0,
+      incorrect: total - correct,
+      unanswered: 0,
+      total,
+      finishedAt: new Date(`${date}T10:00:00Z`),
+      finishedOn: date,
+      note,
+      open: true,
+    } satisfies QuizAttempt;
+  };
+  const withQuiz = (quiz: QuizAttempt[] | undefined) =>
+    buildStudentHome({ usage: USAGE, keys: [], quiz, reports: [] }, GRANTS, TODAY);
+
+  it("lists the nudges with their medal, last and best score, and a Retake link", async () => {
+    const html = await render(
+      RefreshSection,
+      withQuiz([
+        saved("a1b2c3d4e5", "2026-09-18", 4, 5, "Linked lists"),
+        saved("a1b2c3d4e5", "2026-09-25", 3, 5, "Linked lists"),
+        saved("f6g7h8i9j0", "2026-10-03", 5, 5, "Recursion"), // gold, yesterday: no nudge
+      ]),
+    );
+    expect(html).toContain("Time to refresh");
+    expect(html).toContain("Your practice results, not grades. Gold = every answer fully correct.");
+    expect(html).toContain("Linked lists");
+    expect(html).toContain("silver medal. ");
+    expect(html).toContain("Last 60 %, 9 days ago · best 80 %");
+    expect(html).toContain('href="/a1b2c3d4e5"');
+    expect(html).toContain('aria-label="Retake Linked lists"');
+    expect(html).not.toContain("Retake Recursion");
+    expect(html).toMatch(/1 gold.*1 silver.*0 bronze/);
+  });
+
+  it("explains how to start when nothing is saved, and says when nothing is due", async () => {
+    const empty = await render(RefreshSection, withQuiz([]));
+    expect(empty).toContain("Save a result on a quiz");
+    expect(empty).not.toContain("0 gold");
+    const fresh = await render(RefreshSection, withQuiz([saved("q1q1q1q1q1", "2026-10-03", 1, 2)]));
+    expect(fresh).toContain("Nothing to refresh right now.");
+    expect(fresh).toMatch(/0 gold.*0 silver.*1 bronze/);
+  });
+
+  it("a failed quiz group shows 'unavailable', never zeros, while Almost there renders", async () => {
+    const data = withQuiz(undefined);
+    const html = await render(RefreshSection, data);
+    expect(html).toContain(UNAVAILABLE);
+    expect(html).not.toContain("0 gold");
+    expect(await render(AlmostThereSection, data)).not.toContain(UNAVAILABLE);
+  });
+});
+
 describe("BadgesSection", () => {
   it("shows earned badges plus the next tier per ladder, the rest behind 'Show all'", async () => {
     const html = await render(BadgesSection, home());
@@ -286,9 +355,13 @@ describe("BadgesSection", () => {
       "quiz-answers-10",
       "quiz-answers-100",
       "writing-saves-5",
+      "quiz-first-result",
+      "quiz-golds-1",
+      "quiz-improved",
+      "quiz-refreshed",
       "coding-connected",
       "coding-first-request",
-      "coding-days-1",
+      "coding-days-5",
       "coding-toolbelt",
     ]);
     const more = [...html.matchAll(/<li data-badge="([^"]+)" class="[^"]*hidden/g)].map(
@@ -301,7 +374,8 @@ describe("BadgesSection", () => {
       "quiz-answers-500",
       "writing-saves-25",
       "writing-saves-100",
-      "coding-days-5",
+      "quiz-golds-3",
+      "quiz-golds-10",
       "coding-days-20",
     ]);
     expect(html).toContain(`Show all badges (${more.length} more)`);
@@ -310,7 +384,16 @@ describe("BadgesSection", () => {
 
   it("an unearned secret badge appears nowhere; the Secret column only says more exist", async () => {
     const html = await render(BadgesSection, home());
-    for (const leak of ["Full Stack", "full-stack", "In the Zone", "in-the-zone", "3 different"]) {
+    for (const leak of [
+      "Full Stack",
+      "full-stack",
+      "In the Zone",
+      "in-the-zone",
+      "3 different hours",
+      "Bug Hunter",
+      "bug-hunter",
+      "you reported",
+    ]) {
       expect(html).not.toContain(leak);
     }
     expect(html).toMatch(

@@ -21,6 +21,10 @@ vi.mock("./_home/calendar-section", () => ({
   CalendarSection: () => <div data-testid="calendar" />,
   CalendarSkeleton: () => null,
 }));
+vi.mock("./_home/refresh-section", () => ({
+  RefreshSection: () => <div data-testid="refresh" />,
+  RefreshSkeleton: () => null,
+}));
 vi.mock("./_home/almost-there-section", () => ({
   AlmostThereSection: () => <div data-testid="almost" />,
   AlmostThereSkeleton: () => null,
@@ -37,7 +41,7 @@ const order = (html: string) => [...html.matchAll(/data-testid="([^"]+)"/g)].map
 beforeEach(() => vi.clearAllMocks());
 
 describe("start page", () => {
-  it("a student gets Continue first, then the strip, progress, calendar, Almost there and badges", async () => {
+  it("a student gets Continue first, then the strip, progress, calendar, Time to refresh, Almost there and badges", async () => {
     getSession.mockResolvedValue({ user: { id: "s1", name: "Lena Gruber", isTeacher: false } });
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("Welcome back, Lena");
@@ -47,6 +51,7 @@ describe("start page", () => {
       "news",
       "progress",
       "calendar",
+      "refresh",
       "almost",
       "badges",
     ]);
@@ -62,6 +67,7 @@ describe("start page", () => {
       "news",
       "progress",
       "calendar",
+      "refresh",
       "almost",
       "badges",
     ]);

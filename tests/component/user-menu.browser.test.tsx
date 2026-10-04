@@ -79,3 +79,14 @@ test("a real student gets neither badge, pill, nor toggle", async () => {
   expect(screen.getByRole("menuitem", { name: "View as student" }).query()).toBeNull();
   await expect.element(screen.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
 });
+
+test("every signed-in user reaches Settings from the menu", async () => {
+  for (const user of [TEACHER, { name: "Sam Student", isTeacher: false }]) {
+    const screen = await render(<UserMenu user={user} />);
+    await screen.getByRole("button", { name: new RegExp(user.name) }).click();
+    await expect
+      .element(screen.getByRole("menuitem", { name: "Settings" }))
+      .toHaveAttribute("href", "/settings");
+    await screen.unmount();
+  }
+});

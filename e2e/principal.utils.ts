@@ -86,8 +86,11 @@ export async function signInFreshStudent(
   return principal;
 }
 
-/** Removes a fresh principal's auth rows. */
+/** Removes a fresh principal's auth rows and the per-user rows its visits may have written. */
 export async function deletePrincipal(id: string): Promise<void> {
+  await query(`DELETE FROM novedu_user_settings WHERE user_id = $1`, [id]);
+  await query(`DELETE FROM novedu_quiz_results WHERE user_id = $1`, [id]);
+  await query(`DELETE FROM novedu_achievements WHERE user_id = $1`, [id]);
   await query(`DELETE FROM novedu_session WHERE user_id = $1`, [id]);
   await query(`DELETE FROM novedu_user WHERE id = $1`, [id]);
 }

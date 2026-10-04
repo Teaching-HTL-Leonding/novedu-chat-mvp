@@ -56,7 +56,7 @@ _Turning an activity into a code and handing it to a class._
 | 01 | Creating a shared code | `docs/codes.md` (behavior), `cli/README.md` (`codes create`) |
 | 02 | Viewing code usage | `docs/dashboard.md` (behavior), `docs/codes.md` |
 | 03 | Time-limiting a code | `docs/codes.md` (window), `cli/README.md` (`--start`/`--end`) |
-| 04 | Anonymous vs. per-user | `docs/codes.md` (anonymity), `docs/writing.md` (writing default) |
+| 04 | Anonymous vs. per-user | `docs/codes.md` (anonymity), `docs/writing.md` (writing default), `docs/home.md` (saved quiz results) |
 | 05 | Deleting a code | `docs/codes.md`, `docs/usage-metering.md` (behavior: deletion removes stats) |
 | 06 | Connecting a coding activity to an outside tool | `docs/coding.md` (behavior), `activities/coding/README.md` |
 | 07 | Student reports | `docs/reports.md` (behavior), `docs/codes.md` (anonymity) |

@@ -4,7 +4,7 @@ description: What you can see in each mode, the default for each activity kind, 
 sidebar:
   order: 4
 audience: teacher
-keywords: [anonymous, per-user, attribution, privacy, who did what, student names, anonymous flag]
+keywords: [anonymous, per-user, attribution, privacy, who did what, student names, anonymous flag, saved quiz results, medals]
 related:
   - 30-sharing-activities/01-creating-codes
   - 30-sharing-activities/02-viewing-usage
@@ -58,3 +58,10 @@ When you create a code, the activity's current mode is fixed onto that code and 
 ## Anonymous writing turns off saving
 
 A writing activity set to `anonymous: true` has no author to save a text under, so saving is disabled: students see no **Save** button and their draft is gone when they leave the page. The coach chat and the formatted preview still work, so the activity remains useful as a pure practice space. Keep writing per-user whenever you plan to review or grade the texts.
+
+## What students may save for themselves
+
+At the end of a quiz, a student can choose to save the result to their personal statistics: the number of correct, partly correct and wrong answers, never the answers themselves. They answer **No**, **This time** or **Always**, and can change that choice later under **Settings** in their user menu. A saved result is stored with the student's account even in an anonymous quiz, because it belongs to them: it turns into medals, retake reminders and badges on their own start page.
+
+Only the student sees their saved results. You cannot see them, not even as an aggregate, and they do not change what an anonymous quiz shows you. Students can delete their saved results under **Settings** at any time, and deleting a code removes every result saved for it.
+

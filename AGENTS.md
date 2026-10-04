@@ -66,7 +66,7 @@ Read before touching: `app/[code]/**`, `app/codes/**`, `app/api/copilotkit/**`, 
 - `checkCode()` gates THREE sites that must stay in sync: the `/[code]` dispatcher, the CopilotKit route, and the public coding route.
 - Fixed layering: **FileKind** → validator (`lib/file-validators.ts`) → **CodeModule** descriptor; adding a module touches only the documented seams.
 - Editing a code changes only note + window + the LLM override pair — never the module, `file_url`, or the frozen `anonymous`.
-- `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities. TWO sanctioned exceptions: `novedu_reports` stores the reporter's user id even on anonymous codes behind an explicit on-form notice (`docs/reports.md`), and `novedu_coding_keys` stores the requester's user id behind an explicit on-page notice (`docs/coding.md`).
+- `novedu_user_chats` is the only user↔chat link, written only for non-anonymous activities. THREE sanctioned exceptions: `novedu_reports` stores the reporter's user id even on anonymous codes behind an explicit on-form notice (`docs/reports.md`), `novedu_coding_keys` stores the requester's user id behind an explicit on-page notice (`docs/coding.md`), and `novedu_quiz_results` stores a student's saved quiz counts only on their explicit Finish-page choice behind an on-page notice (`docs/home.md`). The quiz-result store has NO teacher reader — `lib/quiz-result-store.ts` is its only access and its importers are guard-tested.
 - `precheckAnswer` (the quiz pre-check) re-derives the env gate and the quiz's `immediate_feedback` on every call, returns only a hint enum, and `evaluation` still never leaves the server; Jev is a connectivity site behind `lib/llm/jev-client.ts`, not an `LlmProvider`.
 
 ### Reports → `docs/reports.md`
@@ -183,13 +183,14 @@ Read before touching: `app/usage/**`, `lib/usage-stats-store.ts`, `lib/usage-ran
 
 - Teacher-only, server-first read surface over `usage_by_code` — no `/api/usage/*` route; all windows UTC.
 
-### Start page & achievements → `docs/home.md`
+### Start page, achievements, saved quiz results & Settings → `docs/home.md`
 
-Read before touching: `app/page.tsx`, `app/_home/**`, `lib/achievements/**`, `lib/home-data.ts`, `lib/home-cache.ts`, `lib/student-facts-store.ts`, `lib/achievement-store.ts`, `lib/achievement-actions.ts`, `novedu_achievements`.
+Read before touching: `app/page.tsx`, `app/_home/**`, `app/settings/**`, `app/[code]/_quiz/save-result.tsx`, `lib/achievements/**`, `lib/home-data.ts`, `lib/home-cache.ts`, `lib/student-facts-store.ts`, `lib/achievement-store.ts`, `lib/achievement-actions.ts`, `lib/quiz-result-store.ts`, `lib/user-settings-*.ts`, `novedu_achievements`, `novedu_quiz_results`, `novedu_user_settings`.
 
 - Progress (XP, streak, calendar, badges) is served ONLY to the session user about themselves — no teacher view, no comparison; every statement is keyed by the session user id.
 - `lib/achievements/catalog.ts` is server-only (guard-tested): hidden badges reach page data only once earned. Achievement ids never contain a code.
 - A failed fact group is never read as zero; the page renders earned state only from stored grants, and new grants are inserted before the load returns.
+- Saved quiz results are written only by `saveQuizResult` on the student's explicit choice (or their own "Always" setting), in one transaction under a `(user, code)` advisory lock with the code row `FOR SHARE`; the code delete locks its rows `FOR UPDATE` first. Settings act only on the session user's own row.
 
 ### LLM diagnostics → `docs/diagnostics.md`
 

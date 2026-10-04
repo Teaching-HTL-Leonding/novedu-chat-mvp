@@ -29,6 +29,13 @@ colors:
   fam-practice: "#2a78d6"
   fam-coding: "#4a3aa7"
   fam-secret: "#0f172a"
+  fam-quiz: "#e3a21a"
+  gold: "#e3a21a"
+  gold-ink: "#3d2a00"
+  silver: "#aab4c3"
+  silver-ink: "#1e2633"
+  bronze: "#c07a45"
+  bronze-ink: "#2e1606"
   chart-1: "#2a78d6"
   chart-2: "#1baf7a"
   chart-3: "#eda100"
@@ -226,7 +233,8 @@ A neutral ink-and-paper base carries the whole app; saturated colour enters only
 
 ### Secondary
 - **Amber of the New** (`brand-amber`, with `amber-wash`, `amber-line`, `amber-halo`, `amber-ink`): reserved for "new since your last visit". The ring around a new badge disc or calendar pin, the dot and wash of the new-badges strip, and the small "New" chip next to a badge name.
-- **Badge family colours** (`fam-rhythm` Rhythm Green, `fam-practice` Practice Blue, `fam-coding` Coding Violet, `fam-secret` Secret Slate): one solid colour per badge family, filling earned badge discs, calendar pins, Almost-there meters and the weekly-streak squares (Rhythm Green). Glyphs on them are white, except on Secret Slate, where the glyph is `brand-amber`: a secret badge is the one earned surprise on the page.
+- **Badge family colours** (`fam-rhythm` Rhythm Green, `fam-practice` Practice Blue, `fam-coding` Coding Violet, `fam-secret` Secret Slate): one solid colour per badge family, filling earned badge discs, calendar pins, Almost-there meters and the weekly-streak squares (Rhythm Green). Glyphs on them are white, except on Secret Slate, where the glyph is `brand-amber`: a secret badge is the one earned surprise on the page. `fam-quiz` (Quiz Gold) shares the gold medal's colour and is light, so its glyph is the dark `gold-ink`.
+- **Medal colours** (`gold`, `silver`, `bronze`, each with its dark `-ink` glyph colour): the "Time to refresh" medal discs and the medal count dots. A quiz without a medal gets the outlined locked disc. Medals are practice results, never grades, and the section says so.
 
 ### Tertiary
 - **Calendar heat ramp** (`heat-0` to `heat-3`): day intensity for 0, 1, 2 to 3, and 4 or more active hours, stepping from cool slate to Novedu Deep Blue. `heat-0` doubles as the empty track of every meter and the inactive streak square.
@@ -362,7 +370,7 @@ Feather-style inline SVGs: 24px viewBox, 2px round-capped stroke in `currentColo
 - **Do** keep controls and chips fully round and 36px high (32px small), with the 2px `ring` focus outline offset 2px.
 - **Do** set changing numbers in tabular figures, and use the 12px uppercase META_LABEL to name a value or a group.
 - **Do** reserve `brand-amber` and its tints for "new since your last visit", shown as a ring, a dot, a wash or a "New" chip — the one other use is the glyph on a secret badge's slate disc.
-- **Do** colour badge discs, pins and their meters by family token (`fam-rhythm`, `fam-practice`, `fam-coding`, `fam-secret`), and calendar intensity by the `heat-0` to `heat-3` ramp.
+- **Do** colour badge discs, pins and their meters by family token (`fam-rhythm`, `fam-practice`, `fam-quiz`, `fam-coding`, `fam-secret`), and calendar intensity by the `heat-0` to `heat-3` ramp.
 - **Do** separate regions inside a card with hairlines, and stack start-page sections as full-width cards 16px apart.
 - **Do** promote any look used in two places into `components/ui/` or the owning shared recipe (`app/_home/home-ui.ts` for the start page), as docs/styling.md requires.
 

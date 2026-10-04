@@ -8,11 +8,12 @@ import { ContinueSection } from "./_home/continue-section";
 import { NewsStrip } from "./_home/news-strip";
 import { ProgressSection, ProgressSkeleton } from "./_home/progress-section";
 import { RecentList, RecentListSkeleton } from "./_home/recent-list";
+import { RefreshSection, RefreshSkeleton } from "./_home/refresh-section";
 
 // The start page (docs/home.md). Signed in, every user — students, and teachers
 // for now (the teacher dashboard comes later) — gets the student home built
 // from their OWN usage: Continue first, then the new-badges strip, progress,
-// the season calendar, Almost there and the badges. The shell flushes at once;
+// the season calendar, Time to refresh beside Almost there, and the badges. The shell flushes at once;
 // every data section streams behind its own Suspense boundary.
 //
 // Without a resolvable session (the proxy only checks that a cookie exists) the
@@ -55,9 +56,14 @@ export default async function Home() {
         <Suspense fallback={<CalendarSkeleton />}>
           <CalendarSection userId={userId} />
         </Suspense>
-        <Suspense fallback={<AlmostThereSkeleton />}>
-          <AlmostThereSection userId={userId} />
-        </Suspense>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <Suspense fallback={<RefreshSkeleton />}>
+            <RefreshSection userId={userId} />
+          </Suspense>
+          <Suspense fallback={<AlmostThereSkeleton />}>
+            <AlmostThereSection userId={userId} />
+          </Suspense>
+        </div>
         <Suspense fallback={<BadgesSkeleton />}>
           <BadgesSection userId={userId} />
         </Suspense>

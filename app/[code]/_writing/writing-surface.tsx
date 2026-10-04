@@ -3,6 +3,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { PAGE_CANVAS } from "@/components/page-main";
 import { Button } from "@/components/ui/button";
+import { cardVariants } from "@/components/ui/card";
 import { DIALOG_BODY, DialogShell } from "@/components/ui/dialog-shell";
 import { FieldError } from "@/components/ui/field";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
@@ -295,7 +296,8 @@ export function WritingSurface({
             <aside
               className={cn(
                 PANE_BASE,
-                "flex-[var(--chat-grow,1)_1_0] overflow-hidden rounded-xl border border-foreground/15 bg-card",
+                cardVariants(),
+                "flex-[var(--chat-grow,1)_1_0] overflow-hidden",
               )}
             >
               <WritingChat

@@ -5,10 +5,11 @@
 //
 // - Completed entries and in-flight loads live in SEPARATE maps; a promise's
 //   cleanup removes its in-flight entry only while it is still that promise.
-// - Every key has a generation. Invalidation bumps it and drops both entries; a
-//   load publishes its result only if the generation it started under is
-//   unchanged, so a caller after an invalidation never receives a load that
-//   started before the write.
+// - Invalidation drops both entries. A load publishes its result only while its
+//   promise is still the key's in-flight entry — an invalidation (or a newer
+//   load) replaced it otherwise — so a caller after an invalidation never
+//   receives a load that started before the write. No per-key state outlives
+//   the two bounded maps.
 // - At most `maxEntries` completed entries, oldest evicted first; eviction never
 //   touches in-flight loads.
 // - A result the `cacheable` predicate rejects (a load with a failed fact group)
@@ -39,9 +40,6 @@ export function createHomeCache<T>({
 }: HomeCacheOptions<T>): HomeCache<T> {
   const completed = new Map<string, { value: T; at: number }>();
   const inFlight = new Map<string, Promise<T>>();
-  const generations = new Map<string, number>();
-
-  const generationOf = (key: string) => generations.get(key) ?? 0;
 
   function publish(key: string, value: T) {
     completed.delete(key); // re-insert at the end: Map order is age order
@@ -63,11 +61,12 @@ export function createHomeCache<T>({
       const pending = inFlight.get(key);
       if (pending) return pending;
 
-      const generation = generationOf(key);
       const promise: Promise<T> = Promise.resolve()
         .then(load)
         .then((value) => {
-          if (generationOf(key) === generation && cacheable(value)) publish(key, value);
+          // Runs before the cleanup below, so the entry is still ours unless an
+          // invalidation removed it in the meantime.
+          if (inFlight.get(key) === promise && cacheable(value)) publish(key, value);
           return value;
         })
         .finally(() => {
@@ -77,14 +76,12 @@ export function createHomeCache<T>({
       return promise;
     },
     invalidate(key) {
-      generations.set(key, generationOf(key) + 1);
       completed.delete(key);
       inFlight.delete(key);
     },
     clear() {
       completed.clear();
       inFlight.clear();
-      generations.clear();
     },
     sizes() {
       return { completed: completed.size, inFlight: inFlight.size };

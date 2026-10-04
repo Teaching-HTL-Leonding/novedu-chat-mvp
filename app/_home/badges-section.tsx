@@ -36,7 +36,10 @@ export async function BadgesSection({ userId }: { userId: string }) {
   }
   const more = badges.families.reduce((n, f) => n + f.more.length, 0);
   const families = (
-    <div id="home-badge-families" className="grid gap-x-7 gap-y-5 md:grid-cols-2 lg:grid-cols-4">
+    <div
+      id="home-badge-families"
+      className="grid gap-x-7 gap-y-5 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+    >
       {badges.families.map((family) => (
         <div key={family.id} data-family={family.id}>
           <h3 className={cn(META_LABEL, "mb-2")}>{family.label}</h3>

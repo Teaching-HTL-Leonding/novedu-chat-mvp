@@ -5,7 +5,8 @@ import { BadgeDisc, FAMILY_BG } from "./badge-disc";
 import { HOME_CAPTION, HOME_CARD, HOME_CARD_PAD, HOME_MUTED, HOME_SECTION_TITLE } from "./home-ui";
 import { Meter } from "./meter";
 
-// Almost there: the listed badges closest to being earned (at most four).
+// Almost there: the listed badges closest to being earned (at most four). Sits
+// beside "Time to refresh" from lg up (app/page.tsx).
 
 export async function AlmostThereSection({ userId }: { userId: string }) {
   const { almostThere } = await getStudentHome(userId);
@@ -16,7 +17,8 @@ export async function AlmostThereSection({ userId }: { userId: string }) {
     body = <p className={HOME_MUTED}>Badges you're close to will show up here.</p>;
   } else {
     body = (
-      <ul className="grid gap-x-8 md:grid-cols-2">
+      // Two columns while the card has the band to itself (below lg); one beside "Time to refresh".
+      <ul className="grid gap-x-8 md:grid-cols-2 lg:grid-cols-1">
         {almostThere.map((badge) => {
           const current = badge.current ?? 0;
           const target = badge.target ?? 1;

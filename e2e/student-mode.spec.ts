@@ -29,7 +29,7 @@ test("a teacher can enter student mode, is treated as a student, and can exit ag
   // ...the teacher badge is gone and the nav hides teacher-only entries...
   await expect(page.getByRole("img", { name: "Teacher" })).toHaveCount(0);
   await page.getByRole("button", { name: "Open navigation menu" }).click();
-  await expect(page.getByRole("link", { name: "Chat" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Home" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Teacher Guide" })).toHaveAttribute(
     "href",
     TEACHER_GUIDE_URL,

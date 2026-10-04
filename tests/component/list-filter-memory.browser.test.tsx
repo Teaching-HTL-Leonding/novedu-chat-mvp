@@ -53,7 +53,7 @@ test("the burger menu reopens a list with its remembered filter", async () => {
   expect(href(screen.getByRole("link", { name: "Codes" }))).toBe("/codes?q=math&sort=-note");
   // Nothing remembered for these — the memory only ever appends what a list wrote.
   expect(href(screen.getByRole("link", { name: "Images" }))).toBe("/images");
-  expect(href(screen.getByRole("link", { name: "Chat" }))).toBe("/");
+  expect(href(screen.getByRole("link", { name: "Home" }))).toBe("/");
 });
 
 test("the teacher guide opens in its own tab", async () => {
