@@ -26,7 +26,11 @@ export const PAGE_CANVAS = "mx-[calc((100%-100vw)/2)] -my-3 min-h-0 flex-1 bg-sl
 // the teacher forms, and the code detail pages all share it.
 //
 // The SCROLLER is the full-bleed canvas, so the page scrollbar sits at the
-// window edge; the inner div re-centers the content. Its `min-h-full` keeps
+// window edge; the inner div re-centers the content. It is `relative` so it
+// is the containing block of every absolutely positioned descendant (e.g.
+// `sr-only` text): without a positioned ancestor such an element escapes the
+// scroller, lands below the fold and makes the DOCUMENT scroll, taking the
+// status bar and the environment ribbon with it. Its `min-h-full` keeps
 // the column at least viewport-high, so height-filling children (the /files
 // editors' `fill` chain) start viewport-high and grow with their content.
 // `className` is a cn-merged delta on the inner column (e.g. a page that
@@ -48,7 +52,7 @@ export function PageBody({
   wide?: boolean;
 }) {
   return (
-    <div className={cn(PAGE_CANVAS, "page-scroll overflow-y-auto")} {...props}>
+    <div className={cn(PAGE_CANVAS, "page-scroll relative overflow-y-auto")} {...props}>
       <div
         className={cn(
           "mx-auto flex min-h-full flex-col gap-4 px-5 pt-4 pb-6",
