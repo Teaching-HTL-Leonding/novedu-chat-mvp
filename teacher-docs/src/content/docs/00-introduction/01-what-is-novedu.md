@@ -4,13 +4,14 @@ description: Novedu lets teachers give students AI activities they control by wr
 sidebar:
   order: 1
 audience: teacher
-keywords: [Novedu, overview, AI, tutor, quiz, writing, coding, prompting, getting started]
+keywords: [Novedu, overview, AI, tutor, quiz, writing, coding, prompting, getting started, achievements, badges]
 related:
   - 00-introduction/02-shareable-codes
   - 00-introduction/03-tutors-overview
   - 00-introduction/04-quizzes-overview
   - 00-introduction/05-writing-overview
   - 00-introduction/06-coding-overview
+  - 30-sharing-activities/09-your-start-page
 ---
 
 Novedu helps you create AI-supported learning experiences for your students. You decide the subject, the task, the teaching approach, and the boundaries. Students then use the experience you designed.
@@ -48,3 +49,9 @@ A coding activity gives an external coding assistant the instructions you choose
 You first author the activity by describing what students should do and how the AI should support them. When the activity is ready, you create a code, the short link you give to your class. Students open the code and see the right experience for that activity.
 
 The same basic path applies to all four kinds: write the activity, create a code, and share it with students. You can start with a simple set of instructions, try the activity, and improve it as your teaching needs become clearer.
+
+## Achievements
+
+Novedu rewards regular use with achievements. Students and teachers alike collect badges on their start page, so both sides have a small, visible reason to come back and to try something new: a student might keep up a weekly rhythm or attempt a kind of activity they haven't used yet, and a teacher might share a first coding activity or refine an activity across several weeks.
+
+The achievements are meant as encouragement, not as competition. Each person sees only their own badges; there are no rankings and no comparisons between classes or colleagues. For what your own start page shows, see [Your start page](/30-sharing-activities/09-your-start-page/).
