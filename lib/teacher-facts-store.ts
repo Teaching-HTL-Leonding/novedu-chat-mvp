@@ -42,20 +42,25 @@ const STORE = "teacher-facts-store";
 
 const KNOWN_MODULES = new Set<string>(CODE_MODULES);
 
+/** The codes query — exported so the `@live-db` test can EXPLAIN the real one. */
+export function teacherCodesQuery(teacherId: string) {
+  return getDb()
+    .select({
+      code: codes.code,
+      module: codes.module,
+      note: codes.note,
+      validFrom: codes.validFrom,
+      validUntil: codes.validUntil,
+      createdAt: codes.createdAt,
+    })
+    .from(codes)
+    .where(eq(codes.createdBy, teacherId));
+}
+
 /** The teacher's codes — one scan of the `created_by` index. */
 export async function listTeacherCodes(teacherId: string): Promise<TeacherCode[] | undefined> {
   try {
-    const rows = await getDb()
-      .select({
-        code: codes.code,
-        module: codes.module,
-        note: codes.note,
-        validFrom: codes.validFrom,
-        validUntil: codes.validUntil,
-        createdAt: codes.createdAt,
-      })
-      .from(codes)
-      .where(eq(codes.createdBy, teacherId));
+    const rows = await teacherCodesQuery(teacherId);
     // An unrecognized module is no activity for anyone (`checkCode` agrees).
     return rows
       .filter((row) => KNOWN_MODULES.has(row.module))

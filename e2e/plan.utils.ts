@@ -1,11 +1,22 @@
 import { type SQL, sql, TransactionRollbackError } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 
-// The app's and Mastra's tables and indexes, whose statistics a plan check sets aside.
+// The app's and Mastra's tables and indexes whose statistics a plan check sets
+// aside — every one the connected role may maintain (its own, as the owner).
 const PLANNED_RELATIONS = sql`
-  SELECT c.oid, n.nspname, c.relname FROM pg_class c
+  SELECT n.nspname, c.relname FROM pg_class c
   JOIN pg_namespace n ON n.oid = c.relnamespace
+  LEFT JOIN pg_index i ON i.indexrelid = c.oid
   WHERE n.nspname IN ('public', 'mastra') AND c.relkind IN ('r', 'i')
+    AND has_table_privilege(coalesce(i.indrelid, c.oid), 'MAINTAIN')
+`;
+
+// Their tables' column statistics (`pg_stats` shows only what the role may read).
+const PLANNED_COLUMNS = sql`
+  SELECT s.schemaname, s.tablename, s.attname, s.inherited FROM pg_stats s
+  JOIN pg_namespace n ON n.nspname = s.schemaname
+  JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = s.tablename AND c.relkind = 'r'
+  WHERE s.schemaname IN ('public', 'mastra') AND has_table_privilege(c.oid, 'MAINTAIN')
 `;
 
 /**
@@ -16,7 +27,8 @@ const PLANNED_RELATIONS = sql`
  * are cleared, as on a freshly migrated database (CI). Otherwise a long-lived
  * database's few, skewed rows can make "read another index, filter the user's
  * rows" look cheaper and the check would depend on whatever ran before.
- * Clearing `pg_statistic` needs a superuser, which the test databases are.
+ * Clearing needs the MAINTAIN privilege, which the tables' owner holds — the
+ * stage's app role, or the CI container's superuser.
  *
  * `presorted`: for a statement whose ORDER BY an index is meant to serve, sorts
  * are off too, so only an index that delivers the order can win.
@@ -32,7 +44,8 @@ export async function planOf(
         sql`SELECT pg_clear_relation_stats(r.nspname, r.relname) FROM (${PLANNED_RELATIONS}) r`,
       );
       await tx.execute(
-        sql`DELETE FROM pg_statistic WHERE starelid IN (SELECT r.oid FROM (${PLANNED_RELATIONS}) r)`,
+        sql`SELECT pg_clear_attribute_stats(s.schemaname, s.tablename, s.attname, s.inherited)
+            FROM (${PLANNED_COLUMNS}) s`,
       );
       await tx.execute(sql`SET LOCAL enable_seqscan = off`);
       if (presorted) {

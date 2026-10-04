@@ -15,6 +15,7 @@ import {
   conversationsStatement,
   loadTeacherUsage,
   studentsStatement,
+  teacherCodesQuery,
   usageStatement,
 } from "@/lib/teacher-facts-store";
 import { query } from "./db";
@@ -341,6 +342,7 @@ test("the teacher statements are index scans over the teacher's own rows", {
   const teacherId = `e2e-teacher-${randomUUID()}`;
   const start = windowStart(new Date());
   for (const [name, statement, indexes] of [
+    ["codes", teacherCodesQuery(teacherId).getSQL(), ["ix_novedu_codes_created_by"]],
     ["usage", usageStatement(teacherId), ["ix_novedu_codes_created_by"]],
     ["conversations", conversationsStatement(teacherId, start), ["ix_novedu_codes_created_by"]],
     ["students", studentsStatement(teacherId), ["ix_novedu_codes_created_by"]],
