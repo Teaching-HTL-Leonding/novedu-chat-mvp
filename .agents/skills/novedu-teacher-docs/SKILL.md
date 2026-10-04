@@ -72,7 +72,7 @@ notes entry; search these areas for the current files instead.
 - `cli/README.md` and the `novedu-tutor-cli` skill, the CLI and its validation.
 - `README.md` (root), product overview and framing.
 - app source (`app/`, `lib/`), last resort, when a guide doesn't cover a detail.
-  Prefer the guides; source moves and renames (e.g. `lib/tutors` → `lib/prompt-fragments`).
+  Prefer the guides: source files move and get renamed, the guides track behavior.
 
 ## The normal mode: incremental patch
 

@@ -245,8 +245,8 @@ question against a language rule. A case that no rule speaks to teaches nothing.
 
 - Multi-file runs grade files one after another with a per-file summary plus
   grand totals; one invalid file is isolated (`invalid` in the report) instead of
-  aborting the batch. `--json`/`--out` always carry the same `{ files, totals }`
-  shape.
+  aborting the batch. `--json`/`--out` always carry the same `{ files, passed, totals }`
+  shape (`passed` is the run's exit-code verdict).
 - **Every report is written ONCE, after the last file.** There is no incremental
   flush and no `--resume`. The run is durable *within* the process — a bad file is
   isolated, and even an aborted run still writes its report — but if the process

@@ -65,7 +65,11 @@ code-delete path drops it explicitly (it does — see **Lifecycle**).
 | `resolved_at` | `timestamptz` | resolution timestamp — **resolved ⇔ NOT NULL** (single source of truth) |
 | `resolved_by` | `varchar(64)` | the resolving teacher's user id (null while open) |
 
-Indexes: `ix_novedu_reports_code` (the per-code drill-down) and
+Indexes: `ix_novedu_reports_code` (the per-code drill-down),
+`ix_novedu_reports_resolved_by` (partial, the reports a teacher resolved — their
+start page's Listener badge, `docs/home.md`),
+`ix_novedu_reports_user_id_resolved` (partial, `user_id` — a reporter's own
+resolved reports, their start page's Bug Hunter badge) and
 `ix_novedu_reports_resolved_at` (open vs. resolved — the open rows are the working
 set). The schema header comment restates the sanctioned-exception rule.
 
@@ -130,16 +134,15 @@ the chat action (reaction + description validation), then:
 
 ### Why `lib/quiz-verify.ts` exists (the `"use server"` hazard)
 
-`verifyAndLoadQuestion` used to be private inside `lib/quiz-actions.ts`, a
-`"use server"` module. **Exporting it from there would mint a public server-action
-endpoint** that returns the loaded `Quiz` — which carries the server-only
-`evaluation` grading prompts (they may embed the expected answer). It was extracted
-verbatim into `lib/quiz-verify.ts`, a **server-only module deliberately WITHOUT the
-`"use server"` directive**, so both `quiz-actions.ts` (grading) and
-`report-actions.ts` (quiz reports) import it as plain server code. **`lib/quiz-verify.ts`
-must never gain the `"use server"` directive** — that would re-open the very endpoint
-the extraction closed. (`CODE_REJECTION_MESSAGES` and `effectiveImageInput` moved
-with it.)
+`verifyAndLoadQuestion` is shared by grading (`lib/quiz-actions.ts`, a
+`"use server"` module) and quiz reports (`lib/report-actions.ts`). **Exporting it
+from a `"use server"` module would mint a public server-action endpoint** that
+returns the loaded `Quiz` — which carries the server-only `evaluation` grading
+prompts (they may embed the expected answer). So it lives in `lib/quiz-verify.ts`,
+a **server-only module deliberately WITHOUT the `"use server"` directive**, together
+with `CODE_REJECTION_MESSAGES` and `effectiveImageInput`, and both callers import it
+as plain server code. **`lib/quiz-verify.ts` must never gain the `"use server"`
+directive** — that would open exactly that endpoint.
 
 ## Telemetry — content-free
 
@@ -180,9 +183,18 @@ error.
   `undefined` = DB error, never throws. Backs the bearer `GET /api/reports/<id>`
   (below).
 - `setReportsResolved(ids, resolved, teacherId)` — bulk resolve/reopen. Resolving
-  stamps `resolved_at = now` + `resolved_by = teacherId`; reopening **nulls both**
-  columns (`resolved_at` is the single source of truth). No-op for an empty id list.
+  stamps `resolved_at = now` + `resolved_by = teacherId` on the **open** reports
+  only — an already-resolved report keeps its first resolver and time (the
+  resolver's Listener badge, `docs/home.md`); reopening **nulls both** columns
+  (`resolved_at` is the single source of truth). No-op for an empty id list.
 - `deleteReports(ids)` — bulk DELETE, the inbox's "Delete Selected".
+- Start-page facts (`docs/home.md`), each one statement that returns dates and
+  counts, never a reporter or content, and never throws:
+  `listOwnResolvedReportDates(userId)` (the local dates the user's OWN reports were
+  resolved — Bug Hunter) and `loadTeacherReports(teacherId, resolvedCap)` (open
+  reports per own code plus the reports the teacher resolved — the dashboard's
+  Open reports and Listener; one row of scalar subselects,
+  `teacherReportsStatement`).
 
 ## Teacher inbox — `/reports`
 
@@ -239,8 +251,8 @@ reports-specific invariants:
 - **`resolved_by` is the token's user id.** `POST /api/reports/resolve` calls the existing
   `setReportsResolved(ids, true, userId)` with the verified token's user id, so a report an
   agent resolves is attributed exactly like the web action — to the teacher who ran
-  `novedu-cli login`. Unknown / already-resolved ids are silent no-ops (the same
-  blanket update the inbox uses).
+  `novedu-cli login`. Unknown / already-resolved ids are silent no-ops — an
+  already-resolved report keeps its first resolver (the same update the inbox uses).
 - **The identity discipline carries over.** The API surfaces only the **reporter's
   own** identity (`userId` + `displayName`), never a different student behind a
   reported thread — `getReportById` is the single-row twin of `listReports` and, like

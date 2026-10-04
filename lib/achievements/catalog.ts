@@ -23,6 +23,22 @@ import {
   refreshedOn,
   resultsReached,
 } from "./quiz";
+import {
+  busyReached,
+  CROWD_MAX,
+  crowdReached,
+  EVERGREEN_WEEKS,
+  HOMEWORK_MIN,
+  homeworkReached,
+  ITERATOR_VERSIONS,
+  KIND_COUNT,
+  kindsReached,
+  LISTENER_REPORTS,
+  type Reach,
+  type TeacherFactGroup,
+  type TeacherFacts,
+  weeksReached,
+} from "./teacher";
 import type { LocalDate } from "./time";
 
 /** A fact group: loaded by one statement, failing independently of the others. */
@@ -66,13 +82,18 @@ export type BadgeIcon =
   | "star"
   | "trend"
   | "rotate"
-  | "bug";
+  | "bug"
+  | "share"
+  | "users"
+  | "activity"
+  | "moon"
+  | "inbox";
 
 export type Outcome =
   | { earned: true; qualifiedOn: LocalDate }
   | { earned: false; current: number; target: number };
 
-export interface Achievement<F> {
+export interface Achievement<F, G extends string = FactGroup> {
   /** Stable and stored. Never contains a code; a tier ladder is `<ladder>-<n>`. */
   id: string;
   audience: "student" | "teacher";
@@ -86,13 +107,15 @@ export interface Achievement<F> {
   criterion: string;
   /** Not listed until earned (students only). */
   hidden: boolean;
+  /** 0 for teacher achievements: teachers have no XP. */
   xp: number;
   /** The fact groups the rule reads; evaluated only when all are available. */
-  needs: readonly FactGroup[];
+  needs: readonly G[];
   evaluate(facts: F): Outcome;
 }
 
 export type StudentAchievement = Achievement<StudentFacts>;
+export type TeacherAchievement = Achievement<TeacherFacts, TeacherFactGroup>;
 
 /** The student families, in page order. */
 export const STUDENT_FAMILIES = [
@@ -103,8 +126,14 @@ export const STUDENT_FAMILIES = [
   { id: "secret", label: "Secret" },
 ] as const;
 
+/** The teacher families, in page order. */
+export const TEACHER_FAMILIES = [
+  { id: "reach", label: "Reach" },
+  { id: "authoring", label: "Authoring" },
+] as const;
+
 /** Reads a group the evaluator has already checked; reaching it unavailable is a bug. */
-function need<T>(group: T | undefined, name: FactGroup): T {
+function need<T>(group: T | undefined, name: string): T {
   if (group === undefined)
     throw new Error(`achievement rule read the unavailable fact group "${name}"`);
   return group;
@@ -185,14 +214,14 @@ interface Tier {
   xp: number;
 }
 
-function ladder(
-  base: Omit<StudentAchievement, "id" | "order" | "name" | "criterion" | "xp" | "evaluate">,
+function ladder<F, G extends string>(
+  base: Omit<Achievement<F, G>, "id" | "order" | "name" | "criterion" | "xp" | "evaluate">,
   ladderId: string,
   firstOrder: number,
   tiers: Tier[],
   criterion: (n: number) => string,
-  rule: (facts: StudentFacts, n: number) => Outcome,
-): StudentAchievement[] {
+  rule: (facts: F, n: number) => Outcome,
+): Achievement<F, G>[] {
   return tiers.map((tier, i) => ({
     ...base,
     id: `${ladderId}-${tier.n}`,
@@ -203,6 +232,9 @@ function ladder(
     evaluate: (facts) => rule(facts, tier.n),
   }));
 }
+
+const studentLadder = ladder<StudentFacts, FactGroup>;
+const teacherLadder = ladder<TeacherFacts, TeacherFactGroup>;
 
 /** A ladder rule over the usage group. */
 const onUsage =
@@ -235,7 +267,7 @@ const secret = { audience: "student", family: "secret", hidden: true } as const;
 
 /** Every student achievement, in page order. */
 export const STUDENT_CATALOG: readonly StudentAchievement[] = [
-  ...ladder(
+  ...studentLadder(
     { ...rhythm, icon: "flame" },
     "weekly-streak",
     0,
@@ -248,7 +280,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     (n) => `Active ${n} weeks in a row`,
     onUsage((usage, n) => milestone(usageStats(usage).streaks, n)),
   ),
-  ...ladder(
+  ...studentLadder(
     { ...rhythm, icon: "calendar" },
     "week-days",
     10,
@@ -259,7 +291,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     (n) => `Active on ${n} days of one week`,
     onUsage((usage, n) => milestone(usageStats(usage).weekDays, n)),
   ),
-  ...ladder(
+  ...studentLadder(
     { ...rhythm, icon: "calendar" },
     "active-days",
     20,
@@ -271,7 +303,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     (n) => `${n} active days`,
     onUsage((usage, n) => milestone(usageStats(usage).activeDates, n)),
   ),
-  ...ladder(
+  ...studentLadder(
     { ...practice, icon: "check" },
     "quiz-answers",
     0,
@@ -283,7 +315,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     (n) => `Submit ${n} quiz answers`,
     onUsage((usage, n) => counter(usage, (d) => d.quizAnswers, n)),
   ),
-  ...ladder(
+  ...studentLadder(
     { ...practice, icon: "pen" },
     "writing-saves",
     10,
@@ -305,7 +337,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     xp: 20,
     evaluate: (facts) => milestone(quizStats(need(facts.quiz, "quiz")).results, 1),
   },
-  ...ladder(
+  ...studentLadder(
     { ...quiz, icon: "star" },
     "quiz-golds",
     10,
@@ -359,7 +391,7 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     needs: ["usage"],
     evaluate: (facts) => milestone(usageStats(need(facts.usage, "usage")).codingDates, 1),
   },
-  ...ladder(
+  ...studentLadder(
     { ...coding, icon: "code", needs: ["usage"] },
     "coding-days",
     10,
@@ -418,6 +450,118 @@ export const STUDENT_CATALOG: readonly StudentAchievement[] = [
     xp: 50,
     needs: ["reports"],
     evaluate: (facts) => milestone(need(facts.reports, "reports"), 1),
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Teacher achievements: no XP, none hidden. Every rule reads the teacher's OWN
+// codes' facts and names the local date its evidence was first complete.
+
+/** A reach (lib/achievements/teacher.ts) as an outcome toward `target`. */
+function reached({ reachedOn, best }: Reach, target: number): Outcome {
+  return reachedOn !== undefined
+    ? { earned: true, qualifiedOn: reachedOn }
+    : { earned: false, current: best, target };
+}
+
+const reach = { audience: "teacher", family: "reach", hidden: false, xp: 0 } as const;
+const authoring = { audience: "teacher", family: "authoring", hidden: false, xp: 0 } as const;
+
+/** Every teacher achievement, in page order. */
+export const TEACHER_CATALOG: readonly TeacherAchievement[] = [
+  {
+    ...reach,
+    id: "first-code",
+    order: 0,
+    icon: "share",
+    name: "First Code",
+    criterion: "Share your first activity",
+    needs: ["codes"],
+    evaluate: (facts) => milestone(kindsReached(need(facts.codes, "codes")), 1),
+  },
+  {
+    ...reach,
+    id: "full-toolkit",
+    order: 1,
+    icon: "layers",
+    name: "Full Toolkit",
+    criterion: "Share a tutor, a quiz, a writing and a coding activity",
+    needs: ["codes"],
+    evaluate: (facts) => milestone(kindsReached(need(facts.codes, "codes")), KIND_COUNT),
+  },
+  ...teacherLadder(
+    { ...reach, icon: "users", needs: ["students"] },
+    "crowd",
+    10,
+    [
+      { n: 10, name: "Small Crowd", xp: 0 },
+      { n: 30, name: "Full Class", xp: 0 },
+      { n: CROWD_MAX, name: "Packed House", xp: 0 },
+    ],
+    (n) => `${n} identified students on one activity`,
+    (facts, n) => reached(crowdReached(need(facts.students, "students"), n), n),
+  ),
+  ...teacherLadder(
+    { ...reach, icon: "activity", needs: ["usage"] },
+    "busy",
+    20,
+    [
+      { n: 100, name: "Busy", xp: 0 },
+      { n: 1000, name: "Buzzing", xp: 0 },
+      { n: 5000, name: "Hive of Activity", xp: 0 },
+    ],
+    (n) => `${n.toLocaleString("en")} interactions on one activity`,
+    (facts, n) => reached(busyReached(need(facts.usage, "usage"), n), n),
+  ),
+  {
+    ...authoring,
+    id: "evergreen",
+    order: 0,
+    icon: "calendar",
+    name: "Evergreen",
+    criterion: `One activity used in ${EVERGREEN_WEEKS} different weeks`,
+    needs: ["usage"],
+    evaluate: (facts) =>
+      reached(weeksReached(need(facts.usage, "usage"), EVERGREEN_WEEKS), EVERGREEN_WEEKS),
+  },
+  {
+    ...authoring,
+    id: "iterator",
+    order: 1,
+    icon: "pen",
+    name: "Iterator",
+    criterion: `Write ${ITERATOR_VERSIONS} versions of one file`,
+    needs: ["files"],
+    evaluate: (facts) => {
+      const files = need(facts.files, "files");
+      return reached({ reachedOn: files.reachedOn, best: files.most }, ITERATOR_VERSIONS);
+    },
+  },
+  {
+    ...authoring,
+    id: "listener",
+    order: 2,
+    icon: "inbox",
+    name: "Listener",
+    criterion: `Resolve ${LISTENER_REPORTS} reports`,
+    needs: ["reports"],
+    evaluate: (facts) => {
+      const reports = need(facts.reports, "reports");
+      return reached(
+        { reachedOn: reports.resolvedOn[LISTENER_REPORTS - 1], best: reports.resolved },
+        LISTENER_REPORTS,
+      );
+    },
+  },
+  {
+    ...authoring,
+    id: "homework-hit",
+    order: 3,
+    icon: "moon",
+    name: "Homework Hit",
+    criterion: `Half of one activity's interactions outside school hours (at least ${HOMEWORK_MIN})`,
+    needs: ["usage"],
+    evaluate: (facts) => reached(homeworkReached(need(facts.usage, "usage")), 1),
   },
 ];
 

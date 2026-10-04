@@ -4,9 +4,16 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 import { importSpecifiers, REPO_ROOT, resolveImport, walkClosure } from "@/tests/import-graph";
-import { STUDENT_CATALOG, type StudentAchievement } from "./catalog";
+import {
+  STUDENT_CATALOG,
+  type StudentAchievement,
+  TEACHER_CATALOG,
+  TEACHER_FAMILIES,
+  type TeacherAchievement,
+} from "./catalog";
 import type { UsageDay } from "./derive";
 import type { QuizAttempt } from "./quiz";
+import type { CodeDay, TeacherCode, TeacherFacts } from "./teacher";
 
 const day = (date: string, extra: Partial<UsageDay> = {}): UsageDay => ({
   date,
@@ -326,6 +333,209 @@ describe("Quiz mastery rules", () => {
       earned: true,
       qualifiedOn: "2026-09-12",
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Teacher achievements
+
+function teacherRule(id: string): TeacherAchievement {
+  const achievement = TEACHER_CATALOG.find((a) => a.id === id);
+  if (!achievement) throw new Error(`no teacher catalog entry ${id}`);
+  return achievement;
+}
+
+const EMPTY: Required<TeacherFacts> = {
+  codes: [],
+  usage: [],
+  conversations: 0,
+  students: { total: 0, perCode: [] },
+  reports: { open: [], resolved: 0, resolvedOn: [] },
+  files: { most: 0 },
+};
+const runTeacher = (id: string, facts: TeacherFacts) =>
+  teacherRule(id).evaluate({ ...EMPTY, ...facts });
+
+const teacherCode = (
+  code: string,
+  module: TeacherCode["module"],
+  created: string,
+): TeacherCode => ({
+  code,
+  module,
+  note: "",
+  validFrom: null,
+  validUntil: null,
+  createdAt: new Date(`${created}T10:00:00Z`),
+});
+
+const codeDay = (code: string, date: string, extra: Partial<CodeDay> = {}): CodeDay => ({
+  code,
+  date,
+  interactions: 0,
+  outsideSchool: 0,
+  quizAnswers: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  ...extra,
+});
+
+/** `n` consecutive local dates from `first`. */
+function dates(first: string, n: number): string[] {
+  return consecutiveDays(first, n).map((d) => d.date);
+}
+
+describe("teacher catalog shape", () => {
+  it("has unique literal ids that fit the column and never collide with a student id", () => {
+    const ids = TEACHER_CATALOG.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) {
+      expect(id.length).toBeLessThanOrEqual(64);
+      expect(id).toMatch(/^[a-z]+(-[a-z]+)*(-\d+)?$/);
+    }
+    const studentIds = new Set(STUDENT_CATALOG.map((a) => a.id));
+    expect(ids.filter((id) => studentIds.has(id))).toEqual([]);
+    const source = readFileSync(join(REPO_ROOT, "lib/achievements/catalog.ts"), "utf8");
+    for (const ladder of ["crowd", "busy"]) expect(source).toContain(`"${ladder}"`);
+  });
+
+  it("ships Reach and Authoring for teachers: no XP, none hidden, one fact group each", () => {
+    expect(TEACHER_FAMILIES.map((f) => f.id)).toEqual(["reach", "authoring"]);
+    expect(TEACHER_CATALOG.every((a) => a.audience === "teacher")).toBe(true);
+    expect(TEACHER_CATALOG.every((a) => a.xp === 0 && !a.hidden)).toBe(true);
+    expect(TEACHER_CATALOG.every((a) => a.needs.length === 1)).toBe(true);
+    expect(TEACHER_CATALOG.map((a) => a.id)).toEqual([
+      "first-code",
+      "full-toolkit",
+      "crowd-10",
+      "crowd-30",
+      "crowd-100",
+      "busy-100",
+      "busy-1000",
+      "busy-5000",
+      "evergreen",
+      "iterator",
+      "listener",
+      "homework-hit",
+    ]);
+  });
+});
+
+describe("Reach rules", () => {
+  it("First Code: the day the first code was created", () => {
+    expect(runTeacher("first-code", {})).toEqual({ earned: false, current: 0, target: 1 });
+    expect(
+      runTeacher("first-code", {
+        codes: [teacherCode("B", "quiz", "2026-09-12"), teacherCode("A", "tutor", "2026-09-10")],
+      }),
+    ).toEqual({ earned: true, qualifiedOn: "2026-09-10" });
+  });
+
+  it("Full Toolkit: dated to the day the fourth kind was first shared", () => {
+    const three = [
+      teacherCode("A", "tutor", "2026-09-01"),
+      teacherCode("B", "quiz", "2026-09-02"),
+      teacherCode("C", "quiz", "2026-09-03"),
+      teacherCode("D", "writing", "2026-09-04"),
+    ];
+    expect(runTeacher("full-toolkit", { codes: three })).toEqual({
+      earned: false,
+      current: 3,
+      target: 4,
+    });
+    expect(
+      runTeacher("full-toolkit", { codes: [...three, teacherCode("E", "coding", "2026-09-20")] }),
+    ).toEqual({ earned: true, qualifiedOn: "2026-09-20" });
+  });
+
+  it("Crowd: below, at and above the tier on one activity, dated to the n-th student", () => {
+    const students = (count: number) => ({
+      total: count,
+      perCode: [{ code: "A", count, firstSeen: dates("2026-09-01", Math.min(count, 100)) }],
+    });
+    expect(runTeacher("crowd-10", { students: students(9) })).toEqual({
+      earned: false,
+      current: 9,
+      target: 10,
+    });
+    expect(runTeacher("crowd-10", { students: students(10) })).toEqual({
+      earned: true,
+      qualifiedOn: "2026-09-10",
+    });
+    expect(runTeacher("crowd-30", { students: students(31) })).toEqual({
+      earned: true,
+      qualifiedOn: "2026-09-30",
+    });
+    // Beyond the stored first 100 dates, the 100th is still known.
+    expect(runTeacher("crowd-100", { students: students(250) })).toMatchObject({ earned: true });
+  });
+
+  it("Busy: the running total of one activity, dated to the crossing day", () => {
+    const usage = [
+      codeDay("A", "2026-09-01", { interactions: 600 }),
+      codeDay("A", "2026-09-08", { interactions: 400 }),
+    ];
+    expect(runTeacher("busy-100", { usage })).toEqual({ earned: true, qualifiedOn: "2026-09-01" });
+    expect(runTeacher("busy-1000", { usage })).toEqual({ earned: true, qualifiedOn: "2026-09-08" });
+    expect(runTeacher("busy-5000", { usage })).toEqual({
+      earned: false,
+      current: 1000,
+      target: 5000,
+    });
+  });
+});
+
+describe("Authoring rules", () => {
+  it("Evergreen: one activity in 8 different weeks", () => {
+    const usage = weeks("2026-06-01", 8).map((d) => codeDay("A", d.date, { interactions: 1 }));
+    expect(runTeacher("evergreen", { usage: usage.slice(0, 7) })).toEqual({
+      earned: false,
+      current: 7,
+      target: 8,
+    });
+    expect(runTeacher("evergreen", { usage })).toEqual({ earned: true, qualifiedOn: "2026-07-20" });
+  });
+
+  it("Iterator: the date some file first had 5 of the teacher's versions", () => {
+    expect(runTeacher("iterator", { files: { most: 4 } })).toEqual({
+      earned: false,
+      current: 4,
+      target: 5,
+    });
+    expect(runTeacher("iterator", { files: { most: 7, reachedOn: "2026-09-02" } })).toEqual({
+      earned: true,
+      qualifiedOn: "2026-09-02",
+    });
+  });
+
+  it("Listener: dated to the tenth report resolved", () => {
+    const reports = (resolved: number) => ({
+      open: [],
+      resolved,
+      resolvedOn: dates("2026-09-01", Math.min(resolved, 10)),
+    });
+    expect(runTeacher("listener", { reports: reports(9) })).toEqual({
+      earned: false,
+      current: 9,
+      target: 10,
+    });
+    expect(runTeacher("listener", { reports: reports(12) })).toEqual({
+      earned: true,
+      qualifiedOn: "2026-09-10",
+    });
+  });
+
+  it("Homework Hit: half of one activity outside school hours, at least 50 — no count shown", () => {
+    expect(
+      runTeacher("homework-hit", {
+        usage: [codeDay("A", "2026-09-01", { interactions: 80, outsideSchool: 39 })],
+      }),
+    ).toEqual({ earned: false, current: 0, target: 1 });
+    expect(
+      runTeacher("homework-hit", {
+        usage: [codeDay("A", "2026-09-01", { interactions: 80, outsideSchool: 40 })],
+      }),
+    ).toEqual({ earned: true, qualifiedOn: "2026-09-01" });
   });
 });
 

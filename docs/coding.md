@@ -100,6 +100,10 @@ samples (the coding YAML under `activities/examples/`).
 - **Start page**: `listOwnKeyDates(userId)` in the key store reads the session
   user's OWN keys through the `user_id` index and returns only their Vienna-local
   issue dates — no code, no key value — for the Coding badges (`docs/home.md`).
+  For the teacher dashboard, `keyHoldersOfTeacherStatement(teacherId)` is the
+  subselect of `(user_id, code, issued at)` over the teacher's own coding codes
+  that the teacher facts store counts into identified students; no user id leaves
+  that statement.
 - **Teacher visibility, read-only**: the teacher detail page lists who requested a
   key for the code and when, via `listCodingKeys`. There is **no revocation** —
   the availability window / code deletion is the only access control; a teacher

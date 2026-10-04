@@ -133,14 +133,15 @@ export async function listSavers(code: string, opts?: { search?: string }): Prom
 }
 
 /**
- * The user ids with a saved text on one of the teacher's codes whose FROZEN
- * `anonymous` flag is false — a subselect the teacher facts store unions into
- * its identified-students count (docs/home.md → Teacher dashboard). Only user
- * ids leave it; the caller counts them.
+ * `(user_id, code, at)` for every saved text on one of the teacher's codes whose
+ * FROZEN `anonymous` flag is false — a subselect the teacher facts store unions
+ * into its identified-students counts (docs/home.md → Teacher dashboard). The
+ * row keeps only its LAST save time, so `at` is that (never earlier than the
+ * student's first save). The caller only counts and dates them.
  */
 export function writersOfTeacherStatement(teacherId: string): SQL {
   return sql`
-    SELECT ws.user_id FROM novedu_writing_submissions ws
+    SELECT ws.user_id, ws.code, ws.text_updated_at AS at FROM novedu_writing_submissions ws
     JOIN novedu_codes c ON c.code = ws.code
     WHERE c.created_by = ${teacherId} AND NOT c.anonymous
   `;

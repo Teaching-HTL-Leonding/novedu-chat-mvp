@@ -1,4 +1,4 @@
-import { asc } from "drizzle-orm";
+import { and, asc, inArray, isNull } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,7 @@ const fake = vi.hoisted(() => {
     inserted: [] as Record<string, unknown>[],
     insertError: undefined as unknown,
     updated: [] as Record<string, unknown>[],
+    updateWhere: undefined as unknown,
     updateError: undefined as unknown,
     deletes: 0,
     deleteError: undefined as unknown,
@@ -81,9 +82,10 @@ const fake = vi.hoisted(() => {
   });
   const update = () => ({
     set: (values: Record<string, unknown>) => ({
-      where: async () => {
+      where: async (where: unknown) => {
         if (state.updateError) throw state.updateError;
         state.updated.push(values);
+        state.updateWhere = where;
       },
     }),
   });
@@ -125,6 +127,7 @@ beforeEach(() => {
   fake.state.inserted = [];
   fake.state.insertError = undefined;
   fake.state.updated = [];
+  fake.state.updateWhere = undefined;
   fake.state.updateError = undefined;
   fake.state.deletes = 0;
   fake.state.deleteError = undefined;
@@ -349,6 +352,18 @@ describe("setReportsResolved", () => {
     await expect(setReportsResolved([REPORT_ID], true, "teacher-1")).resolves.toBe(true);
     expect(fake.state.updated[0]?.resolvedAt).toBeInstanceOf(Date);
     expect(fake.state.updated[0]?.resolvedBy).toBe("teacher-1");
+  });
+
+  it("resolves only open reports: an already-resolved one keeps its first resolver", async () => {
+    await setReportsResolved([REPORT_ID], true, "teacher-2");
+    expect(fake.state.updateWhere).toEqual(
+      and(inArray(reports.id, [REPORT_ID]), isNull(reports.resolvedAt)),
+    );
+  });
+
+  it("reopens every given report, resolved or not", async () => {
+    await setReportsResolved([REPORT_ID], false, "teacher-2");
+    expect(fake.state.updateWhere).toEqual(inArray(reports.id, [REPORT_ID]));
   });
 
   it("nulls BOTH resolution columns when reopening", async () => {

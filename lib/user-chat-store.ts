@@ -90,14 +90,14 @@ export async function recordUserChat(
 }
 
 /**
- * The user ids attributed to a chat on one of the teacher's codes whose FROZEN
- * `anonymous` flag is false — a subselect the teacher facts store unions into
- * its identified-students count (docs/home.md → Teacher dashboard). Only user
- * ids leave it; the caller counts them.
+ * `(user_id, code, at)` for every chat on one of the teacher's codes whose
+ * FROZEN `anonymous` flag is false, `at` = when the chat began — a subselect the
+ * teacher facts store unions into its identified-students counts (docs/home.md →
+ * Teacher dashboard). The caller only counts and dates them; no user id leaves it.
  */
 export function chattersOfTeacherStatement(teacherId: string): SQL {
   return sql`
-    SELECT uc.user_id FROM novedu_user_chats uc
+    SELECT uc.user_id, uc.code, uc.created_at AS at FROM novedu_user_chats uc
     JOIN novedu_codes c ON c.code = uc.code
     WHERE c.created_by = ${teacherId} AND NOT c.anonymous
   `;

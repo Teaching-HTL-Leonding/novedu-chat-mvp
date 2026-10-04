@@ -15,7 +15,12 @@ vi.mock("./_home/recent-list", () => ({
   RecentList: () => <div data-testid="recent" />,
   RecentListSkeleton: () => null,
 }));
-vi.mock("./_home/news-strip", () => ({ NewsStrip: () => <div data-testid="news" /> }));
+// The shared sections name the audience they were given (the student's by default).
+vi.mock("./_home/news-strip", () => ({
+  NewsStrip: ({ audience = "student" }: { audience?: string }) => (
+    <div data-testid="news" data-audience={audience} />
+  ),
+}));
 vi.mock("./_home/progress-section", () => ({
   ProgressSection: () => <div data-testid="progress" />,
   ProgressSkeleton: () => null,
@@ -33,7 +38,9 @@ vi.mock("./_home/almost-there-section", () => ({
   AlmostThereSkeleton: () => null,
 }));
 vi.mock("./_home/badges-section", () => ({
-  BadgesSection: () => <div data-testid="badges" />,
+  BadgesSection: ({ audience = "student" }: { audience?: string }) => (
+    <div data-testid="badges" data-audience={audience} />
+  ),
   BadgesSkeleton: () => null,
 }));
 vi.mock("./_home/teacher-header", async (importOriginal) => ({
@@ -79,13 +86,16 @@ describe("start page", () => {
     ]);
   });
 
-  it("a teacher gets the dashboard: header with the Teacher Guide, attention bar, KPIs, top activities", async () => {
+  it("a teacher gets the dashboard: Teacher Guide header, strip, attention bar, KPIs, top activities, badges", async () => {
     getSession.mockResolvedValue({ user: { id: "t1", name: "Rainer Stropek", isTeacher: true } });
     effectiveTeacherForSession.mockResolvedValue(true);
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("Welcome back, Rainer");
     expect(html).toContain('href="https://docs.novedu.at"');
-    expect(order(html)).toEqual(["intro", "attention", "kpis", "top"]);
+    expect(order(html)).toEqual(["intro", "news", "attention", "kpis", "top", "badges"]);
+    // The strip and the badges are the student page's sections, fed the teacher's data.
+    expect(html.match(/data-audience="teacher"/g)).toHaveLength(2);
+    expect(html).not.toContain('data-audience="student"');
     // No code entry, no Recently used, no student progress.
     expect(html).not.toContain("code-form");
     expect(html).not.toContain("Your progress");
@@ -106,6 +116,8 @@ describe("start page", () => {
       "almost",
       "badges",
     ]);
+    // The student's badges and strip, never the teacher's.
+    expect(html).not.toContain('data-audience="teacher"');
   });
 
   it("without a resolvable session only the code field is offered", async () => {

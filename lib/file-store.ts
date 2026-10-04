@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, type SQL, sql } from "drizzle-orm";
+import { HOME_TIME_ZONE, type LocalDate } from "@/lib/achievements/time";
 import { type DbExecutor, getDb } from "@/lib/db";
 import { authUsers } from "@/lib/db/auth-schema";
 import { countRows } from "@/lib/db/count";
@@ -22,6 +23,7 @@ import {
   isFileKind,
   validateFileName,
 } from "@/lib/file-name";
+import { reportStoreFailure } from "@/lib/store-failure";
 
 export { FILE_NAME_PATTERN, type FileKind, type FileNameValidation, isFileKind, validateFileName };
 
@@ -351,5 +353,47 @@ export async function softDeleteFiles(names: string[], userId: string): Promise<
   } catch (error) {
     console.error("file-store: bulk delete failed", error);
     return { ok: false, deleted: 0 };
+  }
+}
+
+/**
+ * The writer-versions statement — exported for its shape test. Over the versions the writer wrote (every row, active or closed,
+ * of any name, read through the `created_by` index): the most versions of one
+ * name, and the local date some name first reached `n` of them.
+ */
+export function writerVersionsStatement(userId: string, n: number): SQL {
+  return sql`
+    SELECT coalesce(max(v.k), 0) AS most,
+           ((min(v.valid_from) FILTER (WHERE v.k = ${n}) AT TIME ZONE ${HOME_TIME_ZONE})::date)::text
+             AS "reachedOn"
+    FROM (
+      SELECT f.valid_from, row_number() OVER (PARTITION BY f.name ORDER BY f.valid_from) AS k
+      FROM novedu_files f
+      WHERE f.created_by = ${userId}
+    ) v
+  `;
+}
+
+/**
+ * The teacher start page's files fact group (docs/home.md → Iterator): how many
+ * versions of one file the session user wrote at most, and when some file first
+ * reached `n`. Counts and a date leave this function — no name, no content.
+ * Returns `undefined` on a database error (reported with a fixed message, never
+ * the raw error — it carries the user id). Never throws.
+ */
+export async function loadWriterVersions(
+  userId: string,
+  n: number,
+): Promise<{ most: number; reachedOn?: LocalDate } | undefined> {
+  try {
+    const res = await getDb().execute<{ most: number | string; reachedOn: LocalDate | null }>(
+      writerVersionsStatement(userId, n),
+    );
+    const row = res.rows[0];
+    const most = Number(row?.most ?? 0);
+    return row?.reachedOn ? { most, reachedOn: row.reachedOn } : { most };
+  } catch (error) {
+    reportStoreFailure("file-store", "load writer versions", error);
+    return undefined;
   }
 }

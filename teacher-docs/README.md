@@ -54,7 +54,8 @@ dead `related:` slugs (build failure), and a post-build output check
 - `src/content.config.ts` — the `docs` collection reads `src/content/docs`, where
   the chapters live. The schema extends Starlight's with the corpus's fields
   (`audience`, `keywords`, `related`).
-- `src/lib/` — the base-path helper (`paths.ts`) and the corpus contract test.
+- `src/lib/` — the guide's identity (`guide.ts`), the llms.txt surface (`llms.ts`),
+  the section order (`sections.ts`) and the corpus contract test.
 - `src/components/MarkdownContent.astro` — appends the "Related chapters" link
   cards from the frontmatter `related:` slugs; a dead slug fails the build.
 - `src/lib/sections.ts` — the guide's sections in reading order, mirroring
@@ -91,7 +92,7 @@ dead `related:` slugs (build failure), and a post-build output check
 - **Search (Pagefind) only works in `build`/`preview`**, not in `dev` — a Starlight
   limitation.
 - Editing a chapter live-reloads the running dev server.
-- The dev server is a daemon in Astro 7: stop it with `npx astro dev stop` (in this
+- The dev server runs as a daemon: stop it with `npx astro dev stop` (in this
   directory), not Ctrl-C alone.
 - The build logs `Entry docs → 404 was not found.` — Starlight looking for an
   optional custom 404 chapter in the corpus. Harmless.

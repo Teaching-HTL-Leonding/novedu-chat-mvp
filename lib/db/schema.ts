@@ -90,8 +90,9 @@ export const codes = pgTable(
     llmReasoning: varchar("llm_reasoning", { length: 16 }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
   },
-  // The teacher's "Codes" page (and the stats pages) list by creator; the
-  // module filter narrows by activity. No index on `valid_until`: nothing
+  // The teacher's "Codes" page (and the stats pages) list by creator, and every
+  // teacher start-page statement starts from the creator's codes (docs/home.md);
+  // the module filter narrows by activity. No index on `valid_until`: nothing
   // deletes by expiry (deletion is explicit, teacher-initiated).
   (t) => [
     index("ix_novedu_codes_created_by").on(t.createdBy),
@@ -230,6 +231,11 @@ export const reports = pgTable(
     index("ix_novedu_reports_user_id_resolved")
       .on(t.userId)
       .where(sql`${t.resolvedAt} IS NOT NULL`),
+    // The reports a teacher resolved — the teacher start page's Listener badge
+    // (docs/home.md). Partial: only resolved rows carry a resolver.
+    index("ix_novedu_reports_resolved_by")
+      .on(t.resolvedBy, t.resolvedAt)
+      .where(sql`${t.resolvedBy} IS NOT NULL`),
   ],
 );
 
@@ -344,6 +350,9 @@ export const files = pgTable(
     // "all active files" for the list page (active rows are the minority as
     // history accumulates, so an index on the discriminator pays off).
     index("ix_novedu_files_valid_until").on(t.validUntil),
+    // A writer's own versions — the teacher start page's Iterator badge
+    // (docs/home.md).
+    index("ix_novedu_files_created_by").on(t.createdBy),
   ],
 );
 
@@ -461,7 +470,8 @@ export const usageByUser = pgTable(
     // Requests through the coding proxy (the coding route's usage tap).
     codingRequests: integer("coding_requests").notNull().default(0),
   },
-  // The PK `(user_id, hour)` doubles as the per-user quota-window range-scan index.
+  // The PK `(user_id, hour)` doubles as the per-user range-scan index: the quota
+  // window and the start page's usage facts (docs/home.md).
   (t) => [primaryKey({ columns: [t.userId, t.hour] })],
 );
 
@@ -513,7 +523,8 @@ export const quizResults = pgTable(
   (t) => [
     // One user's uuid can never block another user's save.
     primaryKey({ columns: [t.userId, t.id] }),
-    // The per-quiz reads and the prune. "Newest" orders by `(finished_at DESC,
+    // The per-quiz reads, the prune, and the start page's own-results read
+    // (docs/home.md), whose order it delivers. "Newest" orders by `(finished_at DESC,
     // id DESC)`, which a backward scan of this ascending index serves exactly
     // (an index declared DESC would be NULLS LAST and match no plain DESC).
     index("ix_novedu_quiz_results_user_code_finished").on(t.userId, t.code, t.finishedAt, t.id),

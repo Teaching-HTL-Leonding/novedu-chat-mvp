@@ -16,7 +16,7 @@ import { usePopover } from "./use-popover";
 // from the menu for non-teachers (the pages themselves enforce the rule
 // server-side; this is just honest navigation).
 const NAV_ITEMS = [
-  // The start page: the student home today, the teacher dashboard later — "Home" for both.
+  // The start page: the student home or the teacher dashboard, by effective role — "Home" for both.
   { href: "/", label: "Home", heading: "Home", teacherOnly: false },
   {
     href: "/codes",

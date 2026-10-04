@@ -68,8 +68,9 @@
   --chart-9: #7a5c3e;
   --chart-other: #898781;
 
-  /* Student start page (app/_home, docs/home.md) — the one deliberately playful
-     surface. The brand symbol's colours (app/icon.svg), the season calendar's
+  /* Start page (app/_home, docs/home.md) — the student home is the one
+     deliberately playful surface; the teacher dashboard reuses its badges.
+     The brand symbol's colours (app/icon.svg), the season calendar's
      intensity ramp (0 / 1 / 2–3 / 4+ active hours, on the brand blue), the
      badge families, and the amber tints of the "new badges" notices. */
   --brand-deep: #0a529a;
@@ -96,6 +97,9 @@
   --silver-ink: #1e2633;
   --bronze: #c07a45;
   --bronze-ink: #2e1606;
+  /* The teacher's badge families on the same discs (white glyphs). */
+  --fam-reach: #0b7285;
+  --fam-authoring: #9c36b5;
 }
 
 @theme inline {
@@ -146,6 +150,8 @@
   --color-fam-coding: var(--fam-coding);
   --color-fam-secret: var(--fam-secret);
   --color-fam-quiz: var(--fam-quiz);
+  --color-fam-reach: var(--fam-reach);
+  --color-fam-authoring: var(--fam-authoring);
   --color-gold: var(--gold);
   --color-gold-ink: var(--gold-ink);
   --color-silver: var(--silver);

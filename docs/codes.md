@@ -207,17 +207,19 @@ is stateless on purpose; an ownership table would break the anonymity promise
 below. All runtime endpoints the app does not use (`/threads/*`, `/transcribe`,
 …) return 404.
 
-## URLs & entry page
+## URLs & the code field
 
 - An activity lives at **`/<code>`** — no query parameters. Teachers hand out
   `https://<host>/<code>`; the code alone also works.
-- **`/`** is the entry page (`app/code-entry.tsx`): a form that accepts a bare
-  code or a pasted full URL (the client extracts the last path segment;
-  format-only validation against `[a-z0-9-]{1,32}`), plus the user's **recently
-  used codes** as one-click shortcuts.
+- **`/`** is the start page (`docs/home.md`). On the student page (and for a
+  teacher in view-as-student mode) its Continue section holds the code field
+  (`CodeEntryForm`, `app/code-entry.tsx`): it accepts a bare code or a pasted full
+  URL (the client extracts the last path segment; format-only validation against
+  `[a-z0-9-]{1,32}`), with the user's **recently used codes** as one-click
+  shortcuts below it. The teacher dashboard has no code field.
 - Recents live in SQL (`novedu_recent_codes`, PK `user_id` + `code`,
   `last_used`), recorded server-side after every successful open and capped at the
-  newest 10 per user. The entry page lists them via an inner join with
+  newest 10 per user. Recently used (`app/_home/recent-list.tsx`) lists them via an inner join with
   `novedu_codes` (label = `note`, fallback code) — so codes whose row was deleted
   disappear by themselves. Clicking a recent code that turns out dead
   (`unknown-code` / `expired`) removes the row server-side; `not-started` and
@@ -346,7 +348,10 @@ behind an explicit on-page notice (`docs/coding.md`); and `novedu_quiz_results`,
 where a student who chooses to save a finished quiz's counts on the Finish page
 (behind the notice that only they can see it) stores them with their user id even
 under an anonymous code. That store has no teacher reader at all — not even an
-aggregate — and is deleted with its code (`docs/home.md`). It is
+aggregate — and is deleted with its code (`docs/home.md`). The teacher dashboard
+counts a teacher's identified students through `chattersOfTeacherStatement`
+(`lib/user-chat-store.ts`, non-anonymous codes only) beside the writing and key
+stores' subselects; only counts and dates leave that statement (`docs/home.md`). It is
 privacy-gated by the activity YAML's **`anonymous` flag, whose default is
 module-specific** (tutor/quiz default `true`; **writing defaults `false`** —
 `docs/writing.md`): when anonymous, nothing is written — chats cannot be attributed

@@ -1,5 +1,6 @@
 import type { ComponentType, SVGProps } from "react";
 import {
+  ActivityIcon,
   AwardIcon,
   BugIcon,
   CalendarIcon,
@@ -7,13 +8,17 @@ import {
   CodeIcon,
   EditIcon,
   FlameIcon,
+  InboxIcon,
   KeyIcon,
   LayersIcon,
+  MoonIcon,
   RotateCcwIcon,
   SendIcon,
+  ShareIcon,
   StarIcon,
   ToolIcon,
   TrendingUpIcon,
+  UsersIcon,
   ZapIcon,
 } from "@/components/icons";
 import type { BadgeIcon } from "@/lib/achievements/catalog";
@@ -39,6 +44,11 @@ const ICONS: Record<BadgeIcon, ComponentType<SVGProps<SVGSVGElement>>> = {
   trend: TrendingUpIcon,
   rotate: RotateCcwIcon,
   bug: BugIcon,
+  share: ShareIcon,
+  users: UsersIcon,
+  activity: ActivityIcon,
+  moon: MoonIcon,
+  inbox: InboxIcon,
 };
 
 /** Family → its colour as a background utility (tokens in app/globals.css). */
@@ -48,6 +58,8 @@ export const FAMILY_BG: Record<string, string> = {
   quiz: "bg-fam-quiz",
   coding: "bg-fam-coding",
   secret: "bg-fam-secret",
+  reach: "bg-fam-reach",
+  authoring: "bg-fam-authoring",
 };
 
 /**

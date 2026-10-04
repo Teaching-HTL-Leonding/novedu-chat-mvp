@@ -172,6 +172,11 @@ surfaces the error to its action.
   loads one student's text on demand. Anonymous codes hold no rows, so the list is
   empty.
 
+For the teacher dashboard, `writersOfTeacherStatement(teacherId)` is the subselect of
+`(user_id, code, last save)` over the teacher's own non-anonymous writing codes that
+the teacher facts store counts into identified students (`docs/home.md`); no user
+id or text leaves that statement.
+
 There is **no delete here**: a code's saved texts are dropped inline by
 `deleteCodeRows` (`lib/code-stats-store.ts`) on code delete, not through this store
 (see **Lifecycle**).

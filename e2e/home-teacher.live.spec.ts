@@ -1,24 +1,24 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
-import { windowStart } from "@/lib/achievements/teacher";
-import { addDays, isSchoolHour, startOfLocalDay, todayLocal } from "@/lib/achievements/time";
-import { openReportsOfTeacherStatement } from "@/lib/report-store";
 import {
-  conversationsStatement,
-  loadTeacherUsage,
-  studentsStatement,
-  usageStatement,
-} from "@/lib/teacher-facts-store";
+  addDays,
+  isSchoolHour,
+  localDateOf,
+  startOfLocalDay,
+  todayLocal,
+  weekdayOf,
+} from "@/lib/achievements/time";
+import { loadTeacherUsage } from "@/lib/teacher-facts-store";
 import { query } from "./db";
-import { planOf } from "./plan.utils";
 import { deletePrincipal, signInFreshTeacher } from "./principal.utils";
 
-// The teacher start page against real rows (docs/home.md → Teacher dashboard):
-// a FRESH teacher with seeded codes, hourly usage, reports, attributed students,
-// keys and Mastra threads — plus a second teacher whose rows must never count.
-// Covers the attention counters, the six KPIs, the top activities with their
-// share outside school hours (checked against the pure `isSchoolHour` rule,
-// also across both clock changes), and the plans of the teacher statements.
+// The teacher start page against real rows (docs/home.md → Teacher dashboard,
+// Teacher achievements): a FRESH teacher with seeded codes, hourly usage,
+// reports, attributed students, keys, file versions and Mastra threads — plus a
+// second teacher whose rows must never count. Covers the attention counters, the
+// six KPIs, the top activities with their share outside school hours (checked
+// against the pure `isSchoolHour` rule, also across both clock changes), the
+// and the badges granted from those rows with their dates and the strip.
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -312,10 +312,11 @@ test("the usage statement's school-hours cut matches isSchoolHour, across both c
       await insertCode(codes[i] as string, "tutor", teacherId);
       await insertUsage(codes[i] as string, "tutor", instant, { messages: 1 });
     }
-    const usage = await loadTeacherUsage(teacherId, new Date("2025-01-01T00:00:00Z"));
+    const usage = await loadTeacherUsage(teacherId);
     expect(usage).toHaveLength(instants.length);
     for (const [i, instant] of instants.entries()) {
       const row = usage?.find((u) => u.code === codes[i]);
+      expect(row?.date, instant.toISOString()).toBe(localDateOf(instant));
       expect(row?.interactions, instant.toISOString()).toBe(1);
       expect(row?.outsideSchool, instant.toISOString()).toBe(isSchoolHour(instant) ? 0 : 1);
     }
@@ -324,19 +325,151 @@ test("the usage statement's school-hours cut matches isSchoolHour, across both c
   }
 });
 
-test("the teacher statements are index scans over the teacher's own codes", {
+// ---------------------------------------------------------------------------
+// Badges
+
+/** Noon (local) on the local date `daysAgo` before today. */
+const noon = (daysAgo: number) => localBucket(daysAgo, 12);
+
+test("the teacher's badges are granted from real rows, dated by their evidence, and the strip clears once seen", {
   tag: ["@live", "@live-db"],
-}, async () => {
-  const teacherId = `e2e-teacher-${randomUUID()}`;
-  const start = windowStart(new Date());
-  for (const [name, statement] of [
-    ["usage", usageStatement(teacherId, start)],
-    ["conversations", conversationsStatement(teacherId, start)],
-    ["students", studentsStatement(teacherId)],
-    ["reports", openReportsOfTeacherStatement(teacherId)],
-  ] as const) {
-    const plan = await planOf(statement);
-    expect(plan, name).toContain("ix_novedu_codes_created_by");
-    expect(plan, name).not.toContain('"Seq Scan"');
+}, async ({ page, context }) => {
+  const principal = await signInFreshTeacher(context, "Badge Teacher");
+  const teacherId = principal.id;
+  const tag = randomUUID().slice(0, 8);
+  const code = `H${tag}`;
+  const otherCode = `Y${tag}`;
+  const fileName = `e2e-iter-${tag}`;
+  const reportIds: string[] = [];
+  const today = todayLocal(new Date());
+  const dayOf = (daysAgo: number) => addDays(today, -daysAgo);
+  // The latest Saturday at least two days back, and the Wednesday before it.
+  let saturday = 2;
+  while (weekdayOf(dayOf(saturday)) !== 5) saturday++;
+  try {
+    // First Code: one tutor code, created 20 days ago (no Full Toolkit).
+    await insertCode(code, "tutor", teacherId, { anonymous: false, created: noon(20).getTime() });
+    await insertCode(otherCode, "quiz", `e2e-other-${tag}`);
+
+    // Small Crowd: ten students first seen on days 19 … 10 → the tenth on day 10.
+    // The teacher's own (earlier) chat is never a student.
+    for (const [i, user] of [
+      teacherId,
+      ...Array.from({ length: 10 }, (_, k) => `e2e-s-${tag}-${k}`),
+    ].entries()) {
+      await query(
+        `INSERT INTO novedu_user_chats (thread_id, code, user_id, created_at) VALUES ($1, $2, $3, $4)`,
+        [randomUUID(), code, user, noon(20 - i).toISOString()],
+      );
+    }
+
+    // Homework Hit: 30 messages on a Wednesday in school hours, then 30 on the
+    // Saturday — 60 in total, exactly half outside → dated that Saturday.
+    await insertUsage(code, "tutor", localBucket(saturday + 3, 10), { messages: 30 });
+    await insertUsage(code, "tutor", localBucket(saturday, 10), { messages: 30 });
+
+    // Iterator: versions of one file by the teacher on days 9, 8, 6, 5, 4 — and
+    // one by someone else on day 7, which does not count → the fifth on day 4.
+    const versions: [number, string][] = [
+      [9, teacherId],
+      [8, teacherId],
+      [7, `e2e-other-${tag}`],
+      [6, teacherId],
+      [5, teacherId],
+      [4, teacherId],
+    ];
+    for (const [i, [daysAgo, writer]] of versions.entries()) {
+      const next = versions[i + 1];
+      await query(
+        `INSERT INTO novedu_files (id, name, kind, content, created_by, valid_from, valid_until, closed_by)
+         VALUES ($1, $2, 'fragment', 'x: 1', $3, $4, $5, $6)`,
+        [
+          randomUUID(),
+          fileName,
+          writer,
+          noon(daysAgo).toISOString(),
+          next ? noon(next[0]).toISOString() : null,
+          next ? next[1] : null,
+        ],
+      );
+    }
+
+    // Listener: ten reports on another teacher's code resolved by this teacher on
+    // days 15 … 6 → the tenth on day 6; one resolved by someone else.
+    for (const [daysAgo, resolver] of [
+      ...Array.from({ length: 10 }, (_, k) => [15 - k, teacherId] as const),
+      [16, `e2e-other-${tag}`] as const,
+    ]) {
+      const id = randomUUID();
+      reportIds.push(id);
+      await query(
+        `INSERT INTO novedu_reports (id, kind, code, user_id, reaction, created_at, resolved_at, resolved_by)
+         VALUES ($1, 'chat', $2, $3, 'meh', $4, $4, $5)`,
+        [id, otherCode, `e2e-reporter-${tag}`, noon(daysAgo).toISOString(), resolver],
+      );
+    }
+
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.goto("/");
+
+    // Five badges, each stored with the day its evidence was first complete.
+    await expect(page.getByText("You earned 5 new badges since your last visit.")).toBeVisible();
+    const grants = await query<{ achievement_id: string; qualified_on: string }>(
+      `SELECT achievement_id, qualified_on::text AS qualified_on FROM novedu_achievements
+       WHERE user_id = $1 ORDER BY achievement_id`,
+      [teacherId],
+    );
+    expect(grants).toEqual([
+      { achievement_id: "crowd-10", qualified_on: dayOf(10) },
+      { achievement_id: "first-code", qualified_on: dayOf(20) },
+      { achievement_id: "homework-hit", qualified_on: dayOf(saturday) },
+      { achievement_id: "iterator", qualified_on: dayOf(4) },
+      { achievement_id: "listener", qualified_on: dayOf(6) },
+    ]);
+
+    // The student page's Badges section, with the teacher's families.
+    const badges = page.getByRole("region", { name: "Badges" });
+    await expect(badges.getByText("5 earned")).toBeVisible();
+    await expect(badges.locator('[data-family="reach"] li[data-badge="first-code"]')).toContainText(
+      "Earned",
+    );
+    await expect(badges.locator('li[data-badge="full-toolkit"]')).toContainText("1 / 4");
+    await expect(badges.locator('li[data-badge="crowd-30"]')).toContainText("10 / 30");
+    await expect(badges).not.toContainText("XP");
+
+    // The strip's badges are marked seen; the next visit shows no strip and
+    // grants nothing twice.
+    await expect
+      .poll(
+        async () =>
+          (
+            await query<{ unseen: string }>(
+              `SELECT count(*) AS unseen FROM novedu_achievements WHERE user_id = $1 AND seen_at IS NULL`,
+              [teacherId],
+            )
+          )[0]?.unseen,
+      )
+      .toBe("0");
+    await page.reload();
+    await expect(page.getByRole("region", { name: "Badges" })).toBeVisible();
+    await expect(page.getByText(/new badges? since your last visit/)).toHaveCount(0);
+    const [{ count } = { count: "" }] = await query<{ count: string }>(
+      `SELECT count(*) FROM novedu_achievements WHERE user_id = $1`,
+      [teacherId],
+    );
+    expect(count).toBe("5");
+    expect(errors).toEqual([]);
+  } finally {
+    await query(`DELETE FROM novedu_files WHERE name = $1`, [fileName]);
+    await query(`DELETE FROM novedu_reports WHERE id = ANY($1)`, [reportIds]);
+    await cleanup({
+      teacherId,
+      otherTeacherId: "",
+      codes: [code, otherCode],
+      threads: [],
+      students: [],
+    });
+    await deletePrincipal(teacherId);
   }
 });

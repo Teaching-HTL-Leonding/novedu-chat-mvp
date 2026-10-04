@@ -1,7 +1,5 @@
 # Install and update the `novedu-tutor-cli` skill
 
-Research and command verification performed on 2026-08-10.
-
 ## What is being installed
 
 The source skill is
@@ -33,7 +31,7 @@ Why these arguments are explicit:
 
 - Project scope is the skills CLI's default because `--global` is absent.
 - `--skill novedu-tutor-cli` selects only this skill from the upstream
-  repository. The repository currently exposes three skills to the CLI.
+  repository, which carries many other skills.
 - `--agent codex` avoids relying on agent auto-detection.
 - The first `--yes` belongs to `npx`; the final `--yes` suppresses interactive
   prompts from the skills CLI.

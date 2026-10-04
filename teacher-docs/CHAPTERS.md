@@ -13,7 +13,7 @@ _What Novedu is. Concepts and pedagogy, no deep configuration detail._
 
 | # | Chapter | Where to look (hints) |
 | --- | --- | --- |
-| 01 | What is Novedu | `README.md`, `activities/README.md`, `activities/tutors/README.md` |
+| 01 | What is Novedu | `README.md`, `activities/README.md`, `activities/tutors/README.md`, `docs/home.md` (achievements) |
 | 02 | What is a shareable code | `docs/codes.md` (behavioral parts), `README.md` |
 | 03 | Tutors overview | `activities/tutors/README.md` |
 | 04 | Quizzes overview | `activities/quizzes/README.md` |
@@ -61,7 +61,7 @@ _Turning an activity into a code and handing it to a class._
 | 06 | Connecting a coding activity to an outside tool | `docs/coding.md` (behavior), `activities/coding/README.md` |
 | 07 | Student reports | `docs/reports.md` (behavior), `docs/codes.md` (anonymity) |
 | 08 | Many activities at once: the activity registry | `docs/registry.md` (format + sync semantics), `cli/README.md` (`codes sync`) |
-| 09 | Your start page | `docs/home.md` (the *Teacher dashboard* section: counters, KPIs, top activities, school hours) |
+| 09 | Your start page | `docs/home.md` (the *Teacher dashboard* section: counters, KPIs, top activities, school hours, teacher badges) |
 
 ## 40: Working with AI agents
 _Using Novedu together with AI assistants and agents: the CLI skill, and the guide's machine-readable form. More AI topics land here over time._

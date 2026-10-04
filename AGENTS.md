@@ -191,7 +191,7 @@ Read before touching: `app/page.tsx`, `app/_home/**`, `app/settings/**`, `app/[c
 - `lib/achievements/catalog.ts` is server-only (guard-tested): hidden badges reach page data only once earned. Achievement ids never contain a code.
 - A failed fact group is never read as zero; the page renders earned state only from stored grants, and new grants are inserted before the load returns.
 - Saved quiz results are written only by `saveQuizResult` on the student's explicit choice (or their own "Always" setting), in one transaction under a `(user, code)` advisory lock with the code row `FOR SHARE`; the code delete locks its rows `FOR UPDATE` first. Settings act only on the session user's own row.
-- `/` picks the shell by the EFFECTIVE role (`effectiveTeacherForSession`): view-as-student gets the student page. The teacher dashboard's statements are restricted to codes with `created_by` = the session user, count students by the frozen `anonymous` flag (as `getCodeStats`), and return counts only — never a student id or name.
+- `/` picks the shell by the EFFECTIVE role (`effectiveTeacherForSession`): view-as-student gets the student page. The teacher dashboard's statements are restricted to codes with `created_by` = the session user (or, for the teacher badges, the session user's own report resolutions and file versions), count students by the frozen `anonymous` flag (as `getCodeStats`), and return counts and dates only — never a student id or name. Both audiences share `novedu_achievements` and the strip/Badges components; the two catalogs' ids never collide.
 
 ### LLM diagnostics → `docs/diagnostics.md`
 

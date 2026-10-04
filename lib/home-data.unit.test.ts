@@ -16,7 +16,7 @@ vi.mock("@/lib/achievement-store", () => ({
 
 import type { StudentAchievement } from "@/lib/achievements/catalog";
 import type { UsageDay } from "@/lib/achievements/derive";
-import type { TeacherCode, TeacherFacts } from "@/lib/achievements/teacher";
+import type { CodeDay, TeacherCode, TeacherFacts } from "@/lib/achievements/teacher";
 import {
   buildStudentHome,
   buildTeacherHome,
@@ -24,6 +24,7 @@ import {
   getTeacherHome,
   invalidateHome,
   loadStudentHome,
+  loadTeacherHome,
   resetHomeCacheForTests,
 } from "@/lib/home-data";
 
@@ -362,6 +363,17 @@ const tCode = (id: string, extra: Partial<TeacherCode> = {}): TeacherCode => ({
   ...extra,
 });
 
+const tDay = (code: string, date: string, extra: Partial<CodeDay> = {}): CodeDay => ({
+  code,
+  date,
+  interactions: 0,
+  outsideSchool: 0,
+  quizAnswers: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  ...extra,
+});
+
 const FACTS: TeacherFacts = {
   codes: [
     // Ends today 21:59Z = 23:59 local; another one ends Tue 6 Oct 14:00 local.
@@ -371,42 +383,51 @@ const FACTS: TeacherFacts = {
     tCode("ENDED", { validUntil: tAt(-DAY) }),
   ],
   usage: [
-    {
-      code: "TUESDAY",
-      interactions: 40,
+    // Before the 30-day window (it starts on 5 Sep): counts for the badges only.
+    tDay("TUESDAY", "2026-09-04", { interactions: 99, outsideSchool: 99, quizAnswers: 99 }),
+    tDay("TUESDAY", "2026-09-05", {
+      interactions: 30,
       outsideSchool: 10,
       quizAnswers: 5,
       inputTokens: 1000,
       outputTokens: 100,
-    },
-    {
-      code: "TODAY",
-      interactions: 0,
-      outsideSchool: 0,
-      quizAnswers: 0,
-      inputTokens: 0,
-      outputTokens: 0,
-    },
-    {
-      code: "ENDED",
+    }),
+    tDay("TUESDAY", "2026-10-04", { interactions: 10 }),
+    tDay("TODAY", "2026-10-01"),
+    tDay("ENDED", "2026-09-20", {
       interactions: 3,
       outsideSchool: 3,
       quizAnswers: 3,
       inputTokens: 10,
       outputTokens: 1,
-    },
+    }),
   ],
   conversations: 7,
-  students: 12,
-  reports: [
-    { code: "TUESDAY", open: 2 },
-    { code: "TODAY", open: 1 },
-  ],
+  students: { total: 12, perCode: [] },
+  reports: {
+    open: [
+      { code: "TUESDAY", open: 2 },
+      { code: "TODAY", open: 1 },
+    ],
+    resolved: 0,
+    resolvedOn: [],
+  },
+  files: { most: 0 },
+};
+
+/** A teacher without codes: every group loaded and empty. */
+const NO_CODES: TeacherFacts = {
+  codes: [],
+  usage: [],
+  conversations: 0,
+  students: { total: 0, perCode: [] },
+  reports: { open: [], resolved: 0, resolvedOn: [] },
+  files: { most: 0 },
 };
 
 describe("buildTeacherHome", () => {
   it("builds the KPIs over the teacher's codes", () => {
-    const home = buildTeacherHome(FACTS, T_NOW);
+    const home = buildTeacherHome(FACTS, [], T_NOW);
     expect(home.complete).toBe(true);
     expect(home.hasCodes).toBe(true);
     expect(home.kpis).toEqual({
@@ -420,7 +441,7 @@ describe("buildTeacherHome", () => {
   });
 
   it("lists closing-soon codes with their Vienna-local end, the note-or-code label", () => {
-    const { closingSoon } = buildTeacherHome(FACTS, T_NOW);
+    const { closingSoon } = buildTeacherHome(FACTS, [], T_NOW);
     expect(closingSoon).toEqual({
       total: 2,
       more: 0,
@@ -444,7 +465,7 @@ describe("buildTeacherHome", () => {
   });
 
   it("counts open reports and lists their codes, most open first", () => {
-    const { openReports } = buildTeacherHome(FACTS, T_NOW);
+    const { openReports } = buildTeacherHome(FACTS, [], T_NOW);
     expect(openReports?.total).toBe(3);
     expect(openReports?.items.map((i) => [i.code, i.open])).toEqual([
       ["TUESDAY", 2],
@@ -453,7 +474,7 @@ describe("buildTeacherHome", () => {
   });
 
   it("lists never-used codes with their creation day; a code with a usage row is used", () => {
-    const { neverUsed } = buildTeacherHome(FACTS, T_NOW);
+    const { neverUsed } = buildTeacherHome(FACTS, [], T_NOW);
     expect(neverUsed).toEqual({
       total: 1,
       more: 0,
@@ -462,7 +483,7 @@ describe("buildTeacherHome", () => {
   });
 
   it("ranks the top activities with the share outside school hours", () => {
-    const { top } = buildTeacherHome(FACTS, T_NOW);
+    const { top } = buildTeacherHome(FACTS, [], T_NOW);
     expect(top).toEqual([
       {
         code: "TUESDAY",
@@ -479,7 +500,11 @@ describe("buildTeacherHome", () => {
     const codes = Array.from({ length: 7 }, (_, i) =>
       tCode(`C${i}`, { validUntil: tAt((i + 1) * HOUR) }),
     );
-    const home = buildTeacherHome({ ...FACTS, codes, reports: [] }, T_NOW);
+    const home = buildTeacherHome(
+      { ...FACTS, codes, reports: { open: [], resolved: 0, resolvedOn: [] } },
+      [],
+      T_NOW,
+    );
     expect(home.closingSoon?.total).toBe(7);
     expect(home.closingSoon?.items.map((i) => i.code)).toEqual(["C0", "C1", "C2", "C3", "C4"]);
     expect(home.closingSoon?.more).toBe(2);
@@ -487,17 +512,14 @@ describe("buildTeacherHome", () => {
   });
 
   it("a teacher without codes has no codes, empty lists and zero live codes", () => {
-    const home = buildTeacherHome(
-      { codes: [], usage: [], conversations: 0, students: 0, reports: [] },
-      T_NOW,
-    );
+    const home = buildTeacherHome(NO_CODES, [], T_NOW);
     expect(home.hasCodes).toBe(false);
     expect(home.kpis.liveCodes).toBe(0);
     expect(home.top).toEqual([]);
   });
 
   it("a failed group is unavailable where it is needed — never read as 0 or empty", () => {
-    const home = buildTeacherHome({ ...FACTS, usage: undefined, students: undefined }, T_NOW);
+    const home = buildTeacherHome({ ...FACTS, usage: undefined, students: undefined }, [], T_NOW);
     expect(home.complete).toBe(false);
     expect(home.kpis.students).toBeUndefined();
     expect(home.kpis.quizAnswers).toBeUndefined();
@@ -511,7 +533,7 @@ describe("buildTeacherHome", () => {
   });
 
   it("failed codes leave everything that names a code unavailable", () => {
-    const home = buildTeacherHome({ ...FACTS, codes: undefined }, T_NOW);
+    const home = buildTeacherHome({ ...FACTS, codes: undefined }, [], T_NOW);
     expect(home.hasCodes).toBeUndefined();
     expect(home.kpis.liveCodes).toBeUndefined();
     expect(home.closingSoon).toBeUndefined();
@@ -519,6 +541,125 @@ describe("buildTeacherHome", () => {
     expect(home.neverUsed).toBeUndefined();
     expect(home.top).toBeUndefined();
     expect(home.kpis.conversations).toBe(7);
+  });
+
+  it("sums only the window's days; a code used only before it still counts as used", () => {
+    const home = buildTeacherHome(
+      { ...FACTS, usage: [tDay("UNUSED", "2026-08-01", { interactions: 5 })] },
+      [],
+      T_NOW,
+    );
+    expect(home.neverUsed?.items.map((i) => i.code)).not.toContain("UNUSED");
+    expect(home.top).toEqual([]);
+    expect(home.kpis.quizAnswers).toBe(0);
+  });
+});
+
+describe("buildTeacherHome — badges", () => {
+  const FIRST = { id: "first-code", qualifiedOn: "2026-09-04", seenAt: null };
+
+  it("shows the stored grants as earned and new, the next tiers with progress, no XP", () => {
+    const home = buildTeacherHome(FACTS, [FIRST], T_NOW);
+    expect(home.newIds).toEqual(["first-code"]);
+    expect(home.badges?.earned).toBe(1);
+    expect(home.badges?.families.map((f) => f.label)).toEqual(["Reach", "Authoring"]);
+    const reach = home.badges?.families[0];
+    expect(reach?.shown.map((b) => b.id)).toEqual([
+      "first-code",
+      "full-toolkit",
+      "crowd-10",
+      "busy-100",
+    ]);
+    expect(reach?.shown[0]).toMatchObject({ earned: true, isNew: true, xp: 0 });
+    // Two kinds shared so far (quiz, tutor).
+    expect(reach?.shown[1]).toMatchObject({ earned: false, current: 2, target: 4 });
+    expect(reach?.more.map((b) => b.id)).toEqual([
+      "crowd-30",
+      "crowd-100",
+      "busy-1000",
+      "busy-5000",
+    ]);
+    expect(home.badges?.families[1]?.shown.map((b) => b.id)).toEqual([
+      "evergreen",
+      "iterator",
+      "listener",
+      "homework-hit",
+    ]);
+  });
+
+  it("a seen grant is earned but not new", () => {
+    const home = buildTeacherHome(FACTS, [{ ...FIRST, seenAt: T_NOW }], T_NOW);
+    expect(home.newIds).toEqual([]);
+    expect(home.badges?.families[0]?.shown[0]).toMatchObject({ earned: true, isNew: false });
+  });
+
+  it("failed grants: no badges, no strip, not complete — the dashboard still renders", () => {
+    const home = buildTeacherHome(FACTS, undefined, T_NOW);
+    expect(home.badges).toBeUndefined();
+    expect(home.newIds).toBeUndefined();
+    expect(home.complete).toBe(false);
+    expect(home.kpis.liveCodes).toBe(3);
+  });
+
+  it("a rule whose group failed is left out, never shown as 0; stored grants still show", () => {
+    const home = buildTeacherHome(
+      { ...FACTS, students: undefined },
+      [{ id: "crowd-10", qualifiedOn: "2026-09-10", seenAt: T_NOW }],
+      T_NOW,
+    );
+    const ids = home.badges?.families[0]?.shown.map((b) => b.id);
+    expect(ids).toContain("crowd-10");
+    expect(ids).not.toContain("crowd-30");
+    expect(home.badges?.families[0]?.more.map((b) => b.id)).not.toContain("crowd-30");
+  });
+
+  it("a teacher without codes sees every badge unearned, First Code first", () => {
+    const home = buildTeacherHome(NO_CODES, [], T_NOW);
+    expect(home.badges?.earned).toBe(0);
+    expect(home.badges?.families[0]?.shown[0]).toMatchObject({
+      id: "first-code",
+      earned: false,
+    });
+  });
+});
+
+describe("loadTeacherHome", () => {
+  it("inserts the new grants before building, dated by their evidence", async () => {
+    mocks.loadTeacherFacts.mockResolvedValue(FACTS);
+    const home = await loadTeacherHome("t1", T_NOW);
+    expect(mocks.listGrants).toHaveBeenCalledWith("t1");
+    expect(mocks.insertGrants).toHaveBeenCalledWith(
+      "t1",
+      [
+        // The first code was created 4 Sep (local).
+        { id: "first-code", qualifiedOn: "2026-09-04" },
+        // TUESDAY's running total crossed 100 on 5 Sep (99 + 30).
+        { id: "busy-100", qualifiedOn: "2026-09-05" },
+        // 99 interactions on 4 Sep, all outside school hours.
+        { id: "homework-hit", qualifiedOn: "2026-09-04" },
+      ],
+      [],
+    );
+    expect(home.newIds).toEqual(["first-code", "busy-100", "homework-hit"]);
+    expect(home.complete).toBe(true);
+  });
+
+  it("a failed insert leaves the badges unavailable and the load incomplete", async () => {
+    mocks.loadTeacherFacts.mockResolvedValue(FACTS);
+    mocks.insertGrants.mockResolvedValue(undefined);
+    const home = await loadTeacherHome("t1", T_NOW);
+    expect(home.badges).toBeUndefined();
+    expect(home.complete).toBe(false);
+  });
+
+  it("never grants from a failed group", async () => {
+    mocks.loadTeacherFacts.mockResolvedValue({ ...FACTS, usage: undefined });
+    await loadTeacherHome("t1", T_NOW);
+    expect(mocks.insertGrants).toHaveBeenCalledWith(
+      "t1",
+      [{ id: "first-code", qualifiedOn: "2026-09-04" }],
+      [],
+    );
   });
 });
 
@@ -538,6 +679,14 @@ describe("getTeacherHome (cached)", () => {
 
   it("does not cache an incomplete load", async () => {
     mocks.loadTeacherFacts.mockResolvedValue({ ...FACTS, conversations: undefined });
+    await getTeacherHome("t-fail");
+    await getTeacherHome("t-fail");
+    expect(mocks.loadTeacherFacts).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not cache a load whose grants failed", async () => {
+    mocks.loadTeacherFacts.mockResolvedValue(FACTS);
+    mocks.listGrants.mockResolvedValue(undefined);
     await getTeacherHome("t-fail");
     await getTeacherHome("t-fail");
     expect(mocks.loadTeacherFacts).toHaveBeenCalledTimes(2);

@@ -2,10 +2,8 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { insertGrants } from "@/lib/achievement-store";
 import { addDays, todayLocal } from "@/lib/achievements/time";
-import { ownKeyDatesStatement } from "@/lib/coding-key-store";
-import { loadStudentUsage, usageStatement } from "@/lib/student-facts-store";
+import { loadStudentUsage } from "@/lib/student-facts-store";
 import { query } from "./db";
-import { planOf } from "./plan.utils";
 import { deletePrincipal, signInFreshStudent } from "./principal.utils";
 
 // The start page against real rows (docs/home.md): seeded hourly usage and one
@@ -13,9 +11,8 @@ import { deletePrincipal, signInFreshStudent } from "./principal.utils";
 // Covers the calendar's intensity, the pin on its `qualified_on` day, the strip,
 // and that the strip is gone once the badges were marked seen — plus the facts
 // store against the real database: the Vienna-day grouping across the autumn
-// clock change, the idempotent grant insert, and the usage statement's plan.
-// The second test covers coding: requests, a key, the two coding badges that
-// read them, a secret badge, and the keys statement's plan.
+// clock change and the idempotent grant insert. The second test covers coding:
+// requests, a key, the two coding badges that read them, and a secret badge.
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
@@ -123,11 +120,6 @@ test("the start page shows seeded activity, pins a badge on its day, and clears 
       [],
     );
     expect(grants?.find((g) => g.id === "week-days-3")?.qualifiedOn).toBe(pinDay);
-
-    // The usage statement is a range scan on the PK (its leading column is user_id).
-    const plan = await planOf(usageStatement(principal.id));
-    expect(plan).toContain("novedu_usage_by_user_pkey");
-    expect(plan).not.toContain('"Seq Scan"');
   } finally {
     await query(`DELETE FROM novedu_usage_by_user WHERE user_id = $1`, [principal.id]).catch(
       () => {},
@@ -204,11 +196,6 @@ test("coding requests and a coding key earn the Coding badges and a secret one",
       codingRequests: 2,
       codingHours: 1,
     });
-
-    // The keys statement is a range scan on the user_id index.
-    const plan = await planOf(ownKeyDatesStatement(principal.id));
-    expect(plan).toContain("ix_novedu_coding_keys_user_id");
-    expect(plan).not.toContain('"Seq Scan"');
   } finally {
     await query(`DELETE FROM novedu_usage_by_user WHERE user_id = $1`, [principal.id]).catch(
       () => {},

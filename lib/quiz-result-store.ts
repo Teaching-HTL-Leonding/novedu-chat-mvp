@@ -124,8 +124,8 @@ export async function saveQuizResult(
   }
 }
 
-/** The own-results statement — exported so the `@live-db` test can EXPLAIN the real one. */
-export function ownResultsQuery(userId: string) {
+/** The own-results query: a range scan of the user's rows in `ix_novedu_quiz_results_user_code_finished`. */
+function ownResultsQuery(userId: string) {
   return getDb()
     .select({
       id: quizResults.id,

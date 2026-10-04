@@ -88,6 +88,11 @@ version" invariant lives in one place. Never throws — a DB problem surfaces as
   bulk-only: `softDeleteFiles` loops the per-item `closeActiveFile` primitive in one
   transaction). `createFile` maps a duplicate-key error (Postgres SQLSTATE `23505`,
   via `isUniqueViolation`) to `reason: "name-taken"`.
+- `loadWriterVersions(userId, n)` — the teacher start page's Iterator badge
+  (`docs/home.md`): over every version the user wrote (active or closed, through
+  `ix_novedu_files_created_by`), the most versions of one name and the local date
+  some name first reached `n`. Only counts and a date leave the store; never
+  throws (a fixed-message failure report).
 - `title` / `description` are **denormalized** from the validated tutor YAML so the
   list is searchable without parsing every body; they are clamped to the column
   caps (512 / 2048) — lossless for the file (the body in `content` is authoritative)
