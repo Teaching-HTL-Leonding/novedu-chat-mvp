@@ -11,11 +11,16 @@ import { dayLabel, HOME_CAPTION, monthLabel, plural } from "./home-ui";
 //
 // - The grid is ONE tab stop; the arrow keys move a day cursor (up/down = a
 //   day, left/right = a week) and a polite live region reads the day.
-// - Hover, focus and tap show the same details in one tooltip.
+// - Hover, focus and tap show the same details in one tooltip. It stays open
+//   while the pointer moves onto it (a short grace period bridges the gap) and
+//   Escape dismisses it (WCAG 1.4.13: hoverable, dismissible).
 // - Pins are real buttons with an accessible name.
 // - On narrow screens the grid scrolls inside its card, starting at today.
 
 const HEAT_BG = ["bg-heat-0", "bg-heat-1", "bg-heat-2", "bg-heat-3"] as const;
+
+/** How long the tooltip waits for the pointer to cross from the grid onto it. */
+const TIP_GRACE_MS = 150;
 const WEEKDAY_LABELS = ["Mon", "", "Wed", "", "Fri", "", "Sun"];
 
 interface Tip {
@@ -104,6 +109,27 @@ export function SeasonCalendar({
 
   useLayoutEffect(place, [place]);
 
+  // Leaving the grid hides the tooltip only after a grace period, cancelled when
+  // the pointer arrives on the tooltip itself.
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelHide = useCallback(() => clearTimeout(hideTimer.current), []);
+  const hideSoon = useCallback(() => {
+    clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setTip(null), TIP_GRACE_MS);
+  }, []);
+  useEffect(() => cancelHide, [cancelHide]);
+
+  // Escape dismisses the tooltip wherever focus is (the grid, a pin, or none
+  // for a hover); the day cursor stays.
+  useEffect(() => {
+    if (!tip) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTip(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [tip]);
+
   // Any scroll (the page, the calendar) moves the anchor: follow it.
   useEffect(() => {
     if (!tip) return;
@@ -116,6 +142,7 @@ export function SeasonCalendar({
   }, [tip, place]);
 
   function showCell(index: number) {
+    cancelHide();
     const cell = cells[index];
     const anchor = cellRefs.current[index];
     if (!cell || !anchor) return;
@@ -152,6 +179,7 @@ export function SeasonCalendar({
   }
 
   function showPin(index: number, anchor: Element) {
+    cancelHide();
     const cell = cells[index];
     if (cell) setTip({ anchor, content: pinDetails(cell).node });
   }
@@ -207,7 +235,7 @@ export function SeasonCalendar({
                 setTip(null);
               }
             }}
-            onPointerLeave={() => setTip(null)}
+            onPointerLeave={hideSoon}
             className="grid grid-flow-col grid-cols-[repeat(26,1.25rem)] grid-rows-[repeat(7,1.25rem)] gap-1 outline-none md:grid-cols-26 md:grid-rows-7"
           >
             {cells.map((cell, index) => {
@@ -285,11 +313,14 @@ export function SeasonCalendar({
       <p className="sr-only" aria-live="polite" data-testid="calendar-live">
         {live}
       </p>
+      {/* Pointer handlers keep the tooltip open while it is hovered (WCAG 1.4.13). */}
       <div
         ref={tipRef}
         role="tooltip"
         hidden={!tip}
-        className="pointer-events-none fixed z-50 max-w-64 rounded-lg bg-slate-900 px-2.5 py-2 text-white text-xs leading-snug shadow-lg"
+        onPointerEnter={cancelHide}
+        onPointerLeave={hideSoon}
+        className="fixed z-50 max-w-64 rounded-lg bg-slate-900 px-2.5 py-2 text-white text-xs leading-snug shadow-lg"
       >
         {tip?.content}
       </div>

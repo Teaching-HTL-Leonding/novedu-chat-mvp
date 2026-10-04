@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { RequestContext } from "@mastra/core/request-context";
+import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { mastra } from "@/app/mastra";
 import {
@@ -417,6 +418,9 @@ export async function saveQuizResult(
   if (outcome === undefined) return { ok: false, message: SAVE_FAILED };
   if (outcome === "code-gone") return { ok: false, message: CODE_GONE };
   if (outcome === "not-saved") return { ok: true, saved: false };
+  // The server's per-user cache AND the browser's router cache: a start page
+  // visited earlier must not come back from Back/Forward without the result.
   invalidateHome(ctx.userId);
+  revalidatePath("/");
   return { ok: true, saved: true };
 }

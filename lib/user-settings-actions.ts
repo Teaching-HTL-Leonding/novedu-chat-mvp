@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { invalidateHome } from "@/lib/home-data";
 import { deleteOwnQuizResults } from "@/lib/quiz-result-store";
@@ -8,8 +9,10 @@ import { updateUserSettings as storeSettings } from "@/lib/user-settings-store";
 
 // The Settings page's writes (docs/home.md → Settings page). Every action acts
 // ONLY on the session user's own row — the user id is never client-supplied —
-// and needs no teacher gate. No type re-exports here: a `"use server"` module
-// may export async functions only.
+// and needs no teacher gate. A successful write drops the user's cached start
+// page on the server (`invalidateHome`) and in the browser's router cache
+// (`revalidatePath("/")`), so Back never restores stale medals. No type
+// re-exports here: a `"use server"` module may export async functions only.
 
 export type SettingsActionResult = { ok: true } | { ok: false; message: string };
 
@@ -40,6 +43,7 @@ export async function updateUserSettings(patch: unknown): Promise<SettingsAction
     return { ok: false, message: "Your settings could not be saved right now. Please try again." };
   }
   invalidateHome(userId);
+  revalidatePath("/");
   return { ok: true };
 }
 
@@ -55,5 +59,6 @@ export async function deleteMyQuizResults(): Promise<DeleteResultsActionResult> 
     };
   }
   invalidateHome(userId);
+  revalidatePath("/");
   return { ok: true, deleted };
 }

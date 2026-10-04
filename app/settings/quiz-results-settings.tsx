@@ -11,7 +11,11 @@ import { cn } from "@/lib/utils";
 // The Settings page's "Quiz results" section: the switch behind the Finish
 // page's "Always", and the student's saved results with a confirmed delete.
 // The switch updates optimistically and rolls back with a message when the
-// save fails; deleting results never revokes an earned badge.
+// save fails — also when the call itself is lost (a rejected server action);
+// deleting results never revokes an earned badge.
+
+const SAVE_FAILED = "Your settings could not be saved right now. Please try again.";
+const DELETE_FAILED = "Your saved results could not be deleted right now. Please try again.";
 
 export function QuizResultsSettings({
   initialSaveQuizResults,
@@ -33,7 +37,10 @@ export function QuizResultsSettings({
     setOn(next);
     setSwitching(true);
     setError(null);
-    const result = await updateUserSettings({ saveQuizResults: next });
+    const result = await updateUserSettings({ saveQuizResults: next }).catch(() => ({
+      ok: false as const,
+      message: SAVE_FAILED,
+    }));
     setSwitching(false);
     if (!result.ok) {
       setOn(!next);
@@ -117,7 +124,10 @@ function DeleteResultsButton({
     if (pending) return;
     setPending(true);
     setError(null);
-    const result = await deleteMyQuizResults();
+    const result = await deleteMyQuizResults().catch(() => ({
+      ok: false as const,
+      message: DELETE_FAILED,
+    }));
     setPending(false);
     if (!result.ok) {
       setError(result.message);

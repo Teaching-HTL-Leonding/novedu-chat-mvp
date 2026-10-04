@@ -47,6 +47,8 @@ vi.mock("@/lib/usage-store", () => ({ recordQuizAnswer: vi.fn() }));
 vi.mock("@/lib/llm/jev-client", () => ({ askJev }));
 vi.mock("@/lib/quiz-result-store", () => ({ saveQuizResult: storeQuizResult }));
 vi.mock("@/lib/home-data", () => ({ invalidateHome }));
+const revalidatePath = vi.hoisted(() => vi.fn());
+vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/quiz-immediate-feedback", () => ({ immediateFeedbackConfigured }));
 // Also reached by lib/quiz-truncation-retry.ts (emitEvent) — both exports stay here.
 vi.mock("@/lib/telemetry", () => ({ emitEvent, recordError }));
@@ -622,6 +624,7 @@ describe("saveQuizResult", () => {
       "this-time",
     );
     expect(invalidateHome).toHaveBeenCalledWith("student-1");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
     // Nothing about the quiz comes back.
     expect(JSON.stringify(await saveQuizResult(valid))).not.toContain("evaluation");
   });

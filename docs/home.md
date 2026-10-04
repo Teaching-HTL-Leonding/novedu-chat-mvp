@@ -161,9 +161,8 @@ independently.
   plan-checked.
 - **Grants** (`listGrants`) — the user's `novedu_achievements` rows.
 
-Coding is visible in the usage because the coding proxy counts each metered
-response in `coding_requests` (`docs/usage-metering.md`); requests before that
-counter existed are not counted.
+Coding activity is read from `coding_requests`, which the coding proxy counts
+per metered response (`docs/usage-metering.md`).
 
 The student facts never read `novedu_user_chats`, `novedu_recent_codes` or any
 other user's rows. Recently used comes from `lib/recent-code-store.ts` and never
@@ -193,11 +192,14 @@ A student refreshing in a loop must not load the database.
   In-process memory is correct because a stage runs at most one replica.
 - **Single flight**: concurrent loads of one key share one promise, held in a map
   separate from completed entries; a promise's cleanup removes only its own entry.
-- **Generations**: invalidation bumps the key's generation and drops both entries;
-  a load publishes only if its generation is unchanged, so a caller after an
+- **Invalidation wins**: invalidation drops both entries; a load publishes only
+  while its promise is still the key's in-flight entry, so a caller after an
   invalidation never receives a load that started before the write.
 - **Bound**: at most 2,000 completed entries, oldest evicted; in-flight loads are
-  never evicted.
+  never evicted. No per-key state lives outside these two maps.
+- **Browser**: the writes below also call `revalidatePath("/")`, so a start page
+  in the router cache never comes back from Back/Forward with stale results
+  (`markAchievementsSeen` does not: it would re-render the page being viewed).
 - **Not cached**: a load with any failed group (or a failed grant insert).
 - **Invalidation**: `markAchievementsSeen`, `saveQuizResult`,
   `updateUserSettings` and `deleteMyQuizResults` invalidate the user's key;
@@ -285,7 +287,7 @@ parameters (user ids, counts), so `reportStoreFailure` logs and records a fixed
   student's empty state) and `e2e/home.live.spec.ts` (`@live-db`: seeded usage and
   grant, the strip cleared after the visit, DST grouping, both plans; seeded coding
   requests and a key earning the Coding badges and In the Zone), `e2e/settings.spec.ts`
-  (hermetic: reached from the user menu, the switch persists) and
+  (`@live-db`: reached from the user menu, the switch persists) and
   `e2e/quiz-results.live.spec.ts` (`@live-db`: the prune under two concurrent saves,
   a save racing a code delete, `always` rolling back, an automatic save racing the
   switch-off, seeded results on the start page and deleted from Settings, a code

@@ -137,7 +137,37 @@ describe("pins and details", () => {
     expect(tooltip()?.hidden).toBe(false);
     expect(tooltip()?.textContent).toBe("Thu 1 Oct1 active hour");
     await page.elementLocator(document.body).hover({ position: { x: 1, y: 1 } });
+    await expect.poll(() => tooltip()?.hidden).toBe(true);
+  });
+
+  test("the tooltip is hoverable: moving onto it keeps it open, leaving it hides it", async () => {
+    await renderCalendar();
+    await page
+      .elementLocator(document.querySelector('[data-date="2026-10-01"]') as Element)
+      .hover();
+    await page.elementLocator(tooltip() as Element).hover();
+    await new Promise((resolve) => setTimeout(resolve, 300)); // past the grace period
+    expect(tooltip()?.hidden).toBe(false);
+    await page.elementLocator(document.body).hover({ position: { x: 1, y: 1 } });
+    await expect.poll(() => tooltip()?.hidden).toBe(true);
+  });
+
+  test("Escape dismisses the tooltip, from a hover and from the keyboard cursor", async () => {
+    await renderCalendar();
+    await page
+      .elementLocator(document.querySelector('[data-date="2026-10-01"]') as Element)
+      .hover();
+    expect(tooltip()?.hidden).toBe(false);
+    await userEvent.keyboard("{Escape}");
     expect(tooltip()?.hidden).toBe(true);
+
+    await userEvent.tab();
+    expect(tooltip()?.hidden).toBe(false);
+    await userEvent.keyboard("{Escape}");
+    expect(tooltip()?.hidden).toBe(true);
+    // The cursor stays: the next arrow shows the next day.
+    await userEvent.keyboard("{ArrowUp}");
+    expect(tooltip()?.hidden).toBe(false);
   });
 
   test("a tap on a day shows the same details", async () => {

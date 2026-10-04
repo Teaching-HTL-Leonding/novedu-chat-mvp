@@ -1,6 +1,7 @@
 import { DataUnavailable } from "@/components/dashboard-ui";
 import { Notice } from "@/components/notice";
 import { Main, PageBody } from "@/components/page-main";
+import { cardVariants } from "@/components/ui/card";
 import { countOwnQuizResults } from "@/lib/quiz-result-store";
 import { getSession } from "@/lib/session";
 import { getUserSettings } from "@/lib/user-settings-store";
@@ -14,8 +15,6 @@ import { QuizResultsSettings } from "./quiz-results-settings";
 // user's own row. No teacher gate, no bearer route.
 
 export const dynamic = "force-dynamic";
-
-const SECTION = "rounded-xl border border-foreground/15 bg-card px-4 py-5 md:px-6";
 
 export default async function SettingsPage() {
   const session = await getSession();
@@ -39,7 +38,7 @@ export default async function SettingsPage() {
     <Main>
       <PageBody>
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
-          <section aria-labelledby="settings-quiz" className={SECTION}>
+          <section aria-labelledby="settings-quiz" className={cardVariants({ pad: "section" })}>
             <h2 id="settings-quiz" className="mb-3 font-semibold text-base tracking-tight">
               Quiz results
             </h2>

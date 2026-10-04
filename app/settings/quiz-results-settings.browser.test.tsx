@@ -72,3 +72,22 @@ test("Cancel deletes nothing; a failed delete keeps the dialog with its message"
   await expect.element(screen.getByText("Could not delete.")).toBeVisible();
   await expect.element(screen.getByText("You have 2 saved quiz results.")).toBeInTheDocument();
 });
+
+test("a lost call (rejected action) never leaves a control stuck", async () => {
+  updateUserSettings.mockRejectedValue(new Error("network down"));
+  deleteMyQuizResults.mockRejectedValue(new Error("network down"));
+  const screen = await render(
+    <QuizResultsSettings initialSaveQuizResults={false} initialSaved={2} />,
+  );
+
+  const toggle = screen.getByRole("switch");
+  await toggle.click();
+  await expect.element(screen.getByText(/settings could not be saved/)).toBeVisible();
+  await expect.element(toggle).toHaveAttribute("aria-checked", "false");
+  await expect.element(toggle).toBeEnabled();
+
+  await screen.getByRole("button", { name: "Delete my saved results" }).click();
+  await screen.getByRole("button", { name: "Delete", exact: true }).click();
+  await expect.element(screen.getByText(/results could not be deleted/)).toBeVisible();
+  await expect.element(screen.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
+});

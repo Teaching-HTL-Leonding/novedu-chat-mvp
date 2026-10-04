@@ -15,6 +15,8 @@ vi.mock("@/lib/session", () => ({ getSession }));
 vi.mock("@/lib/user-settings-store", () => ({ updateUserSettings: storeSettings }));
 vi.mock("@/lib/quiz-result-store", () => ({ deleteOwnQuizResults }));
 vi.mock("@/lib/home-data", () => ({ invalidateHome }));
+const revalidatePath = vi.hoisted(() => vi.fn());
+vi.mock("next/cache", () => ({ revalidatePath }));
 
 import { deleteMyQuizResults, updateUserSettings } from "@/lib/user-settings-actions";
 
@@ -30,6 +32,7 @@ describe("updateUserSettings", () => {
     await expect(updateUserSettings({ saveQuizResults: true })).resolves.toEqual({ ok: true });
     expect(storeSettings).toHaveBeenCalledWith("u1", { saveQuizResults: true });
     expect(invalidateHome).toHaveBeenCalledWith("u1");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 
   it.each([
@@ -58,6 +61,7 @@ describe("updateUserSettings", () => {
       ok: false,
     });
     expect(invalidateHome).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 });
 
@@ -66,6 +70,7 @@ describe("deleteMyQuizResults", () => {
     await expect(deleteMyQuizResults()).resolves.toEqual({ ok: true, deleted: 3 });
     expect(deleteOwnQuizResults).toHaveBeenCalledWith("u1");
     expect(invalidateHome).toHaveBeenCalledWith("u1");
+    expect(revalidatePath).toHaveBeenCalledWith("/");
   });
 
   it("needs a session and reports a store failure as a message", async () => {

@@ -19,6 +19,8 @@ const fake = vi.hoisted(() => {
     executeRows: [] as unknown[],
     executed: [] as unknown[],
     values: [] as unknown[],
+    /** Every `.where()` predicate, in call order (rendered by the tests). */
+    wheres: [] as unknown[],
     /** A log entry prefix that fails (e.g. "insert novedu_quiz_results"). */
     failOn: undefined as string | undefined,
     error: undefined as unknown,
@@ -46,11 +48,14 @@ vi.mock("@/lib/db", () => {
   const name = (table: Table) => getTableName(table);
   const selectChain = (table: Table) => {
     const rows = () => state.rows[name(table)] ?? [];
-    const where = () => ({
-      ...lazy(`select ${name(table)}`, rows),
-      for: (strength: string) => lazy(`select ${name(table)} for ${strength}`, rows),
-      orderBy: () => lazy(`select ${name(table)}`, rows),
-    });
+    const where = (predicate: unknown) => {
+      state.wheres.push(predicate);
+      return {
+        ...lazy(`select ${name(table)}`, rows),
+        for: (strength: string) => lazy(`select ${name(table)} for ${strength}`, rows),
+        orderBy: () => lazy(`select ${name(table)}`, rows),
+      };
+    };
     return { where, leftJoin: () => ({ where }) };
   };
   const db = {
@@ -69,11 +74,14 @@ vi.mock("@/lib/db", () => {
       },
     }),
     delete: (table: Table) => ({
-      where: () => ({
-        ...lazy(`delete ${name(table)}`, () => undefined),
-        returning: () =>
-          lazy(`delete ${name(table)}`, () => state.rows[`deleted ${name(table)}`] ?? []),
-      }),
+      where: (predicate: unknown) => {
+        state.wheres.push(predicate);
+        return {
+          ...lazy(`delete ${name(table)}`, () => undefined),
+          returning: () =>
+            lazy(`delete ${name(table)}`, () => state.rows[`deleted ${name(table)}`] ?? []),
+        };
+      },
     }),
     transaction: async <T>(cb: (tx: unknown) => Promise<T>) => {
       state.log.push("begin");
@@ -90,6 +98,7 @@ import {
   countOwnQuizResults,
   deleteOwnQuizResults,
   deleteResultsForCode,
+  listOwnQuizResults,
   saveQuizResult,
 } from "@/lib/quiz-result-store";
 import { listOwnResolvedReportDates } from "@/lib/report-store";
@@ -123,6 +132,7 @@ beforeEach(() => {
     executeRows: [],
     executed: [],
     values: [],
+    wheres: [],
     failOn: undefined,
     error: undefined,
   });
@@ -186,15 +196,30 @@ describe("saveQuizResult", () => {
   });
 });
 
+/** The rendered `.where()` predicates, so a test asserts WHOSE rows a statement touches. */
+const predicates = () => fake.state.wheres.map((w) => render(w));
+const OWN_ROWS = { sql: '"novedu_quiz_results"."user_id" = $1', params: ["u1"] };
+
 describe("own results", () => {
-  it("counts the user's rows", async () => {
+  it("counts only the session user's rows", async () => {
     fake.state.rows.novedu_quiz_results = [{ n: 7 }];
     await expect(countOwnQuizResults("u1")).resolves.toBe(7);
+    expect(predicates()).toEqual([OWN_ROWS]);
+  });
+
+  it("lists only the session user's rows", async () => {
+    await listOwnQuizResults("u1");
+    expect(predicates()).toEqual([OWN_ROWS]);
   });
 
   it("deletes them after locking the settings row FOR UPDATE (inserted first when missing)", async () => {
     fake.state.rows["deleted novedu_quiz_results"] = [{ id: "a" }, { id: "b" }];
     await expect(deleteOwnQuizResults("u1")).resolves.toBe(2);
+    // The settings lock, then the delete — both keyed by the session user only.
+    expect(predicates()).toEqual([
+      { sql: '"novedu_user_settings"."user_id" = $1', params: ["u1"] },
+      OWN_ROWS,
+    ]);
     expect(fake.state.log).toEqual([
       "begin",
       "insert novedu_user_settings",

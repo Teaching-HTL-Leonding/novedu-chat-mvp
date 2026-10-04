@@ -1,12 +1,13 @@
+import { CARD_SECTION_PAD, cardVariants } from "@/components/ui/card";
 import { dayOfMonth, type LocalDate, monthOf, weekdayOf } from "@/lib/achievements/time";
 
 // Shared look of the start page's sections (docs/home.md). The cards are the
-// app's hairline card at the start page's larger radius.
+// app's content card (components/ui/card.ts).
 
-export const HOME_CARD = "rounded-xl border border-foreground/15 bg-card";
+export const HOME_CARD = cardVariants();
 
 /** A card's inner padding (the card's own gutter, tighter on phones). */
-export const HOME_CARD_PAD = "px-4 py-5 md:px-6";
+export const HOME_CARD_PAD = CARD_SECTION_PAD;
 
 /** A section's title row: the title, with its totals or note on the right. */
 export const HOME_SECTION_HEAD =

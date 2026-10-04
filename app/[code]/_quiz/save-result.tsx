@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "@/components/spinner";
 import { Button } from "@/components/ui/button";
+import { cardVariants } from "@/components/ui/card";
 import { FieldError } from "@/components/ui/field";
 import { saveQuizResult } from "@/lib/quiz-actions";
+import { cn } from "@/lib/utils";
 
 // The Finish page's "save to your personal statistics" step (docs/home.md →
 // Saving a quiz result). With the setting off it asks — No / This time / Always
@@ -100,7 +102,7 @@ export function SaveResult({
   return (
     <section
       aria-labelledby="save-result-question"
-      className="flex flex-col gap-3 rounded-xl border border-foreground/15 bg-card px-5 py-4"
+      className={cn(cardVariants({ pad: "compact" }), "flex flex-col gap-3")}
     >
       <p id="save-result-question" className="text-sm">
         <span className="font-semibold">Save this result to your personal statistics?</span> Only

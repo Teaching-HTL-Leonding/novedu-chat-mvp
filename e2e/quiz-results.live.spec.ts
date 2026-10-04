@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { addDays, todayLocal } from "@/lib/achievements/time";
-import { ownResultsQuery, saveQuizResult } from "@/lib/quiz-result-store";
+import {
+  countOwnQuizResults,
+  deleteOwnQuizResults,
+  listOwnQuizResults,
+  ownResultsQuery,
+  saveQuizResult,
+} from "@/lib/quiz-result-store";
 import { ownResolvedDatesStatement } from "@/lib/report-store";
 import { getUserSettings, updateUserSettings } from "@/lib/user-settings-store";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
@@ -24,6 +30,26 @@ const RESULT = { correct: 1, partial: 0, incorrect: 1, unanswered: 0, total: 2 }
 
 async function rowsOf(userId: string): Promise<{ id: string; correct: number }[]> {
   return query(`SELECT id, correct FROM novedu_quiz_results WHERE user_id = $1`, [userId]);
+}
+
+/**
+ * Waits until some backend is blocked by `blocker` — proof that the save
+ * reached the contested lock, so the race is really exercised (a fixed sleep
+ * would let a slow start pass as a sequential run).
+ */
+async function untilBlockedBy(blocker: number) {
+  await expect
+    .poll(
+      async () =>
+        (
+          await query<{ n: string }>(
+            `SELECT count(*) AS n FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))`,
+            [blocker],
+          )
+        )[0]?.n,
+      { timeout: 10_000 },
+    )
+    .toBe("1");
 }
 
 async function cleanup(userId: string, code: string) {
@@ -91,12 +117,14 @@ test("a save racing a code delete leaves no row behind", {
   try {
     // The delete side, as deleteCodesAndData runs it: lock the code row FOR UPDATE,
     // drop its dependent rows, then the code.
+    const blocker = (await client.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]
+      ?.pid as number;
     await client.query("BEGIN");
     await client.query(`SELECT code FROM novedu_codes WHERE code = $1 FOR UPDATE`, [code]);
 
     // The save blocks on its FOR SHARE until the delete commits…
     const save = saveQuizResult(userId, { id: randomUUID(), code, ...RESULT }, "this-time");
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await untilBlockedBy(blocker);
     await client.query(`DELETE FROM novedu_quiz_results WHERE code = $1`, [code]);
     await client.query(`DELETE FROM novedu_codes WHERE code = $1`, [code]);
     await client.query("COMMIT");
@@ -144,13 +172,15 @@ test("an automatic save racing the switch-off writes nothing", {
     expect(await updateUserSettings(userId, { saveQuizResults: true })).toBe(true);
 
     // The switch-off holds the row lock while the automatic save starts…
+    const blocker = (await client.query<{ pid: number }>("SELECT pg_backend_pid() AS pid")).rows[0]
+      ?.pid as number;
     await client.query("BEGIN");
     await client.query(
       `UPDATE novedu_user_settings SET save_quiz_results = false WHERE user_id = $1`,
       [userId],
     );
     const save = saveQuizResult(userId, { id: randomUUID(), code, ...RESULT }, "automatic");
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await untilBlockedBy(blocker);
     await client.query("COMMIT");
 
     // …so the save reads the committed "off".
@@ -160,6 +190,29 @@ test("an automatic save racing the switch-off writes nothing", {
     await client.query("ROLLBACK").catch(() => {});
     client.release();
     await cleanup(userId, code);
+  }
+});
+
+test("own results are only ever the session user's: list, count and delete", {
+  tag: ["@live", "@live-db"],
+}, async () => {
+  const [a, b] = [`e2e-${randomUUID()}`, `e2e-${randomUUID()}`];
+  const code = await mintCode({ module: "quiz" });
+  try {
+    for (const user of [a, b, b]) {
+      expect(await saveQuizResult(user, { id: randomUUID(), code, ...RESULT }, "this-time")).toBe(
+        "saved",
+      );
+    }
+    expect((await listOwnQuizResults(a))?.map((r) => r.code)).toEqual([code]);
+    await expect(countOwnQuizResults(b)).resolves.toBe(2);
+
+    await expect(deleteOwnQuizResults(a)).resolves.toBe(1);
+    expect(await rowsOf(a)).toEqual([]);
+    expect(await rowsOf(b)).toHaveLength(2);
+  } finally {
+    await cleanup(a, code);
+    await cleanup(b, code);
   }
 });
 
@@ -221,12 +274,18 @@ test("seeded results show on the start page, the Settings page deletes them, bad
       { achievement_id: "quiz-refreshed", qualified_on: addDays(today, -9) },
     ]);
 
-    // The Settings page counts and deletes them; the earned badges stay.
-    await page.goto("/settings");
+    // The Settings page — reached by CLIENT navigation, so the start page sits in
+    // the browser's router cache — counts and deletes them; the earned badges stay.
+    await page.getByRole("button", { name: /Quinn Quizzer/ }).click();
+    await page.getByRole("menuitem", { name: "Settings" }).click();
     await expect(page.getByText("You have 2 saved quiz results.")).toBeVisible();
     await page.getByRole("button", { name: "Delete my saved results" }).click();
     await page.getByRole("button", { name: "Delete", exact: true }).click();
     await expect(page.getByText("You have no saved quiz results.")).toBeVisible();
+    // Back (no reload) must not restore the deleted medals from that cache.
+    await page.goBack();
+    await expect(page.getByText(/^Save a result on a quiz's summary page/)).toBeVisible();
+    await expect(page.getByText("Linked lists 3AHIF")).toHaveCount(0);
     expect(await rowsOf(principal.id)).toEqual([]);
     const kept = await query<{ n: string }>(
       `SELECT count(*) AS n FROM novedu_achievements WHERE user_id = $1 AND achievement_id LIKE 'quiz-%'`,

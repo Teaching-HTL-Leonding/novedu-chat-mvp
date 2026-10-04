@@ -4,7 +4,8 @@ Per-hour usage accounting: token counts, tool calls, and discrete activity count
 attributed **either** to a code **or** to a user — never both at once. Backs cost /
 operational monitoring now and per-student token quotas later. `usage_by_code` has a
 read surface — the teacher usage dashboard at `/usage` (`docs/dashboard.md`);
-`usage_by_user` has none yet, so query it directly (SQL / Log Analytics).
+`usage_by_user` is read only for the user themselves, by their private start page
+(`docs/home.md`) — anything else queries it directly (SQL / Log Analytics).
 
 Read before touching: `lib/usage-store.ts`, `app/mastra/usage-exporter.ts`,
 `lib/usage-context-keys.ts`, the `observability` block in `app/mastra/index.ts`, and

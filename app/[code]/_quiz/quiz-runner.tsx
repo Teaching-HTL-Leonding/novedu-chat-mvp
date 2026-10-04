@@ -5,6 +5,7 @@ import { ContentImage } from "@/components/content-image";
 import { ImageErrorNotice } from "@/components/image-error-notice";
 import { ReportButton } from "@/components/report-button";
 import { Button } from "@/components/ui/button";
+import { cardVariants } from "@/components/ui/card";
 import { DialogShell } from "@/components/ui/dialog-shell";
 import { FieldError } from "@/components/ui/field";
 import { MAX_IMAGES_PER_ANSWER } from "@/lib/answer-images";
@@ -44,7 +45,7 @@ import { useAnswerPrecheck } from "./use-answer-precheck";
 // owns the horizontal gutter).
 const RUNNER = "mx-auto flex w-full max-w-4xl flex-col gap-4";
 const PROGRESS = "text-foreground/55 text-sm";
-const CARD = "rounded-xl border border-foreground/15 bg-card px-5 py-4";
+const CARD = cardVariants({ pad: "compact" });
 const LABEL = "mb-1.5 block font-semibold text-sm";
 const ACTIONS = "flex flex-wrap items-center gap-2";
 

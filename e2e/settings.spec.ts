@@ -4,13 +4,16 @@ import { deletePrincipal, signInFreshStudent } from "./principal.utils";
 
 // The Settings page (docs/home.md → Settings page): reachable from the user menu
 // for every signed-in user, its quiz-results switch persists, and with nothing
-// saved the delete action is not offered. A fresh student, so no other spec's
-// rows interfere; its settings row is removed with it. Saving and deleting real
-// results is covered against the database in e2e/quiz-results.live.spec.ts.
+// saved the delete action is not offered. `@live-db`: the switch drives a real
+// `novedu_user_settings` row through the server and back (docs/testing.md). A
+// fresh student, so no other spec's rows interfere; its settings row is removed
+// with it. Saving and deleting real results: e2e/quiz-results.live.spec.ts.
 
 test.use({ storageState: { cookies: [], origins: [] } });
 
-test("reached from the user menu; the quiz-results switch persists", async ({ page, context }) => {
+test("reached from the user menu; the quiz-results switch persists", {
+  tag: ["@live", "@live-db"],
+}, async ({ page, context }) => {
   const principal = await signInFreshStudent(context, "Sasha Settings");
   try {
     const errors: string[] = [];

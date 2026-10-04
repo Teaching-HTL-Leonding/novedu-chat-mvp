@@ -142,4 +142,22 @@ describe("home cache", () => {
     pending.resolve(ok(4));
     expect(await inFlight).toEqual(ok(4));
   });
+
+  it("keeps no per-user state beyond its bound: churning invalidations of many users", async () => {
+    const { cache } = setup({ maxEntries: 3 });
+    for (let i = 0; i < 1_000; i++) {
+      await cache.get(`u${i}`, async () => ok(i));
+      cache.invalidate(`u${i}`);
+      cache.invalidate(`never-loaded-${i}`);
+    }
+    expect(cache.sizes()).toEqual({ completed: 0, inFlight: 0 });
+    // Invalidation still wins over a load that was in flight before it.
+    const stale = deferred<Result>();
+    const first = cache.get("x", () => stale.promise);
+    cache.invalidate("x");
+    stale.resolve(ok(1));
+    await first;
+    const reload = vi.fn(async () => ok(2));
+    expect(await cache.get("x", reload)).toEqual(ok(2));
+  });
 });

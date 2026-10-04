@@ -53,9 +53,9 @@ export type SaveOutcome = "saved" | "not-saved" | "code-gone";
 /**
  * Per `(user, code)`: keeps the newest attempts (`finished_at, id` descending)
  * plus the best one (highest exact score, ties to the newest) and deletes the
- * rest. Scores are compared as `numeric` fractions — exact for any two
- * attempts of realistic length, and the same order lib/achievements/quiz.ts
- * computes with BigInt.
+ * rest. Scores are compared as `numeric` fractions — cast BEFORE the
+ * arithmetic, so no int4 count can overflow — the same order
+ * lib/achievements/quiz.ts computes with BigInt.
  */
 function pruneStatement(userId: string, code: string) {
   return sql`
@@ -69,7 +69,7 @@ function pruneStatement(userId: string, code: string) {
       AND r.id <> (
         SELECT b.id FROM novedu_quiz_results b
         WHERE b.user_id = ${userId} AND b.code = ${code}
-        ORDER BY (2 * b.correct + b.partial)::numeric / nullif(2 * b.total, 0) DESC NULLS LAST,
+        ORDER BY (2 * b.correct::numeric + b.partial) / nullif(2 * b.total::numeric, 0) DESC NULLS LAST,
                  b.finished_at DESC, b.id DESC
         LIMIT 1)
   `;
