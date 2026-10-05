@@ -71,7 +71,9 @@ beforeEach(() => {
 
 describe("start page", () => {
   it("a student gets Continue first, then the strip, progress, calendar, Time to refresh, Almost there and badges", async () => {
-    getSession.mockResolvedValue({ user: { id: "s1", name: "Lena Gruber", isTeacher: false } });
+    getSession.mockResolvedValue({
+      user: { id: "s1", name: "Gruber Lena", givenName: "Lena", isTeacher: false },
+    });
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("Welcome back, Lena");
     expect(order(html)).toEqual([
@@ -87,7 +89,9 @@ describe("start page", () => {
   });
 
   it("a teacher gets the dashboard: Teacher Guide header, strip, attention bar, KPIs, top activities, badges", async () => {
-    getSession.mockResolvedValue({ user: { id: "t1", name: "Rainer Stropek", isTeacher: true } });
+    getSession.mockResolvedValue({
+      user: { id: "t1", name: "Stropek Rainer", givenName: "Rainer", isTeacher: true },
+    });
     effectiveTeacherForSession.mockResolvedValue(true);
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("Welcome back, Rainer");
@@ -102,7 +106,9 @@ describe("start page", () => {
   });
 
   it("a teacher in view-as-student mode gets the student shell from their own usage", async () => {
-    getSession.mockResolvedValue({ user: { id: "t1", name: "Rainer Stropek", isTeacher: true } });
+    getSession.mockResolvedValue({
+      user: { id: "t1", name: "Stropek Rainer", givenName: "Rainer", isTeacher: true },
+    });
     effectiveTeacherForSession.mockResolvedValue(false);
     const html = renderToStaticMarkup(await Home());
     expect(html).toContain("Welcome back, Rainer");
@@ -127,8 +133,20 @@ describe("start page", () => {
     expect(order(html)).toEqual(["code-form"]);
   });
 
-  it("greets without a name when the account has none", async () => {
-    getSession.mockResolvedValue({ user: { id: "s2", name: "", isTeacher: false } });
+  it("greets with the given name, not the first word of a surname-first display name", async () => {
+    getSession.mockResolvedValue({
+      user: { id: "t2", name: "Huber Anna (HUBA)", givenName: "Anna", isTeacher: true },
+    });
+    effectiveTeacherForSession.mockResolvedValue(true);
+    const html = renderToStaticMarkup(await Home());
+    expect(html).toContain("Welcome back, Anna");
+    expect(html).not.toContain("Welcome back, Huber");
+  });
+
+  it("greets without a name when no given name is stored, even with a display name", async () => {
+    getSession.mockResolvedValue({
+      user: { id: "s2", name: "Gruber Lena", givenName: null, isTeacher: false },
+    });
     expect(renderToStaticMarkup(await Home())).toContain(">Welcome back<");
   });
 });

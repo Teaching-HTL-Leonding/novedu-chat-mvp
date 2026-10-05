@@ -9,12 +9,12 @@ import { HOME_MUTED } from "./home-ui";
 // The teacher start page's header: the greeting and the Teacher Guide (static,
 // flushed at once). `note` is the Suspense slot for the one line a teacher
 // without any code sees instead of the dashboard.
-export function TeacherHeader({ firstName, note }: { firstName: string; note: ReactNode }) {
+export function TeacherHeader({ givenName, note }: { givenName: string; note: ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5 pt-1">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
         <h1 className="text-balance font-bold text-2xl tracking-tight">
-          {firstName ? `Welcome back, ${firstName}` : "Welcome back"}
+          {givenName ? `Welcome back, ${givenName}` : "Welcome back"}
         </h1>
         <a
           href={TEACHER_GUIDE_URL}

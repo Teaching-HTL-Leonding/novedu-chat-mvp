@@ -52,6 +52,11 @@ import {
 // `is_teacher` is the app's own field (better-auth `additionalFields`), owned by
 // the SERVER: it is recomputed from the ID token's `groups` claim on every
 // sign-in and can never be set through the API (`input: false`).
+//
+// `given_name` is server-owned the same way: the ID token's `given_name` claim,
+// rewritten on every sign-in by the same account hook, NULL when the token
+// carries none. The start page greets with it (`name` is the directory display
+// name, which may list the surname first).
 export const authUsers = pgTable("novedu_user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -61,6 +66,7 @@ export const authUsers = pgTable("novedu_user", {
   createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
   isTeacher: boolean("is_teacher").default(false).notNull(),
+  givenName: text("given_name"),
 });
 
 // One row per live session — the app has NO cookie cache, so every request

@@ -19,19 +19,22 @@ export interface Principal {
   id: string;
   name: string;
   email: string;
+  /** `novedu_user.given_name`, what the start page greets with; NULL when absent. */
+  givenName?: string;
 }
 
 /** Creates (or refreshes) the principal's user row and returns a fresh session token. */
 export async function mintSession(principal: Principal, isTeacher: boolean): Promise<string> {
   await query(
-    `INSERT INTO novedu_user (id, name, email, email_verified, is_teacher, created_at, updated_at)
-     VALUES ($1, $2, $3, true, $4, now(), now())
+    `INSERT INTO novedu_user (id, name, email, email_verified, is_teacher, given_name, created_at, updated_at)
+     VALUES ($1, $2, $3, true, $4, $5, now(), now())
      ON CONFLICT (id) DO UPDATE
        SET name = EXCLUDED.name,
            email = EXCLUDED.email,
            is_teacher = EXCLUDED.is_teacher,
+           given_name = EXCLUDED.given_name,
            updated_at = now()`,
-    [principal.id, principal.name, principal.email, isTeacher],
+    [principal.id, principal.name, principal.email, isTeacher, principal.givenName ?? null],
   );
 
   // Previous runs' sessions are dead weight (the storage state that carried them
@@ -79,25 +82,28 @@ export async function sessionCookie(token: string) {
 export async function signInFreshStudent(
   context: BrowserContext,
   name: string,
+  givenName?: string,
 ): Promise<Principal> {
-  return signInFresh(context, name, false);
+  return signInFresh(context, name, givenName, false);
 }
 
 /** A fresh teacher with no codes and no history, signed in on `context` — see `signInFreshStudent`. */
 export async function signInFreshTeacher(
   context: BrowserContext,
   name: string,
+  givenName?: string,
 ): Promise<Principal> {
-  return signInFresh(context, name, true);
+  return signInFresh(context, name, givenName, true);
 }
 
 async function signInFresh(
   context: BrowserContext,
   name: string,
+  givenName: string | undefined,
   isTeacher: boolean,
 ): Promise<Principal> {
   const id = `e2e-${randomUUID()}`;
-  const principal = { id, name, email: `${id}@example.com` };
+  const principal = { id, name, email: `${id}@example.com`, givenName };
   await context.addCookies([await sessionCookie(await mintSession(principal, isTeacher))]);
   return principal;
 }

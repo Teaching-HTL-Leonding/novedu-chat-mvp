@@ -291,9 +291,13 @@ pointing to it, and the badges to earn (First Code first).
 once; each data section is an async server component behind its own
 `<Suspense>`.
 
+Both shells open with the same greeting: "Welcome back, <given name>" from the
+session user's stored Entra given name (`novedu_user.given_name`, `docs/auth.md`),
+a plain "Welcome back" without one.
+
 - **Student** (also a teacher in view-as-student mode, built from the teacher's
-  own usage), in this order on every width: Continue (code field + Recently
-  used), the new-badges strip, progress (level/XP + streak), the calendar, Time to
+  own usage), in this order on every width: Continue (greeting, code field +
+  Recently used), the new-badges strip, progress (level/XP + streak), the calendar, Time to
   refresh beside Almost there (stacked below `lg`), Badges.
 - **Teacher**: the header (with the no-codes line in its own boundary), the
   new-badges strip, Needs you, Last 30 days, Top activities, Badges. The strip and

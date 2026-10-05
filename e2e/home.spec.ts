@@ -131,7 +131,8 @@ test.describe("as a brand-new student", () => {
     page,
     context,
   }) => {
-    const principal = await signInFreshStudent(context, "Nova Newcomer");
+    // Surname first, like the school's directory: the greeting uses the given name.
+    const principal = await signInFreshStudent(context, "Newcomer Nova", "Nova");
     try {
       const errors = watchErrors(page);
       await expectHomeRendered(page);
@@ -178,7 +179,7 @@ test.describe("as a brand-new teacher", () => {
     page,
     context,
   }) => {
-    const principal = await signInFreshTeacher(context, "Tina Newteacher");
+    const principal = await signInFreshTeacher(context, "Newteacher Tina", "Tina");
     try {
       const errors = watchErrors(page);
       expect(await expectTeacherHomeRendered(page)).toBe("no-codes");

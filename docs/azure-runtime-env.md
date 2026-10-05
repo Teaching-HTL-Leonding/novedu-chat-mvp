@@ -345,8 +345,9 @@ app registrations in it:
 
 Both are single-tenant, carry `groupMembershipClaims: All` with the optional
 `groups` claim on the id and the access token — that is what `TEACHER_GROUP_ID`
-is matched against — request Graph `User.Read` with per-user consent, and grant
-no implicit flow.
+is matched against — plus the optional `given_name` and `family_name` claims on
+the id token (the start page greets with `given_name`, `docs/auth.md`), request
+Graph `User.Read` and `profile` with per-user consent, and grant no implicit flow.
 
 Accounts are keyed by the Entra `oid`, which is tenant-wide, so the same person
 is the same user under both registrations; the two stages nevertheless share no

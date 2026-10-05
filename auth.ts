@@ -7,6 +7,7 @@ import { bearer, deviceAuthorization } from "better-auth/plugins";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { authSchema, authUsers } from "@/lib/db/auth-schema";
+import { givenNameFromIdToken } from "@/lib/given-name";
 import { teacherFromIdToken } from "@/lib/teacher";
 import { recordError } from "@/lib/telemetry";
 
@@ -26,19 +27,27 @@ const TEACHER_GROUP_ID = required("TEACHER_GROUP_ID");
 const DAY_SECONDS = 60 * 60 * 24;
 
 /**
- * The teacher role, recomputed from the ID token on every sign-in and written to
- * `novedu_user.is_teacher`. The flag is SERVER-OWNED: `input: false` below keeps
- * it off every API surface, and this hook is the only writer.
+ * The SERVER-OWNED user fields that come from the ID token, recomputed on every
+ * sign-in and written to `novedu_user` in one update:
+ *
+ *  - `is_teacher` — membership of `TEACHER_GROUP_ID` in the `groups` claim.
+ *  - `given_name` — the `given_name` claim (NULL without one); the start page
+ *    greets with it.
+ *
+ * `input: false` below keeps both off every API surface, and this hook is their
+ * only writer. It has to be: better-auth drops `input: false` fields from
+ * `mapProfileToUser`'s result, so the provider mapping cannot set them.
  *
  * It runs on the account row (created on the first sign-in of an identity,
  * updated on every later one), where better-auth has just stored the fresh
  * `id_token` — and it runs BEFORE the session is created, so the very next
- * `getSession` already reflects the new role.
+ * `getSession` already reflects the new values.
  *
- * Everything is wrapped: a failure here must never block sign-in. The flag then
- * keeps its previous value, which for a new user is `false` — fail closed.
+ * Everything is wrapped: a failure here must never block sign-in. Both fields
+ * then keep their previous values, which for a new user is non-teacher (fail
+ * closed) and no given name.
  */
-async function applyTeacherFlag(account: { userId: string; idToken?: string | null }) {
+async function applyIdTokenClaims(account: { userId: string; idToken?: string | null }) {
   try {
     if (typeof account.idToken !== "string") return;
     const { isTeacher, overage } = teacherFromIdToken(account.idToken, TEACHER_GROUP_ID);
@@ -49,10 +58,14 @@ async function applyTeacherFlag(account: { userId: string; idToken?: string | nu
           "required to resolve membership for this user.",
       );
     }
-    await getDb().update(authUsers).set({ isTeacher }).where(eq(authUsers.id, account.userId));
+    const givenName = givenNameFromIdToken(account.idToken);
+    await getDb()
+      .update(authUsers)
+      .set({ isTeacher, givenName })
+      .where(eq(authUsers.id, account.userId));
   } catch (error) {
-    recordError(error, { "novedu.auth.stage": "apply-teacher-flag" });
-    console.error("[auth] recomputing the teacher flag failed", error);
+    recordError(error, { "novedu.auth.stage": "apply-id-token-claims" });
+    console.error("[auth] applying the ID token claims failed", error);
   }
 }
 
@@ -114,7 +127,14 @@ export const auth = betterAuth({
         type: "boolean",
         required: false,
         defaultValue: false,
-        // Server-owned: settable only by `applyTeacherFlag`, never through the API.
+        // Server-owned: settable only by `applyIdTokenClaims`, never through the API.
+        input: false,
+        returned: true,
+      },
+      givenName: {
+        type: "string",
+        required: false,
+        // Server-owned like `isTeacher`: written only by `applyIdTokenClaims`.
         input: false,
         returned: true,
       },
@@ -168,8 +188,8 @@ export const auth = betterAuth({
   },
   databaseHooks: {
     account: {
-      create: { after: applyTeacherFlag },
-      update: { after: applyTeacherFlag },
+      create: { after: applyIdTokenClaims },
+      update: { after: applyIdTokenClaims },
     },
   },
   plugins: [

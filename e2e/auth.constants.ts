@@ -19,12 +19,14 @@ export const E2E_STUDENT = {
   id: "e2e-student",
   name: "E2E Student",
   email: "e2e-student@example.com",
+  givenName: "E2E",
 } as const;
 
 export const E2E_TEACHER = {
   id: "e2e-teacher",
   name: "E2E Teacher",
   email: "e2e-teacher@example.com",
+  givenName: "E2E",
 } as const;
 
 // Where the minted authenticated sessions are stored. The default (student)

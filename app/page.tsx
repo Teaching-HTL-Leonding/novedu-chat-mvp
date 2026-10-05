@@ -43,13 +43,16 @@ export default async function Home() {
     );
   }
 
-  const firstName = session.user.name?.trim().split(/\s+/)[0] ?? "";
+  // The greeting uses the stored Entra given name (docs/auth.md), never a word of
+  // the display name, which may list the surname first; without one it is a
+  // plain "Welcome back".
+  const givenName = session.user.givenName?.trim() ?? "";
   if (await effectiveTeacherForSession(session)) {
     return (
       <Main>
         <PageBody>
           <TeacherHeader
-            firstName={firstName}
+            givenName={givenName}
             note={
               <Suspense fallback={null}>
                 <TeacherIntroNote userId={userId} />
@@ -79,7 +82,7 @@ export default async function Home() {
     <Main>
       <PageBody>
         <ContinueSection
-          firstName={firstName}
+          givenName={givenName}
           recent={
             <Suspense fallback={<RecentListSkeleton />}>
               <RecentList userId={userId} />
