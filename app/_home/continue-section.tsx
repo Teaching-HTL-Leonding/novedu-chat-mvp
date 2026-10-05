@@ -6,17 +6,17 @@ import { HOME_CARD, HOME_CARD_PAD, HOME_MUTED } from "./home-ui";
 // Continue — getting back into an activity comes first on every width: a
 // greeting, the code field, and (signed in) the Recently used list beside it.
 export function ContinueSection({
-  firstName,
+  givenName,
   recent,
 }: {
-  /** The signed-in user's first name; absent when nobody is signed in. */
-  firstName?: string;
+  /** The signed-in user's given name ("" when unknown); absent when nobody is signed in. */
+  givenName?: string;
   /** The Recently used slot (a Suspense boundary); absent when signed out. */
   recent?: ReactNode;
 }) {
-  const signedIn = firstName !== undefined;
+  const signedIn = givenName !== undefined;
   let heading = "Enter your code";
-  if (signedIn) heading = firstName ? `Welcome back, ${firstName}` : "Welcome back";
+  if (signedIn) heading = givenName ? `Welcome back, ${givenName}` : "Welcome back";
   return (
     <section
       aria-labelledby="home-continue"

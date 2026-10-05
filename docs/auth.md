@@ -28,6 +28,14 @@ only sign-in provider. Key facts so future runs don't have to rediscover the set
     initials instead), and `disableProfilePhoto: true` also skips the provider's Microsoft
     Graph photo fetch, an untimed extra request on every callback. `user.image` is
     therefore always null: nothing in the app reads it.
+- **`given_name`** — a server-owned column beside `name`, NOT set by `mapProfileToUser`:
+  better-auth drops every `input: false` field from that mapping's result, so the
+  account hook that writes `is_teacher` (below) writes it too, from the ID token's
+  `given_name` claim on every sign-in (`lib/given-name.ts`; trimmed, `NULL` when the token
+  carries none). It is an optional claim, so both app registrations request it
+  (`docs/azure-runtime-env.md`). The start page greets with it; `name` is the directory
+  display name, which in the school tenant lists the surname first, so the greeting never
+  takes a word of `name` and says a plain "Welcome back" without a given name.
 - **Account linking by email.** `account.accountLinking` sets
   `trustedProviders: ["microsoft"]` and `requireLocalEmailVerified: false`, so an Entra
   identity whose `oid` is not yet in `novedu_account` links to the existing `novedu_user`
@@ -51,7 +59,7 @@ only sign-in provider. Key facts so future runs don't have to rediscover the set
   / `verification.modelName` / the `deviceAuthorization` plugin's `schema` option:
   - **`novedu_user`** — one row per signed-in person: `id`, `name`, `email` (unique),
     `email_verified`, `image` (always null), `created_at`, `updated_at`, and the app's
-    own `is_teacher` field (see below). This is the id every `user_id`/`created_by`
+    own `is_teacher` and `given_name` fields (see below). This is the id every `user_id`/`created_by`
     column across the `novedu_*` tables stores by value.
   - **`novedu_session`** — one row per live session: `id`, `expires_at`, `token`
     (unique), `created_at`, `updated_at`, `ip_address`, `user_agent`, `user_id` (FK to
@@ -128,14 +136,15 @@ Finer-grained access is by Entra **group** membership, but the result is a plain
   `groups` claim: `groupMembershipClaims` is `All` (or `ApplicationGroup` with the group
   assigned to the application) — under `SecurityGroup` it never appears and every teacher
   signs in as a student.
-- `applyTeacherFlag` in `auth.ts` is a `databaseHooks.account.create.after` /
+- `applyIdTokenClaims` in `auth.ts` is a `databaseHooks.account.create.after` /
   `account.update.after` hook — it runs on the **account** row, once for a brand-new
   identity and again on every later sign-in of an existing one (including the seeded
   account's first sign-in), reading the fresh `id_token` better-auth has just stored
   there. `lib/teacher.ts`'s `teacherFromIdToken(idToken, TEACHER_GROUP_ID)` decodes the
   token's payload (no signature check needed — the token arrived over TLS straight from
   Entra's own token endpoint) and looks for the group id in the `groups` claim, and the
-  hook writes the result to `novedu_user.is_teacher`.
+  hook writes the result to `novedu_user.is_teacher` — in the same update as
+  `given_name` (above).
 - The hook runs **before** the session is created, so the very next `getSession()` after
   a sign-in already reflects the new role — there is no "stale until re-sign-in" gap.
 - **Server-owned, fail-closed.** `additionalFields.isTeacher` on the `user` config sets

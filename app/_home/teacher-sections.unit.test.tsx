@@ -116,7 +116,7 @@ beforeEach(() => {
 
 describe("TeacherHeader", () => {
   it("greets by first name and links the Teacher Guide in a new tab", () => {
-    const html = renderToStaticMarkup(<TeacherHeader firstName="Rainer" note={null} />);
+    const html = renderToStaticMarkup(<TeacherHeader givenName="Rainer" note={null} />);
     expect(html).toContain("Welcome back, Rainer");
     expect(html).toContain('href="https://docs.novedu.at"');
     expect(html).toContain('target="_blank"');

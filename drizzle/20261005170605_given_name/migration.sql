@@ -1,0 +1,1 @@
+ALTER TABLE "novedu_user" ADD COLUMN "given_name" text;
