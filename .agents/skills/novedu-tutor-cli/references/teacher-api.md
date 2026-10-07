@@ -1,8 +1,9 @@
-# Codes, hosted files, images and student reports
+# Codes, hosted files, images, student reports and conversation export
 
 Everything here needs a signed-in **teacher** account and follows the JSON I/O
 contract described in SKILL.md: success objects verbatim on stdout with exit 0,
-failures as JSON on stderr with exit 1. Read the stderr JSON — the server's
+failures as JSON on stderr with exit 1 (`codes export` streams JSON Lines
+instead — see its section). Read the stderr JSON — the server's
 structured validation detail names the exact problem.
 
 ```
@@ -10,6 +11,7 @@ codes create --module <tutor|quiz|writing|coding> --file <url>
              [--start <iso>] [--end <iso>] [--note <text>]
              [--llm-provider <p> --llm-model <m>] [--llm-reasoning <level>]
 codes list   [--search <q>] [--module <m>] [--all]
+codes export <code> [--out <file>]
 
 files upload <name> [--kind <kind>] (--file <path> | reads stdin)
 files list   [--search <q>] [--all]
@@ -62,6 +64,36 @@ Images are immutable; delete + re-upload happens in the web app (`/images`).
   only opens for a signed-in browser session — never embed it, always
   reference by name.
 
+## `codes export`
+
+Downloads every conversation students had under ONE code, as JSON Lines — the
+raw material for "what did students struggle with, and how do I improve this
+activity?".
+
+- **Creator-only**: only the teacher who created the code may export it; anyone
+  else gets `403 { message }` on stderr. `codes list` (default: your own codes)
+  shows which codes those are.
+- **No student identity**, for any code: no user id, name or pseudonym. Photos are
+  placeholders `{ "type": "image", "mimeType", "bytes" }` — the image never leaves
+  the server. Writing submissions are not included; a coding code exports a header
+  and no conversations.
+- **Format** `novedu-conversations/1`: line 1 is the header
+  `{ "type": "export", "format", "code", "module", "note", "fileUrl", "anonymous", "exportedAt" }`,
+  every further line one conversation
+  `{ "type": "conversation", "threadId", "startedAt", "endedAt", "truncated", "messages" }`.
+  A message's `content` is a string for plain text, otherwise an array of `text`,
+  `image` and `tool` (`{ "name", "args", "result" }`) parts. At most the last 500
+  messages per conversation (`truncated: true` beyond that).
+- **Output**: without `--out` the JSONL is the ONLY thing on stdout (redirect or
+  pipe it); with `--out <file>` it goes into the file and stdout gets the JSON
+  summary `{ "code", "file", "conversations", "messages" }`. Prefer `--out` from an
+  agent — the summary tells you the size before you read the file.
+- **Partial output on failure**: the error is JSON on stderr, exit 1. In stdout
+  mode lines already written stay (discard them); in `--out` mode the partial file
+  is removed.
+- The file holds student-written text: treat it like class material before handing
+  it to a third-party service.
+
 ## The report-driven enhancement loop
 
 Students flag an AI interaction — a chat or a graded quiz answer — with a
@@ -97,6 +129,10 @@ npx @novedu/cli codes create --module quiz \
 # Host an image, then reference it from a quiz question by name
 npx @novedu/cli images upload sorting-diagram --file ./diagram.png --credit "CC BY 4.0"
 # → in the YAML:  image: { src: sorting-diagram, hosted: true, alt: "…" }
+
+# Export a code's conversations for analysis (your own code only)
+npx @novedu/cli codes export k7f3qz --out k7f3qz.jsonl
+# → { "code": "k7f3qz", "file": "k7f3qz.jsonl", "conversations": 42, "messages": 517 }
 
 # Triage a report end-to-end
 npx @novedu/cli reports show 3f2c… | jq '{reaction, description, messages}'

@@ -440,7 +440,8 @@ isolation and is unaffected.
   endpoints (`run`/`connect`/`stop`) stay gated by the code AND the thread-ownership
   token. Keep this split in mind when touching the runtime route.
 - **Conversation export** — not a page but the bearer route
-  `GET /api/codes/<code>/conversations` (`docs/api.md`): every conversation of ONE code as cursor pages, for handing to an
+  `GET /api/codes/<code>/conversations` behind `novedu-cli codes export`
+  (`docs/api.md`): every conversation of ONE code as cursor pages, for handing to an
   LLM. Unlike the pages above it is **creator-only** (`created_by` must equal the
   bearer user) and carries **no identity for any code** — no user id, name or
   pseudonym, whatever the frozen `anonymous` flag says; its store

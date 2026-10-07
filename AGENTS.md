@@ -50,7 +50,7 @@ Read before touching: `auth.ts`, `lib/session.ts`, `lib/db/auth-schema.ts`, `pro
 Read before touching: `lib/api-auth.ts`, the bearer handlers under `app/api/**`, `cli/src/auth.ts`, `cli/src/api.ts`, `cli/src/commands/**`, or when adding a bearer-protected endpoint.
 
 - Adding a bearer endpoint = `requireBearer*` gate + its own path-bounded `proxy.ts` exclusion + a `docs/api.md` entry.
-- CLI commands are JSON-only (success on stdout, failures on stderr, exit 1); the sanctioned exceptions (`codes sync`, `eval`) print human reports and keep JSON behind `--json`.
+- CLI commands are JSON-only (success on stdout, failures on stderr, exit 1); the sanctioned exceptions: `codes sync` and `eval` print human reports and keep JSON behind `--json`, `codes export` streams JSON Lines on stdout (or into `--out`, with a JSON summary on stdout).
 - The CLI signs in through the app's own OAuth device flow (`cli/src/auth.ts`, `app/device/**`): `login` requests a device code, the person approves it at `/device`, and the CLI stores the resulting session token per server origin in `~/.novedu/sessions.json`.
 
 ### Activity registry & `codes sync` → `docs/registry.md`

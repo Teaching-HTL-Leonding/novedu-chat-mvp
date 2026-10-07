@@ -55,6 +55,13 @@
 // captured on the returned `imageUploads` array so a test can inspect the
 // exact bytes and fields the CLI sent.
 
+// `GET /api/codes/<code>/conversations` fakes the creator-only conversation export
+// (app/api/codes/[code]/conversations/route.ts) for `novedu-cli codes export`: bearer
+// required, and fixed codes — `export1` serves two pages (page one hands out the cursor
+// `p2`, the page asked for with `after=p2` ends with `nextCursor: null`), `export403`
+// answers 403 `{ message }` (someone else's code), anything else 404. Every request's
+// `limit`/`after` is captured on the returned `exportRequests` array.
+
 import { readFile } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
@@ -88,7 +95,7 @@ const CLI_PACKAGE_VERSION = JSON.parse(
  *
  * @param {number} [port]
  * @param {{ codes?: Array<Record<string, unknown>>, evalFailures?: number, respondFailures?: number, cliVersion?: string }} [options]
- * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>>, evalRequests: Array<Record<string, unknown>>, respondRequests: Array<Record<string, unknown>>, judgeRequests: Array<Record<string, unknown>>, imageUploads: Array<{ name: string, mime: string, credit: string | null, fileName: string, bytes: Buffer }> }>}
+ * @returns {Promise<{ server: import("node:http").Server, baseUrl: string, codes: Array<Record<string, unknown>>, evalRequests: Array<Record<string, unknown>>, respondRequests: Array<Record<string, unknown>>, judgeRequests: Array<Record<string, unknown>>, imageUploads: Array<{ name: string, mime: string, credit: string | null, fileName: string, bytes: Buffer }>, exportRequests: Array<{ code: string, limit: string | null, after: string | null }> }>}
  */
 export function startFixturesServer(port = 0, options = {}) {
   const codes = options.codes ?? [];
@@ -101,6 +108,8 @@ export function startFixturesServer(port = 0, options = {}) {
   const judgeRequests = [];
   /** @type {Array<{ name: string, mime: string, credit: string | null, fileName: string, bytes: Buffer }>} */
   const imageUploads = [];
+  /** @type {Array<{ code: string, limit: string | null, after: string | null }>} */
+  const exportRequests = [];
   const evalState = { remainingFailures: options.evalFailures ?? 0 };
   const respondState = { remainingFailures: options.respondFailures ?? 0 };
   const reportedCliVersion = options.cliVersion ?? CLI_PACKAGE_VERSION;
@@ -139,6 +148,17 @@ export function startFixturesServer(port = 0, options = {}) {
         await handleEvalJudge(req, res, judgeRequests);
         return;
       }
+      const exportMatch = /^\/api\/codes\/([^/]+)\/conversations$/.exec(url.pathname);
+      if (exportMatch) {
+        handleConversationExport(
+          req,
+          res,
+          url,
+          decodeURIComponent(exportMatch[1] ?? ""),
+          exportRequests,
+        );
+        return;
+      }
       if (url.pathname.startsWith("/api/images/")) {
         await handleImageUpload(req, res, url, imageUploads);
         return;
@@ -173,9 +193,97 @@ export function startFixturesServer(port = 0, options = {}) {
         respondRequests,
         judgeRequests,
         imageUploads,
+        exportRequests,
       });
     });
   });
+}
+
+/** The fixed export fixture's conversations, one per page. */
+const EXPORT_CODE_BLOCK = {
+  code: "export1",
+  module: "tutor",
+  note: "Vektoren",
+  fileUrl: "https://example.test/vektoren.yaml",
+  anonymous: true,
+};
+const EXPORT_PAGES = {
+  first: [
+    {
+      threadId: "thread-1",
+      startedAt: "2026-10-07T09:00:00.000Z",
+      endedAt: "2026-10-07T09:01:00.000Z",
+      truncated: false,
+      messages: [
+        {
+          role: "user",
+          createdAt: "2026-10-07T09:00:00.000Z",
+          content: "Wie berechne ich das Skalarprodukt?",
+        },
+        {
+          role: "assistant",
+          createdAt: "2026-10-07T09:01:00.000Z",
+          content: [
+            { type: "tool", name: "random_number", args: { min: 1, max: 6 }, result: { value: 4 } },
+            { type: "text", text: "Komponentenweise multiplizieren und addieren." },
+          ],
+        },
+      ],
+    },
+  ],
+  second: [
+    {
+      threadId: "thread-2",
+      startedAt: "2026-10-07T10:00:00.000Z",
+      endedAt: "2026-10-07T10:00:30.000Z",
+      truncated: false,
+      messages: [
+        {
+          role: "user",
+          createdAt: "2026-10-07T10:00:00.000Z",
+          content: [
+            { type: "text", text: "Hier mein Versuch:" },
+            { type: "image", mimeType: "image/jpeg", bytes: 1834211 },
+          ],
+        },
+        { role: "assistant", createdAt: "2026-10-07T10:00:20.000Z", content: "Fast richtig." },
+        { role: "user", createdAt: "2026-10-07T10:00:30.000Z", content: "Danke!" },
+      ],
+    },
+  ],
+};
+
+/** The fake `GET /api/codes/<code>/conversations` (see the header comment). */
+function handleConversationExport(req, res, url, code, exportRequests) {
+  if (!/^Bearer .+/.test(req.headers.authorization ?? "")) {
+    sendJson(res, 401, { message: "Unauthorized" });
+    return;
+  }
+  const after = url.searchParams.get("after");
+  exportRequests.push({ code, limit: url.searchParams.get("limit"), after });
+  if (code === "export403") {
+    sendJson(res, 403, { message: "Only the code's creator can export its conversations." });
+    return;
+  }
+  if (code !== "export1") {
+    sendJson(res, 404, { message: "No code with that name." });
+    return;
+  }
+  if (after === null) {
+    sendJson(res, 200, {
+      code: EXPORT_CODE_BLOCK,
+      conversations: EXPORT_PAGES.first,
+      nextCursor: "p2",
+    });
+  } else if (after === "p2") {
+    sendJson(res, 200, {
+      code: EXPORT_CODE_BLOCK,
+      conversations: EXPORT_PAGES.second,
+      nextCursor: null,
+    });
+  } else {
+    sendJson(res, 400, { message: "after is not a valid cursor." });
+  }
 }
 
 /** JSON reply helper for the fake API. */

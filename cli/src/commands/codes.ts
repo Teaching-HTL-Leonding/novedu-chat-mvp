@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import type { Command } from "commander";
 import { REASONING_LEVELS } from "@/lib/llm/provider";
 import { failJson, performApiRequest, printJson, runApiRequest } from "../api";
+import { runConversationExport } from "../conversation-export";
 import { defaultLockPath, loadRegistry } from "../registry";
 import {
   buildLockCodes,
@@ -21,11 +22,14 @@ import {
 // the same validation pipeline as the web form, and list codes with the /codes
 // page's filters. JSON in/out — see cli/src/api.ts for the output contract.
 //
-// `codes sync` is the exception to the JSON-only rule: it reconciles a whole
-// activity REGISTRY (docs/registry.md) in one run, so it prints a per-entry
-// report by default and keeps the JSON contract behind --json. Hard failures
-// (bad registry, no token, unreachable server, unwritable lock) stay JSON on
-// stderr with exit 1 like every other command.
+// Two subcommands are exceptions to the JSON-only rule (`eval` is the third,
+// docs/api.md). `codes sync` reconciles a whole activity REGISTRY
+// (docs/registry.md) in one run, so it prints a per-entry report by default and
+// keeps the JSON contract behind --json. `codes export` streams a code's
+// conversations as JSONL on stdout (or into --out, with a JSON summary on
+// stdout) — cli/src/conversation-export.ts. Hard failures (bad registry, no
+// token, unreachable server, unwritable lock/file) stay JSON on stderr with exit
+// 1 like every other command.
 
 const SERVER_OPTION = [
   "--server <url>",
@@ -49,6 +53,11 @@ interface ListOptions {
   search?: string;
   module?: string;
   all?: boolean;
+}
+
+interface ExportCommandOptions {
+  server?: string;
+  out?: string;
 }
 
 interface SyncOptions {
@@ -261,6 +270,18 @@ export function registerCodes(program: Command): void {
         server: options.server,
         path: `/api/codes${query ? `?${query}` : ""}`,
       });
+    });
+
+  codes
+    .command("export")
+    .description(
+      "Export every conversation of one of YOUR codes as JSONL (no student identity, photos as placeholders)",
+    )
+    .argument("<code>", "the code whose conversations to export (you must be its creator)")
+    .option("--out <file>", "write the JSONL to this file and print a JSON summary instead")
+    .option(...SERVER_OPTION)
+    .action(async (code: string, options: ExportCommandOptions) => {
+      await runConversationExport(code, options);
     });
 
   codes

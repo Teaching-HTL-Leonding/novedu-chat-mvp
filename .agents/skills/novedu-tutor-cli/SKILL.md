@@ -9,8 +9,9 @@ description: >-
   coding, or eval); dump the exact prompts the LLM receives; run evals or
   regression-test a grading rubric or a tutor's behaviour; sign in to Novedu or
   check who is signed in; mint or share activity codes; upload app-hosted YAML
-  or images; sync a course repo's activity registry and lock file; or triage
-  student reports. Reach for it even when the user never names the CLI. Do NOT
+  or images; sync a course repo's activity registry and lock file; triage
+  student reports; or export a code's student conversations to analyse them and
+  improve the activity. Reach for it even when the user never names the CLI. Do NOT
   use it for teacher-docs chapters — that is the novedu-teacher-docs skill.
 ---
 
@@ -62,6 +63,7 @@ failure modes and the cost/safety notes that decide whether a run is correct.
 | `files upload` / `files list` | Host activity YAML in the app | teacher | [references/teacher-api.md](references/teacher-api.md) |
 | `images upload` / `images list` | Host an image a quiz can show | teacher | [references/teacher-api.md](references/teacher-api.md) |
 | `reports list` / `show` / `resolve` | What did students flag? | teacher | [references/teacher-api.md](references/teacher-api.md) |
+| `codes export <code> [--out <file>]` | What did students actually talk about? | teacher (the code's creator) | [references/teacher-api.md](references/teacher-api.md) |
 
 ## Contracts that hold across commands
 
@@ -74,7 +76,8 @@ failure modes and the cost/safety notes that decide whether a run is correct.
   `{ errors: [...] }` on stderr, exit 1. Read the stderr JSON and act on it — the
   server's structured detail names the exact problem. (`login`, `logout` and
   `whoami` follow it too; `validate`, `codes sync` and `eval` have their own
-  report formats plus `--json`, but their hard failures still follow this.)
+  report formats plus `--json`, and `codes export` streams JSON Lines — one header
+  line, then one conversation per line — but their hard failures still follow this.)
 - **The server validates, not the CLI.** Don't pre-validate before
   `codes create` / `files upload` — the server runs the identical pipeline as the
   web forms. `validate` is for offline checks, not a gate on upload.
@@ -137,13 +140,19 @@ token on every request.
 - *"What did students say?"* → `reports list` → `show` → fix the YAML →
   `validate` → `files upload` → `reports resolve`.
   → [teacher-api.md](references/teacher-api.md)
+- *"Improve an activity from real conversations."* → `codes export <code> --out
+  <file>` (only the code's creator may) → analyse the JSONL (recurring
+  misconceptions, where the tutor drifted, questions the activity doesn't cover)
+  → fix the YAML → `validate` → `files upload` (and `eval` when the rubric or tutor
+  rules changed). → [teacher-api.md](references/teacher-api.md)
 
 ## Scope — what the CLI does NOT do
 
 It cannot edit or delete codes (which is why `codes sync` mints a new code
 instead of changing an existing one), delete files or images, overwrite an
-image, browse arbitrary stats or conversations (a reported chat's transcript is
-visible only via `reports show`), file/reopen/delete reports, or deploy. Those
+image, browse stats or other teachers' conversations (`codes export` covers only
+the caller's OWN codes; a reported chat's transcript is visible via `reports
+show`), file/reopen/delete reports, or deploy. Those
 stay in the web app on purpose — an agent should never destroy a student's
 report, and deletion is deliberately bulk-only in the web UI.
 
