@@ -266,9 +266,11 @@ reports-specific invariants:
   the agent gets the report and its transcript in one call. A **quiz-answer** report
   carries no `messages`: its server-authoritative snapshot (question text, answer,
   feedback, verdict) is already on the row, and — as everywhere — that snapshot never
-  contains the server-only quiz `evaluation` prompts. There is **no standalone
-  transcript endpoint by design**: bearer transcript access exists only embedded in a
-  report detail, scoped to reported threads.
+  contains the server-only quiz `evaluation` prompts. Report detail is the bearer
+  channel's per-thread transcript access, open to any teacher; whole-code transcripts
+  are a separate, stricter surface — the conversation export
+  `GET /api/codes/<code>/conversations` (`docs/api.md`), open ONLY to the code's
+  creator and carrying no student identity.
 
 ## Lifecycle
 

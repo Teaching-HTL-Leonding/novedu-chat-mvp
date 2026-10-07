@@ -439,6 +439,19 @@ isolation and is unaffected.
   authentication ALONE — even though the viewer sends no `x-code` header. The DATA
   endpoints (`run`/`connect`/`stop`) stay gated by the code AND the thread-ownership
   token. Keep this split in mind when touching the runtime route.
+- **Conversation export** — not a page but the bearer route
+  `GET /api/codes/<code>/conversations` (`docs/api.md`): every conversation of ONE code as cursor pages, for handing to an
+  LLM. Unlike the pages above it is **creator-only** (`created_by` must equal the
+  bearer user) and carries **no identity for any code** — no user id, name or
+  pseudonym, whatever the frozen `anonymous` flag says; its store
+  (`lib/conversation-export-store.ts`) reads only the Mastra tables and never joins
+  `novedu_user_chats` or `novedu_user`. Same "interaction" definition and the same
+  `collapseReplayedRuns` as the viewer (with an export-shaped key), tool calls kept as
+  `tool` parts, photos reduced to `{ mimeType, bytes }` inside Postgres, and at most
+  the last 500 messages per conversation (`truncated: true` beyond that). tutor, quiz
+  discussions and writing chats export; writing *submissions* do not, and coding
+  stores no conversations (an empty export). It is NOT a `checkCode()` site — the
+  caller is a teacher on the bearer channel, not a student.
 
 Privacy note: this lets a teacher read the *content* of conversations under their
 codes. By design that is allowed — `anonymous` only hides *who* a student is

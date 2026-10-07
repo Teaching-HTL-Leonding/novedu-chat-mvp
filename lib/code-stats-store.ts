@@ -29,7 +29,8 @@ import { deleteResultsForCode } from "@/lib/quiz-result-store";
 // "Interaction" / "conversation" throughout means a Mastra thread that has at
 // least one `role = 'user'` message — a chat a student actually wrote into, not
 // one merely opened. (`mastra_messages.role` is only ever 'user' or
-// 'assistant' for these agents; there are no tools.)
+// 'assistant' for these agents; a tutor's tool calls are `tool-invocation`
+// parts inside its assistant rows, not separate rows.)
 //
 // SERVER-ONLY: uses the database and the Mastra store. Never import from client
 // components.

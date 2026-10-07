@@ -126,6 +126,26 @@ The four list routes (`/api/codes`, `/api/files`, `/api/images`, `/api/reports`)
 deliberately **unpaged**: the CLI reads each result whole, so they call the store
 without `paging` and return every match as a bare JSON array. The teacher list PAGES
 do paginate in SQL (`docs/filtered-lists.md`) — that is a UI concern, not a wire one.
+The ONE paged route is the conversation export (see **Pagination** below): its
+result is a code's whole conversation history, which no single response may hold.
+
+### Pagination
+
+Only `GET /api/codes/<code>/conversations` pages, with an opaque **cursor**:
+
+- `limit` — `1..50`, default `25`; anything else (non-integer, out of range) is
+  `400 { message }`. The cap is server-enforced, so each request costs at most one
+  page of threads, never the whole code; with the per-conversation message cap (see
+  the route) that bounds every response.
+- `after` — the previous response's `nextCursor`, passed back verbatim. It is
+  base64url of the last thread's exact `createdAt` text and id; clients never build
+  or parse it. A malformed cursor is `400`. A forged one can only move the walk
+  within the same code — the code is a separate `WHERE` clause.
+- `nextCursor` — present on every response; `null` means the walk is done. A page
+  may hold fewer than `limit` items and still carry a cursor, so clients loop on
+  `nextCursor`, never on the item count.
+- Order is stable (thread `createdAt`, then id), so a walk never repeats or skips
+  a thread that existed when it started.
 
 **Cookie-session routes.** This namespace is bearer-only with exactly THREE
 deliberate exceptions, none of them list routes above: `/api/copilotkit` (the
@@ -171,6 +191,31 @@ any page, and its handler re-validates the session itself on top of that.
   the window bounds must be ISO 8601 **with an explicit offset or `Z`** — a
   naive datetime is rejected with 400 (it would otherwise silently be
   interpreted in the server's timezone). `201` + the same code object shape.
+- **`GET /api/codes/<code>/conversations?limit=&after=`**
+  (`app/api/codes/[code]/conversations/route.ts`, teacher-only, **creator-only**) —
+  one page of every conversation students had under ONE code — the whole-code
+  export a teacher hands to an LLM. Stricter than the role-gated web transcript pages: the
+  token's user must be the code's `createdBy`, else `403 { message }`; an unknown
+  code is `404` (existence is not secret — `GET /api/codes?mine=0` lists every
+  code). Paged per **Pagination** above. Answers
+  `{ code: { code, module, note, fileUrl, anonymous }, conversations, nextCursor }` —
+  the `code` block repeats on every page (`note` is `null` when empty), each
+  conversation is `{ threadId, startedAt, endedAt, truncated, messages }`, each message
+  `{ role: "user" | "assistant", createdAt, content }` with `content` a string when
+  text-only, else an array of `{ type: "text", text }`,
+  `{ type: "image", mimeType, bytes }` and `{ type: "tool", name, args, result }`
+  parts in stored order. A conversation is a thread with ≥ 1 user message; replayed
+  history is collapsed as in the web transcript. A conversation carries at most its
+  **last 500** stored messages (`MAX_MESSAGES_PER_CONVERSATION`,
+  `lib/conversation-export.ts`) — the cap is applied in SQL, so one huge thread cannot
+  exhaust server memory — and `truncated: true` marks one whose older messages were
+  cut (`startedAt` is then the first KEPT message; a truncated conversation stays in
+  the export even if the cut removed all its user messages). **No identity** for any code (the
+  store, `lib/conversation-export-store.ts`, never joins `novedu_user_chats` or
+  `novedu_user`), and photos are stripped inside Postgres — the base64 never leaves
+  the database. Coding codes store no conversations and answer an empty page. One
+  content-free `conversations.export.page` event (`code`, `limit`, `returned`) per
+  request.
 - **`GET /api/files?q=&mine=`** (`app/api/files/route.ts`, teacher-only) —
   the `/files` list's filters, with the bearer channel's own ownership param
   (`q` over name/title/description; `mine` default on, where the web page
@@ -496,6 +541,16 @@ any page, and its handler re-validates the session itself on top of that.
   tool name, and the production-parity assertion that the scripted turns reach
   the agent verbatim and in order alongside the `EVAL_TUTOR_*` and
   usage-sentinel RequestContext values.
+  `app/api/codes/[code]/conversations/route.unit.test.ts` pins the export route the
+  same way (mocked `getCode` + `listConversationPage`): the 401/403 matrix, the
+  `limit`/`after` 400s BEFORE any lookup, the creator-only 403 without a store call,
+  404/503, and the wire shape with its content-free event. Its store has a
+  fake-`execute` unit test (`lib/conversation-export-store.unit.test.ts`: the
+  `limit + 1` cursor rule, the cursor clause, the per-conversation cap and its
+  `truncated` flag, and the SQL-text guard that neither
+  statement names a `novedu_*` table and `content` is read only through the jsonb
+  rebuild), and the pure mapping/collapse/cursor helpers have their own
+  (`lib/conversation-export.unit.test.ts`).
 - **e2e:** `e2e/api-me.spec.ts`, `e2e/api-codes.spec.ts`, `e2e/api-images.spec.ts`
   and `e2e/api-reports.spec.ts` exercise the routes over HTTP with an empty
   cookie state, which also proves the proxy-matcher exclusions (a regression
@@ -513,7 +568,14 @@ any page, and its handler re-validates the session itself on top of that.
   and the @live-db `e2e/api-reports.live.spec.ts` files a chat report through
   the real UI (a zero-message thread, no LLM) then drives `GET /api/reports` →
   `GET /api/reports/<id>` (with `messages`) → `POST /api/reports/resolve` → the
-  `status=resolved` listing.
+  `status=resolved` listing. The @live-db `e2e/api-conversations.live.spec.ts`
+  seeds Mastra threads straight into the database (a real `data:` photo, an
+  assistant-only thread, a stored tool result, a tied and two microsecond-apart
+  thread timestamps — no LLM), walks `GET /api/codes/<code>/conversations` with
+  `limit=1` to its `null` cursor without skipping or repeating a thread, and asserts
+  the photo arrives only as `{ mimeType, bytes }`, the assistant-only thread is
+  absent, no identity appears, and another teacher's code is `403`; a second case
+  seeds 502 messages and gets the last 500 back, marked `truncated`.
 - **CLI unit tests** (`cli/src/auth.unit.test.ts`) exercise the device-flow
   request shape, the pending→success and `slow_down`/expired/denied poll
   outcomes, and the sessions-file round trip (mode `0600`, per-origin keys,

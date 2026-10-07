@@ -46,6 +46,27 @@ test("valid non-teacher token → 403 on GET and POST /api/codes", async ({ requ
   expect(create.status()).toBe(403);
 });
 
+// The per-code conversation export rides the same `api/codes(?:/|$)` exclusion;
+// this pair is what keeps a sub-path from ever falling back to the session gate.
+test("bare GET /api/codes/<code>/conversations → 401, not a sign-in redirect", async ({
+  request,
+}) => {
+  const response = await request.get("/api/codes/x/conversations", { maxRedirects: 0 });
+  expect(response.status()).toBe(401);
+  expect(response.headers()["www-authenticate"]).toBe("Bearer");
+  expect(response.headers()).not.toHaveProperty("location");
+});
+
+test("valid non-teacher token → 403 on GET /api/codes/<code>/conversations", async ({
+  request,
+}) => {
+  const token = await mintSessionToken();
+  const response = await request.get("/api/codes/x/conversations", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  expect(response.status()).toBe(403);
+});
+
 test("bare PUT /api/files/<name> → 401 — the public GET never implies a public PUT", async ({
   request,
 }) => {

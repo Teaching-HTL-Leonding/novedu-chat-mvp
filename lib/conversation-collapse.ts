@@ -20,8 +20,9 @@ export interface StoredMessageContent {
 // Turns one stored row into the AG-UI message the chat renderer consumes. Text
 // is concatenated from all text parts; image (`file`) parts become AG-UI image
 // parts so the teacher sees the same attachments the student sent. Assistant
-// messages are plain text (the tutor agent emits no images or tool calls). The
-// row `id` is preserved as the message id (the cleanup script relies on this to
+// messages are plain text: a tutor granted `tools:` stores `tool-invocation`
+// parts too, which this viewer drops (the conversation export keeps them —
+// `lib/conversation-export.ts`). The row `id` is preserved as the message id (the cleanup script relies on this to
 // map a kept/dropped message back to its `mastra_messages.id`).
 export function toAguiMessage(row: { id: string; role: string; content: string }): Message | null {
   let parsed: StoredMessageContent;
@@ -97,16 +98,23 @@ function messageKey(message: Message): string {
  * content (e.g. a student who retypes the opening line) is preserved, and a
  * clean conversation with no replay collapses to itself unchanged.
  */
-export function collapseReplayedRuns(messages: Message[]): Message[] {
+export function collapseReplayedRuns(messages: Message[]): Message[];
+// The same collapse over any message shape, with the caller's content identity
+// (the conversation export passes `exportMessageKey`).
+export function collapseReplayedRuns<T>(messages: T[], keyOf: (message: T) => string): T[];
+export function collapseReplayedRuns<T>(
+  messages: T[],
+  keyOf: (message: T) => string = messageKey as (message: T) => string,
+): T[] {
   const first = messages[0];
   if (first === undefined || messages.length <= 1) return messages;
 
-  const firstKey = messageKey(first);
+  const firstKey = keyOf(first);
   // Split into runs at each recurrence of the first message.
-  const runs: Message[][] = [];
-  let current: Message[] = [];
+  const runs: T[][] = [];
+  let current: T[] = [];
   for (const message of messages) {
-    if (current.length > 0 && messageKey(message) === firstKey) {
+    if (current.length > 0 && keyOf(message) === firstKey) {
       runs.push(current);
       current = [];
     }
@@ -115,11 +123,11 @@ export function collapseReplayedRuns(messages: Message[]): Message[] {
   if (current.length > 0) runs.push(current);
   if (runs.length <= 1) return messages;
 
-  const isPrefixOf = (shorter: Message[], longer: Message[]): boolean => {
+  const isPrefixOf = (shorter: T[], longer: T[]): boolean => {
     if (shorter.length > longer.length) return false;
     return shorter.every((m, i) => {
       const other = longer[i];
-      return other !== undefined && messageKey(m) === messageKey(other);
+      return other !== undefined && keyOf(m) === keyOf(other);
     });
   };
 
