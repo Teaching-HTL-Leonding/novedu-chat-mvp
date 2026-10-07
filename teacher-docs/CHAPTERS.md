@@ -62,6 +62,7 @@ _Turning an activity into a code and handing it to a class._
 | 07 | Student reports | `docs/reports.md` (behavior), `docs/codes.md` (anonymity) |
 | 08 | Many activities at once: the activity registry | `docs/registry.md` (format + sync semantics), `cli/README.md` (`codes sync`) |
 | 09 | Your start page | `docs/home.md` (the *Teacher dashboard* section: counters, KPIs, top activities, school hours, teacher badges) |
+| 10 | Exporting a code's conversations | `docs/api.md` (the conversation export route), `docs/codes.md` (*Stats & conversation viewer*), `cli/README.md` (`codes export`) |
 
 ## 40: Working with AI agents
 _Using Novedu together with AI assistants and agents: the CLI skill, and the guide's machine-readable form. More AI topics land here over time._
@@ -70,6 +71,7 @@ _Using Novedu together with AI assistants and agents: the CLI skill, and the gui
 | --- | --- | --- |
 | 01 | The CLI and its AI skill | `cli/README.md` (intro), `.agents/skills/novedu-tutor-cli/SKILL.md`, `https://github.com/vercel-labs/skills#readme` |
 | 02 | The guide for AI agents (llms.txt) | `docs/teacher-docs.md` (the llms.txt surface), `teacher-docs/README.md`, `https://llmstxt.org` |
+| 03 | Learning from real conversations | `cli/README.md` (`codes export`), `.agents/skills/novedu-tutor-cli/SKILL.md` (the improve-from-conversations job), `docs/codes.md` |
 
 > Scope reminder for every chapter: the "Where to look" entries are engineer
 > references. Document only teacher-facing behavior, not how the app works inside

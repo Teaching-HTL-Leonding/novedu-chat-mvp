@@ -181,6 +181,46 @@ prose carries everything an editor needs.
 - Do not describe matching as a lookup by name: the app knows nothing about the
   registry, and the names live only in the two files in the repository.
 
+## 30-sharing-activities/10-exporting-conversations
+
+- Reader: a teacher who wants a code's conversations as one file, usually to hand
+  to an AI assistant. The how-to-analyse part lives in 40-ai-llms/03; keep this
+  chapter to what the file holds and how to get it.
+- Only the teacher who CREATED the code can export it. Other teachers can still read
+  the conversations on the code's page, but the export refuses them. Do not soften
+  this to "teachers can export".
+- The file never names a student, for ANY code, per-user ones included: no name,
+  no id, no pseudonym. But message text is exported as typed, so do not promise
+  that nobody can be identified: a student may have written identifying details.
+- It never contains photos (only "a photo of this type and size was here"). Saved
+  writing texts are not exported as records of their own, but a writing feedback
+  chat can contain draft passages (the AI reads the draft and may quote it).
+- "The same conversations as the code's page" holds for tutor and quiz codes only;
+  a per-user writing code's page lists savers, not chats.
+- A coding code exports nothing but the header line: coding conversations are never
+  stored.
+- Only conversations in which a student wrote at least one message count, the same
+  rule as the code's page. A very long conversation keeps only its last 500 messages
+  and is marked as shortened.
+- The export is CLI-only (no button in the web app). Without `--out` a failed export
+  leaves the lines it already wrote in the redirected file; with `--out` the partial
+  file is removed.
+
+## 40-ai-llms/03-learning-from-conversations
+
+- Reader: a teacher who wants to improve an activity from how students actually
+  used it, with an AI assistant doing the reading. Process chapter; the export
+  itself is 30-sharing-activities/10.
+- The data-protection note is mandatory: the file has no names, but it holds what
+  students wrote, which can include personal details they typed themselves. The
+  teacher decides, under the school's rules, which assistant may see it.
+- Don't promise what any specific assistant can do (same rule as 40-ai-llms/02);
+  name products only as examples. The assistant's findings are suggestions the
+  teacher checks against the transcripts.
+- The loop ends where the existing tools are: change the YAML, check it with the
+  CLI, test it with an eval when the grading or tutor rules changed, then publish
+  the new version.
+
 ## 40-ai-llms/01-novedu-cli
 
 - Keep the CLI part at overview level. Do not duplicate the validate, prompts,
