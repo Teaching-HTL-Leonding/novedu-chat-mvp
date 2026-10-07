@@ -38,7 +38,8 @@ export const config = {
   // anchored with a path boundary (`api/coding(?:/|$)`) so the exclusion covers the
   // routes under `/api/coding/` without silently widening to a future, unrelated
   // `/api/coding-*` route.
-  // The /api/me identity probe, the /api/codes list/create endpoints, the
+  // The /api/me identity probe, the /api/codes list/create endpoints and the
+  // per-code conversation export under them (creator-only), the
   // /api/reports list/detail/resolve endpoints, the /api/eval eval endpoints —
   // grade, judge and respond, all bounded by the one `api/eval(?:/|$)` entry
   // (teacher-only; docs/cli-eval.md) — and the /api/images list/upload
