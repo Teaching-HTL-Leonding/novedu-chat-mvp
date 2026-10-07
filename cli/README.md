@@ -317,6 +317,7 @@ codes create  --module <tutor|quiz|writing|coding> --file <url>
               [--llm-provider <p> --llm-model <m>] [--llm-reasoning <level>]
 codes list    [--search <q>] [--module <m>] [--all]
 codes sync    <registry-file> [--lock <path>] [--dry-run] [--json]
+codes export  <code> [--out <file>]
 files upload  <name> [--kind <tutor|fragment|quiz|writing|coding>]
               (--file <path> | reads stdin)
 files list    [--search <q>] [--all]
@@ -324,9 +325,11 @@ images upload <name> --file <path> [--credit <text>]
 images list   [--search <q>] [--all]
 ```
 
-- **Output is JSON only.** Success: the API's objects verbatim on stdout, exit
+- **Output is JSON.** Success: the API's objects verbatim on stdout, exit
   0 (pipe into `jq`). Failure: JSON on stderr — `{ message }` or
   `{ errors: [...] }` with the full structured validation detail — and exit 1.
+  Two exceptions: `codes sync` prints a per-entry report (JSON behind `--json`),
+  and `codes export` streams JSON Lines.
 - `codes create` mints a shareable code for an activity YAML at a public URL
   (or an app-hosted `…/api/files/<name>` URL); the YAML is validated
   server-side before the code is stored, and the response includes the
@@ -339,6 +342,9 @@ images list   [--search <q>] [--all]
   `llm:` block, so leaving the level out also drops the file's.
 - `codes sync <registry-file>` mints codes for a whole **course** at once — see
   [Many activities at once](#many-activities-at-once-codes-sync) below.
+- `codes export <code>` downloads every conversation students had under one of
+  **your** codes — see [Exporting conversations](#exporting-conversations-codes-export)
+  below.
 - `files upload <name>` is an **upsert**: creating a new file requires
   `--kind`; an existing file's kind is frozen at create time (a contradicting
   `--kind` fails with 409). The YAML comes from `--file <path>` or stdin.
@@ -384,6 +390,43 @@ image:
   hosted: true
   src: sorting-diagram
   alt: Merge sort splitting an array
+```
+
+## Exporting conversations: `codes export`
+
+`codes export <code>` downloads every conversation students had under one code as
+[JSON Lines](https://jsonlines.org/), ready to hand to an LLM ("what did my
+students struggle with, and how should I improve this activity?").
+
+- **Only the code's creator** can export it; anyone else gets `403`.
+- **No student identity**, for any code — no user id, name or pseudonym. Photos
+  arrive as placeholders `{ "type": "image", "mimeType", "bytes" }`; the image
+  itself never leaves the server. Writing submissions are not included, and a
+  coding code exports a header and no conversations (coding stores none).
+- **Format** (`novedu-conversations/1`): line 1 is a header
+  `{ "type": "export", "format", "code", "module", "note", "fileUrl", "anonymous", "exportedAt" }`;
+  every further line is one conversation
+  `{ "type": "conversation", "threadId", "startedAt", "endedAt", "truncated", "messages": [...] }`.
+  A message is `{ "role": "user" | "assistant", "createdAt", "content" }` —
+  `content` is a string for plain text, otherwise an array of `text`, `image` and
+  `tool` (`{ "name", "args", "result" }`) parts. A conversation holds at most its
+  last 500 messages; `truncated: true` marks one that had more.
+- **Without `--out`**, the JSONL goes to **stdout** and nothing else does, so
+  `> file.jsonl` and `| jq` work. If the export fails midway, the lines already
+  written stay; the error is JSON on stderr, exit 1.
+- **With `--out <file>`**, the JSONL goes into the file and stdout gets a summary
+  `{ "code", "file", "conversations", "messages" }`. On failure the partial file
+  is removed.
+
+```bash
+npx @novedu/cli codes export k7f3qz > k7f3qz.jsonl
+npx @novedu/cli codes export k7f3qz --out k7f3qz.jsonl
+# { "code": "k7f3qz", "file": "k7f3qz.jsonl", "conversations": 42, "messages": 517 }
+
+# The text of every student message, one per line:
+npx @novedu/cli codes export k7f3qz | jq -r '
+  select(.type == "conversation") | .messages[] | select(.role == "user")
+  | .content | if type == "string" then . else map(.text // empty) | join("") end'
 ```
 
 ## Many activities at once: `codes sync`
@@ -506,8 +549,8 @@ npx @novedu/cli reports resolve 3f2c…                 # existing codes already
 ## Using the CLI from a coding agent
 
 The app repo ships a Claude Code skill that teaches coding agents the full CLI
-workflow — validation, the sign-in hand-off, code/file management, and the
-report-triage loop:
+workflow — validation, the sign-in hand-off, code/file management, the
+report-triage loop, and improving an activity from its exported conversations:
 [`.claude/skills/novedu-tutor-cli/SKILL.md`](https://github.com/Teaching-HTL-Leonding/novedu-chat-mvp/blob/main/.claude/skills/novedu-tutor-cli/SKILL.md)
 (mirrored at `.agents/skills/novedu-tutor-cli/`). Agents working inside that
 repo pick it up automatically.

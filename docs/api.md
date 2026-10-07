@@ -9,7 +9,8 @@ non-browser client, e.g. a future MCP server) calling app API routes with a
 CLI reads it), the services
 they share with the web actions (`lib/code-service.ts`, `lib/file-service.ts`,
 `lib/image-service.ts`), the CLI commands (`cli/src/auth.ts`, `cli/src/api.ts`,
-`cli/src/commands/{login,logout,whoami,codes,files,images,reports,eval}.ts`), `app/device/page.tsx`,
+`cli/src/commands/{login,logout,whoami,codes,files,images,reports,eval}.ts`,
+`cli/src/conversation-export.ts`), `app/device/page.tsx`,
 `lib/device-actions.ts`, or when adding a bearer-protected endpoint. Cookie sessions,
 teacher roles and student mode live in `docs/auth.md`.
 
@@ -194,7 +195,7 @@ any page, and its handler re-validates the session itself on top of that.
 - **`GET /api/codes/<code>/conversations?limit=&after=`**
   (`app/api/codes/[code]/conversations/route.ts`, teacher-only, **creator-only**) —
   one page of every conversation students had under ONE code — the whole-code
-  export a teacher hands to an LLM. Stricter than the role-gated web transcript pages: the
+  export a teacher hands to an LLM, backing `novedu-cli codes export`. Stricter than the role-gated web transcript pages: the
   token's user must be the code's `createdBy`, else `403 { message }`; an unknown
   code is `404` (existence is not secret — `GET /api/codes?mine=0` lists every
   code). Paged per **Pagination** above. Answers
@@ -415,7 +416,10 @@ any page, and its handler re-validates the session itself on top of that.
   `--file <path>` or stdin; `list` defaults to only-mine (`--all` widens, UI
   parity). No client-side pre-validation — the server runs the identical
   pipeline; offline checking stays the `validate` command's job.
-- **`codes sync <registry-file>`** is the ONE exception to the JSON-only output
+- Three commands are exceptions to the JSON-only output rule: `codes sync` and
+  `eval` print human reports (JSON behind `--json`), `codes export` streams JSON
+  Lines. Their hard failures still follow the rule (JSON on stderr, exit 1).
+- **`codes sync <registry-file>`** is the first exception to the JSON-only output
   rule: it reconciles a whole **activity registry** (`docs/registry.md`) in a
   single run — one `GET /api/codes`, then a `POST /api/codes` per entry that has
   no matching code — so it prints a per-entry report and keeps the JSON contract
@@ -425,6 +429,23 @@ any page, and its handler re-validates the session itself on top of that.
   lock) stay JSON on stderr with exit 1; a single entry's rejection is reported
   in the run's report instead — `performApiRequest({ quiet: true })` hands the
   failure payload back rather than printing it.
+- **`codes export <code> [--out <file>]`** (`cli/src/conversation-export.ts`) is
+  the third exception: it walks the creator-only, paged
+  `GET /api/codes/<code>/conversations` (`limit=50`, `after` = the previous
+  `nextCursor`, until `null`) and writes **JSON Lines** — one header line
+  `{ type: "export", format: "novedu-conversations/1", code, module, note, fileUrl, anonymous, exportedAt }`
+  (the code block of page one plus the CLI clock), then one
+  `{ type: "conversation", … }` line per conversation as the pages arrive (one page
+  in flight; writes wait for `drain`). Without `--out`, stdout carries ONLY that
+  stream (a closed pipe ends it quietly, exit 0); there is no `--json`, the output
+  already IS line-delimited JSON. With `--out`, the file is opened before the first
+  request, receives the stream, and stdout gets the summary
+  `{ code, file, conversations, messages }`. A failure (any non-2xx — the server's
+  `{ message }` relayed by `performApiRequest` — network, a malformed page envelope
+  (checked before any of the page is written), a cursor that does not move, a write
+  error, including one that happens while the next page is in flight) is JSON on
+  stderr, exit 1; in stdout mode the lines already written stay, in
+  `--out` mode the partial file is removed.
 - **The `images` group** (`cli/src/commands/images.ts`) drives the two
   `/api/images` routes. `images upload <name> --file <path> [--credit <text>]`
   reads the file, derives the MIME from its extension (`imageMimeFromExtension`,
@@ -588,7 +609,15 @@ any page, and its handler re-validates the session itself on top of that.
   `test-fixtures/serve.mjs`, reached with the test-only `NOVEDU_TOKEN`
   override (checked before the session file — it only skips the interactive
   login; the server still validates the token on every request). See
-  `docs/registry.md`. The `codes`/`files` command tests pin the flag→request
+  `docs/registry.md`. `codes export` has the same kind of coverage
+  (`cli/test/export.integration.test.ts` against the fake
+  `GET /api/codes/<code>/conversations`): the stdout stream is exactly a header plus
+  one line per conversation across two pages, `limit=50` and the cursor are sent
+  verbatim, `--out` writes the identical stream plus the JSON summary, and a 403 /
+  unknown code / unwritable `--out` exit 1 with JSON on stderr and no file left
+  behind; `cli/src/conversation-export.unit.test.ts` stages what the binary run
+  cannot — a sink failing mid-walk or with a full buffer (no hang), a cursor that does not
+  move, malformed page envelopes — over a mocked API seam. The `codes`/`files` command tests pin the flag→request
   mapping, stdin/--file reading, and the stdout/stderr JSON split;
   `cli/src/commands/reports.unit.test.ts` does the same for
   `reports list/show/resolve` (the defaults, `--all` → `mine=0`, the multi-id
