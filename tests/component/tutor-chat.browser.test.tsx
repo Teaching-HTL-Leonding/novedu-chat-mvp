@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 import type { ModuleChat as ModuleChatType } from "@/app/module-chat";
 import {
@@ -52,10 +52,19 @@ vi.mock("@/lib/report-actions", () => ({ submitChatReport: vi.fn(), submitQuizRe
 // here it is a seam, so these tests assert what the SURFACE does with the thread
 // it gets back.
 const startNewTutorThread = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/tutor-actions", () => ({ startNewTutorThread }));
+const resumeTutorThread = vi.hoisted(() => vi.fn());
+const listTutorThreads = vi.hoisted(() => vi.fn());
+const openTutorThread = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/tutor-actions", () => ({
+  startNewTutorThread,
+  resumeTutorThread,
+  listTutorThreads,
+  openTutorThread,
+}));
 
 import { TutorChat } from "@/app/tutor-chat";
 import { submitChatReport } from "@/lib/report-actions";
+import { readTutorThread, writeTutorThread } from "@/lib/tutor-thread-storage";
 
 const TUTOR_CODE = "a1b2c3d4e5";
 const THREAD_ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
@@ -63,6 +72,13 @@ const RUNTIME_HEADERS = {
   "x-code": TUTOR_CODE,
   "x-thread-token": "deadbeef".repeat(8),
 };
+
+// Every test starts with a tab that remembers no tutor thread (the resume tests
+// below seed one), so the chat mounts on the server-minted thread.
+beforeEach(() => {
+  window.sessionStorage.clear();
+  resumeTutorThread.mockReset();
+});
 
 // Every test renders the same minimal surface; overrides carry the per-test
 // deltas (title, imageInput, exampleQuestions, …).
@@ -413,4 +429,146 @@ test("a failed restart shows the reason and leaves the conversation untouched", 
     providerKey: `${TUTOR_CODE}:${THREAD_ID}`,
     headers: RUNTIME_HEADERS,
   });
+});
+
+test("a confirmed restart remembers the NEW thread for this tab, not restoring", async () => {
+  startNewTutorThread.mockResolvedValue({ ok: true, ...NEW_THREAD });
+  const screen = await renderTutorChat();
+
+  await confirmStartOver(screen);
+
+  expect(readTutorThread(TUTOR_CODE)).toEqual(NEW_THREAD);
+  // A fresh thread has nothing to restore: the welcome screen may show at once.
+  await renderView();
+  expect(viewSpy.mock.lastCall?.[0]).toMatchObject({ isConnecting: false });
+});
+
+// Resume on reload (docs/chat.md → Resuming a conversation): the tab's stored
+// thread is checked with the server before the chat mounts on it; the action is
+// a mocked seam here (its contract: lib/tutor-actions.unit.test.ts).
+
+const STORED_THREAD = {
+  threadId: "5d6f2a3e-0c1b-4d8e-9f70-1a2b3c4d5e6f",
+  threadToken: "feedface".repeat(8),
+};
+
+/** Renders the captured chatView, so its CopilotChat.View props reach viewSpy. */
+async function renderView() {
+  const ChatView = moduleChatSpy.mock.lastCall?.[0].chatView as
+    | ((props: Record<string, unknown>) => React.ReactNode)
+    | undefined;
+  if (!ChatView) throw new Error("no chatView passed to ModuleChat");
+  viewSpy.mockClear();
+  await render(<ChatView />);
+}
+
+test("with nothing stored, the chat mounts on the server thread and remembers it", async () => {
+  await renderTutorChat();
+
+  await vi.waitFor(() => expect(moduleChatSpy).toHaveBeenCalled());
+  expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({ threadId: THREAD_ID });
+  expect(resumeTutorThread).not.toHaveBeenCalled();
+  expect(readTutorThread(TUTOR_CODE)).toEqual({
+    threadId: THREAD_ID,
+    threadToken: RUNTIME_HEADERS["x-thread-token"],
+  });
+});
+
+test("a stored thread shows the restoring placeholder until the server answers", async () => {
+  writeTutorThread(TUTOR_CODE, STORED_THREAD);
+  let answer: (value: { ok: boolean }) => void = () => {};
+  resumeTutorThread.mockReturnValue(
+    new Promise((resolve) => {
+      answer = resolve;
+    }),
+  );
+  const screen = await renderTutorChat();
+
+  await expect.element(screen.getByText("Restoring your conversation…")).toBeVisible();
+  expect(moduleChatSpy).not.toHaveBeenCalled();
+  // The toolbar waits too: its report target is the decided thread.
+  expect(screen.getByRole("button", { name: "Start over" }).query()).toBeNull();
+
+  answer({ ok: true });
+  await vi.waitFor(() => expect(moduleChatSpy).toHaveBeenCalled());
+});
+
+test("an accepted resume mounts the chat on the STORED thread, restoring", async () => {
+  writeTutorThread(TUTOR_CODE, STORED_THREAD);
+  resumeTutorThread.mockResolvedValue({ ok: true });
+  await renderTutorChat();
+
+  await vi.waitFor(() => expect(moduleChatSpy).toHaveBeenCalled());
+  expect(resumeTutorThread).toHaveBeenCalledExactlyOnceWith({ code: TUTOR_CODE, ...STORED_THREAD });
+  expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({
+    threadId: STORED_THREAD.threadId,
+    providerKey: `${TUTOR_CODE}:${STORED_THREAD.threadId}`,
+    headers: { "x-code": TUTOR_CODE, "x-thread-token": STORED_THREAD.threadToken },
+  });
+  expect(readTutorThread(TUTOR_CODE)).toEqual(STORED_THREAD);
+  // The messages arrive with the connect: no welcome screen flash meanwhile.
+  await renderView();
+  expect(viewSpy.mock.lastCall?.[0]).toMatchObject({ isConnecting: true });
+});
+
+test.each([
+  ["refused", () => resumeTutorThread.mockResolvedValue({ ok: false })],
+  ["failing (network)", () => resumeTutorThread.mockRejectedValue(new Error("offline"))],
+])(
+  "a %s resume falls back to the server thread and replaces the entry",
+  async (_label, arrange) => {
+    writeTutorThread(TUTOR_CODE, STORED_THREAD);
+    arrange();
+    await renderTutorChat();
+
+    await vi.waitFor(() => expect(moduleChatSpy).toHaveBeenCalled());
+    expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({ threadId: THREAD_ID });
+    expect(readTutorThread(TUTOR_CODE)).toEqual({
+      threadId: THREAD_ID,
+      threadToken: RUNTIME_HEADERS["x-thread-token"],
+    });
+    await renderView();
+    expect(viewSpy.mock.lastCall?.[0]).toMatchObject({ isConnecting: false });
+  },
+);
+
+// "Previous conversations" (per-user tutors): the button exists only with
+// history on, and a reopened conversation moves the whole chat to its thread.
+
+test("no history button when history is off", async () => {
+  const screen = await renderTutorChat();
+  await expect.element(screen.getByRole("button", { name: "Start over" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Previous conversations" }).query()).toBeNull();
+});
+
+test("reopening a conversation switches the chat to it, restoring, and remembers it", async () => {
+  const OLD = "3c2b1a00-aaaa-4bbb-8ccc-dddddddddddd";
+  listTutorThreads.mockResolvedValue({
+    ok: true,
+    threads: [
+      {
+        threadId: OLD,
+        lastActivityAt: new Date(2025, 0, 1, 10, 0),
+        userMessageCount: 4,
+        preview: { kind: "text", text: "An older question" },
+      },
+    ],
+    more: false,
+  });
+  openTutorThread.mockResolvedValue({ ok: true, threadToken: "beadfeed".repeat(8) });
+  const screen = await renderTutorChat({ historyEnabled: true });
+
+  await screen.getByRole("button", { name: "Previous conversations" }).click();
+  await screen.getByText("An older question").click();
+
+  await vi.waitFor(() =>
+    expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({
+      threadId: OLD,
+      providerKey: `${TUTOR_CODE}:${OLD}`,
+      headers: { "x-code": TUTOR_CODE, "x-thread-token": "beadfeed".repeat(8) },
+    }),
+  );
+  expect(readTutorThread(TUTOR_CODE)).toEqual({ threadId: OLD, threadToken: "beadfeed".repeat(8) });
+  await renderView();
+  expect(viewSpy.mock.lastCall?.[0]).toMatchObject({ isConnecting: true });
 });

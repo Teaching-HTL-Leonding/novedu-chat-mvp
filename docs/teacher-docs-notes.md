@@ -32,6 +32,14 @@ prose carries everything an editor needs.
   number of students. A restart with nothing typed into it does not count at all.
 - Only the tutor chat has the button. Do not generalise it to quizzes or writing
   activities.
+- A reload brings the current conversation back only in the SAME browser tab and
+  only while its last message is less than one hour old. Closing the tab, another
+  tab or another device, and signing out all start fresh. Never call the
+  conversation "saved" for this: nothing new is stored, and a resumed conversation
+  adds nothing to the statistics.
+- Reopening earlier conversations exists ONLY in per-user tutors, and only within
+  the same tutor (code): a student never sees another code's conversations or
+  anyone else's. Reopening adds no conversation to the statistics.
 
 ## 00-introduction/07-environments
 
@@ -126,6 +134,18 @@ prose carries everything an editor needs.
   you place the marker. Do not describe priority ordering.
 - Keep this the one deep fragment chapter: the tutors, quiz, writing and coding
   chapters cover placing fragments from the consumer side and should stay lighter.
+
+## 30-sharing-activities/04-anonymous-vs-per-user
+
+- Tutor history follows the mode: in an anonymous tutor students cannot return to
+  an earlier conversation (a reload in the same tab keeps the current one for up to
+  an hour after its last message; never call that "saved"); in a per-user tutor
+  they can reopen their own earlier conversations with that one tutor, never
+  another tutor's or another student's.
+- The history appears only while the code is per-user AND its file still says so.
+  If a teacher edits the file's mode after creating the code, students get no
+  history; that edge case belongs in the engineer docs, not in the guide (the
+  guide promises the mode is fixed at creation).
 
 ## 30-sharing-activities/01-creating-codes
 

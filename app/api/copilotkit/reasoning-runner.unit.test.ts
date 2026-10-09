@@ -12,7 +12,9 @@ import {
 } from "@copilotkit/runtime/v2";
 import { firstValueFrom, type Observable, of, toArray } from "rxjs";
 import { describe, expect, it, vi } from "vitest";
+import { HistorySnapshotRunner } from "./history-snapshot-runner";
 import { isReasoningEvent, ReasoningStrippingRunner } from "./reasoning-runner";
+import { RunErrorReportingRunner } from "./run-error-runner";
 
 // The runner is the ONE place that keeps a thinking model's chain of thought
 // off a student's wire (docs/chat.md). Everything it does is a pure transform of
@@ -202,12 +204,19 @@ describe("AgentRunner method-list guard", () => {
     ).toEqual([]);
   });
 
-  it("ReasoningStrippingRunner implements all four itself — none inherited or missed", () => {
-    expect(
-      Object.getOwnPropertyNames(ReasoningStrippingRunner.prototype)
-        .filter((name) => name !== "constructor")
-        .sort(),
-    ).toEqual(["connect", "isRunning", "run", "stop"]);
+  // Every decorator in the route's runner chain delegates method by method, so
+  // each must implement all four itself: the stripper (a missed method leaks
+  // reasoning), the failure reporter (a missed method hides failures) and the
+  // tutor's snapshot runner (a missed method bypasses the replay filter).
+  it.each([
+    ["ReasoningStrippingRunner", ReasoningStrippingRunner],
+    ["RunErrorReportingRunner", RunErrorReportingRunner],
+    ["HistorySnapshotRunner", HistorySnapshotRunner],
+  ])("%s implements all four itself — none inherited or missed", (_name, runner) => {
+    // Private helpers may sit beside them; the four must all be OWN methods.
+    expect(Object.getOwnPropertyNames(runner.prototype)).toEqual(
+      expect.arrayContaining(["connect", "isRunning", "run", "stop"]),
+    );
   });
 });
 

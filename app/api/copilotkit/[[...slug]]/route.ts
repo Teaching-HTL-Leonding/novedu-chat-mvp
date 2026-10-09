@@ -1,6 +1,12 @@
 import { MastraAgent } from "@ag-ui/mastra";
-import { CopilotRuntime, createCopilotEndpoint, InMemoryAgentRunner } from "@copilotkit/runtime/v2";
+import {
+  type AgentRunner,
+  CopilotRuntime,
+  createCopilotEndpoint,
+  InMemoryAgentRunner,
+} from "@copilotkit/runtime/v2";
 import { after } from "next/server";
+import { HistorySnapshotRunner } from "@/app/api/copilotkit/history-snapshot-runner";
 import { ReasoningStrippingRunner } from "@/app/api/copilotkit/reasoning-runner";
 import { RunErrorReportingRunner } from "@/app/api/copilotkit/run-error-runner";
 import { mastra } from "@/app/mastra";
@@ -339,6 +345,21 @@ async function handler(req: Request): Promise<Response> {
   built.context.set(USAGE_USER_ID, userId);
   built.context.set(USAGE_MODULE, entry.module);
 
+  // The library's own runner, innermost. A TUTOR's is wrapped in the snapshot
+  // runner, which answers a `connect` with the thread's stored messages so a
+  // reloaded tab gets its conversation back (app/api/copilotkit/
+  // history-snapshot-runner.ts) — innermost, so the decorators below see its
+  // frames like any other. Writing and quiz connect as before.
+  const baseRunner: AgentRunner =
+    entry.module === "tutor"
+      ? new HistorySnapshotRunner(new InMemoryAgentRunner(), {
+          code,
+          frozenAnonymous: entry.anonymous,
+          fileUrl: entry.fileUrl,
+          userId,
+        })
+      : new InMemoryAgentRunner();
+
   // ONLY the module's own agent is registered — never Mastra's whole registry —
   // keyed by the id the client addresses it with.
   const agentId = def.runtime.agentId;
@@ -351,14 +372,14 @@ async function handler(req: Request): Promise<Response> {
         requestContext: built.context,
       }),
     },
-    // A teacher gets the library's own runner — the very one the stripping runner
-    // wraps — so their stream is the unmodified behaviour, reasoning included.
-    // BOTH are wrapped for failure reporting: a turn that dies inside the agent
-    // does so in-band, on a stream this route has already answered 200 for, so
-    // this decorator is the only place it can be seen (app/api/copilotkit/
+    // A teacher gets the base runner unfiltered — the very one the stripping
+    // runner wraps — so their stream is the unmodified behaviour, reasoning
+    // included. BOTH are wrapped for failure reporting: a turn that dies inside
+    // the agent does so in-band, on a stream this route has already answered 200
+    // for, so this decorator is the only place it can be seen (app/api/copilotkit/
     // run-error-runner.ts). It observes and never alters the stream.
     runner: new RunErrorReportingRunner(
-      showReasoning ? new InMemoryAgentRunner() : new ReasoningStrippingRunner(),
+      showReasoning ? baseRunner : new ReasoningStrippingRunner(baseRunner),
       entry.module,
     ),
   });

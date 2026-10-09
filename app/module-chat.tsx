@@ -94,8 +94,10 @@ export function ModuleChat({
           with `hasExplicitThreadId={false}` looks equivalent but is not: the
           chat then strands its agent mid-run (messages cleared, stuck
           "running") on the first send. Explicit mode also fires a connect
-          request on mount — harmless: the runtime replays the (empty)
-          in-process history for the fresh thread, token-checked like a run.
+          request on mount, token-checked like a run: for a fresh thread the
+          runtime replays the (empty) in-process history; for a tutor thread
+          resumed after a reload it answers with the stored conversation
+          (app/api/copilotkit/history-snapshot-runner.ts).
         */}
         <CopilotChat
           threadId={threadId}

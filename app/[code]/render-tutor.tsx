@@ -4,6 +4,7 @@ import { ErrorList, WarningList } from "@/components/validation-result";
 import type { CodeEntry } from "@/lib/code-store";
 import { defaultFetcher } from "@/lib/prompt-fragments";
 import { buildRuntimeHeaders } from "@/lib/runtime-headers";
+import { historyEnabled } from "@/lib/tutor-history-gate";
 import { loadAndBuildTutorPrompt, sampleExampleQuestions } from "@/lib/tutors";
 import { TutorChat } from "../tutor-chat";
 
@@ -52,6 +53,10 @@ export async function RenderTutor({
         title={result.title}
         description={result.description}
         exampleQuestions={sampleExampleQuestions(result.exampleQuestions)}
+        // "Previous conversations" only when BOTH copies of the flag are false:
+        // the frozen one on the code row and the live one from the YAML this
+        // render already built (lib/tutor-history-gate.ts).
+        historyEnabled={historyEnabled(entry.anonymous, result.anonymous)}
       />
     </Main>
   );

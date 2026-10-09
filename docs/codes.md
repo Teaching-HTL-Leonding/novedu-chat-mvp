@@ -317,8 +317,59 @@ The Mastra memory **`resourceId` is the code** (set in the runtime route), and
 the CopilotKit client via CopilotChat's `threadId` prop (explicit mode — the shared
 `ModuleChat` primitive owns this frontend wiring; see `docs/chat.md` for why the
 prop, not the configuration provider) and proven back to the runtime by the
-`x-thread-token` ownership token (nothing is persisted client-side — a reload starts
-a fresh thread).
+`x-thread-token` ownership token.
+
+**Resume on reload (tutor only).** A tutor tab keeps its current
+`{ threadId, threadToken }` in `sessionStorage` (`lib/tutor-thread-storage.ts`): it
+survives a reload of that tab and is gone with the tab, so two tabs are two
+conversations (a duplicated tab inherits its source's entry and shares its thread).
+On mount the chat asks `resumeTutorThread` (`lib/tutor-actions.ts`), which re-runs
+the gate (session, `checkCode`, `module === "tutor"`), re-verifies the token over
+`(code, session user, threadId)` and requires the thread's last stored message to be
+less than **60 minutes** old (`lib/tutor-history-gate.ts`), or, in a per-user tutor,
+that the student owns it (a conversation reopened from "Previous conversations",
+below); every refusal is the same opaque `{ ok: false }`, and the chat then uses
+the thread `app/[code]/page.tsx` minted for this load. The messages themselves reach the browser with the chat's
+`connect`, answered from the database by the runtime's snapshot runner
+(`docs/chat.md`). Nothing new is persisted and no user↔thread link is written, so an
+anonymous tutor stays unlinkable. Sign-out clears every stored pair in the tab. A
+teacher in "view as student" resumes under their own `novedu_user.id` (student mode
+changes only the role, never the user id).
+
+**Previous conversations (per-user tutors only).** A tutor whose code is
+history-enabled offers the student a list of their own earlier conversations with
+THIS code and lets them reopen one and continue it (`listTutorThreads` /
+`openTutorThread`, `lib/tutor-actions.ts`). History is on only when BOTH copies of
+the `anonymous` flag are `false` (`historyEnabled`, `lib/tutor-history-gate.ts`):
+the copy frozen on `novedu_codes.anonymous` decides what the teacher sees, the live
+YAML flag decides whether `recordUserChat` writes rows, and they differ only when a
+teacher edits the YAML after creating the code:
+
+| frozen | live | rows written | teacher sees names | history |
+| --- | --- | --- | --- | --- |
+| false | false | yes | yes | **on** |
+| false | true | no (new threads) | yes (old rows) | off |
+| true | false | yes | no | off |
+| true | true | no | no | off |
+
+So the history appears exactly when conversations are recorded AND the teacher sees
+names, and both Start-over wordings and the dialog's notice are true in every
+combination. The render takes the live flag from the YAML it already built; the
+actions read it with `readAnonymousFlag` (an unreadable YAML counts as anonymous).
+
+This is the **student-side read path** of `novedu_user_chats`
+(`lib/tutor-history-store.ts`): `listOwnTutorThreads(userId, code)` starts from the
+session user's rows for the code, inner-joins `mastra_threads` on `id` and
+`resourceId = code` (a thread without Mastra rows, e.g. after a half-failed code
+delete, drops out), keeps threads with at least one user message, and returns at
+most 50 (newest last activity first, plus a `more` flag) with the student's message
+count and a preview of their first message computed IN SQL (its text parts and
+whether it had a photo; the whole `content`, which may hold a multi-megabyte data
+URL, is never selected). `ownsTutorThread(userId, code, threadId)` is the ownership
+proof `openTutorThread` requires before it signs a token for that thread (no time
+limit; every refusal carries the same message). The user id always comes from the
+session and is never returned. Reopening creates no thread, so it adds no
+"interaction" to the teacher's statistics.
 
 Three places mint a thread, all server-side and all re-verifying the code first:
 `app/[code]/page.tsx` on every page load (tutor + writing), `startDiscussion`

@@ -4,7 +4,7 @@ description: What you can see in each mode, the default for each activity kind, 
 sidebar:
   order: 4
 audience: teacher
-keywords: [anonymous, per-user, attribution, privacy, who did what, student names, anonymous flag, saved quiz results, medals]
+keywords: [anonymous, per-user, attribution, privacy, who did what, student names, anonymous flag, saved quiz results, medals, previous conversations, reopen conversation]
 related:
   - 30-sharing-activities/01-creating-codes
   - 30-sharing-activities/02-viewing-usage
@@ -22,9 +22,13 @@ In an anonymous activity the app stores no link between a student and their work
 
 Anonymous is a good fit for practice and exploration: students can ask basic questions or make mistakes without worrying that it lands next to their name.
 
+For a tutor this cuts both ways: because nothing links a conversation to a student, students can't return to an earlier conversation. A reload in the same tab keeps the current one going for up to an hour after the last message; once they start over or close the tab, it's gone for them, though you can still read it.
+
 ## Per-user: you see who did what
 
 In a per-user activity the app records the author. The statistics page for a code shows how many different students took part and names the student behind each conversation or quiz attempt, and for a writing activity you can open each student's saved text together with their coach conversations. Choose per-user when you need to review or grade individual work.
+
+In a per-user tutor, students can reopen their earlier conversations with that tutor and continue them. They only ever see their own conversations, and only those for that one tutor.
 
 Tell your class when an activity records who did what, so nobody assumes they are practising anonymously.
 
@@ -34,7 +38,7 @@ Each kind of activity has its own default:
 
 | Kind | Default | Why |
 | --- | --- | --- |
-| Tutor | Anonymous | Chatting with a tutor is practice; students should feel free to ask anything. |
+| Tutor | Anonymous | Chatting with a tutor is practice; students should feel free to ask anything. Students can't reopen earlier conversations; choose per-user if they should. |
 | Quiz | Anonymous | Answers feed the aggregate statistics without naming anyone. |
 | Writing | Per-user | Reviewing a saved text needs an author, so writing records one by default. |
 | Coding | Always anonymous | Requests from a coding tool carry no student identity; there is no setting to change. Picking up the connection key is the one exception, always recorded with the student's name. |

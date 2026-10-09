@@ -20,8 +20,15 @@ vi.mock("@/lib/prompt-fragments", async (importOriginal) => ({
 }));
 // Stub the chat so the happy path needs no CopilotKit/runtime.
 vi.mock("../tutor-chat", () => ({
-  TutorChat: ({ code }: { code: string }) => <div data-testid="chat">chat for {code}</div>,
+  TutorChat: ({ code, historyEnabled }: { code: string; historyEnabled: boolean }) => (
+    <div data-testid="chat" data-history={String(historyEnabled)}>
+      chat for {code}
+    </div>
+  ),
 }));
+// The history gate's own store and YAML reads are never reached by the pure
+// `historyEnabled` this render uses; stubbed so the import needs no database.
+vi.mock("@/lib/tutor-history-store", () => ({ ownsTutorThread: vi.fn() }));
 
 import type { CodeEntry } from "@/lib/code-store";
 import { RenderTutor } from "./render-tutor";
@@ -32,9 +39,9 @@ const entry = {
   fileUrl: "https://example.com/t.yaml",
 } as unknown as CodeEntry;
 
-async function render() {
+async function render(frozenAnonymous = true) {
   const element = await RenderTutor({
-    entry,
+    entry: { ...entry, anonymous: frozenAnonymous },
     code: "a1b2c3d4e5",
     threadId: "t1",
     threadToken: "tok",
@@ -59,6 +66,30 @@ describe("RenderTutor", () => {
     });
     const html = await render();
     expect(html).toContain("chat for a1b2c3d4e5");
+  });
+
+  // "Previous conversations" only when the frozen flag on the code row AND the
+  // live flag from the YAML this render built are both false.
+  it.each([
+    [false, false, true],
+    [false, true, false],
+    [true, false, false],
+    [true, true, false],
+  ])("frozen anonymous %s, live %s → historyEnabled %s", async (frozen, live, expected) => {
+    loadAndBuildTutorPrompt.mockResolvedValue({
+      ok: true,
+      prompt: "system prompt",
+      warnings: [],
+      imageInput: false,
+      title: "Tutor",
+      description: "",
+      exampleQuestions: [],
+      anonymous: live,
+    });
+    const html = await render(frozen);
+    expect(html).toContain(`data-history="${expected}"`);
+    // The live flag comes from this render's own build: one YAML load, no second fetch.
+    expect(loadAndBuildTutorPrompt).toHaveBeenCalledTimes(1);
   });
 
   it("broken tutor → renders the load-failure notice and error list, no chat", async () => {

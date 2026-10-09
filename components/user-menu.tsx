@@ -5,6 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { MENU_ITEM, MENU_PANEL } from "@/components/ui/menu";
 import { signOutAction } from "@/lib/auth-actions";
 import { enterStudentModeAction, exitStudentModeAction } from "@/lib/student-mode-actions";
+import { clearAllTutorThreads } from "@/lib/tutor-thread-storage";
 import { cn } from "@/lib/utils";
 import { usePopover } from "./use-popover";
 
@@ -126,7 +127,10 @@ export function UserMenu({
           >
             Settings
           </Link>
-          <form action={signOutAction}>
+          {/* The tab's remembered tutor threads go first: the next person signing
+              in on this tab must not inherit them (lib/tutor-thread-storage.ts).
+              onSubmit runs before React hands the form to the action. */}
+          <form action={signOutAction} onSubmit={() => clearAllTutorThreads()}>
             <button type="submit" role="menuitem" className={MENU_ACTION}>
               Sign out
             </button>

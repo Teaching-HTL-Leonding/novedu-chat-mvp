@@ -73,9 +73,10 @@ The single canonical explanation lives in `app/module-chat.tsx`, right above the
 **`CopilotChat`'s `threadId` prop** (explicit mode), **not** through
 `CopilotChatConfigurationProvider` with `hasExplicitThreadId={false}`. The latter
 looks equivalent but strands the agent mid-run — messages cleared, the chat stuck
-"running" — on the first send. Explicit mode also fires a harmless `connect`
-request on mount: the runtime replays the (empty) in-process history for the fresh
-thread, token-checked exactly like a `run`.
+"running" — on the first send. Explicit mode also fires a `connect` request on
+mount, token-checked exactly like a `run`: for a fresh thread the runtime replays the
+(empty) in-process history; for a tutor thread resumed after a reload the snapshot
+runner answers it with the stored conversation (below).
 
 Because the explanation now lives in one place, no module duplicates it. The one
 deliberate interaction with it is the tutor welcome view (below), which overrides
@@ -115,8 +116,8 @@ provider, or the threadId decision.
 
 **Tutor** (`app/tutor-chat.tsx`) wraps `ModuleChat` (`agentId="tutor"`, a
 `providerKey` of `code:threadId`) in the tutor-specific shell: the dismissible
-**image-upload error notice** and the toolbar row (**start over** + the shared
-`ReportButton`). It passes `labels` (the optional welcome greeting),
+**image-upload error notice** and the toolbar row (**previous conversations** for a
+per-user tutor + **start over** + the shared `ReportButton`). It passes `labels` (the optional welcome greeting),
 a `chatView` from `useTutorWelcomeView(...)` (`app/_tutor/welcome-view.tsx` — the
 fragile welcome-screen override, pinned to a CopilotKit version in a comment next
 to itself), and, when the tutor's `llm.imageInput` is set, an `attachments` config
@@ -125,14 +126,19 @@ driving the notice). Tutor needs
 no height/padding delta, so it passes the base `.chat` class directly.
 
 It is also the only surface that **owns its thread after mount**. The server props
-merely seed a `thread` state (`{ threadId, threadToken }`); the runtime headers,
-the report target and the provider key are all derived from that state, so a
-restart moves them together.
+merely seed a `thread` state (`{ threadId, threadToken, restoring }`), decided after
+mount (see "Resuming a conversation" below); the runtime headers, the report target
+and the provider key are all derived from that state, so a restart or a resume moves
+them together. Every thread change is written to the tab's `sessionStorage`.
 
 ### "Start over" (tutor only)
 
 `app/_tutor/start-over-button.tsx` is an `IconButton` (`aria-label` + `title` —
-the app has no tooltip component) that opens a `DialogShell` confirmation, then
+the app has no tooltip component) that opens a `DialogShell` confirmation in one of
+two wordings, keyed by `historyEnabled`: an anonymous tutor's ("Start over?": the
+conversation is gone for the student for good, the teacher can still read it but
+cannot see whose it was) and a per-user tutor's ("Start a new conversation?": the
+current one is kept and can be reopened under Previous conversations). It then
 calls **`startNewTutorThread`** (`lib/tutor-actions.ts`). That action re-runs the
 full gate — session user id, `checkCode`, `module === "tutor"` — and returns a fresh
 `(threadId, threadToken)` pair. `TutorChat` swaps it in, the `providerKey` changes,
@@ -143,7 +149,8 @@ The round-trip is not optional: the ownership token is an HMAC over
 cannot mint one — and clearing the transcript client-side (`agent.setMessages([])`)
 would leave the **same** threadId, whose last 40 messages the tutor still recalls.
 It grants nothing new either: `app/[code]/page.tsx` already mints a fresh thread on
-every page load, so F5 always did this.
+every page load. The new pair replaces the tab's stored one, with `restoring` off (a
+fresh thread has nothing to restore).
 
 Two consequences worth knowing:
 
@@ -153,6 +160,135 @@ Two consequences worth knowing:
   as **two interactions** in the code's stats (`lib/code-stats-store.ts` counts
   threads with ≥1 user message) and gets a second `novedu_user_chats` row on
   non-anonymous codes. A restart with nothing sent stays invisible.
+
+### Resuming a conversation (tutor only)
+
+An accidental reload must not throw a student's conversation away. The tab
+remembers its current `{ threadId, threadToken }` in `sessionStorage`
+(`lib/tutor-thread-storage.ts`, keys `novedu.tutorThread.<code>`; every access
+try/caught, so blocked storage simply turns the feature off). Why that is safe —
+the token verifies only for the session user, the browser cannot mint one — is in
+`lib/thread-token.ts`; the server-side rules are in `docs/codes.md`.
+
+**The client flow** (`app/tutor-chat.tsx`). Storage is browser-only, so the server
+render and the first client render both show a "deciding" placeholder (no
+`ModuleChat`, no toolbar) and an effect decides:
+
+- nothing stored → the server-minted thread from the props, written to storage;
+- a stored pair → "Restoring your conversation…" while `resumeTutorThread` checks
+  it; `{ ok: true }` mounts the chat on the stored thread with `restoring: true`;
+  a refusal or a thrown action (network) drops the entry and falls back to the
+  server-minted thread.
+
+`restoring` feeds the welcome view: `useTutorWelcomeView` passes it as the view's
+`isConnecting`, which holds the welcome screen back until the snapshot lands.
+CopilotChat's own `isConnecting` cannot be used — it clears after the provisional
+agent's first connect, before the real connect that carries the snapshot. If that
+connect brings nothing, the student sees an empty chat with a working composer.
+Sign-out (`components/user-menu.tsx`) calls `clearAllTutorThreads()` in the form's
+`onSubmit`, before the action posts, so the next person on the tab inherits nothing.
+
+**The snapshot runner** (`app/api/copilotkit/history-snapshot-runner.ts`). An
+`AgentRunner` decorator the route puts INNERMOST for tutor codes only —
+`RunErrorReporting(ReasoningStripping(HistorySnapshot(InMemory)))` for students,
+`RunErrorReporting(HistorySnapshot(InMemory))` for teachers — so the other two
+decorators see its frames like any other. `run`, `isRunning` and `stop` delegate
+untouched. On `connect` it reads the thread from the database
+(`loadThreadForChat`, `lib/tutor-history-store.ts`: messages joined through
+`mastra_threads` with `resourceId = code`, mapped by `toAguiMessage` +
+`collapseReplayedRuns`, ids unchanged) and, when the **resume rule** allows it,
+answers with
+
+```
+RUN_STARTED{runId:"restore-<uuid>"} · MESSAGES_SNAPSHOT · RUN_FINISHED
+```
+
+followed by the inner connect, filtered. Facts it rests on (verified against the
+installed packages, none of them documented API):
+
+- the browser wipes the agent's messages on the first connect of a thread and then
+  applies the stream; a `MESSAGES_SNAPSHOT` replaces the local list;
+- the client verifier wants run framing: `RUN_STARTED` first, nothing but a new
+  run after `RUN_FINISHED`, and nothing at all after `RUN_ERROR`;
+- `InMemoryAgentRunner` keeps a process-global, LRU-bounded store of past runs and
+  replays them on `connect`; the client APPENDS a replayed `TEXT_MESSAGE_CONTENT`
+  to an existing message, so an unfiltered replay would double the text;
+- ids line up: a user message keeps its client-minted id in `mastra_messages`, an
+  assistant reply streams under its stored id (or `<id>-agui-text` for text after a
+  tool call), and a tool call names that id as its `parentMessageId`;
+- a failed run that emitted any event is replayed with a terminal `RUN_ERROR`.
+
+So the filter drops every `TEXT_MESSAGE_*` / `REASONING_*` event of a stored id (or
+its `-agui-text` twin), every tool call parented on a stored message with its
+args/end/result, and turns a HISTORIC `RUN_ERROR` into a `RUN_FINISHED` of the same
+run (a LIVE one, the in-flight run failing, passes). Historic vs live: the in-memory
+runner pushes its history into a `ReplaySubject` before `connect` returns, so what
+arrives during the subscribe call is history — pinned by the unit test. Result: a
+cold process gets the snapshot only; a warm one the snapshot plus bare run frames
+(and any run whose save failed); a reload mid-answer gets the snapshot plus the
+live reply. The database is read BEFORE subscribing to the inner connect, so a run
+finishing in between is replayed rather than lost. A refused rule, an empty thread
+or a database error fall back to the plain inner connect, never a `RUN_ERROR`.
+
+**The resume rule** (`lib/tutor-history-gate.ts`): the action accepts a thread whose
+last stored message is under 60 minutes old; the runner allows 5 minutes of grace
+on top (the gap between the action's check and the connect). Past that, both accept
+only a thread the student may reopen anyway (`ownerMayReopen`: a history-enabled
+code and their own `novedu_user_chats` row), so a conversation reopened from
+Previous conversations survives a reload too; that branch reads the YAML, but only
+runs past the limit. The connect is already token-verified, so a hand-crafted
+client holding an old token gets no more from `connect` than the actions would
+allow.
+
+Consequences worth knowing:
+
+- continuing a restored thread is an ordinary run: the client re-sends the
+  snapshotted history, the route trims it to the new turn (`trimToNewTurn`), and
+  `@ag-ui/mastra` dedupes re-sent messages by id; the tutor still recalls only its
+  `lastMessages` window (40), while the student sees every message;
+- restored photos ride the connect stream as the data URLs the student sent
+  (≤ 5 MB each);
+- a duplicated tab inherits `sessionStorage` and shares the thread; two
+  simultaneous sends then hit the in-memory runner's "Thread already running", an
+  ordinary turn error;
+- a reload mid-answer after more than 60 minutes of silence fails the resume (it
+  reads the last STORED message), and the in-flight reply lands in the abandoned
+  thread;
+- `CopilotChat` connects twice per mount (provisional agent, then the real one):
+  two database reads, harmless.
+
+**Before any `@copilotkit/*`, `@ag-ui/*` or `@mastra/*` bump**, run the `@live-llm`
+reload round-trip `e2e/tutor-reload-roundtrip.spec.ts` locally — next to wrapping
+any new `AgentRunner` method in all three decorators. It is the only test of the
+replay filter against a real browser in a warm process, and CI does not run it.
+
+### Previous conversations (per-user tutors only)
+
+`app/_tutor/previous-conversations-button.tsx` is rendered only when `TutorChat`
+gets `historyEnabled` (`app/[code]/render-tutor.tsx`: frozen AND live `anonymous`
+false, `docs/codes.md`). An `IconButton` with the `HistoryIcon` (left of Start over)
+opens a `DialogShell` (`size="fit"`, `w-[min(36rem,92vw)]`) that calls
+`listTutorThreads` every time it opens:
+
+- a notice first: this tutor is not anonymous, the teacher sees the conversations
+  and that they are the student's;
+- full-width row buttons, newest last activity first: the time
+  (`formatConversationTime`, `lib/conversation-time.ts`, the browser's locale and
+  zone: "Today, 14:32", "Yesterday, 09:10", "Mon, 6 Oct, 11:05", "6 Oct 2025,
+  11:05"), the student's message count, and the preview as plain text
+  (`line-clamp-2`; "📷 Photo" for a photo-only first message, "(no text)" for none);
+- the current thread sits where its time puts it, marked "Current" and disabled; a
+  fresh, still-empty current thread has no row;
+- a footer when there are more than 50; states for loading, empty ("No earlier
+  conversations with this tutor yet."), and a list failure with **Try again**.
+
+Picking a row calls `openTutorThread` (spinner in that row, the others disabled).
+On success the dialog closes and `TutorChat` switches to the returned
+`{ threadId, threadToken }` with `restoring: true`, writing it to the tab's storage;
+the messages arrive with the remounted chat's `connect`, where the snapshot runner's
+ownership branch admits it however old it is. A refusal shows "This conversation
+can't be opened." inline and leaves the chat as it was. Switching mid-answer behaves
+like Start over: the provider remounts and the browser drops the stream.
 
 **Writing** (`app/[code]/_writing/writing-chat.tsx`) wraps `ModuleChat`
 (`agentId="writing"`, `providerKey={code}`) with one child — the keystone,
@@ -443,7 +579,7 @@ each to `recordError`, and passes every frame through untouched and in order.
   ai-sdk's and goes through with its message, as the quiz path already does.
 - It is subject to the same 4-method `AgentRunner` guard as the reasoning runner:
   a CopilotKit bump that adds a fifth event-producing method must wrap it in
-  **both** decorators.
+  **all three** decorators (with the tutor's `HistorySnapshotRunner`).
 
 The route additionally rejects a run/connect whose **declared** `Content-Length`
 exceeds `MAX_RUN_BODY_BYTES` (24 MB) with a 413, before the body is read. The
@@ -520,12 +656,60 @@ module.
 - **`e2e/image-attachment.spec.ts`** — the `@live` round-trips: the original
   red-PNG case, plus a **multi-megapixel** photo generated in the page, which is
   the payload-size regression the tiny fixture can never catch.
+- **`app/api/copilotkit/history-snapshot-runner.unit.test.ts`** — the REAL
+  `InMemoryAgentRunner` with a fake AG-UI agent and every connect stream run
+  through AG-UI's `verifyEvents`: the exact three-event snapshot on a cold
+  connect; the plain inner stream (never a `RUN_ERROR`) when nothing is stored,
+  the thread is idle past limit + grace, or the store fails; a warm replay of
+  stored ids reduced to bare run frames (text, `-agui-text`, tool call by
+  `parentMessageId`); an unstored run replayed in full; an in-flight run's live
+  events; a historic `RUN_ERROR` closed as `RUN_FINISHED` while a live one passes;
+  the synchronous-history assumption asserted against the real runner. The
+  4-method guard in `reasoning-runner.unit.test.ts` covers all three decorators,
+  and the route suite asserts the runner chain per audience and module.
+- **`tests/component/tutor-chat.browser.test.tsx`** (restore) — the deciding and
+  restoring placeholders, an accepted resume mounting the stored thread with
+  `restoring` (`isConnecting` on the view), a refused or thrown one falling back
+  to the server thread and replacing the entry, and Start over storing its thread.
+  **`tests/component/user-menu.browser.test.tsx`** proves sign-out clears the
+  stored threads before the action runs.
+- **`e2e/tutor-resume.live.spec.ts`** (`@live-db`, CI) — seeds a conversation
+  under the tab's stored thread: a reload restores it without the welcome screen;
+  backdated 61 minutes, the reload starts fresh. Plus the anonymous-tutor smoke.
+  **`e2e/tutor-reload-roundtrip.spec.ts`** (`@live-llm`, local, mandatory before
+  the bumps above) — one copy of each message after reloads in a warm process,
+  and a failed-then-good thread that still reloads without a verifier error.
 - **`lib/tutor-actions.unit.test.ts`** — `startNewTutorThread` with the session and
   `checkCode` mocked but **`lib/thread-token` real**: the minted token verifies for
   `(code, session user, new thread)` and for nothing else (another user, another
   code), each call yields a different thread, and every rejection branch
   (signed-out, the four `checkCode` reasons, a non-tutor module) returns its
-  message. The code is re-checked on every call.
+  message. The code is re-checked on every call. `resumeTutorThread` accepts only
+  the owner's token on a thread last written under 60 minutes ago and answers
+  every other case (malformed id before any lookup, another user / code / thread,
+  no messages, 60 and 61 minutes, a store failure, a bad code, no session) with
+  exactly `{ ok: false }`. Beside it: the resume rule
+  (`lib/tutor-history-gate.unit.test.ts`), the tab storage
+  (`lib/tutor-thread-storage.unit.test.ts`), the store's conversions
+  (`lib/tutor-history-store.unit.test.ts`) and its importer guard
+  (`lib/tutor-history-isolation.unit.test.ts`).
+- **History (per-user tutors)** — `lib/tutor-actions.unit.test.ts` also covers
+  `listTutorThreads` / `openTutorThread`: refused for each of the three "history
+  off" flag combinations and an unreadable YAML; the list passes only the session
+  user id to the store; open refuses without the ownership row, on an empty thread
+  or a store failure, always with the same message, and its token verifies only
+  for `(code, session user, thread)`. Beside it: `lib/tutor-history-preview.unit.test.ts`,
+  `lib/conversation-time.unit.test.ts`, the gate's four flag combinations and
+  ownership branch, the store's list conversions, `render-tutor.unit.test.tsx`
+  (`historyEnabled` per the both-flags rule), and the browser suites
+  `tests/component/previous-conversations.browser.test.tsx` (rows, "Current",
+  photo / empty previews, footer, empty and error states with Try again, open
+  success and refusal), `tests/component/start-over-button.browser.test.tsx` (both
+  wordings) and the history cases in `tutor-chat.browser.test.tsx`.
+  **`e2e/tutor-history.live.spec.ts`** (`@live-db`, CI) seeds conversations of the
+  e2e student on two codes plus another user's: the dialog lists only this code's
+  own, a five-day-old one reopens with its messages and survives a reload; plus the
+  per-user smoke.
 - **`tests/unit/runtime-headers.unit.test.ts`** — `buildRuntimeHeaders(code, token)`
   returns `{ "x-code": code, "x-thread-token": token }` exactly (a cheap guard on
   the header names the backend re-reads).

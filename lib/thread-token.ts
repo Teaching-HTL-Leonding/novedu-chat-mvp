@@ -10,6 +10,14 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 // promise for `anonymous: true` tutors. A stateless HMAC proves ownership
 // without persisting anything.
 //
+// The tutor chat keeps its current `{ threadId, token }` pair in the tab's
+// `sessionStorage` so a reload can resume the conversation
+// (lib/tutor-thread-storage.ts). That is safe because the token grants nothing
+// beyond what the tab already held: it verifies only against the SESSION user,
+// so a copied pair is useless to any other account, and the browser can never
+// mint one. The resume itself is further bounded server-side by an idle limit
+// (lib/tutor-history-gate.ts), and sign-out clears the stored pairs.
+//
 // Pure functions — the secret is always passed in — so sign/verify are
 // unit-testable; `getThreadTokenSecret()` is the production secret.
 //
