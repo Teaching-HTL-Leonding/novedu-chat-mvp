@@ -220,8 +220,11 @@ installed packages, none of them documented API):
 
 So the filter drops every `TEXT_MESSAGE_*` / `REASONING_*` event of a stored id (or
 its `-agui-text` twin), every tool call parented on a stored message with its
-args/end/result, and turns a HISTORIC `RUN_ERROR` into a `RUN_FINISHED` of the same
-run (a LIVE one, the in-flight run failing, passes). Historic vs live: the in-memory
+args/end/result, and the reasoning of every run that already FINISHED (reasoning is
+never stored, so the snapshot cannot place it; replayed, it would land as a stray
+block below the restored conversation; only teachers receive reasoning at all). It
+turns a HISTORIC `RUN_ERROR` into a `RUN_FINISHED` of the same run (a LIVE one, the
+in-flight run failing, passes), and an in-flight run keeps its reasoning. Historic vs live: the in-memory
 runner pushes its history into a `ReplaySubject` before `connect` returns, so what
 arrives during the subscribe call is history — pinned by the unit test. Result: a
 cold process gets the snapshot only; a warm one the snapshot plus bare run frames
@@ -663,7 +666,9 @@ module.
   the thread is idle past limit + grace, or the store fails; a warm replay of
   stored ids reduced to bare run frames (text, `-agui-text`, tool call by
   `parentMessageId`); an unstored run replayed in full; an in-flight run's live
-  events; a historic `RUN_ERROR` closed as `RUN_FINISHED` while a live one passes;
+  events; a finished run's reasoning dropped while an in-flight run keeps its
+  reasoning (early part and live remainder); a historic `RUN_ERROR` closed as
+  `RUN_FINISHED` while a live one passes;
   the synchronous-history assumption asserted against the real runner. The
   4-method guard in `reasoning-runner.unit.test.ts` covers all three decorators,
   and the route suite asserts the runner chain per audience and module.

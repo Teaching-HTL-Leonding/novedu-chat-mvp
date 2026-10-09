@@ -312,6 +312,78 @@ describe("HistorySnapshotRunner.connect — the filtered in-process replay (warm
     ]);
   });
 
+  it("drops a FINISHED run's reasoning (never stored, so it has no place in the snapshot)", async () => {
+    loadThreadForChat.mockResolvedValue(stored());
+    const threadId = freshThread();
+    const inner = new InMemoryAgentRunner();
+    const [started, ...rest] = storedTurn(threadId, "r1");
+    const withReasoning = [
+      started,
+      { type: EventType.REASONING_START, messageId: "rz1" },
+      { type: EventType.REASONING_MESSAGE_START, messageId: "rz1", role: "reasoning" },
+      { type: EventType.REASONING_MESSAGE_CONTENT, messageId: "rz1", delta: "the student wants…" },
+      { type: EventType.REASONING_MESSAGE_END, messageId: "rz1" },
+      { type: EventType.REASONING_END, messageId: "rz1" },
+      ...rest,
+    ] as BaseEvent[];
+    await completeRun(inner, threadId, "r1", fakeAgent(withReasoning));
+    // Precondition: the library really does replay it.
+    const raw = await collect(inner.connect(connectRequest(threadId)));
+    expect(raw.some((event) => event.type.startsWith("REASONING_"))).toBe(true);
+
+    const runner = new HistorySnapshotRunner(inner, SCOPE);
+    const out = await collectVerified(runner.connect(connectRequest(threadId)));
+
+    expect(out.some((event) => event.type.startsWith("REASONING_"))).toBe(false);
+  });
+
+  it("keeps an IN-FLIGHT run's reasoning, early part and live remainder alike", async () => {
+    loadThreadForChat.mockResolvedValue(stored());
+    const threadId = freshThread();
+    const inner = new InMemoryAgentRunner();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const liveDone = collect(
+      inner.run(
+        runRequest(
+          threadId,
+          "r2",
+          fakeAgent(
+            [
+              { type: EventType.RUN_STARTED, threadId, runId: "r2" },
+              { type: EventType.REASONING_START, messageId: "rz2" },
+              { type: EventType.REASONING_MESSAGE_START, messageId: "rz2", role: "reasoning" },
+              { type: EventType.REASONING_MESSAGE_CONTENT, messageId: "rz2", delta: "early" },
+            ] as BaseEvent[],
+            {
+              gate,
+              after: [
+                { type: EventType.REASONING_MESSAGE_CONTENT, messageId: "rz2", delta: " late" },
+                { type: EventType.REASONING_MESSAGE_END, messageId: "rz2" },
+                { type: EventType.REASONING_END, messageId: "rz2" },
+                { type: EventType.RUN_FINISHED, threadId, runId: "r2" },
+              ] as BaseEvent[],
+            },
+          ),
+        ),
+      ),
+    );
+    const runner = new HistorySnapshotRunner(inner, SCOPE);
+
+    const connected = collectVerified(runner.connect(connectRequest(threadId)));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    release();
+    const out = await connected;
+    await liveDone;
+
+    const deltas = out
+      .filter((event) => event.type === EventType.REASONING_MESSAGE_CONTENT)
+      .map((event) => (event as { delta?: string }).delta);
+    expect(deltas.join("")).toBe("early late");
+  });
+
   it("replays a run whose ids are NOT in the snapshot in full (e.g. its save failed)", async () => {
     loadThreadForChat.mockResolvedValue(stored());
     const threadId = freshThread();
