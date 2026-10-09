@@ -286,9 +286,13 @@ describe("thread-ownership token (real HMAC)", () => {
     expect(res.status).toBe(403);
   });
 
-  it("403s a run whose token was signed for a different user", async () => {
+  it.each([
+    ["user", (threadId: string) => token(threadId, CODE, "someone-else")],
+    ["code", (threadId: string) => token(threadId, "zzzzzzzzzz")],
+    ["thread", () => token(crypto.randomUUID())],
+  ])("403s a run whose token was signed for a different %s", async (_what, sign) => {
     const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId, CODE, "someone-else") }));
+    const res = await POST(runRequest({ threadId, token: sign(threadId) }));
     expect(res.status).toBe(403);
   });
 });

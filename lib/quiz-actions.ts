@@ -231,7 +231,14 @@ export async function precheckAnswer(
     });
     return { ok: true, hint };
   } catch (error) {
-    recordError(error, { "novedu.area": "quiz-precheck", stage: "jev" });
+    // The SDK's message can quote the provider's response body, so report only
+    // the HTTP status (docs/telemetry.md: no user content in errors).
+    const status = (error as { status?: unknown } | null)?.status;
+    recordError(new Error("Jev pre-check failed"), {
+      "novedu.area": "quiz-precheck",
+      stage: "jev",
+      status: typeof status === "number" ? status : "none",
+    });
     return { ok: false };
   }
 }

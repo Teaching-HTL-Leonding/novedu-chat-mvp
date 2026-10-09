@@ -25,6 +25,7 @@ function listSources(dir: string): string[] {
 }
 
 const isClientModule = (source: string) => /^\s*["']use client["']/.test(source);
+const isServerActionModule = (source: string) => /^\s*["']use server["']/m.test(source);
 
 /** Resolve an import specifier to a repo file path, or undefined for packages. */
 function resolveImport(fromFile: string, specifier: string): string | undefined {
@@ -81,4 +82,17 @@ it("no server-capable module imports a non-component value from a 'use client' m
   }
 
   expect(violations).toEqual([]);
+});
+
+// Every export of a "use server" module is a public endpoint, so such a module
+// only declares its own actions: a re-export would publish someone else's
+// function (re-exporting lib/quiz-verify.ts's loader would hand out the quiz's
+// evaluation prompts), and even `export type { … }` crashes the module at load.
+// A wrapper function is beyond any grep — this only stops the re-export forms.
+it("no 'use server' module re-exports anything", () => {
+  const offenders = SCAN_ROOTS.flatMap(listSources).filter((file) => {
+    const source = readFileSync(file, "utf8");
+    return isServerActionModule(source) && /^export\s+(\*|(type\s+)?\{)/m.test(source);
+  });
+  expect(offenders).toEqual([]);
 });
