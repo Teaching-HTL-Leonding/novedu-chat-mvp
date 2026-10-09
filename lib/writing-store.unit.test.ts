@@ -51,6 +51,7 @@ const fake = vi.hoisted(() => {
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 
+import { desc } from "drizzle-orm";
 import { writingSubmissions } from "@/lib/db/schema";
 import { listSavers, saveSubmission } from "@/lib/writing-store";
 
@@ -94,7 +95,7 @@ describe("saveSubmission", () => {
 });
 
 describe("listSavers", () => {
-  it("maps rows to { userId, displayName, conversationCount }, newest save first", async () => {
+  it("maps rows to { userId, displayName, textUpdatedAt, conversationCount }", async () => {
     fake.state.rows = [
       {
         userId: "student-1",
@@ -119,7 +120,12 @@ describe("listSavers", () => {
         conversationCount: 0,
       },
     ]);
-    expect(fake.state.order).toHaveLength(1); // ORDER BY textUpdatedAt DESC
+  });
+
+  it("lists the newest save first (ORDER BY textUpdatedAt DESC)", async () => {
+    fake.state.rows = [];
+    await listSavers("a1b2c3d4e5");
+    expect(fake.state.order).toEqual([desc(writingSubmissions.textUpdatedAt)]);
   });
 
   it("returns an empty list instead of throwing when the database is down", async () => {

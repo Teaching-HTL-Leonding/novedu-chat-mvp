@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { mintSessionToken } from "./api-auth.utils";
-import { deleteCode, hardDeleteFile, VALID_TUTOR_URL } from "./code.utils";
+import { hardDeleteFile, purgeCodes, VALID_TUTOR_URL } from "./code.utils";
 
 // @live-db lifecycle of the CLI/API management channel over real HTTP against
 // the real database: PUT an app-hosted file (create → update → kind-mismatch),
@@ -12,8 +12,6 @@ import { deleteCode, hardDeleteFile, VALID_TUTOR_URL } from "./code.utils";
 // afterwards.
 
 test.use({ storageState: { cookies: [], origins: [] } });
-// Dev compilation of the routes + fixture fetch + DB round-trips.
-test.setTimeout(120_000);
 
 const RUN_ID = Array.from({ length: 8 }, () => "abcdefghijklmnopqrstuvwxyz"[randomInt(26)]).join(
   "",
@@ -135,6 +133,6 @@ test("file upsert → file list → code create → code list, over real HTTP", 
     expect(codeList).toHaveLength(1);
     expect(codeList[0]).toMatchObject({ code: mintedCode, note: CODE_NOTE });
   } finally {
-    if (mintedCode) await deleteCode(mintedCode);
+    if (mintedCode) await purgeCodes([mintedCode]);
   }
 });

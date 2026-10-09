@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { REPO_ROOT, readModule } from "@/tests/import-graph";
 
@@ -13,7 +15,8 @@ const testFiles = execFileSync(
   },
 )
   .split("\n")
-  .filter(Boolean);
+  // --cached still lists a file deleted in the working tree but not yet staged.
+  .filter((file) => file && existsSync(join(REPO_ROOT, file)));
 
 describe("guard: test conventions", () => {
   it("no test writes process.env directly — a vi.stubEnv is reset before every test, a write is not", () => {

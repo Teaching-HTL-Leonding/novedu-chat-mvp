@@ -174,7 +174,7 @@ export async function POST(request: Request): Promise<Response> {
       // A grading failure is either the CALLER's (a deployment name that does not
       // exist) or the SERVER's/provider's (an outage). Only the first can be described
       // and must not be retried — see lib/llm/upstream-error.ts for the split, and for
-      // why the endpoint URL and the provider's free-form text go to telemetry only.
+      // why only the endpoint URL goes to telemetry (the free-form text is withheld).
       const failure = classifyUpstreamLlmError(error, { provider, model: body.llm.model });
       recordError(error, { "novedu.area": "api-eval", ...failure.telemetry });
       return json({ message: failure.message }, failure.terminal ? 400 : 502);

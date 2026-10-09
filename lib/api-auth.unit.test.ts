@@ -10,14 +10,12 @@ vi.mock("@/auth", () => ({ auth: { api: { getSession: vi.fn() } } }));
 
 import { auth } from "@/auth";
 import { ApiAuthError, requireBearerTeacher, requireBearerUser } from "@/lib/api-auth";
+import { bearerSession } from "@/tests/mock-auth-session";
 
 const getSession = vi.mocked(auth.api.getSession);
 
 function session({ isTeacher = false }: { isTeacher?: boolean } = {}) {
-  return {
-    session: { id: "s1", token: "tok", userId: "user-1" },
-    user: { id: "user-1", name: "Test User", email: "test@example.com", isTeacher },
-  } as unknown as Awaited<ReturnType<typeof auth.api.getSession>>;
+  return bearerSession({ id: "user-1", name: "Test User", isTeacher });
 }
 
 function request(headers: Record<string, string> = {}): Request {

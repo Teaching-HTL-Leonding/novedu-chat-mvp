@@ -108,7 +108,7 @@ function studentFacingAgentIds(): string[] {
 type RuntimeRequest =
   | { kind: "info" }
   | { kind: "run" | "connect"; agentId: string; threadIdSource: "body" }
-  | { kind: "stop"; agentId: string; threadId: string }
+  | { kind: "stop"; agentId: string; threadId: string | undefined }
   | { kind: "unsupported" };
 
 function classifyRequest(req: Request): RuntimeRequest {
@@ -134,7 +134,13 @@ function classifyRequest(req: Request): RuntimeRequest {
     stopThreadId !== undefined &&
     req.method === "POST"
   ) {
-    return { kind: "stop", agentId: sub[1] ?? "", threadId: decodeURIComponent(stopThreadId) };
+    // A malformed %-encoding (URIError) is rejected like any other invalid thread
+    // id: `undefined` fails the ownership check (403), never an unhandled 500.
+    let threadId: string | undefined;
+    try {
+      threadId = decodeURIComponent(stopThreadId);
+    } catch {}
+    return { kind: "stop", agentId: sub[1] ?? "", threadId };
   }
   return { kind: "unsupported" };
 }

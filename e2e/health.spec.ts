@@ -37,9 +37,6 @@ test.describe("as a student", () => {
 test.describe("as a teacher", () => {
   test.use({ storageState: TEACHER_STORAGE_STATE });
 
-  // Live dependency probes (DB round-trip, SCCH fetch) + dev compilation.
-  test.setTimeout(60_000);
-
   // Untagged/hermetic: the image storage root is local filesystem state the
   // `image-root` setup project provisions on every run (in CI too), unlike the
   // DB/SCCH probes below. Also doubles as the harness's own sanity check that
@@ -73,29 +70,23 @@ test.describe("as a teacher", () => {
     // configured in .env — both must be reachable from the dev machine. The
     // image storage root is local (provisioned by the `image-root` setup
     // project), so it resolves OK here too, same as the dedicated test above.
-    await expect(page.getByTestId("health-db")).toContainText("OK", { timeout: 20_000 });
-    await expect(page.getByTestId("health-images")).toContainText("OK", { timeout: 20_000 });
-    await expect(page.getByTestId("health-scch")).toContainText("OK", { timeout: 20_000 });
+    await expect(page.getByTestId("health-db")).toContainText("OK");
+    await expect(page.getByTestId("health-images")).toContainText("OK");
+    await expect(page.getByTestId("health-scch")).toContainText("OK");
     await expect(page.getByTestId("health-scch")).toContainText("models available");
 
     // FQDN + at least one resolved IP for both dependency hosts. The FQDNs
     // come from .env, so assert shape (host — dotted address), not values.
     const hostPattern = /\S+\.\S+ — \d+\.\d+\.\d+\.\d+|\S+\.\S+ — [0-9a-f:]+/i;
-    await expect(page.getByTestId("health-db-host")).toHaveText(hostPattern, {
-      timeout: 20_000,
-    });
-    await expect(page.getByTestId("health-scch-host")).toHaveText(hostPattern, {
-      timeout: 20_000,
-    });
+    await expect(page.getByTestId("health-db-host")).toHaveText(hostPattern);
+    await expect(page.getByTestId("health-scch-host")).toHaveText(hostPattern);
 
     // Azure Foundry is optional: when configured, its probe must pass (Entra
     // token via `az login` + a model listing); when not, its rows must not exist.
     if (process.env.AZURE_FOUNDRY_ENDPOINT) {
-      await expect(page.getByTestId("health-foundry")).toContainText("OK", { timeout: 20_000 });
+      await expect(page.getByTestId("health-foundry")).toContainText("OK");
       await expect(page.getByTestId("health-foundry")).toContainText("models available");
-      await expect(page.getByTestId("health-foundry-host")).toHaveText(hostPattern, {
-        timeout: 20_000,
-      });
+      await expect(page.getByTestId("health-foundry-host")).toHaveText(hostPattern);
     } else {
       await expect(page.getByTestId("health-foundry")).toHaveCount(0);
       await expect(page.getByTestId("health-foundry-host")).toHaveCount(0);
@@ -104,11 +95,9 @@ test.describe("as a teacher", () => {
     // OpenRouter is optional too: the API key alone makes it configured, and a
     // single authenticated model listing proves the key (no token step).
     if (process.env.OPENROUTER_API_KEY) {
-      await expect(page.getByTestId("health-openrouter")).toContainText("OK", { timeout: 20_000 });
+      await expect(page.getByTestId("health-openrouter")).toContainText("OK");
       await expect(page.getByTestId("health-openrouter")).toContainText("models available");
-      await expect(page.getByTestId("health-openrouter-host")).toHaveText(hostPattern, {
-        timeout: 20_000,
-      });
+      await expect(page.getByTestId("health-openrouter-host")).toHaveText(hostPattern);
     } else {
       await expect(page.getByTestId("health-openrouter")).toHaveCount(0);
       await expect(page.getByTestId("health-openrouter-host")).toHaveCount(0);
@@ -122,7 +111,7 @@ test.describe("as a teacher", () => {
 
     // App-router client navigation updates the URL only once the RSC payload
     // arrives — the first dev compile of /health can take a while.
-    await expect(page).toHaveURL("/health", { timeout: 30_000 });
+    await expect(page).toHaveURL("/health");
     await expect(page.getByRole("heading", { name: "Health" })).toBeVisible();
   });
 });

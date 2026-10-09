@@ -22,7 +22,7 @@ export async function sendAndExpectReply(
 
   // Wait for the chat to initialize (the composer appears), then send.
   const composer = page.getByTestId("copilot-chat-textarea");
-  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await expect(composer).toBeVisible();
   await composer.fill(message);
   await page.getByTestId("copilot-send-button").click();
 

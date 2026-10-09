@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -33,11 +32,7 @@ vi.mock("./report-detail-button", () => ({
   ReactionBadge: ({ reaction }: { reaction: string }) => <span>{reaction}</span>,
   ReportDetailButton: () => <button type="button">details</button>,
 }));
-vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: ReactNode }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 // SelectionProvider (client) calls useRouter; a static server render has no app
 // router mounted, so stub it.
 vi.mock("next/navigation", () => ({
@@ -102,7 +97,7 @@ describe("teacher", () => {
     expect(html).toContain("Dana Student");
     expect(html).toContain("My Class");
     // The description is not a list column (it can be long) — it lives only
-    // in the detail dialog now.
+    // in the detail dialog.
     expect(html).not.toContain("Something went wrong here");
   });
 

@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cleanup, render } from "vitest-browser-react";
+import { beforeEach, expect, test, vi } from "vitest";
+import { render } from "vitest-browser-react";
 
 // The student writing surface (app/[code]/_writing/writing-surface.tsx): a split
 // screen with the Markdown editor on the left and a collapsible feedback chat on
@@ -68,13 +68,6 @@ function renderSurface(props: {
 
 beforeEach(() => {
   saveWriting.mockResolvedValue({ ok: true });
-});
-
-// The collapse-toggle spec renders two surfaces and the lightbox spec opens a
-// native modal <dialog>; unmount every root between tests so a stray editor never
-// makes the `name: "Editor"` lookup ambiguous.
-afterEach(() => {
-  cleanup();
 });
 
 test("prefills the editor with the student's saved text (attributed activity)", async () => {

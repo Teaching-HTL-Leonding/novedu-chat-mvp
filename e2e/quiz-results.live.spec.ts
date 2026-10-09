@@ -43,7 +43,6 @@ async function untilBlockedBy(blocker: number) {
             [blocker],
           )
         )[0]?.n,
-      { timeout: 10_000 },
     )
     .toBe("1");
 }
@@ -319,9 +318,7 @@ test.describe("as the teacher principal", () => {
       await page.getByRole("checkbox", { name: `Select ${note}` }).check();
       page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("button", { name: /Delete .*selected/i }).click();
-      await expect(page.getByRole("row").filter({ hasText: note })).toHaveCount(0, {
-        timeout: 30_000,
-      });
+      await expect(page.getByRole("row").filter({ hasText: note })).toHaveCount(0);
 
       expect(await rowsOf(userId)).toEqual([]);
     } finally {

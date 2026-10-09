@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { getStoredMessages, LIVE_TUTOR_URL, mintCode, mintTutorCode } from "./code.utils";
 import { query } from "./db";
+import { watchErrors } from "./page.utils";
 
 // The reload round-trip against a REAL model in a WARM dev server — the one test
 // of the snapshot runner's in-process replay filter that a unit test cannot give
@@ -17,16 +18,6 @@ test.setTimeout(240_000);
 
 const Q1 = "RT-ONE please name one linked list operation";
 const Q2 = "RT-TWO please name another linked list operation";
-
-/** Collects uncaught page errors and console errors for the whole visit. */
-function watchErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(`console: ${message.text()}`);
-  });
-  return errors;
-}
 
 /** Waits until the chat's run has finished (the streaming flag is gone). */
 async function settle(page: Page) {
@@ -61,17 +52,15 @@ async function sendTurn(page: Page, text: string, expectedAssistantCount: number
 /** Waits until `text` is stored as a user message of `code`. */
 async function storedUserMessage(code: string, text: string) {
   await expect
-    .poll(
-      async () =>
-        (await getStoredMessages(code)).some((m) => m.role === "user" && m.content.includes(text)),
-      { timeout: 30_000 },
+    .poll(async () =>
+      (await getStoredMessages(code)).some((m) => m.role === "user" && m.content.includes(text)),
     )
     .toBe(true);
 }
 
 async function reloadAndWaitForChat(page: Page) {
   await page.reload();
-  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible();
 }
 
 test("a reload in a warm process shows each message exactly once", {
@@ -80,14 +69,14 @@ test("a reload in a warm process shows each message exactly once", {
   const code = await mintTutorCode({ tutor: LIVE_TUTOR_URL });
   const errors = watchErrors(page);
   await page.goto(`/${code}`);
-  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible();
 
   await sendTurn(page, Q1, 1);
   await storedUserMessage(code, Q1);
 
   // Reload: snapshot from the database + the filtered in-process replay.
   await reloadAndWaitForChat(page);
-  await expect(page.getByTestId("copilot-user-message")).toHaveCount(1, { timeout: 30_000 });
+  await expect(page.getByTestId("copilot-user-message")).toHaveCount(1);
   await expect(page.getByTestId("copilot-user-message").first()).toContainText(Q1);
   await expect(page.getByTestId("copilot-assistant-message")).toHaveCount(1);
   await expect(page.getByText("Minimal tutor with a REAL model")).toHaveCount(0);
@@ -103,7 +92,7 @@ test("a reload in a warm process shows each message exactly once", {
 
   // And once more: two runs replayed now, still one copy of everything.
   await reloadAndWaitForChat(page);
-  await expect(page.getByTestId("copilot-user-message")).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.getByTestId("copilot-user-message")).toHaveCount(2);
   await expect(page.getByTestId("copilot-assistant-message")).toHaveCount(2);
   // The replayed reply text is not appended to the restored one.
   await expect(page.getByTestId("copilot-assistant-message").first()).toHaveText(firstReply);
@@ -125,7 +114,7 @@ test("a failed turn followed by a good one still reloads cleanly", {
   });
   const errors = watchErrors(page);
   await page.goto(`/${code}`);
-  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible();
 
   await page.getByTestId("copilot-chat-textarea").fill(Q1);
   await page.getByTestId("copilot-send-button").click();
@@ -142,9 +131,7 @@ test("a failed turn followed by a good one still reloads cleanly", {
   // Only the errors of the deliberately failed turn are expected so far.
   errors.length = 0;
   await reloadAndWaitForChat(page);
-  await expect(page.getByTestId("copilot-user-message").filter({ hasText: Q2 })).toHaveCount(1, {
-    timeout: 30_000,
-  });
+  await expect(page.getByTestId("copilot-user-message").filter({ hasText: Q2 })).toHaveCount(1);
   // No AG-UI verifier error (or any other) on the reload's connect.
   expect(errors.filter((e) => !e.includes("Failed to load resource"))).toEqual([]);
 });

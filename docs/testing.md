@@ -155,6 +155,13 @@ non-secret dummy — see `docs/ci-security.md`.
 - **No assertion behind a condition.** `if (r.ok) expect(…)` skips its checks
   when `r` failed, and `expect(r.ok && r.x).toBe(false)` passes when it failed.
   Narrow with Vitest's `assert(r.ok)`, then assert unconditionally.
+- **e2e timeouts come from the config.** `playwright.config.ts` allows 120 s per
+  test and 30 s per assertion, because the suite runs against `next dev`, which
+  compiles each route on its first hit. A spec sets its own limit only to go
+  above these (LLM round-trips).
+- **e2e specs leave their rows behind.** Codes and files a spec creates stay in
+  the database; the `setup` project (`e2e/auth.setup.ts`) sweeps the `e2e-…` codes
+  and files older than an hour, with everything keyed by them. Images are not swept.
 
 ## Test fixtures
 
@@ -327,7 +334,8 @@ from that row:
 
 - **e2e cookie sessions** (`e2e/auth.setup.ts`, the Playwright `setup` project)
   writes a fresh `novedu_user` + `novedu_session` row for each of the two test
-  principals on every run (first sweeping any expired `e2e-%` sessions), then
+  principals on every run (first sweeping any expired `e2e-%` sessions; live
+  ones stay, so an overlapping run is not signed out), then
   mints the cookie value with better-auth's own `makeSignature`
   (`better-auth/crypto`, via `e2e/session-cookie.ts`): `${token}.${sig}`
   URL-encoded, under the `novedu.session_token` cookie name. Playwright's
@@ -365,7 +373,8 @@ All secret-free and hermetic — no Aspire, no Azure, no network beyond loopback
   staying off (no fallback, endpoint redacted from the log); plus the helpers
   against REAL in-memory providers from the SDK — `emitEvent()`'s record shape
   (body, `eventName`, attributes) and `recordError()` exporting a root span even
-  under a dropped parent (with a child-span control that does not export).
+  under a dropped parent (with a child-span control that does not export) and
+  withholding a foreign error's message.
 - `lib/telemetry-azure.unit.test.ts` — the distro boundary mocked; exactly one
   `useAzureMonitor()` call with only the connection string.
 - `lib/telemetry-otlp.unit.test.ts` — the fixed detector set (no `process.*`

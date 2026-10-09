@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The bearer multipart upload route: real auth gate over a stubbed
 // `getSession`, the REAL bounded multipart reader (spied so the auth-before-body
-// order can be asserted), mocked service. Every request here carries actual
-// multipart bytes. Pins the 401/403 matrix WITHOUT a body read, the field
+// order can be asserted), mocked service. Pins the 401/403 matrix WITHOUT a body read, the field
 // checks, the two byte bounds (the fast `Content-Length` reject and the
 // authoritative streamed counter), the service reason → status mapping, and the
 // 201 wire shape.

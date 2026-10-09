@@ -335,6 +335,21 @@ describe("getStudentHome (cached)", () => {
     expect(mocks.loadStudentFacts).toHaveBeenCalledTimes(2);
   });
 
+  it("keys the cache per user: a second user gets their own facts, not the first user's", async () => {
+    mocks.loadStudentFacts.mockImplementation(async (id: string) => ({
+      usage: id === "u-a" ? USAGE : [],
+      keys: [],
+      quiz: [],
+      reports: [],
+    }));
+    const a = await getStudentHome("u-a");
+    const b = await getStudentHome("u-b");
+    expect(mocks.loadStudentFacts.mock.calls.map(([id]) => id)).toEqual(["u-a", "u-b"]);
+    expect(b).not.toEqual(a);
+    expect(await getStudentHome("u-a")).toEqual(a);
+    expect(mocks.loadStudentFacts).toHaveBeenCalledTimes(2);
+  });
+
   it("does not cache an incomplete load", async () => {
     mocks.listGrants.mockResolvedValue(undefined);
     await getStudentHome("u-fail");
@@ -662,7 +677,7 @@ describe("loadTeacherHome", () => {
 });
 
 describe("getTeacherHome (cached)", () => {
-  it("loads the teacher's own facts once per minute, apart from the student home", async () => {
+  it("serves a repeat visit from the cache, apart from the student home, and reloads after invalidation", async () => {
     mocks.loadTeacherFacts.mockResolvedValue(FACTS);
     await getTeacherHome("t-cache");
     await getTeacherHome("t-cache");
@@ -673,6 +688,16 @@ describe("getTeacherHome (cached)", () => {
     invalidateHome("t-cache");
     await getTeacherHome("t-cache");
     expect(mocks.loadTeacherFacts).toHaveBeenCalledTimes(2);
+  });
+
+  it("keys the cache per teacher", async () => {
+    mocks.loadTeacherFacts.mockImplementation(async (id: string) =>
+      id === "t-a" ? FACTS : { ...FACTS, codes: [] },
+    );
+    const a = await getTeacherHome("t-a");
+    const b = await getTeacherHome("t-b");
+    expect(mocks.loadTeacherFacts.mock.calls.map(([id]) => id)).toEqual(["t-a", "t-b"]);
+    expect(b).not.toEqual(a);
   });
 
   it("does not cache an incomplete load", async () => {

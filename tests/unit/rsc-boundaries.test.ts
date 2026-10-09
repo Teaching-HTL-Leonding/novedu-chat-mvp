@@ -1,6 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
 import { expect, it } from "vitest";
+import { readModule, resolveImport, sourceFiles } from "@/tests/import-graph";
 
 // RSC boundary invariant: a module WITHOUT "use client" may be evaluated in the
 // server graph, where every export of a "use client" module is an opaque
@@ -11,38 +10,10 @@ import { expect, it } from "vitest";
 // non-type) name from a client module. Share such values from a directive-free
 // module instead (e.g. app/[code]/_coding/code-panel.ts).
 
-const SCAN_ROOTS = ["app", "components", "lib"];
-
-function listSources(dir: string): string[] {
-  const found: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) found.push(...listSources(path));
-    else if (/\.(ts|tsx)$/.test(entry.name) && !/\.test\.(ts|tsx)$/.test(entry.name))
-      found.push(path);
-  }
-  return found;
-}
+const files = sourceFiles("app", "components", "lib");
 
 const isClientModule = (source: string) => /^\s*["']use client["']/.test(source);
 const isServerActionModule = (source: string) => /^\s*["']use server["']/m.test(source);
-
-/** Resolve an import specifier to a repo file path, or undefined for packages. */
-function resolveImport(fromFile: string, specifier: string): string | undefined {
-  let base: string;
-  if (specifier.startsWith("@/")) base = resolve(specifier.slice(2));
-  else if (specifier.startsWith(".")) base = resolve(dirname(fromFile), specifier);
-  else return undefined;
-  for (const candidate of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts")]) {
-    try {
-      readFileSync(candidate);
-      return candidate;
-    } catch {
-      // try the next extension
-    }
-  }
-  return undefined;
-}
 
 // PascalCase (mixed case, initial capital) = a component; everything else that
 // isn't type-only (camelCase values/hooks, SCREAMING_CASE constants) is flagged.
@@ -53,19 +24,20 @@ const IMPORT_RE =
   /import\s+(type\s+)?(?:([\w$]+)\s*,\s*)?(?:\{([^}]*)\}|[\w$]+|\*\s+as\s+[\w$]+)?\s*from\s*["']([^"']+)["']/g;
 
 it("no server-capable module imports a non-component value from a 'use client' module", () => {
-  const files = SCAN_ROOTS.flatMap(listSources);
-  const clientModules = new Set(files.filter((file) => isClientModule(readFileSync(file, "utf8"))));
+  const clientModules = new Set(files.filter((file) => isClientModule(readModule(file))));
 
+  let crossings = 0;
   const violations: string[] = [];
   for (const file of files) {
-    const source = readFileSync(file, "utf8");
+    const source = readModule(file);
     if (isClientModule(source)) continue; // client importer — no boundary crossed
 
     for (const match of source.matchAll(IMPORT_RE)) {
       const [, typeOnly, , namedList, specifier] = match;
       if (typeOnly || !namedList || !specifier) continue; // `import type` / default / namespace
-      const target = resolveImport(file, specifier);
+      const target = resolveImport(file, specifier).rel;
       if (!target || !clientModules.has(target)) continue;
+      crossings++;
 
       for (const rawName of namedList.split(",")) {
         const name = rawName
@@ -81,6 +53,8 @@ it("no server-capable module imports a non-component value from a 'use client' m
     }
   }
 
+  // Not vacuous: server-capable modules do import components across the boundary.
+  expect(crossings).toBeGreaterThan(0);
   expect(violations).toEqual([]);
 });
 
@@ -90,9 +64,10 @@ it("no server-capable module imports a non-component value from a 'use client' m
 // evaluation prompts), and even `export type { … }` crashes the module at load.
 // A wrapper function is beyond any grep — this only stops the re-export forms.
 it("no 'use server' module re-exports anything", () => {
-  const offenders = SCAN_ROOTS.flatMap(listSources).filter((file) => {
-    const source = readFileSync(file, "utf8");
-    return isServerActionModule(source) && /^export\s+(\*|(type\s+)?\{)/m.test(source);
-  });
+  const serverActionModules = files.filter((file) => isServerActionModule(readModule(file)));
+  expect(serverActionModules).toContain("lib/tutor-actions.ts"); // not vacuous
+  const offenders = serverActionModules.filter((file) =>
+    /^export\s+(\*|(type\s+)?\{)/m.test(readModule(file)),
+  );
   expect(offenders).toEqual([]);
 });

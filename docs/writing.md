@@ -397,7 +397,7 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   the saved text; (2) `@live-llm` — the assistant reads the draft via `getCurrentText`;
   (3) `@live-llm` — the full round-trip (write → ask the coach and get SOME reply →
   save → the savers list → the student text is retrievable), built straight on the
-  published sample YAML. The store round-trip (`saveSubmission` upsert / savers-list
-  ordering / the code-delete cleanup that mirrors `deleteCodeRows`) runs against the
-  ephemeral Postgres container. Minting a writing code passes `anonymous: false` so the
+  published sample YAML. The SQL test runs hand-written SQL against the ephemeral
+  Postgres container, checking the table's `(code, user_id)` upsert key, newest-first
+  ordering and per-code delete. Minting a writing code passes `anonymous: false` so the
   review dispatches to the savers list.

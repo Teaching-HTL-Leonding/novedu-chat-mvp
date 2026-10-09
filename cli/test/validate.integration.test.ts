@@ -7,8 +7,8 @@ import { startFixturesServer } from "../../test-fixtures/serve.mjs";
 // Integration tests that invoke the REAL built CLI binary the way a user would
 // (`node dist/main.js …`), asserting stdout + exit code. Local-file cases read the
 // synthetic fixtures under `test-fixtures/activities/`; the served-URL cases fetch
-// them from a local fixtures server (no network). Excluded from CI because it needs
-// the built binary (see cli/vitest.config.mts).
+// them from a local fixtures server (no network). Runs in CI via `npm run test:cli`
+// (qa.yml).
 //
 // Run via `npm run test:cli` — it builds the CLI first, so `dist/main.js` exists.
 

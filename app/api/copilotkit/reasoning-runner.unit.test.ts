@@ -167,7 +167,7 @@ describe("ReasoningStrippingRunner delegation", () => {
 
   it("defaults to wrapping the library's own InMemoryAgentRunner", () => {
     // No inner argument = the same runner CopilotRuntime would have built.
-    expect(() => new ReasoningStrippingRunner()).not.toThrow();
+    expect(new ReasoningStrippingRunner().wrapped).toBeInstanceOf(InMemoryAgentRunner);
   });
 });
 

@@ -32,12 +32,12 @@ const fake = vi.hoisted(() => {
   // One chainable, thenable builder PER `select(...)`: from/leftJoin/where return
   // it, and awaiting it (directly for the COUNT selects, or after orderBy for a
   // list) resolves the configured rows. It is per-call because what a query
-  // resolves to now depends on its own projection and joins.
+  // resolves to depends on its own projection and joins.
   const makeBuilder = (fields?: Record<string, unknown>) => {
     let joined = false;
     // The LIST's COUNT(*) is the one that carries the two LEFT JOINs — the small
     // per-thread/per-question count helpers select `{ n }` with no join and keep
-    // resolving `state.rows`, so their tests are untouched.
+    // resolving `state.rows`.
     const run = () => {
       if (state.selectError) return Promise.reject(state.selectError);
       const isListCount = fields !== undefined && "n" in fields && joined;
@@ -238,7 +238,7 @@ describe("listReports", () => {
     resolvedBy: null,
   };
 
-  it("maps rows through for the configured filters (open/resolved/all + reaction + search + mine)", async () => {
+  it("maps rows and unpaged metadata for open/resolved/all filter combinations", async () => {
     fake.state.rows = [rawRow];
     // Each filter combination exercises a different condition-building branch; the
     // fake yields the same rows regardless (the WHERE itself is an @live concern).
@@ -354,7 +354,7 @@ describe("setReportsResolved", () => {
     expect(fake.state.updated[0]?.resolvedBy).toBe("teacher-1");
   });
 
-  it("resolves only open reports: an already-resolved one keeps its first resolver", async () => {
+  it("restricts the resolve update to still-open reports (resolved_at IS NULL)", async () => {
     await setReportsResolved([REPORT_ID], true, "teacher-2");
     expect(fake.state.updateWhere).toEqual(
       and(inArray(reports.id, [REPORT_ID]), isNull(reports.resolvedAt)),

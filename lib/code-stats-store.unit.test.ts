@@ -378,7 +378,7 @@ describe("deleteCodesAndData", () => {
     ]);
   });
 
-  it("rolls the whole batch back and reports failure when an app-row delete throws", async () => {
+  it("reports failure with deleted 0 when an app-row delete throws", async () => {
     fake.state.deleteError = new Error("connection lost");
     await expect(deleteCodesAndData(["aaaaaaaaaa", "bbbbbbbbbb"])).resolves.toEqual({
       ok: false,

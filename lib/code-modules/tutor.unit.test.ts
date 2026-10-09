@@ -5,8 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 // one, the LLM override pair the agent applies over the YAML's llm values.
 // renderDetail dispatches to the shared conversation stats. The agent module is
 // mocked (it pulls in @mastra Agent/Memory) — only its context-key constants are
-// needed here; RequestContext is stubbed with a Map so the keys read back without
-// coupling to @mastra/core.
+// needed here.
 
 const conversationStats = vi.hoisted(() => vi.fn());
 
@@ -16,17 +15,6 @@ vi.mock("@/app/mastra/tutor-agent", () => ({
   TUTOR_PROVIDER_OVERRIDE: "tutor-provider-override",
   TUTOR_MODEL_OVERRIDE: "tutor-model-override",
   TUTOR_REASONING_OVERRIDE: "tutor-reasoning-override",
-}));
-vi.mock("@mastra/core/request-context", () => ({
-  RequestContext: class {
-    private m = new Map<string, unknown>();
-    set(key: string, value: unknown) {
-      this.m.set(key, value);
-    }
-    get(key: string) {
-      return this.m.get(key);
-    }
-  },
 }));
 
 import { tutorModule } from "@/lib/code-modules/tutor";

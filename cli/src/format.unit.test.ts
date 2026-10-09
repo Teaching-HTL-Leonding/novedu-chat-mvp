@@ -349,7 +349,7 @@ describe("formatEvalReport — the feedback judge", () => {
     expect(out).toContain("Eval passed");
   });
 
-  it("counts flagged cases per file and in the batch TOTAL with one label", () => {
+  it("counts flagged cases per file and in the batch TOTAL", () => {
     const out = formatEvalBatchReport(
       summarizeBatch([
         { source: "file:///a.eval.yaml", status: "ok", result: judged({}, { feedbackFlagged: 2 }) },

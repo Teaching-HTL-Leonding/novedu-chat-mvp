@@ -100,8 +100,7 @@ describe("otlpSdkConfiguration", () => {
 describe("startOtlpSdk", () => {
   it("constructs the SDK from the configuration and starts it once", () => {
     vi.stubEnv("OTEL_SERVICE_NAME", "");
-    const sdk = startOtlpSdk();
-    expect(sdk).toBeDefined();
+    startOtlpSdk();
     expect(mocks.started).toBe(1);
     expect(mocks.configurations).toHaveLength(1);
     const configuration = mocks.configurations[0] as Partial<NodeSDKConfiguration>;

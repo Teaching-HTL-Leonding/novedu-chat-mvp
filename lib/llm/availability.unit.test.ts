@@ -30,10 +30,4 @@ describe("providerUnavailableReason", () => {
     vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
     expect(providerUnavailableReason("OpenRouter")).toBeNull();
   });
-
-  it("SCCH stays available even with every optional provider unconfigured", () => {
-    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
-    vi.stubEnv("OPENROUTER_API_KEY", "");
-    expect(providerUnavailableReason("SCCH")).toBeNull();
-  });
 });

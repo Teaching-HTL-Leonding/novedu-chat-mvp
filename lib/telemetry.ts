@@ -28,7 +28,8 @@
 //     message/prompt/PII content. Bodies and headers are not captured by HTTP
 //     auto-instrumentation and bound SQL values are not captured by the pg one;
 //     these helpers are the one seam where content could leak, so keep them to
-//     identifiers and counts.
+//     identifiers and counts. recordError() additionally withholds the message
+//     of every error that is not a plain Error (see below).
 import { SpanStatusCode, trace } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { resolveTelemetryMode, type TelemetryMode } from "@/lib/telemetry-mode";
@@ -86,6 +87,8 @@ function describeFailure(error: unknown): string {
 
 type EventAttributes = Record<string, string | number | boolean>;
 
+const MESSAGE_WITHHELD = "[message withheld]";
+
 /**
  * Record a caught error as an exception (App Insights `AppExceptions`; an
  * `exception` span with an exception event on any other receiver).
@@ -96,9 +99,31 @@ type EventAttributes = Record<string, string | number | boolean>;
  * caught-and-logged error do NOT surface on their own. Call this at the failure
  * site to guarantee the error reaches OTEL. Safe when telemetry is off (no
  * provider → no-op).
+ *
+ * PRIVACY: a PLAIN `Error` (prototype exactly `Error.prototype` — an identity
+ * check, so it survives minification) keeps its message, ours or a
+ * dependency's. Everything else — subclasses (driver, SDK and provider
+ * errors, whose messages embed SQL parameters, model output or response
+ * bodies) and non-Error throws — exports only its type (`code ?? name`, or the
+ * `typeof` of a non-Error) and its stack FRAMES, with a fixed withheld message.
  */
 export function recordError(error: unknown, attributes?: EventAttributes): void {
-  const err = error instanceof Error ? error : new Error(String(error));
+  const ours = error instanceof Error && Object.getPrototypeOf(error) === Error.prototype;
+  const err = error instanceof Error ? error : undefined;
+  // Frames only: skip past the message (the "Name: message" header may span
+  // several lines), then keep just the "    at …" lines.
+  const stack = err?.stack ?? "";
+  const message = err?.message ?? "";
+  const at = message ? stack.indexOf(message) : -1;
+  const frames = (at < 0 ? stack : stack.slice(at + message.length)).split("\n");
+  const exception = ours
+    ? error
+    : {
+        name: err?.name ?? typeof error,
+        code: (err as { code?: string | number } | undefined)?.code,
+        message: MESSAGE_WITHHELD,
+        stack: frames.filter((line) => /^\s+at /.test(line)).join("\n"),
+      };
 
   // Record on a dedicated ROOT span. `root: true` is load-bearing: if this span
   // inherited the active request span as parent, it would also inherit that
@@ -111,8 +136,8 @@ export function recordError(error: unknown, attributes?: EventAttributes): void 
   // immediately so it always reaches the processor.
   const span = trace.getTracer("novedu-app").startSpan("exception", { root: true });
   if (attributes) span.setAttributes(attributes);
-  span.recordException(err);
-  span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+  span.recordException(exception);
+  span.setStatus({ code: SpanStatusCode.ERROR, message: ours ? error.message : MESSAGE_WITHHELD });
   span.end();
 }
 

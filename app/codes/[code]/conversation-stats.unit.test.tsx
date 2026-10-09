@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,11 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const getCodeStats = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/code-stats-store", () => ({ getCodeStats }));
-vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: ReactNode }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 import type { CodeEntry } from "@/lib/code-store";
 import { ConversationStats } from "./conversation-stats";

@@ -22,9 +22,10 @@ import type { LlmProvider } from "@/lib/llm/provider";
 // upstream HTTP status, and the upstream error CODE (a short, stable identifier like
 // `DeploymentNotFound`). NOT the endpoint URL — that is the Foundry resource host, an
 // infrastructure detail — and NOT the provider's free-form message, which is the field
-// most likely to grow to echo request content. Both go to Application Insights instead
-// (`telemetry` below, plus `recordException`'s own copy of the message), where the
-// operator can already see everything the server knows.
+// most likely to grow to echo request content. The endpoint URL goes to Application
+// Insights instead (`telemetry` below); the free-form message reaches no telemetry at
+// all — an `APICallError` is not a plain `Error`, so `recordError` withholds its
+// message and exports only its type and stack frames (docs/telemetry.md).
 //
 // PROVIDER-AGNOSTIC by construction: the provider name is interpolated, never branched
 // on — the three provider branches stay where `docs/ai-models.md` pins them.

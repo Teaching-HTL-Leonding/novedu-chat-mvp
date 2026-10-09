@@ -1,7 +1,11 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { importSpecifiers, REPO_ROOT, resolveImport, walkClosure } from "@/tests/import-graph";
+import {
+  importSpecifiers,
+  readModule,
+  resolveImport,
+  sourceFiles,
+  walkClosure,
+} from "@/tests/import-graph";
 import {
   STUDENT_CATALOG,
   type StudentAchievement,
@@ -102,7 +106,7 @@ describe("catalog shape", () => {
   });
 
   it("ids are literal: the source spells every ladder name, no interpolation from facts", () => {
-    const source = readFileSync(join(REPO_ROOT, "lib/achievements/catalog.ts"), "utf8");
+    const source = readModule("lib/achievements/catalog.ts");
     for (const ladder of [
       "weekly-streak",
       "week-days",
@@ -393,7 +397,7 @@ describe("teacher catalog shape", () => {
     }
     const studentIds = new Set(STUDENT_CATALOG.map((a) => a.id));
     expect(ids.filter((id) => studentIds.has(id))).toEqual([]);
-    const source = readFileSync(join(REPO_ROOT, "lib/achievements/catalog.ts"), "utf8");
+    const source = readModule("lib/achievements/catalog.ts");
     for (const ladder of ["crowd", "busy"]) expect(source).toContain(`"${ladder}"`);
   });
 
@@ -538,30 +542,16 @@ describe("Authoring rules", () => {
 });
 
 describe("guard: the catalog never reaches a client bundle", () => {
-  function* walk(dir: string): Generator<string> {
-    for (const name of readdirSync(dir)) {
-      if (["node_modules", ".next", "dist"].includes(name)) continue;
-      const abs = join(dir, name);
-      if (statSync(abs).isDirectory()) yield* walk(abs);
-      else if (/\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name)) yield abs;
-    }
-  }
-
-  // Type-only imports are erased at build time and carry nothing to the browser.
-  const valueSpecifiers = (source: string): string[] => {
-    const typeOnly = new Set(
-      [...source.matchAll(/^\s*import\s+type\s[^;]*?from\s+["']([^"']+)["']/gm)].map(
-        (m) => m[1] ?? "",
-      ),
-    );
-    return importSpecifiers(source).filter((s) => !typeOnly.has(s));
-  };
+  // Type-only imports are erased at build time and carry nothing to the browser, so
+  // their statements are dropped before the specifiers are read — a later value
+  // import of the same path still counts.
+  const valueSpecifiers = (source: string): string[] =>
+    importSpecifiers(source.replace(/^\s*import\s+type\s[^;]*?from\s+["'][^"']+["']/gm, ""));
 
   it("no 'use client' module's value-import closure includes lib/achievements/catalog.ts", () => {
-    const clientRoots = ["app", "components", "lib"]
-      .flatMap((dir) => [...walk(join(REPO_ROOT, dir))])
-      .filter((abs) => /^\s*["']use client["']/.test(readFileSync(abs, "utf8")))
-      .map((abs) => relative(REPO_ROOT, abs).replace(/\\/g, "/"));
+    const clientRoots = sourceFiles("app", "components", "lib").filter((rel) =>
+      /^\s*["']use client["']/.test(readModule(rel)),
+    );
     expect(clientRoots).toContain("app/_home/season-calendar.tsx"); // not vacuous
 
     for (const root of clientRoots) {

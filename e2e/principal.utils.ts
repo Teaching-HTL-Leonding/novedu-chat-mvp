@@ -37,11 +37,6 @@ export async function mintSession(principal: Principal, isTeacher: boolean): Pro
     [principal.id, principal.name, principal.email, isTeacher, principal.givenName ?? null],
   );
 
-  // Previous runs' sessions are dead weight (the storage state that carried them
-  // is being overwritten right now), so clear them out instead of letting the
-  // table grow one row per principal per run.
-  await query(`DELETE FROM novedu_session WHERE user_id = $1`, [principal.id]);
-
   const token = randomBytes(24).toString("base64url"); // 32 chars
   await query(
     `INSERT INTO novedu_session (id, token, user_id, expires_at, created_at, updated_at)

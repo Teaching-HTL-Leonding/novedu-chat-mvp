@@ -8,7 +8,7 @@ import { startFixturesServer } from "../../test-fixtures/serve.mjs";
 // harness) would (`node dist/main.js prompts …`), asserting stdout + exit code. The
 // local-file cases read the synthetic fixtures under `test-fixtures/activities/`; the
 // served-URL case fetches one from a local fixtures server (no network, no LLM, no DB).
-// Excluded from CI because it needs the built binary (see cli/vitest.config.mts).
+// Runs in CI via `npm run test:cli` (qa.yml).
 //
 // Run via `npm run test:cli` — it builds the CLI first, so `dist/main.js` exists.
 

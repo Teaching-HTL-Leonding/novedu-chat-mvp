@@ -142,7 +142,7 @@ describe("createCodeAction", () => {
     );
   });
 
-  it("rejects a missing/invalid module without touching storage", async () => {
+  it("rejects an unknown module without touching storage", async () => {
     const data = formData();
     data.set("module", "future-module"); // not a built module
     const state = await createCodeAction({ status: "idle" }, data);
@@ -191,7 +191,7 @@ describe("updateCodeAction", () => {
     mocks.updateCode.mockResolvedValue({ ok: true });
   });
 
-  it("saves the window + note (URL never submitted) and revalidates", async () => {
+  it("saves the window + note of any teacher's code (URL never submitted) and revalidates", async () => {
     const state = await updateCodeAction("a1b2c3d4e5", { status: "idle" }, formData("  new  "));
     expect(state).toEqual({ status: "saved" });
     expect(mocks.updateCode).toHaveBeenCalledWith("a1b2c3d4e5", {
@@ -238,11 +238,6 @@ describe("updateCodeAction", () => {
       message: expect.stringMatching(/Azure Foundry/),
     });
     expect(mocks.updateCode).not.toHaveBeenCalled();
-  });
-
-  it("does not require ownership — any effective teacher may edit any code", async () => {
-    const state = await updateCodeAction("a1b2c3d4e5", { status: "idle" }, formData());
-    expect(state).toEqual({ status: "saved" });
   });
 
   it("rejects non-teachers and never writes", async () => {
@@ -294,7 +289,7 @@ describe("deleteSelectedCodesAction", () => {
     expect(mocks.deleteCodesAndData).not.toHaveBeenCalled();
   });
 
-  it("reports failure (no revalidate) when the bulk delete is only partial", async () => {
+  it("reports failure (no revalidate) when the bulk delete fails", async () => {
     mocks.deleteCodesAndData.mockResolvedValue({ ok: false, deleted: 0 });
     const result = await deleteSelectedCodesAction(["a1b2c3d4e5"]);
     expect(result).toMatchObject({ ok: false, message: expect.stringMatching(/repeat/i) });

@@ -27,8 +27,8 @@ describe("collapseReplayedRuns", () => {
   });
 
   it("collapses telescoping replays to the final, complete run", () => {
-    // Each run re-sends the whole prefix then appends one new turn — the exact
-    // shape Mastra persisted before the route-level fix.
+    // Each run re-sends the whole prefix then appends one new turn — the shape
+    // Mastra persists.
     const messages = [
       // run 1
       u("hi"),

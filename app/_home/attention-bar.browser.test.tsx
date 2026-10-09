@@ -7,16 +7,7 @@ import { render } from "vitest-browser-react";
 import "@/app/globals.css";
 import { AttentionBar, type AttentionCounter } from "./attention-bar";
 
-// next/link reads Next-server globals that don't exist in the browser test
-// runner — a plain anchor keeps the href the assertions read.
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 const COUNTERS: AttentionCounter[] = [
   { id: "closing", total: 0, rows: [], more: 0 },

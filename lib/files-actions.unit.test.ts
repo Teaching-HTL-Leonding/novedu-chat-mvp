@@ -36,9 +36,9 @@ vi.mock("@/lib/prompt-fragments", async (importOriginal) => ({
   defaultFetcher: mocks.defaultFetcher,
   loadAndCheckFragmentFile: mocks.loadAndCheckFragmentFile,
 }));
-// The quiz/writing validators are real (file-validators is not mocked), but their
-// loaders import the scheme-gated YAML core from `@/lib/tutors` (mocked above to a
-// subset). Mock the loaders so the seam's MAPPING is what's under test here.
+// file-validators is real, but the quiz/writing loaders import the scheme-gated
+// YAML core from `@/lib/tutors` (mocked above to a subset). They are mocked so
+// the seam's MAPPING is what's under test here.
 vi.mock("@/lib/quiz-validate", () => ({ loadAndCheckQuiz: mocks.loadAndCheckQuiz }));
 vi.mock("@/lib/writing-validate", () => ({ loadAndCheckWriting: mocks.loadAndCheckWriting }));
 // Keep the REAL validateFileName / isFileKind — they are part of the contract —
@@ -56,6 +56,7 @@ vi.mock("@/lib/file-store", async (importOriginal) => {
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 
+import * as actions from "@/lib/files-actions";
 import {
   createFileAction,
   deleteSelectedFilesAction,
@@ -256,11 +257,42 @@ describe("validateNewFileAction", () => {
   });
 });
 
+// Every export of the "use server" module is a web-reachable endpoint, so a new
+// export without the teacher gate must fail here. Each gate runs before its
+// arguments are read, so the actions are called without any.
+describe("teacher gate on every exported action", () => {
+  it("refuses a non-teacher and touches no store, validator, fetcher or navigation", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
+    const exported = Object.values(actions);
+    expect(exported.length).toBeGreaterThan(0);
+    for (const action of exported) {
+      expect(await (action as () => Promise<unknown>)()).toMatchObject({ ok: false });
+    }
+    expect(mocks.requireTeacherUserId).toHaveBeenCalledTimes(exported.length);
+    for (const untouched of [
+      mocks.createFile,
+      mocks.updateFile,
+      mocks.softDeleteFiles,
+      mocks.getActiveFile,
+      mocks.loadAndBuildTutorPrompt,
+      mocks.loadAndCheckFragmentFile,
+      mocks.loadAndCheckQuiz,
+      mocks.loadAndCheckWriting,
+      mocks.defaultFetcher,
+      mocks.revalidatePath,
+      mocks.redirect,
+    ]) {
+      expect(untouched).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe("validateExistingFileAction", () => {
   it("returns warnings on a valid buffer (kind from the active row) and never stores", async () => {
     mocks.loadAndCheckFragmentFile.mockResolvedValue({ ok: true, warnings: [] });
     const result = await validateExistingFileAction("my-file", "id: f\n");
     expect(result).toEqual({ ok: true, warnings: [] });
+    expect(mocks.loadAndCheckFragmentFile).toHaveBeenCalled();
     expect(mocks.updateFile).not.toHaveBeenCalled();
   });
 

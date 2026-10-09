@@ -22,7 +22,6 @@ test("a student is denied the diagnostics page", async ({ page }) => {
 
 test.describe("as a teacher", () => {
   test.use({ storageState: TEACHER_STORAGE_STATE, timezoneId: "Europe/Vienna" });
-  test.setTimeout(90_000);
 
   test("a bare URL gains the browser's zone and today's range", async ({ page }) => {
     await page.goto("/diagnostics");

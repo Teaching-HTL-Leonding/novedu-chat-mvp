@@ -5,9 +5,7 @@ import { assert, describe, expect, it, vi } from "vitest";
 // renderDetail dispatches to the savers list (attributed) or the shared
 // ConversationStats (anonymous). Create-time validation (derived from fileKind by the
 // registry) and the share-link result (the registry default) are not the descriptor's
-// concern. loadWriting + both render components are mocked as plain functions;
-// RequestContext is stubbed with a Map so the keys read back without coupling to
-// @mastra/core.
+// concern. loadWriting + both render components are mocked as plain functions.
 
 const loadWriting = vi.hoisted(() => vi.fn());
 const writingSaversList = vi.hoisted(() => vi.fn());
@@ -21,17 +19,6 @@ vi.mock("@/app/mastra/writing-agents", () => ({
   WRITING_MODEL: "writing-model",
   WRITING_PROVIDER: "writing-provider",
   WRITING_REASONING: "writing-reasoning",
-}));
-vi.mock("@mastra/core/request-context", () => ({
-  RequestContext: class {
-    private m = new Map<string, unknown>();
-    set(key: string, value: unknown) {
-      this.m.set(key, value);
-    }
-    get(key: string) {
-      return this.m.get(key);
-    }
-  },
 }));
 
 import { writingModule } from "@/lib/code-modules/writing";
@@ -168,7 +155,7 @@ describe("writingModule.renderDetail", () => {
 
   it("ignores a non-string search param (no filter)", () => {
     writingSaversList.mockReturnValue("<savers/>");
-    writingModule.renderDetail(entry, {});
+    writingModule.renderDetail(entry, { q: ["a", "b"] });
     expect(writingSaversList).toHaveBeenCalledWith({ code: entry.code, search: undefined });
   });
 

@@ -310,7 +310,8 @@ it only RESTRICTS, never grants, so it is unsigned. It is cleared on sign-out
 (`lib/auth-actions.ts`) so it cannot leak into the next user's session. Derive ALL
 teacher gating/display from **`getTeacherView()`** (or the `isEffectiveTeacher()` /
 `requireEffectiveTeacher()` shorthands) in `lib/student-mode.ts` — NOT from
-`session.user.isTeacher` / `requireTeacher()` directly, which ignore the mode.
+`session.user.isTeacher` / `requireTeacher()` directly, which ignore the mode
+(`tests/unit/teacher-gate.test.ts` confines both to an allow-list of files).
 `requireTeacher()` (`lib/session.ts`) remains the real-role check and gates ENTERING the
 mode (`lib/student-mode-actions.ts`); exiting is ungated (the visible "Student
 mode" pill in the status bar carries the Exit control). Kept out of `auth.ts` because

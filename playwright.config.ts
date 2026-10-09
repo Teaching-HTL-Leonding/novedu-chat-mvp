@@ -9,6 +9,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: "html",
+  // The suite runs against `next dev`, which compiles each route on its first
+  // hit — slow under parallel load. A spec sets its own limit only above these.
+  timeout: 120_000,
+  expect: { timeout: 30_000 },
   use: {
     baseURL: "http://localhost:3000",
     trace: "on-first-retry",

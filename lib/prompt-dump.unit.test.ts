@@ -1,18 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { PROMPT_KINDS, promptDumpers, verdictResponseJsonSchema } from "@/lib/prompt-dump";
-import { readModule as read, walkClosure } from "../tests/import-graph";
+import {
+  importSpecifiers,
+  readModule as read,
+  sourceFiles,
+  walkClosure,
+} from "../tests/import-graph";
 
 // Two things this file guards, both of which would silently break `novedu-cli prompts`:
 //
-//  1. PURITY — the dump seam and the pure modules it reaches for must never import
-//     `app/**` (whose graph pulls in `app/mastra/scch.ts`, a top-level `await` network
-//     call at IMPORT time, via `lib/llm/model.ts`), the database, or a `"use server"`
-//     directive. A grep-guard in the spirit of `prompt-fragments/isolation.unit.test.ts`.
-//  2. NO SECOND IMPLEMENTATION — `lib/quiz-actions.ts` and `lib/code-modules/quiz.ts`
-//     must IMPORT the extracted prompt builders, never redefine them, or a dumped prompt
-//     would drift from the one production sends.
+//  1. PURITY — nothing the CLI bundles (the dump seam and everything `cli/src/**`
+//     reaches) may import `app/**` (whose graph pulls in `app/mastra/scch.ts`, a
+//     top-level `await` network call at IMPORT time, via `lib/llm/model.ts`), the
+//     database, the session, or carry a `"use server"` directive.
+//  2. NO SECOND IMPLEMENTATION — the dump seam, `lib/quiz-actions.ts` and
+//     `lib/code-modules/quiz.ts` must IMPORT the extracted prompt builders, never
+//     redefine them, or a dumped prompt would drift from the one production sends.
 
-/** Every module the CLI's prompt dump pulls in that must stay app-free. */
+/** The seam modules the closure walk below must reach (so it cannot pass on nothing). */
 const PURE_MODULES = [
   "lib/prompt-dump.ts",
   "lib/quiz-grading-prompt.ts",
@@ -29,66 +34,24 @@ const PURE_MODULES = [
   "lib/eval-validate.ts",
 ];
 
-/**
- * The roots of the transitive closure walk below. Everything but the dump seam itself is
- * a SEPARATE entry point into the CLI-bundled graph — reached from `cli/src/**` rather
- * than from the dump — so walking only the dump would leave it, and everything it adds,
- * unguarded: `lib/eval-validate.ts` CALLS the dump seam, and the two judge modules
- * (`lib/quiz-feedback-judge.ts`, `lib/tutor-judge.ts`) are pulled in directly by the
- * eval runner.
- */
-const CLOSURE_ROOTS = [
-  "lib/prompt-dump.ts",
-  "lib/eval-validate.ts",
-  "lib/quiz-feedback-judge.ts",
-  "lib/tutor-judge.ts",
-];
-
 describe("prompt-dump purity invariant", () => {
-  it.each(PURE_MODULES)("%s imports nothing from app/ or the DB", (relPath) => {
-    const src = read(relPath);
-    // Import specifiers only, so a prose mention of the offending path in a comment
-    // (there are several, explaining WHY) does not trip the guard.
-    const specifiers = [...src.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1] ?? "");
-    const offenders = specifiers.filter(
-      (s) =>
-        s.startsWith("@/app/") ||
-        s.startsWith("../app/") ||
-        s === "@/auth" ||
-        s === "@/lib/session" ||
-        s.startsWith("@/lib/db") ||
-        s === "@/lib/llm/model" ||
-        s === "@/lib/file-store" ||
-        s === "@/lib/code-store" ||
-        s === "@/lib/app-hosted-yaml" ||
-        s === "@/lib/app-hosted-fetcher",
-    );
-    expect(offenders, `${relPath} imports server-only modules: ${offenders.join(", ")}`).toEqual(
-      [],
-    );
-  });
-
-  it.each(PURE_MODULES)("%s carries no 'use server' directive", (relPath) => {
-    expect(read(relPath)).not.toMatch(/^\s*["']use server["']/m);
-  });
-
   it("exposes exactly one dumper per prompt-producing FileKind", () => {
     expect(Object.keys(promptDumpers).sort()).toEqual([...PROMPT_KINDS].sort());
   });
 
-  // The list-based checks above document the SEAM files; this walk closes the gap they
-  // leave: modules the dump reaches only transitively (lib/coding-proxy.ts,
-  // lib/quiz-yaml.ts, lib/quiz-types.ts, lib/tutors/**, lib/prompt-fragments/**) and
-  // specifier forms the simple regex misses (relative paths like "./llm/model",
-  // side-effect imports, `export … from` re-exports, dynamic `import()`). Both CLI
-  // entry points into that graph are walked (`CLOSURE_ROOTS`).
-  it("keeps the ENTIRE transitive import closure app-free and 'use server'-free", () => {
+  // Rooted at every `cli/src/**` module, so each CLI entry point into lib/ — the dump
+  // seam, the eval layer and judges, the validators, the registry schema, the
+  // conversation export — is walked with everything it reaches transitively, in every
+  // specifier form (relative paths like "./llm/model", side-effect imports,
+  // `export … from` re-exports, dynamic `import()`).
+  it("keeps the CLI's ENTIRE transitive import closure app-free and 'use server'-free", () => {
     // Repo-relative paths whose import — even type-only, even N levels deep — must fail
     // the guard. Matched against the RESOLVED path, so "./db", "@/lib/db" and
     // "../lib/db" are all the same offender.
     const FORBIDDEN: RegExp[] = [
       /^app\//, // pulls in app/mastra/scch.ts (top-level-await network call) sooner or later
       /^auth\.ts$/,
+      /^lib\/session\.ts$/,
       /^lib\/db(\/|\.ts$)/,
       /^lib\/llm\/model\.ts$/,
       /^lib\/file-store\.ts$/,
@@ -100,7 +63,7 @@ describe("prompt-dump purity invariant", () => {
     const offenders: string[] = [];
     // Only existing .ts/.tsx files continue the walk — a specifier that resolves to
     // nothing still has to clear FORBIDDEN, it just has no source to follow.
-    const visited = walkClosure(CLOSURE_ROOTS, ({ rel, source, imports }) => {
+    const visited = walkClosure(sourceFiles("cli/src"), ({ rel, source, imports }) => {
       if (/^\s*["']use server["']/m.test(source)) offenders.push(`${rel}: "use server"`);
       const next: string[] = [];
       for (const { specifier, rel: target, exists } of imports) {
@@ -113,7 +76,7 @@ describe("prompt-dump purity invariant", () => {
       }
       return next;
     });
-    expect(offenders, `server-only reach from the dump seam:\n${offenders.join("\n")}`).toEqual([]);
+    expect(offenders, `server-only reach from the CLI:\n${offenders.join("\n")}`).toEqual([]);
     // Anti-vacuous sanity: the walk must have actually reached every documented seam
     // module (a broken resolver would otherwise make this test pass on nothing).
     for (const mod of PURE_MODULES) {
@@ -122,7 +85,22 @@ describe("prompt-dump purity invariant", () => {
   });
 });
 
-describe("no second implementation of the quiz prompts", () => {
+describe("no second implementation of the prompts", () => {
+  it("lib/prompt-dump.ts imports the production builders instead of defining its own", () => {
+    const src = read("lib/prompt-dump.ts");
+    expect(importSpecifiers(src)).toEqual(
+      expect.arrayContaining([
+        "@/lib/quiz-grading-prompt",
+        "@/lib/quiz-discussion-prompt",
+        "@/lib/coding-proxy",
+        "@/lib/tutors",
+      ]),
+    );
+    expect(src).not.toMatch(
+      /\b(function|const|let)\s+build(GradingPrompt|DiscussionInstructions|UpstreamChatBody)\b/,
+    );
+  });
+
   it("lib/quiz-actions.ts imports the grading prompt instead of defining one", () => {
     const src = read("lib/quiz-actions.ts");
     expect(src).toMatch(/from "@\/lib\/quiz-grading-prompt"/);

@@ -23,17 +23,6 @@ vi.mock("@/app/mastra", () => ({
 vi.mock("@/lib/llm/availability", () => ({
   providerUnavailableReason: mocks.providerUnavailableReason,
 }));
-vi.mock("@mastra/core/request-context", () => ({
-  RequestContext: class {
-    private m = new Map<string, unknown>();
-    set(key: string, value: unknown) {
-      this.m.set(key, value);
-    }
-    get(key: string) {
-      return this.m.get(key);
-    }
-  },
-}));
 vi.mock("@/auth", () => ({ auth: { api: { getSession: vi.fn() } } }));
 
 import {
@@ -95,7 +84,7 @@ describe("POST /api/eval/grade auth", () => {
     expect(mocks.generate).not.toHaveBeenCalled();
   });
 
-  it("sends WWW-Authenticate with the generic body", async () => {
+  it("sends WWW-Authenticate: Bearer with a JSON message body", async () => {
     const res = await postRequest(VALID_BODY);
     expect(res.headers.get("www-authenticate")).toBe("Bearer");
     expect(await res.json()).toMatchObject({ message: expect.any(String) });
@@ -181,6 +170,8 @@ describe("POST /api/eval/grade grading", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
+    // The default mock carries no usage: the exact body also pins that a missing
+    // measurement is never reported as zero tokens.
     expect(await res.json()).toEqual({ result: "correct", feedback: "Well done." });
 
     // The TRIMMED answer, wrapped by the shared production builder (parity with
@@ -263,14 +254,6 @@ describe("POST /api/eval/grade grading", () => {
 
     // No cache reporting from this provider ⇒ 0, not a missing field.
     expect(await res.json()).toMatchObject({ usage: { input: 30, cachedInput: 0, output: 5 } });
-  });
-
-  it("OMITS usage entirely when the result carries none", async () => {
-    const res = await postRequest(VALID_BODY, await mint());
-
-    // The default mock has no usage at all — a missing measurement must never be
-    // reported as zero tokens.
-    expect(await res.json()).toEqual({ result: "correct", feedback: "Well done." });
   });
 
   it("502s when the grader throws", async () => {

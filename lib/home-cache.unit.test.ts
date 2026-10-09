@@ -142,8 +142,8 @@ describe("home cache", () => {
     expect(await inFlight).toEqual(ok(4));
   });
 
-  it("keeps no per-user state beyond its bound: churning invalidations of many users", async () => {
-    const { cache } = setup({ maxEntries: 3 });
+  it("churning invalidations of many users leave no entries; an invalidation during a load wins", async () => {
+    const { cache } = setup();
     for (let i = 0; i < 1_000; i++) {
       await cache.get(`u${i}`, async () => ok(i));
       cache.invalidate(`u${i}`);

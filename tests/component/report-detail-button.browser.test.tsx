@@ -5,26 +5,16 @@ import { render } from "vitest-browser-react";
 // docs/testing.md).
 import "@/app/globals.css";
 
-// next/link reads Next-server globals that don't exist in the browser test
-// runner; the dialog renders plain code / transcript links.
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 import { type ReportDetail, ReportDetailButton } from "@/app/reports/report-detail-button";
 
 // The teacher-facing report-detail dialog shows UNTRUSTED student text
 // (description, quiz answer) plus markdown-rendered question/feedback. A long
-// unbroken token used to blow the content out to ~3600px and hand the modal a
-// horizontal scrollbar (DIALOG_BODY's `overflow-y-auto` computes overflow-x
-// to auto) — the shipped bug this file pins. The fix is `wrap-anywhere` on
-// DIALOG_BODY, so the geometry is asserted here where it regressed, on real
-// CSS in a real browser.
+// unbroken token must wrap inside the dialog: unwrapped it would widen the
+// content to thousands of px, and DIALOG_BODY's `overflow-y-auto` (which computes
+// overflow-x to auto) would show a horizontal scrollbar. `wrap-anywhere` keeps
+// the body's scrollWidth at its clientWidth, asserted on real CSS in a real browser.
 
 // Long enough that, unwrapped, it dwarfs the 48rem dialog.
 const LONG_TOKEN = "A".repeat(400);
@@ -49,10 +39,9 @@ const baseReport: ReportDetail = {
 
 async function openDialog(report: ReportDetail) {
   // The real mount point: the /reports list renders this button (and thus the
-  // dialog, a DOM sibling) inside the actions cell, which is
-  // `whitespace-nowrap` — and the top layer does NOT break inheritance, so
-  // without the shell's `whitespace-normal` reset the whole dialog inherits
-  // nowrap and no prose wraps at all (the second shipped bug this file pins).
+  // dialog, a DOM sibling) inside the actions cell, which is `whitespace-nowrap`.
+  // The top layer does not break inheritance, so the dialog shell must reset it
+  // to `whitespace-normal` or no prose wraps.
   const screen = await render(
     <div className="whitespace-nowrap">
       <ReportDetailButton report={report} />

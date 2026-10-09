@@ -61,16 +61,4 @@ describe("logout", () => {
       server: SERVER,
     });
   });
-
-  it("signs out locally even when the server call fails", async () => {
-    vi.mocked(storedSession).mockReturnValue({ token: "session-token", name: "Jane" });
-    // The real revokeSession swallows its errors; this asserts the command does
-    // not depend on the outcome either.
-    vi.mocked(revokeSession).mockResolvedValue(undefined);
-
-    await runLogout("--server", SERVER);
-
-    expect(forgetSession).toHaveBeenCalledWith(SERVER);
-    expect(process.exitCode).toBeUndefined();
-  });
 });

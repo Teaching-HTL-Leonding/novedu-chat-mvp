@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -236,9 +236,8 @@ describe("object keys", () => {
       ok: false,
       reason: "invalid-key",
     });
-    await expect(
-      readFile(path.join(root, "images", "escape.png")).catch(() => "gone"),
-    ).resolves.toBe("gone");
+    await expect(readdir(path.join(root, "images"))).resolves.toEqual([]);
+    expect((await readdir(root)).sort()).toEqual(["images", SENTINEL_FILE].sort());
   });
 
   it.each(attacks)("refuses %j on inspect/open/delete as an error", async (key) => {
@@ -397,20 +396,22 @@ describe("inspectObject / openObject", () => {
     expect(read).toEqual(payload);
   });
 
-  it("reports an unreadable object as an error, never as absence", async () => {
-    const root = await makeRoot();
-    await writeNewObject(KEY, bytes("hello"), MAX);
-    // Running as root ignores the mode bits, so this case only proves anything
-    // for an ordinary user.
-    if (typeof process.getuid === "function" && process.getuid() === 0) return;
-    await chmod(path.join(root, "images", KEY), 0o000);
-    try {
-      await expect(inspectObject(KEY)).resolves.toMatchObject({ ok: false, reason: "error" });
-      await expect(openObject(KEY)).resolves.toMatchObject({ ok: false, reason: "error" });
-    } finally {
-      await chmod(path.join(root, "images", KEY), 0o700);
-    }
-  });
+  // Running as root ignores the mode bits, so this case only proves anything for
+  // an ordinary user.
+  it.skipIf(process.getuid?.() === 0)(
+    "reports an unreadable object as an error, never as absence",
+    async () => {
+      const root = await makeRoot();
+      await writeNewObject(KEY, bytes("hello"), MAX);
+      await chmod(path.join(root, "images", KEY), 0o000);
+      try {
+        await expect(inspectObject(KEY)).resolves.toMatchObject({ ok: false, reason: "error" });
+        await expect(openObject(KEY)).resolves.toMatchObject({ ok: false, reason: "error" });
+      } finally {
+        await chmod(path.join(root, "images", KEY), 0o700);
+      }
+    },
+  );
 
   it("maps an injected lstat failure to an error", async () => {
     await makeRoot();

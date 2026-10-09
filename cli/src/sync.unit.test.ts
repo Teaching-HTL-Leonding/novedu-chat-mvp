@@ -115,8 +115,8 @@ describe("matchEntry", () => {
         code({ llm: { ...pair, reasoning: null } }),
       ]),
     ).toEqual([]);
-    // The pre-reasoning world: an entry with no level still matches the codes minted
-    // before the field existed (the server answers them without `reasoning`).
+    // An entry with no level matches a stored code whose llm has reasoning null
+    // (the server omits it).
     expect(
       matchEntry(entry({ llm: pair }), [code({ llm: { ...pair, reasoning: null } })]),
     ).toHaveLength(1);

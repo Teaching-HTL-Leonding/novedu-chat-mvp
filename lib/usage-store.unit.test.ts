@@ -1,3 +1,5 @@
+import { getTableColumns } from "drizzle-orm";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usageByCode, usageByUser } from "@/lib/db/schema";
 
@@ -61,6 +63,7 @@ const COUNTER_KEYS = [
 
 beforeEach(() => {
   mocks.onConflictDoUpdate.mockResolvedValue(undefined);
+  vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 describe("hourBucket", () => {
@@ -197,8 +200,11 @@ describe("recordLlmUsage", () => {
     );
   });
 
-  it("never throws on a database error and routes it to recordError", async () => {
-    mocks.onConflictDoUpdate.mockRejectedValue(new Error("connection lost"));
+  it("never throws on a database error and reports a fixed failure without the user id", async () => {
+    const cause = Object.assign(new Error("connection refused"), { code: "08006" });
+    mocks.onConflictDoUpdate.mockRejectedValue(
+      Object.assign(new Error(`Failed query: insert … params: ${USER},${CODE}`), { cause }),
+    );
     await expect(
       recordLlmUsage({
         code: CODE,
@@ -210,20 +216,37 @@ describe("recordLlmUsage", () => {
         toolCalls: 0,
       }),
     ).resolves.toBeUndefined();
-    expect(mocks.recordError).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ store: "usage", op: "recordLlmUsage" }),
-    );
+
+    // One report per failed table; each carries the fixed message and the SQLSTATE only.
+    expect(mocks.recordError).toHaveBeenCalledTimes(2);
+    for (const [error, attributes] of mocks.recordError.mock.calls) {
+      expect((error as Error).message).toBe("usage: recordLlmUsage failed");
+      expect((error as Error).cause).toBeUndefined();
+      expect(attributes).toEqual({
+        store: "usage",
+        op: "recordLlmUsage",
+        sqlState: "08006",
+      });
+    }
+    const leaked = JSON.stringify([
+      ...mocks.recordError.mock.calls,
+      ...vi.mocked(console.error).mock.calls,
+    ]);
+    expect(leaked).not.toContain(USER);
   });
 });
 
 describe("discrete counters", () => {
-  it("recordUserMessage bumps user_messages on both tables with the caller's module", async () => {
+  it("recordUserMessage bumps user_messages on both tables, with the caller's module on usage_by_code", async () => {
     await recordUserMessage({ code: CODE, module: "writing", userId: USER });
     expect(mocks.insert).toHaveBeenCalledTimes(2);
     expect(mocks.insertValues).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ code: CODE, module: "writing", userMessages: 1 }),
+    );
+    expect(mocks.insertValues).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ userId: USER, userMessages: 1 }),
     );
   });
 
@@ -247,5 +270,23 @@ describe("discrete counters", () => {
       1,
       expect.objectContaining({ module: "writing", writingSaves: 1 }),
     );
+  });
+});
+
+describe("table structure", () => {
+  const keyColumns = (table: Parameters<typeof getTableConfig>[0]) =>
+    getTableConfig(table).primaryKeys.flatMap((pk) => pk.columns.map((c) => c.name));
+
+  it("usage_by_code has no user column and is keyed by (code, hour)", () => {
+    expect(Object.keys(getTableColumns(usageByCode))).not.toContain("userId");
+    expect(keyColumns(usageByCode)).toEqual(["code", "hour"]);
+  });
+
+  it("usage_by_user has no code, module, provider or model column and is keyed by (user_id, hour)", () => {
+    const columns = Object.keys(getTableColumns(usageByUser));
+    for (const forbidden of ["code", "module", "provider", "model"]) {
+      expect(columns).not.toContain(forbidden);
+    }
+    expect(keyColumns(usageByUser)).toEqual(["user_id", "hour"]);
   });
 });

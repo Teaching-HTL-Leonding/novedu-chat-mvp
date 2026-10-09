@@ -15,13 +15,11 @@ import { assertServerImageRoot } from "./image-root.utils";
 // @live @live-db: the app-hosted image lifecycle end to end, against the LOCAL
 // filesystem storage root (e2e/.image-root, provisioned by the `image-root`
 // setup project — no real Azure Files needed here) and the real database
-// (novedu_images / novedu_codes / novedu_user_chats). Unlike the retired
-// Blob-backed spec this needs no Azure credentials, so it runs in CI
-// (test:e2e:ci) — see docs/testing.md.
+// (novedu_images / novedu_codes / novedu_user_chats). It needs no Azure
+// credentials, so it runs in CI (test:e2e:ci) — see docs/testing.md.
 //
 // Exercises BOTH image routes over real HTTP, never bypassing them by
-// importing lib/image-store or lib/image-fs directly (the old spec's gap —
-// finding 16): the bearer multipart upload (POST /api/images/<name>), the
+// importing lib/image-store or lib/image-fs directly: the bearer multipart upload (POST /api/images/<name>), the
 // cookie-session byte route (GET /api/image-content/<id>), and the web upload
 // form + delete UI. The "student" phase runs on the project's DEFAULT storage
 // state (a real student, not a teacher in view-as-student mode).
@@ -35,7 +33,7 @@ const EVIL_SVG = path.join(process.cwd(), "e2e", "fixtures", "evil.svg");
 // it is GRADED (a real LLM call, deliberately out of scope for an @live-db
 // spec) — so each hosted image gets its OWN single-question quiz code rather
 // than two questions riding one code. The image name to reference rides in as
-// `?image=<name>` (mirrors the retired spec's local-server pattern).
+// `?image=<name>`.
 let quizServer: http.Server;
 
 test.beforeAll(async () => {
@@ -127,7 +125,7 @@ test.describe("app-hosted image lifecycle", () => {
       await teacherPage.getByLabel(/Name/).fill(pngName);
       await teacherPage.locator('input[type="file"]').setInputFiles(RED_PNG);
       await teacherPage.getByRole("button", { name: "Upload image" }).click();
-      await expect(teacherPage).toHaveURL(/\/images$/, { timeout: 30_000 });
+      await expect(teacherPage).toHaveURL(/\/images$/);
       pngRowActive = true;
 
       await filterImagesTo(teacherPage, pngName);

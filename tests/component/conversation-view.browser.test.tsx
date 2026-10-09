@@ -30,6 +30,7 @@ vi.mock("@copilotkit/react-core/v2", () => ({
 }));
 
 import { ConversationView } from "@/app/codes/[code]/c/[threadId]/conversation-view";
+import { MarkdownRenderer } from "@/app/markdown-renderer";
 
 const MESSAGES: Message[] = [
   { id: "m1", role: "user", content: "Hi" },
@@ -47,10 +48,9 @@ test("routes each message to the matching CopilotKit component", async () => {
 });
 
 test("wires the tutor's markdown renderer for assistant messages", async () => {
-  assistantSpy.mockClear();
   await render(<ConversationView messages={MESSAGES} />);
   // Same renderer the live chat uses, so math/code/markdown match the real chat.
-  expect(assistantSpy.mock.lastCall?.[0].markdownRenderer).toBeTypeOf("function");
+  expect(assistantSpy.mock.lastCall?.[0].markdownRenderer).toBe(MarkdownRenderer);
 });
 
 test("is read-only: renders no chat input", async () => {
@@ -61,7 +61,6 @@ test("is read-only: renders no chat input", async () => {
 });
 
 test("points the provider at the runtime URL (its /info is auth-only metadata)", async () => {
-  providerSpy.mockClear();
   await render(<ConversationView messages={MESSAGES} />);
   expect(providerSpy.mock.lastCall?.[0]).toMatchObject({ runtimeUrl: "/api/copilotkit" });
 });

@@ -6,7 +6,7 @@ import { getActiveFile } from "@/lib/file-store";
 import { filePublicUrl } from "@/lib/file-url";
 import { EditFileForm } from "./edit-file-form";
 
-// Teacher-only: edit (save a new version of) or delete a hosted file. Keyed by
+// Teacher-only: edit (save a new version of) a hosted file. Keyed by
 // the file NAME — the stable identity across versions. A catch-all segment so
 // future `/`-separated folder paths work; today names carry no slash. Loads the
 // active version's content for the editor.

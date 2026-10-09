@@ -1,7 +1,7 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { readdirSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { askJev, createJevClient, JEV_MODEL, JEV_TIMEOUT_MS } from "@/lib/llm/jev-client";
+import { createJevClient, JEV_MODEL, JEV_TIMEOUT_MS } from "@/lib/llm/jev-client";
+import { importSpecifiers, REPO_ROOT, readModule, sourceFiles } from "@/tests/import-graph";
 
 // The Jev seam: lazy construction, our own missing-key throw, and the wire shape
 // the SDK actually produces (exercised against the REAL SDK through an injected
@@ -112,45 +112,27 @@ describe("askJev over the real SDK", () => {
     vi.stubGlobal("fetch", fetchMock);
     // Fresh module so the cached client is built against the stubbed globals.
     vi.resetModules();
-    const { askJev: freshAskJev } = await import("@/lib/llm/jev-client");
-    const { answers } = await freshAskJev(REQUEST);
+    const { askJev } = await import("@/lib/llm/jev-client");
+    const { answers } = await askJev(REQUEST);
     expect(answers.verdict).toMatchObject({ type: "choice", choice: "partial" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(typeof askJev).toBe("function");
   });
 });
 
 // ---------------------------------------------------------------------------
 // Import guard: the SDK stays behind this one seam.
 
-const REPO_ROOT = join(__dirname, "..", "..");
-const SCAN_DIRS = ["lib", "app", "cli", "components"];
-const IGNORE = new Set(["node_modules", "dist", ".next", ".turbo"]);
-
-function* walk(dir: string): Generator<string> {
-  for (const entry of readdirSync(dir)) {
-    if (IGNORE.has(entry)) continue;
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      yield* walk(full);
-    } else if (/\.(ts|tsx|mts|cts)$/.test(entry)) {
-      yield full;
-    }
-  }
-}
+const PKG = "@typesafe-ai/sdk";
 
 describe("@typesafe-ai/sdk isolation invariant", () => {
   it("is imported by exactly one file — lib/llm/jev-client.ts", () => {
-    const pattern = /from\s+["']@typesafe-ai\/sdk["']|require\(["']@typesafe-ai\/sdk["']\)/;
-    const importers: string[] = [];
-    for (const dirName of SCAN_DIRS) {
-      for (const file of walk(join(REPO_ROOT, dirName))) {
-        const rel = relative(REPO_ROOT, file);
-        // This test file mentions the specifier in its mocks; it is not an importer.
-        if (rel === relative(REPO_ROOT, __filename)) continue;
-        if (pattern.test(readFileSync(file, "utf8"))) importers.push(rel);
-      }
-    }
-    expect(importers).toEqual([join("lib", "llm", "jev-client.ts")]);
+    const rootFiles = readdirSync(REPO_ROOT).filter((name) => /\.tsx?$/.test(name));
+    const importers = [...rootFiles, ...sourceFiles("lib", "app", "cli", "components")].filter(
+      (rel) =>
+        importSpecifiers(readModule(rel)).some(
+          (spec) => spec === PKG || spec.startsWith(`${PKG}/`),
+        ),
+    );
+    expect(importers).toEqual(["lib/llm/jev-client.ts"]);
   });
 });

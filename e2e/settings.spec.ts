@@ -4,7 +4,7 @@ import { deletePrincipal, signInFreshStudent } from "./principal.utils";
 
 // The Settings page (docs/home.md → Settings page): reachable from the user menu
 // for every signed-in user, its quiz-results switch persists, and with nothing
-// saved the delete action is not offered. `@live-db`: the switch drives a real
+// saved the delete action is disabled. `@live-db`: the switch drives a real
 // `novedu_user_settings` row through the server and back (docs/testing.md). A
 // fresh student, so no other spec's rows interfere; its settings row is removed
 // with it. Saving and deleting real results: e2e/quiz-results.live.spec.ts.

@@ -380,8 +380,8 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   provider (the Foundry and OpenRouter legs each self-skip without their env var).
   The harness (`e2e/code.utils.ts`'s `mintCodingKey`) mints a code and a
   matching per-user key row directly, its value from the app's own pure
-  `generateCodingKey`, and authenticates with it (an `afterEach` drops the key rows
-  with `deleteCodingKeysByCode` — a raw code delete does not cascade to them); the spec asserts model identity from the
+  `generateCodingKey`, and authenticates with it (the e2e setup's sweep removes the
+  code and its key rows on a later run — `docs/testing.md`); the spec asserts model identity from the
   upstream's own `model` field (the Foundry and OpenRouter legs each minting the
   per-code LLM override, so a silent fallback to the YAML default fails the test).
   Chat smoke only

@@ -419,7 +419,7 @@ describe("renderEvalMarkdownReport — flagged feedback", () => {
 });
 
 describe("renderEvalMarkdownReport — tokens", () => {
-  it("omits the token line and shows an em dash when nothing was reported", () => {
+  it("omits the token line and shows an em dash in the token cell when nothing was reported", () => {
     const md = render([
       {
         source: "file:///a/pass.eval.yaml",
@@ -431,7 +431,9 @@ describe("renderEvalMarkdownReport — tokens", () => {
     ]);
 
     expect(md).not.toContain("- **Tokens**");
-    expect(md).toContain("| —");
+    expect(md).toContain(
+      "| ✅ pass.eval.yaml | `demo-eval` | 1 | 1 | 0 | 0 | 0 | 0 | — | 0/0 | — |",
+    );
   });
 });
 

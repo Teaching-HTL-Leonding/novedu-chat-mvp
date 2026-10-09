@@ -2,17 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { page } from "vitest/browser";
 import { render } from "vitest-browser-react";
 
-// next/link reads Next-server globals that don't exist in the browser test
-// runner. `DataList` imports it for the pager and the sortable headers; neither
-// renders here (no `pathname`/`params`), but the module still has to load.
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 // The list pages' WIDTH contract, measured in a real browser (see
 // `docs/superpowers/specs/2026-08-14-wide-lists-design.md`):

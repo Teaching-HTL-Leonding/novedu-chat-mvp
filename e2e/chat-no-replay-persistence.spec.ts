@@ -71,7 +71,7 @@ test("a two-turn chat stores each turn once (no replayed-history duplicates)", {
   const code = await mintTutorCode({ tutor: LIVE_TUTOR_URL });
   await page.goto(`/${code}`);
 
-  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible();
 
   // Two distinct turns, each fully settled before the next is sent.
   await sendTurnAndSettle(page, Q1, 1);
@@ -80,10 +80,8 @@ test("a two-turn chat stores each turn once (no replayed-history duplicates)", {
   // Wait until the second turn has landed in storage (persistence is part of
   // the run, but settle for any async tail before asserting).
   await expect
-    .poll(
-      async () =>
-        (await getStoredMessages(code)).some((m) => m.role === "user" && m.content.includes(Q2)),
-      { timeout: 30_000 },
+    .poll(async () =>
+      (await getStoredMessages(code)).some((m) => m.role === "user" && m.content.includes(Q2)),
     )
     .toBe(true);
 

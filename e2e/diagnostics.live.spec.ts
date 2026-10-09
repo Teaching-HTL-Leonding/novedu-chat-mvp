@@ -21,7 +21,6 @@ test("every diagnostics section loads from App Insights and the report copies", 
     !process.env.APPLICATIONINSIGHTS_CONNECTION_STRING,
     "APPLICATIONINSIGHTS_CONNECTION_STRING is not set — needs .env + az login.",
   );
-  test.setTimeout(90_000);
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
 
   await page.goto("/diagnostics?range=last7d&tz=Europe/Vienna");

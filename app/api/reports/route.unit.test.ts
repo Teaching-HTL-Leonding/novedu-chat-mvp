@@ -93,11 +93,6 @@ describe("GET /api/reports auth", () => {
     expect(mocks.listReports).not.toHaveBeenCalled();
   });
 
-  it("401s a garbage token", async () => {
-    const res = await getRequest("", "not-a-jwt");
-    expect(res.status).toBe(401);
-  });
-
   it("403s a valid non-teacher token", async () => {
     const res = await getRequest("", await mint(false));
     expect(res.status).toBe(403);

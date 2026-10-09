@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -31,11 +30,7 @@ vi.mock("./student-conversations", () => ({
 vi.mock("@/app/markdown-renderer", () => ({
   MarkdownRenderer: ({ content }: { content: string }) => <div data-testid="md">{content}</div>,
 }));
-vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: ReactNode }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 import StudentTextPage from "./page";
 

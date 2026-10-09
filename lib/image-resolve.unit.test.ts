@@ -49,7 +49,7 @@ describe("resolveImageRef — hosted branch", () => {
     await expect(resolveImageRef({ hosted: true, src: "diagram" }, BASE)).resolves.toBeNull();
   });
 
-  it("never depends on storage — the URL is built from metadata alone", async () => {
+  it("builds the hosted URL from the row id regardless of the base URL", async () => {
     // The base URL plays no part in the hosted branch.
     const result = await resolveImageRef({ hosted: true, src: "diagram" }, "");
     expect(result).toMatchObject({

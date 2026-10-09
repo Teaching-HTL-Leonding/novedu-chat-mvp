@@ -27,13 +27,7 @@ vi.mock("@/lib/code-actions", () => ({
     return updateResult;
   }),
 }));
-// BackLink uses next/link.
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children }: { href: unknown; children: unknown }) => (
-    <a href={String(href)}>{children as never}</a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 import { CodeForm } from "@/app/codes/code-form";
 import { ShareLinkResult } from "@/app/codes/share-link-result";

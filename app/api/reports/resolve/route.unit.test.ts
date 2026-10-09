@@ -56,26 +56,13 @@ describe("POST /api/reports/resolve auth", () => {
 });
 
 describe("POST /api/reports/resolve validation", () => {
-  it("400s a non-JSON body", async () => {
-    const res = await postRequest("{not json", await mint());
-    expect(res.status).toBe(400);
-    expect(mocks.setReportsResolved).not.toHaveBeenCalled();
-  });
-
-  it("400s an empty ids array", async () => {
-    const res = await postRequest({ ids: [] }, await mint());
-    expect(res.status).toBe(400);
-    expect(mocks.setReportsResolved).not.toHaveBeenCalled();
-  });
-
-  it("400s a non-UUID entry in ids", async () => {
-    const res = await postRequest({ ids: [ID_1, "nope"] }, await mint());
-    expect(res.status).toBe(400);
-    expect(mocks.setReportsResolved).not.toHaveBeenCalled();
-  });
-
-  it("400s a missing ids field", async () => {
-    const res = await postRequest({}, await mint());
+  it.each([
+    ["a non-JSON body", "{not json"],
+    ["an empty ids array", { ids: [] }],
+    ["a non-UUID entry in ids", { ids: [ID_1, "nope"] }],
+    ["a missing ids field", {}],
+  ])("400s %s", async (_name, body) => {
+    const res = await postRequest(body, await mint());
     expect(res.status).toBe(400);
     expect(mocks.setReportsResolved).not.toHaveBeenCalled();
   });

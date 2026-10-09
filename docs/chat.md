@@ -578,8 +578,9 @@ each to `recordError`, and passes every frame through untouched and in order.
   mistake — teachers' failures would then be the invisible half.
 - **Content discipline** (`docs/telemetry.md`): a `RUN_ERROR` message is agent-
   or provider-authored text that may quote the request, so only its **length** and
-  the short `code` beside it are recorded. A thrown error is one of ours or the
-  ai-sdk's and goes through with its message, as the quiz path already does.
+  the short `code` beside it are recorded. A thrown error goes to `recordError`, which
+  keeps the message only of a plain `Error` and withholds every other one (an
+  ai-sdk or provider error exports just its type and stack frames).
 - It is subject to the same 4-method `AgentRunner` guard as the reasoning runner:
   a CopilotKit bump that adds a fifth event-producing method must wrap it in
   **all three** decorators (with the tutor's `HistorySnapshotRunner`).

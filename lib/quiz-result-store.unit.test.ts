@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The saved-results store (lib/quiz-result-store.ts) and the settings store it
 // locks through (lib/user-settings-store.ts), plus the reports fact group
-// (lib/report-store.ts). A recording fake stands in for Drizzle: every statement
+// (lib/report-store.ts) and the student facts loader (lib/student-facts-store.ts).
+// A recording fake stands in for Drizzle: every statement
 // lands in `log` in order, so the tests assert the transaction's SHAPE — the
 // advisory lock, the code row FOR SHARE, the setting, insert, prune — and that a
 // failure never passes the raw error on. The real statements' behaviour
@@ -101,6 +102,7 @@ import {
   saveQuizResult,
 } from "@/lib/quiz-result-store";
 import { listOwnResolvedReportDates } from "@/lib/report-store";
+import { loadStudentFacts } from "@/lib/student-facts-store";
 import { getUserSettings, updateUserSettings } from "@/lib/user-settings-store";
 
 const RESULT = {
@@ -186,7 +188,7 @@ describe("saveQuizResult", () => {
     expect(fake.state.log).toContain("insert novedu_quiz_results");
   });
 
-  it("a failure anywhere rolls back and reports a fixed message", async () => {
+  it("a failure anywhere rolls back and resolves undefined", async () => {
     fake.state.failOn = "execute";
     fake.state.error = drizzleError();
     await expect(saveQuizResult("u1", RESULT, "always")).resolves.toBeUndefined();
@@ -261,6 +263,19 @@ describe("report-store: own resolved dates", () => {
     const statement = render(fake.state.executed[0]);
     expect(statement.sql).toContain("r.resolved_at IS NOT NULL");
     expect(statement.params).toContain("u1");
+  });
+});
+
+describe("student-facts-store", () => {
+  it("scopes every statement it runs to the session user", async () => {
+    await loadStudentFacts("u1");
+    // Usage, coding keys and resolved reports are raw statements; the quiz group
+    // is the own-results query.
+    expect(fake.state.executed).toHaveLength(3);
+    for (const statement of fake.state.executed) {
+      expect(render(statement).params).toContain("u1");
+    }
+    expect(predicates()).toEqual([OWN_ROWS]);
   });
 });
 

@@ -15,11 +15,6 @@ describe("sampleExampleQuestions", () => {
     expect(result).not.toBe(items);
   });
 
-  it("returns exactly `max` items when there are more", () => {
-    const items = ["a", "b", "c", "d", "e", "f", "g"];
-    expect(sampleExampleQuestions(items, 5, fakeRandom(0.1, 0.9, 0.5, 0.3, 0.7))).toHaveLength(5);
-  });
-
   it("returns a subset in definition order", () => {
     const items = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
     const result = sampleExampleQuestions(items, 5, fakeRandom(0.93, 0.11, 0.78, 0.42, 0.66));

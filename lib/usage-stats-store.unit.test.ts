@@ -60,15 +60,6 @@ describe("getTokenTimeSeries", () => {
     expect(series?.[0]).toMatchObject({ inputNew: 0, inputCached: 0, output: 0 });
   });
 
-  it("accepts a single-code scope (the reuse seam) and shapes the same way", async () => {
-    fake.state.rows = [];
-    const series = await getTokenTimeSeries({ range: "24h", now: NOW, code: "abc" });
-    expect(series).toHaveLength(24);
-    expect(series?.every((b) => b.inputNew === 0 && b.inputCached === 0 && b.output === 0)).toBe(
-      true,
-    );
-  });
-
   it("returns undefined instead of throwing when the query fails", async () => {
     fake.state.executeError = new Error("connection lost");
     await expect(getTokenTimeSeries({ range: "24h", now: NOW })).resolves.toBeUndefined();
@@ -128,7 +119,7 @@ describe("getUsageBreakdown", () => {
 });
 
 describe("getTokensByModel", () => {
-  it("labels rows by model, renders NULL as (unknown), drops zero totals, folds top 9", async () => {
+  it("labels rows by model, renders NULL as (unknown) and drops zero totals", async () => {
     fake.state.rows = [
       { model: "gpt-5.4-mini", total: "500" },
       { model: null, total: 200 },

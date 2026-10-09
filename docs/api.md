@@ -314,9 +314,9 @@ any page, and its handler re-validates the session itself on top of that.
   rate limit, timeout — opaque by design; an upstream `401`/`403`, the provider
   refusing the server's own credentials, also stays `502` but says so explicitly so
   nobody chases a model-name typo through a credential outage). The endpoint URL and
-  the provider's
-  free-form text never cross back to the caller; they go to Application Insights
-  (`docs/ai-models.md`). Stated plainly: this is a **teacher-scoped,
+  the provider's free-form text never cross back to the caller; only the endpoint URL
+  goes to Application Insights (`docs/ai-models.md`), the free-form text is withheld
+  by `recordError` (`docs/telemetry.md`). Stated plainly: this is a **teacher-scoped,
   verdict-schema-constrained LLM pass-through** — a teacher may send arbitrary
   `system`/`answer` text through it. That is a deliberate property under this repo's
   trust model (teachers already author every activity prompt), and it is why the
@@ -375,7 +375,10 @@ any page, and its handler re-validates the session itself on top of that.
   eval routes) — never a blanket `/api` prefix. The files handlers ride
   the public `api/files` exclusion and self-gate. Adding a bearer endpoint = new route
   file gated by `requireBearerUser`/`requireBearerTeacher` + its own matcher
-  exclusion + documentation here.
+  exclusion + documentation here. `tests/unit/api-surface.test.ts` checks every `api/`
+  matcher exclusion is path-bounded (`(?:/|$)`), probes which paths run the proxy,
+  and fails on any `app/api/**/route.ts` handler that neither calls a
+  `requireBearer*` gate nor is one of the documented non-bearer exceptions.
 - **The service seam:** the bearer write routes and the web server actions
   execute the identical policy pipeline through `lib/code-service.ts` /
   `lib/file-service.ts` / `lib/image-service.ts` (plain server modules; auth

@@ -122,8 +122,8 @@ describe("POST /api/coding/v1/chat/completions — auth gate", () => {
   });
 
   it("401s opaquely when an ACTIVITY CODE is sent as the bearer — a code is not a key", async () => {
-    // The hard cutover: the code string reaches the key store like any other bearer,
-    // finds nothing, and the code gate is never consulted.
+    // A code string reaches the key store like any other bearer, finds nothing, and
+    // the code gate is never consulted.
     lookupCodingKey.mockResolvedValue({ status: "miss" });
     const res = await POST(post(chatBody(), { authorization: `Bearer ${CODE}` }));
     expect(res.status).toBe(401);
@@ -400,6 +400,11 @@ describe("POST /api/coding/v1/chat/completions — forwarding", () => {
     fetchSpy.mockRejectedValue(new Error("network down"));
     const res = await POST(post(chatBody()));
     expect(res.status).toBe(502);
+    // The body names neither the upstream URL, the SCCH key nor the underlying error.
+    const body = await res.text();
+    expect(body).not.toContain("scch.example");
+    expect(body).not.toContain("scch-secret");
+    expect(body).not.toContain("network down");
   });
 
   it("500s (not 502) when SCCH env is unconfigured, without calling fetch", async () => {
@@ -407,6 +412,10 @@ describe("POST /api/coding/v1/chat/completions — forwarding", () => {
     const res = await POST(post(chatBody()));
     expect(res.status).toBe(500);
     expect(fetchSpy).not.toHaveBeenCalled();
+    // The misconfiguration is not described to the caller.
+    const body = await res.text();
+    expect(body).not.toContain("SCCH_BASE_URL");
+    expect(body).not.toContain("scch-secret");
   });
 
   it("passes the classic sampling dialect to SCCH untouched", async () => {
@@ -519,6 +528,7 @@ describe("POST /api/coding/v1/chat/completions — forwarding via Azure Foundry"
     const res = await POST(post(chatBody()));
     expect(res.status).toBe(500);
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(await res.text()).not.toContain("no az login");
   });
 
   it("413s an oversized body even while the token acquisition fails (no unhandled rejection)", async () => {

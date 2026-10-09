@@ -1,13 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { KEY_PATTERN } from "../lib/coding-key";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import {
-  deleteCode,
-  deleteCodingKeysByCode,
-  mintCode,
-  VALID_CODING_URL,
-  VALID_QUIZ_URL,
-} from "./code.utils";
+import { mintCode, VALID_CODING_URL, VALID_QUIZ_URL } from "./code.utils";
 
 // Renders every module's teacher detail page (/codes/<code>) end-to-end through
 // the REAL server rendering pipeline. Component tests run without React Server
@@ -18,25 +12,6 @@ import {
 // detail body's key content AND assert no such proxy artifact reaches the HTML.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
-
-// Best-effort cleanup of the row each test minted. Keys go first: the coding spec
-// presses "Get my API key", which stores the teacher's own personal key, and
-// `deleteCode` drops only the code row (a raw code delete does NOT cascade to
-// `novedu_coding_keys` the way the app's own delete transaction does), so a live
-// credential would otherwise stay behind in the shared dev database.
-let mintedCode: string | null = null;
-
-test.afterEach(async () => {
-  if (!mintedCode) return;
-  const code = mintedCode;
-  mintedCode = null;
-  try {
-    await deleteCodingKeysByCode(code);
-    await deleteCode(code);
-  } catch {
-    // best-effort
-  }
-});
 
 // A stringified RSC client-reference proxy starts a class attribute with the
 // proxy function's source; a thrown one mentions dotting into a client module.
@@ -50,7 +25,6 @@ async function expectNoRscArtifacts(page: Page): Promise<void> {
 test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () => {
   test("tutor: conversation stats render", async ({ page }) => {
     const code = await mintCode({ module: "tutor" });
-    mintedCode = code;
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText(code)).toBeVisible();
@@ -61,7 +35,6 @@ test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () =>
 
   test("quiz: discussion stats render", async ({ page }) => {
     const code = await mintCode({ module: "quiz", file: VALID_QUIZ_URL });
-    mintedCode = code;
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText(code)).toBeVisible();
@@ -72,7 +45,6 @@ test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () =>
 
   test("writing (attributed): savers list renders", async ({ page }) => {
     const code = await mintCode({ module: "writing", anonymous: false });
-    mintedCode = code;
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText(code)).toBeVisible();
@@ -86,7 +58,6 @@ test.describe("teacher code detail pages", { tag: ["@live", "@live-db"] }, () =>
     page,
   }) => {
     const code = await mintCode({ module: "coding", file: VALID_CODING_URL });
-    mintedCode = code;
     await page.goto(`/codes/${code}`);
 
     await expect(page.getByText("Model (pinned)")).toBeVisible();

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 // The coding code-module (Layer 3): it has NO `runtime` (the module is reached only
 // through its own public OpenAI-compatible route, never the CopilotKit runtime), and
-// renderDetail dispatches to CodingDetail. Every module — coding included — now uses
+// renderDetail dispatches to CodingDetail. Every module — coding included — uses
 // the registry's shared `ShareLinkResult` create/edit result, so there is no
 // per-module override to test here. CodingDetail is mocked as a plain function so
 // this is hermetic. Create-time validation is derived from fileKind by the registry,

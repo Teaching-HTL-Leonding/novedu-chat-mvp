@@ -16,6 +16,7 @@ describe("CodeError", () => {
     render(<CodeError verification={{ ok: false, reason: "unknown-code" }} />);
     expect(screen.getByRole("heading", { name: "Unknown code" })).toBeInTheDocument();
     expect(screen.getByText(/ask your teacher/i)).toBeInTheDocument();
+    expect(document.querySelector("time")).toBeNull();
   });
 
   it("shows the local opening time for a not-yet-active code", () => {
@@ -39,5 +40,6 @@ describe("CodeError", () => {
       screen.getByRole("heading", { name: "Codes temporarily unavailable" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/try again/i)).toBeInTheDocument();
+    expect(document.querySelector("time")).toBeNull();
   });
 });

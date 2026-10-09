@@ -49,7 +49,6 @@ function renderChat(currentTextRef: RefObject<string>) {
 }
 
 test("registers the read-only getCurrentText tool on the writing agent (no parameters)", async () => {
-  frontendToolSpy.mockClear();
   await renderChat({ current: "" });
 
   const config = frontendToolSpy.mock.lastCall?.[0];
@@ -61,7 +60,6 @@ test("registers the read-only getCurrentText tool on the writing agent (no param
 });
 
 test("the handler returns the LIVE draft with length stats, not a stale closure", async () => {
-  frontendToolSpy.mockClear();
   // The parent surface keeps this ref in sync with the editor buffer; the handler
   // must read through it on every call, never capture the value at mount time.
   const currentTextRef: RefObject<string> = { current: "draft A" };
@@ -82,7 +80,6 @@ test("the handler returns the LIVE draft with length stats, not a stale closure"
 });
 
 test("hands ModuleChat the writing module-boundary props", async () => {
-  moduleChatSpy.mockClear();
   await renderChat({ current: "" });
 
   expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({

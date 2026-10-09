@@ -1,11 +1,10 @@
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
 
 // `app/codes/[code]/c/[threadId]/page.tsx` is the read-only conversation viewer.
 // The transcript itself (CopilotChatMessageView) is exercised by the live chat
 // e2e; here we pin the SERVER-side gating and the loading/empty branches without
-// infra. Any effective teacher may open any code's conversation now (`getCode`,
+// infra. Any effective teacher may open any code's conversation (`getCode`,
 // no ownership check). The CopilotKit client view is stubbed so the test needs no
 // provider/runtime.
 
@@ -16,11 +15,7 @@ const getConversationMessages = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/student-mode", () => ({ isEffectiveTeacher }));
 vi.mock("@/lib/code-store", () => ({ getCode }));
 vi.mock("@/lib/code-stats-store", () => ({ getConversationMessages }));
-vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: ReactNode }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 // Stub the CopilotKit transcript so the happy path needs no provider/runtime.
 vi.mock("./conversation-view", () => ({
   ConversationView: ({ messages }: { messages: unknown[] }) => (

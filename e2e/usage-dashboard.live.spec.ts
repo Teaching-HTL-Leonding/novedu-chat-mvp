@@ -21,8 +21,6 @@ const TOKENS_CACHED = 3_000_000;
 const TOKENS_OUTPUT = 2_000_000;
 const QUIZ_ANSWERS = 7;
 
-test.setTimeout(60_000);
-
 test("the usage dashboard renders seeded token metrics", { tag: ["@live", "@live-db"] }, async ({
   page,
 }) => {

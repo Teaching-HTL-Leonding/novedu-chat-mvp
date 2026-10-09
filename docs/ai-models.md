@@ -335,10 +335,10 @@ wrapped failure classifies exactly like a raw one.
   cover a misconfigured server endpoint too, and a `content_filter` rejection points at
   the failing text rather than the llm settings.
 - **`telemetry`** — the `recordError` attributes, and the ONLY channel for the endpoint
-  URL (the Foundry resource host) and, via `recordException`, the provider's free-form
-  message. Neither belongs in a response body: the host is infrastructure detail, and
-  the free-form field is the one most likely to grow to echo request content. An
-  operator reads both in Application Insights (`docs/telemetry.md`).
+  URL (the Foundry resource host), which does not belong in a response body. The
+  provider's free-form message reaches neither the response nor telemetry: it is the
+  field most likely to echo request content, and `recordError` withholds the message
+  of every error that is not a plain `Error` (`docs/telemetry.md`).
 
 Consumed by the eval routes `POST /api/eval/grade`, `/api/eval/judge` and
 `/api/eval/respond` (`docs/api.md`, `docs/cli-eval.md`). The **student**

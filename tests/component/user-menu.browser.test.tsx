@@ -11,16 +11,7 @@ const { enterStudentMode, exitStudentMode, signOut } = vi.hoisted(() => ({
   signOut: vi.fn(async () => {}),
 }));
 
-// next/link reads Next-server globals that don't exist in the browser test
-// runner — a plain anchor preserves what the signed-out case asserts (the href).
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 vi.mock("@/lib/auth-actions", () => ({ signOutAction: signOut }));
 vi.mock("@/lib/student-mode-actions", () => ({
@@ -33,7 +24,6 @@ import { UserMenu } from "@/components/user-menu";
 const TEACHER = { name: "Tina Teacher", isTeacher: true };
 
 test("a teacher sees the badge and can enter student mode from the menu", async () => {
-  enterStudentMode.mockClear();
   const screen = await render(<UserMenu user={TEACHER} />);
 
   await expect.element(screen.getByRole("img", { name: "Teacher" })).toBeVisible();
@@ -46,7 +36,6 @@ test("a teacher sees the badge and can enter student mode from the menu", async 
 });
 
 test("in student mode the badge is gone and the pill offers the exit", async () => {
-  exitStudentMode.mockClear();
   const screen = await render(<UserMenu user={{ ...TEACHER, isTeacher: false }} studentMode />);
 
   // Looks like a student: no teacher badge, no "View as student" menu item.

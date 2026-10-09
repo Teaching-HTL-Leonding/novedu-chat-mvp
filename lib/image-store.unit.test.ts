@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // `lib/file-store.unit.test.ts`.
 
 const fake = vi.hoisted(() => {
-  const state = {
+  const initial = () => ({
     // What every `select(...).from(...).where(...)` resolves to (the existence
     // check in confirm, the active row in getActive / the delete pre-read, the list).
     rows: [] as Record<string, unknown>[],
@@ -26,7 +26,8 @@ const fake = vi.hoisted(() => {
     // The node-postgres result shape returned by `update(...).set(...).where(...)`.
     closeResult: { rowCount: 1 } as unknown,
     updateError: undefined as unknown,
-  };
+  });
+  const state = initial();
 
   // The list's COUNT(*) goes through the same select/from/where chain as its rows,
   // so the fake tells them apart by the projection: `{ n: … }` is the count.
@@ -94,7 +95,7 @@ const fake = vi.hoisted(() => {
     update,
     transaction: async (cb: (t: typeof tx) => unknown) => cb(tx),
   };
-  return { state, db };
+  return { state, initial, db };
 });
 
 // The adapter seam, plus a log of when each call happened relative to the row
@@ -138,14 +139,7 @@ function activeRow(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  fake.state.rows = [];
-  fake.state.total = 0;
-  fake.state.windows = [];
-  fake.state.selectError = undefined;
-  fake.state.inserted = [];
-  fake.state.insertError = undefined;
-  fake.state.closeResult = { rowCount: 1 };
-  fake.state.updateError = undefined;
+  Object.assign(fake.state, fake.initial());
   storage.order = [];
   storage.deleteObject.mockImplementation(async (key: string) => {
     storage.order.push(`delete:${key}`);
@@ -322,7 +316,7 @@ describe("createImage", () => {
 // Bulk soft-delete (the list's "Delete Selected", the only delete path) loops the
 // `closeActiveImage` primitive in ONE transaction; the objects are removed
 // best-effort AFTER it commits. These pin the count of rows closed, the already-gone
-// no-op, the lost conditional-close race, the all-or-nothing rollback, the swallowed
+// no-op, the lost conditional-close race, the failure result on a DB error, the swallowed
 // best-effort storage failure, and the empty-input short-circuit.
 describe("softDeleteImages", () => {
   it("closes every named image, counts the closed rows, and deletes each object", async () => {
@@ -339,20 +333,20 @@ describe("softDeleteImages", () => {
     fake.state.rows = [{ blobPath: "abc.png" }];
     fake.state.closeResult = { rowCount: 1 };
     const original = fake.db.transaction;
-    const commit = vi
-      .spyOn(fake.db, "transaction")
-      .mockImplementation(async (cb: Parameters<typeof original>[0]) => {
-        storage.order.push("tx:start");
-        const result = await original(cb);
-        storage.order.push("tx:end");
-        return result;
-      });
+    fake.db.transaction = async (cb: Parameters<typeof original>[0]) => {
+      storage.order.push("tx:start");
+      const result = await original(cb);
+      storage.order.push("tx:end");
+      return result;
+    };
+    try {
+      await softDeleteImages(["a"], "teacher-3");
 
-    await softDeleteImages(["a"], "teacher-3");
-
-    // The adapter is untouched until the transaction has resolved.
-    expect(storage.order).toEqual(["tx:start", "tx:end", "delete:abc.png"]);
-    commit.mockRestore();
+      // The adapter is untouched until the transaction has resolved.
+      expect(storage.order).toEqual(["tx:start", "tx:end", "delete:abc.png"]);
+    } finally {
+      fake.db.transaction = original;
+    }
   });
 
   it("keeps { ok: true } when the object was already missing", async () => {
@@ -394,7 +388,7 @@ describe("softDeleteImages", () => {
     });
   });
 
-  it("rolls the whole batch back on a database error (no object delete)", async () => {
+  it("reports failure and removes no object when the update throws", async () => {
     fake.state.rows = [{ blobPath: "abc.png" }];
     fake.state.updateError = new Error("down");
     await expect(softDeleteImages(["a", "b"], "teacher-3")).resolves.toEqual({

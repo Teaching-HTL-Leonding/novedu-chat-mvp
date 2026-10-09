@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { cleanup, render } from "vitest-browser-react";
+import { beforeEach, expect, test, vi } from "vitest";
+import { render } from "vitest-browser-react";
 
 // The student page's conversation list + lightbox (client). The conversation
 // METADATA is server-provided; a transcript is fetched only on OPEN via the
@@ -32,10 +32,6 @@ beforeEach(() => {
     { id: "m1", role: "user", content: "Hi" },
     { id: "m2", role: "assistant", content: "Hello" },
   ]);
-});
-
-afterEach(() => {
-  cleanup();
 });
 
 test("shows an empty state when the student has no conversations", async () => {

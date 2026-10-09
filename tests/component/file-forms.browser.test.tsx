@@ -1,12 +1,12 @@
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
-// The create/edit forms gained a standalone "Validate" button that checks the
-// YAML WITHOUT saving (so teachers stop writing throwaway versions just to
-// validate). These specs pin that wiring: Validate renders the validator's result
-// (errors / passed note + warnings) and NEVER calls the create/update action, and
-// editing the buffer clears a stale "passed" note. The server actions, router and
-// CodeMirror editor are mocked — this is pure client behaviour.
+// The create/edit forms have a standalone "Validate" button that checks the
+// YAML WITHOUT saving. These specs pin that wiring: Validate renders the
+// validator's result (errors / passed note + warnings) and NEVER calls the
+// create/update action, and editing the buffer clears a stale "passed" note. The
+// server actions, router and CodeMirror editor are mocked — this is pure client
+// behaviour.
 const actions = vi.hoisted(() => ({
   validateNewFileAction: vi.fn(),
   createFileAction: vi.fn(),
@@ -20,12 +20,7 @@ const actions = vi.hoisted(() => ({
 
 vi.mock("@/lib/files-actions", () => actions);
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {} }) }));
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children }: { href: unknown; children: unknown }) => (
-    <a href={String(href)}>{children as never}</a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 // A plain textarea stands in for the CodeMirror editor so the test is fast and can
 // drive content with a normal control.
 vi.mock("@/app/files/yaml-editor", () => ({

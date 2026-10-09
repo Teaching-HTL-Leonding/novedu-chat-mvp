@@ -25,7 +25,7 @@ describe("generateCodingKey", () => {
 describe("KEY_PATTERN", () => {
   it("admits only a minted key shape", () => {
     expect(generateCodingKey()).toMatch(KEY_PATTERN);
-    // A bare activity code is just another malformed bearer (the hard cutover).
+    // A bare activity code is just another malformed bearer.
     expect("a1b2c3d4e5").not.toMatch(KEY_PATTERN);
     expect(`key-${"a".repeat(40)}`).not.toMatch(KEY_PATTERN);
     expect(`nvk-${"a".repeat(39)}`).not.toMatch(KEY_PATTERN);

@@ -5,11 +5,12 @@ import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 // app-hosted seam is mocked to serve fixture YAML from an in-process map (no DB, no
 // network), keyed by URL.
 
-const state = vi.hoisted(() => ({ bodies: {} as Record<string, string> }));
+const state = vi.hoisted(() => ({ bodies: {} as Record<string, string>, fetched: [] as string[] }));
 
 vi.mock("@/lib/app-origin", () => ({ resolveAppOriginOr: async () => "https://app.test" }));
 vi.mock("@/lib/app-hosted-fetcher", () => ({
   appHostedFetcher: () => async (url: string) => {
+    state.fetched.push(url);
     const text = state.bodies[url];
     return text === undefined
       ? { ok: false as const, status: 404, text: async () => "" }
@@ -59,6 +60,7 @@ ${instructions}`;
 
 beforeEach(() => {
   state.bodies = {};
+  state.fetched = [];
 });
 
 describe("loadQuiz — instructionsPreamble", () => {
@@ -148,7 +150,11 @@ instructions: |
   {{fragment "lib.safety"}}`),
     };
     const result = await loadQuiz(QUIZ_URL);
-    expect(result.ok).toBe(false);
+    expect(result).toEqual({
+      ok: false,
+      message: "This quiz's prompt fragments could not be loaded.",
+    });
+    expect(state.fetched).toEqual([QUIZ_URL]);
   });
 });
 

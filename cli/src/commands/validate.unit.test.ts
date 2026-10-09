@@ -28,7 +28,7 @@ describe("runValidate — tutors (local files)", () => {
     expect(outcome.kind).toBe("tutor");
     expect(outcome.result.ok).toBe(true);
     if (outcome.kind === "tutor" && outcome.result.ok) {
-      expect(outcome.result.model).toBeTruthy();
+      expect(outcome.result.model).toBe("test-model");
       expect(outcome.result.prompt.length).toBeGreaterThan(0);
     }
   });
@@ -113,7 +113,7 @@ describe("runValidate — quizzes (local files)", () => {
     expect(outcome.kind).toBe("quiz");
     expect(outcome.result.ok).toBe(true);
     if (outcome.kind === "quiz" && outcome.result.ok) {
-      expect(outcome.result.model).toBeTruthy();
+      expect(outcome.result.model).toBe("test-model");
       expect(outcome.result.questionCount).toBeGreaterThan(0);
     }
   });
@@ -144,7 +144,7 @@ describe("runValidate — writing activities (local files)", () => {
     expect(outcome.kind).toBe("writing");
     expect(outcome.result.ok).toBe(true);
     if (outcome.kind === "writing" && outcome.result.ok) {
-      expect(outcome.result.model).toBeTruthy();
+      expect(outcome.result.model).toBe("RedHatAI/gemma-4-31B-it-FP8-Dynamic");
     }
   });
 
@@ -165,7 +165,7 @@ describe("runValidate — coding activities (local files)", () => {
     expect(outcome.kind).toBe("coding");
     expect(outcome.result.ok).toBe(true);
     if (outcome.kind === "coding" && outcome.result.ok) {
-      expect(outcome.result.model).toBeTruthy();
+      expect(outcome.result.model).toBe("test-model");
       expect(outcome.result.codingId).toBe("test-coding");
     }
   });

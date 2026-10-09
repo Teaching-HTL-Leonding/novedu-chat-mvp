@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { gradeWithTruncationRetry } from "@/lib/quiz-truncation-retry";
 
 // The shared issue-#115 retry (`lib/quiz-truncation-retry.ts`): the detector itself is
@@ -25,10 +25,6 @@ function gradeSequence(...objects: Array<typeof CLEAN | undefined>) {
 }
 
 const objectOf = (raw: { object?: typeof CLEAN }) => raw.object;
-
-beforeEach(() => {
-  emitEvent.mockClear();
-});
 
 describe("gradeWithTruncationRetry", () => {
   it("grades once and stays silent when the feedback is clean", async () => {

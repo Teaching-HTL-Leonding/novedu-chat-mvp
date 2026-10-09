@@ -88,6 +88,11 @@ describe("judgmentSchema", () => {
     expect(schema.safeParse({ issues: [{ criterion: "too_wordy", note: "n" }] }).success).toBe(
       false,
     );
+  });
+
+  it("REJECTS an issue without a note", () => {
+    const schema = judgmentSchema(FEEDBACK_JUDGE_CRITERIA);
+
     expect(schema.safeParse({ issues: [{ criterion: "leaks_rubric" }] }).success).toBe(false);
   });
 

@@ -50,8 +50,7 @@ describe("checkPlacements — happy path", () => {
     const twice = [placement("lib_b.plain_frag"), placement("lib_b.plain_frag"), ...HAPPY];
     const result = checkPlacements(twice, loadFixtureFragmentFiles(), FILE_REFS);
     expect(result.errors).toEqual([]);
-    // There is deliberately no DUPLICATE_FRAGMENT_REFERENCE concept anymore.
-    expect(warnCodes(result)).not.toContain("UNUSED_FRAGMENT_FILE");
+    expect(result.warnings).toEqual([]);
   });
 });
 

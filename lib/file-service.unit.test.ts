@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The shared validate-then-store pipeline behind BOTH the web editor's actions
 // and the bearer PUT /api/files/<name>. These tests pin the policy: the
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   createFile: vi.fn(),
   updateFile: vi.fn(),
   getActiveFile: vi.fn(),
+  defaultFetcher: vi.fn(),
   loadAndBuildTutorPrompt: vi.fn(),
   loadAndCheckFragmentFile: vi.fn(),
   loadAndCheckQuiz: vi.fn(),
@@ -27,12 +28,12 @@ vi.mock("@/lib/tutors", () => ({
 }));
 vi.mock("@/lib/prompt-fragments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/prompt-fragments")>()),
-  defaultFetcher: vi.fn(),
+  defaultFetcher: mocks.defaultFetcher,
   loadAndCheckFragmentFile: mocks.loadAndCheckFragmentFile,
 }));
-// The quiz/writing validators are real (file-validators is not mocked), but their
-// loaders import the scheme-gated YAML core from `@/lib/tutors` (mocked above to a
-// subset). Mock the loaders so the seam's MAPPING is what's under test here.
+// file-validators is real, but the quiz/writing loaders import the scheme-gated
+// YAML core from `@/lib/tutors` (mocked above to a subset). They are mocked so
+// the seam's MAPPING is what's under test here.
 vi.mock("@/lib/quiz-validate", () => ({ loadAndCheckQuiz: mocks.loadAndCheckQuiz }));
 vi.mock("@/lib/writing-validate", () => ({ loadAndCheckWriting: mocks.loadAndCheckWriting }));
 // Keep the REAL validateFileName / isFileKind — they are part of the contract —
@@ -48,6 +49,7 @@ vi.mock("@/lib/file-store", async (importOriginal) => {
 });
 
 import { createFileForUser, updateFileForUser, upsertFileForUser } from "@/lib/file-service";
+import type { Fetcher } from "@/lib/prompt-fragments";
 
 beforeEach(() => {
   mocks.resolveAppOrigin.mockResolvedValue("http://localhost:3000");
@@ -73,6 +75,49 @@ afterEach(() => {
 });
 
 const FRAGMENT = { name: "my-file", kind: "fragment", content: "id: f\n" };
+
+describe("validation fetcher", () => {
+  // The fragment validator is mocked to hand its fetcher a URL; the fetcher is the
+  // seam under test (self buffer, hosted sibling from the store, external).
+  async function fetchVia(url: string) {
+    let fetched: Awaited<ReturnType<Fetcher>> | undefined;
+    mocks.loadAndCheckFragmentFile.mockImplementationOnce(
+      async (_url: string, fetcher: Fetcher) => {
+        fetched = await fetcher(url);
+        return { ok: true, warnings: [] };
+      },
+    );
+    await createFileForUser("teacher-1", FRAGMENT);
+    assert(fetched);
+    return fetched;
+  }
+
+  it("resolves the file being saved to its unsaved buffer", async () => {
+    const res = await fetchVia("http://localhost:3000/api/files/my-file");
+    expect(await res.text()).toBe("id: f\n");
+    expect(mocks.getActiveFile).not.toHaveBeenCalled();
+    expect(mocks.defaultFetcher).not.toHaveBeenCalled();
+  });
+
+  it("resolves a sibling hosted file from the store", async () => {
+    mocks.getActiveFile.mockResolvedValue({ name: "other", kind: "fragment", content: "stored" });
+    const res = await fetchVia("http://localhost:3000/api/files/other");
+    expect(await res.text()).toBe("stored");
+    expect(mocks.getActiveFile).toHaveBeenCalledWith("other");
+    expect(mocks.defaultFetcher).not.toHaveBeenCalled();
+  });
+
+  it("sends an external URL to the default fetcher", async () => {
+    const external = { ok: true, status: 200, text: async () => "remote" };
+    mocks.defaultFetcher.mockResolvedValue(external);
+    const res = await fetchVia("https://raw.githubusercontent.com/x/y/main/f.yaml");
+    expect(res).toBe(external);
+    expect(mocks.defaultFetcher).toHaveBeenCalledWith(
+      "https://raw.githubusercontent.com/x/y/main/f.yaml",
+    );
+    expect(mocks.getActiveFile).not.toHaveBeenCalled();
+  });
+});
 
 describe("createFileForUser", () => {
   it("rejects a malformed name without validating or storing", async () => {
@@ -228,7 +273,7 @@ describe("updateFileForUser", () => {
     expect(mocks.updateFile).not.toHaveBeenCalled();
   });
 
-  it("maps a not-found store result to a conflict message", async () => {
+  it('maps a not-found store result to an invalid "changed or was removed" message', async () => {
     mocks.updateFile.mockResolvedValue({ ok: false, reason: "not-found" });
     const result = await updateFileForUser("teacher-1", "my-file", "id: f\n");
     expect(result).toMatchObject({
@@ -258,7 +303,10 @@ describe("upsertFileForUser", () => {
       content: "id: f\n",
     });
     expect(result).toEqual({ ok: true, action: "created", name: "new-file", kind: "fragment" });
-    expect(mocks.createFile).toHaveBeenCalled();
+    expect(mocks.createFile).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "new-file", kind: "fragment", content: "id: f\n" }),
+      "teacher-1",
+    );
     expect(mocks.updateFile).not.toHaveBeenCalled();
   });
 
@@ -276,7 +324,11 @@ describe("upsertFileForUser", () => {
   it("updates when the file exists and no kind is supplied", async () => {
     const result = await upsertFileForUser("teacher-1", { name: "my-file", content: "id: f\n" });
     expect(result).toEqual({ ok: true, action: "updated", name: "my-file", kind: "fragment" });
-    expect(mocks.updateFile).toHaveBeenCalled();
+    expect(mocks.updateFile).toHaveBeenCalledWith(
+      "my-file",
+      expect.objectContaining({ content: "id: f\n" }),
+      "teacher-1",
+    );
     expect(mocks.createFile).not.toHaveBeenCalled();
   });
 

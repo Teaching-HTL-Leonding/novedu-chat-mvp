@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Fake drizzle handle: just enough of the fluent query API for the key store's
@@ -109,6 +109,11 @@ const storedRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+// The (code AND user) predicate both read paths run — the row a user is handed back.
+const ownRowWhere = [
+  and(eq(codingKeys.code, "a1b2c3d4e5"), eq(codingKeys.userId, "oid-student-1")),
+];
+
 beforeEach(() => {
   fake.state.rows = [];
   fake.state.rowsSequence = [];
@@ -145,6 +150,8 @@ describe("getOrCreateCodingKey", () => {
     // INSERT behind it.
     expect(fake.state.selectCalls).toBe(1);
     expect(fake.state.insertCalls).toBe(0);
+    // The read is scoped to this user's own row, never the first key of the code.
+    expect(fake.state.where).toEqual(ownRowWhere);
 
     // A second revisit reads the same row again.
     await expect(getOrCreateCodingKey("a1b2c3d4e5", "oid-student-1")).resolves.toEqual(existing);
@@ -192,13 +199,14 @@ describe("getOrCreateCodingKey", () => {
     }
   });
 
-  it("returns null instead of throwing when the insert fails for another reason", async () => {
+  it("returns null, retries nothing and logs no key value when the insert fails for another reason", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       fake.state.insertErrors = [new Error("connection lost")];
       await expect(getOrCreateCodingKey("a1b2c3d4e5", "oid-student-1")).resolves.toBeNull();
       // Not retried — only a duplicate key is a retryable outcome.
       expect(fake.state.selectCalls).toBe(1);
+      expect(errorSpy.mock.calls.flat().join(" ")).not.toMatch(/nvk-/);
     } finally {
       errorSpy.mockRestore();
     }
@@ -227,18 +235,6 @@ describe("getOrCreateCodingKey", () => {
       errorSpy.mockRestore();
     }
   });
-
-  it("never puts a key value in its log lines", async () => {
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      fake.state.insertErrors = [new Error("connection lost")];
-      await getOrCreateCodingKey("a1b2c3d4e5", "oid-student-1");
-      const logged = errorSpy.mock.calls.flat().join(" ");
-      expect(logged).not.toMatch(/nvk-/);
-    } finally {
-      errorSpy.mockRestore();
-    }
-  });
 });
 
 describe("getStoredCodingKey", () => {
@@ -252,6 +248,7 @@ describe("getStoredCodingKey", () => {
     });
     expect(fake.state.selectCalls).toBe(1);
     expect(fake.state.insertCalls).toBe(0);
+    expect(fake.state.where).toEqual(ownRowWhere);
   });
 
   it("reports 'none' — NOT a mint — when the user holds no key for the code", async () => {

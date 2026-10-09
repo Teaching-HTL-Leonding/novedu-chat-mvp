@@ -11,13 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const listSavers = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/writing-store", () => ({ listSavers }));
-vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
-    <a href={href} {...rest}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 // The filter bar is a client component (next/navigation hooks); a stub that renders
 // its children keeps the search input in the markup without a router.
 vi.mock("@/components/list-filter-bar", () => ({

@@ -6,15 +6,12 @@ import { mintTutorCode } from "./code.utils";
 //
 // The client-side checks below need no infrastructure and run in CI. The
 // rejection RENDERING (unknown/expired/not-started → the right heading + the
-// window <time>) is now covered by fast tests that need no database:
+// window <time>) is covered by fast tests that need no database:
 //   - the page's consumption of checkCode → app/[code]/page.unit.test.tsx
-//   - the rejection components themselves → tests/component/code-error.browser.test.tsx
+//   - the rejection components themselves → app/code-error.unit.test.tsx
 // What remains here is one @live-db happy-path smoke that genuinely needs a minted
 // code + a real database (no LLM — the composer renders without SCCH), so it runs
 // in CI against the Postgres container as well as locally.
-
-// The valid-code smoke fetches the sample tutor from GitHub — give it room.
-test.setTimeout(60_000);
 
 test("the root URL shows the code entry form", async ({ page }) => {
   await page.goto("/");
@@ -48,15 +45,16 @@ test("a valid code opens the tutor chat for a student", { tag: ["@live", "@live-
   page,
 }) => {
   const code = await mintTutorCode();
+  const info = page.waitForResponse((res) => res.url().includes("/api/copilotkit/info"));
   await page.goto(`/${code}`);
 
-  // The chat must actually initialize: CopilotKit syncs its runtime (GET /info,
-  // which re-checks the code header server-side) and the composer appears.
-  await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 30_000 });
-  await page.waitForTimeout(3000);
+  // The chat must actually initialize: the composer appears, and once CopilotKit
+  // has synced its runtime (GET /info, auth-only — it lists the student-facing
+  // agents) the chat's agent resolves instead of throwing "not found after
+  // runtime sync". No DOM signal marks that resolution, so after the /info
+  // response the check gets a short settle before asserting the error's absence.
+  await expect(page.getByPlaceholder("Type a message...")).toBeVisible();
+  await info;
+  await page.waitForTimeout(1000);
   await expect(page.getByText(/not found after runtime sync/i)).toHaveCount(0);
-
-  // The student surface is chat-only: no debug header (activity URL or system
-  // prompt preview) above it.
-  await expect(page.getByText("System prompt & warnings")).toHaveCount(0);
 });

@@ -1,5 +1,6 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
+import { setEditorContent } from "./page.utils";
 
 // End-to-end coverage for the YAML File hosting feature: the create-form
 // validation behavior, which is hermetic (runs in CI). The full
@@ -8,21 +9,8 @@ import { TEACHER_STORAGE_STATE } from "./auth.constants";
 // The authorization gate — /files denied for a student, the nav entry hidden —
 // is asserted once for every teacher-only surface in `permissions.spec.ts`.
 
-// Replace the CodeMirror document with `text`. `insertText` inserts verbatim
-// (like a paste) so YAML indentation/newlines survive — unlike per-key typing,
-// which CodeMirror would auto-indent.
-async function setEditorContent(page: Page, text: string): Promise<void> {
-  const content = page.locator(".cm-content");
-  await content.click();
-  await page.keyboard.press("ControlOrMeta+a");
-  await page.keyboard.press("Delete");
-  await page.keyboard.insertText(text);
-}
-
 test.describe("as a teacher", () => {
   test.use({ storageState: TEACHER_STORAGE_STATE });
-  // Dev compilation of the routes + validation.
-  test.setTimeout(90_000);
 
   // Hermetic: a fragment with invalid YAML fails validation locally (no DB, no
   // network), so this verifies the create form keeps the entered name and kind
@@ -36,9 +24,7 @@ test.describe("as a teacher", () => {
     await page.getByRole("button", { name: "Validate & create" }).click();
 
     // The detailed validator errors are shown (not just a generic message)…
-    await expect(page.getByRole("heading", { name: /Validation failed/ })).toBeVisible({
-      timeout: 30_000,
-    });
+    await expect(page.getByRole("heading", { name: /Validation failed/ })).toBeVisible();
     await expect(page.getByText("FRAGMENT_FILE_SCHEMA_ERROR")).toBeVisible();
     // …and the entered name and kind are preserved across the rejected submit.
     await expect(page.getByLabel(/Name/)).toHaveValue("keep-this-name");
@@ -55,7 +41,7 @@ test.describe("as a teacher", () => {
     await setEditorContent(page, "id: incomplete\nfragments: []\n");
     await page.getByRole("button", { name: "Validate", exact: true }).click();
 
-    await expect(page.getByText("FRAGMENT_FILE_SCHEMA_ERROR")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("FRAGMENT_FILE_SCHEMA_ERROR")).toBeVisible();
     // Validate never stores, so we stay on the create page (no redirect to edit).
     await expect(page).toHaveURL(/\/files\/new$/);
   });
@@ -70,7 +56,7 @@ test.describe("as a teacher", () => {
     await setEditorContent(page, "id: incomplete\nquestions: []\n");
     await page.getByRole("button", { name: "Validate", exact: true }).click();
 
-    await expect(page.getByText("QUIZ_SCHEMA_ERROR")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("QUIZ_SCHEMA_ERROR")).toBeVisible();
     await expect(page).toHaveURL(/\/files\/new$/);
   });
 
@@ -86,7 +72,7 @@ test.describe("as a teacher", () => {
     await setEditorContent(page, "id: incomplete\n");
     await page.getByRole("button", { name: "Validate", exact: true }).click();
 
-    await expect(page.getByText("WRITING_SCHEMA_ERROR")).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("WRITING_SCHEMA_ERROR")).toBeVisible();
     await expect(page).toHaveURL(/\/files\/new$/);
   });
 });

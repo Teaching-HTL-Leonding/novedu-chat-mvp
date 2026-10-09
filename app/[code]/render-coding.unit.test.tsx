@@ -5,8 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // personal API key via `getOrCreateCodingKey`, then shows the connection block plus
 // the mandatory attribution notice — or a "temporarily unavailable" notice when the
 // key store fails. `loadCoding` is mocked (no DB/YAML fetch); `codingConnectionProps`
-// is the real, pure derivation. Invoked directly (it is an async server component);
-// runs in CI.
+// is the real, pure derivation. The "use client" `CodingConnection` is replaced by a
+// stub that renders its props serialized: props cross into the RSC payload even
+// where the component never renders them, so the markup alone cannot show a leak.
+// Invoked directly (it is an async server component); runs in CI.
 
 const loadCoding = vi.hoisted(() => vi.fn());
 const getOrCreateCodingKey = vi.hoisted(() => vi.fn());
@@ -16,6 +18,11 @@ vi.mock("@/lib/coding-fetch", async (importOriginal) => ({
   loadCoding,
 }));
 vi.mock("@/lib/coding-key-store", () => ({ getOrCreateCodingKey }));
+vi.mock("./_coding/coding-connection", () => ({
+  CodingConnection: (props: object) => (
+    <div data-testid="coding-connection" data-props={JSON.stringify(props)} />
+  ),
+}));
 
 import type { CodeEntry } from "@/lib/code-store";
 import { RenderCoding } from "./render-coding";
@@ -56,5 +63,30 @@ describe("RenderCoding", () => {
     const html = await render();
     expect(html).toContain("Connection details temporarily unavailable");
     expect(html).not.toContain("recorded with your name");
+  });
+
+  it("never puts the teacher's prompt, the pinned model or the provider into the markup or the client props", async () => {
+    loadCoding.mockResolvedValue({
+      ok: true,
+      coding: {
+        title: "My Coding Activity",
+        instructions: "SECRET-PROMPT-XYZ",
+        model: "secret-model-id",
+        provider: "Azure Foundry",
+      },
+    });
+    getOrCreateCodingKey.mockResolvedValue({
+      code: "a1b2c3d4e5",
+      userId: "u1",
+      apiKey: "nvk-abc123",
+      createdAt: new Date("2026-06-10T10:00:00Z"),
+    });
+    const html = await render();
+    expect(html).toContain("My Coding Activity");
+    // The key travels only in the serialized props, so they are in `html`.
+    expect(html).toContain("nvk-abc123");
+    expect(html).not.toContain("SECRET-PROMPT-XYZ");
+    expect(html).not.toContain("secret-model-id");
+    expect(html).not.toContain("Azure Foundry");
   });
 });
