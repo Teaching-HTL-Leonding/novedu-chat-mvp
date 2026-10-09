@@ -1,7 +1,5 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { Slice } from "@/lib/usage-range";
 
 // `ModelsSection` renders the tokens-by-model and tokens-by-provider pies from two
@@ -31,10 +29,6 @@ async function render(models: Slice[] | undefined, providers: Slice[] | undefine
     await ModelsSection({ range: "7d", now: new Date("2026-07-04T14:30:00Z") }),
   );
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 it("renders the model slices (including the NULL-model '(unknown)' label)", async () => {
   const html = await render(

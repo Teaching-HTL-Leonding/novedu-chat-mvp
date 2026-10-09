@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // Layer-2 validator seam + the runtime-light readAnonymousFlag, both keyed by
 // FileKind. The underlying loaders (lib/tutors, lib/quiz-validate, lib/quiz-fetch,
@@ -34,11 +34,6 @@ import { fileValidators, readAnonymousFlag } from "@/lib/file-validators";
 
 const URL_ = "https://example.com/file.yaml";
 const fetcher = vi.fn();
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.unstubAllEnvs();
-});
 
 describe("fileValidators.tutor", () => {
   it("runs the THOROUGH library check and maps title/description/anonymous", async () => {

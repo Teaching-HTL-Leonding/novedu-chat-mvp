@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // The Foundry side is mocked so no credential/token machinery runs; the SCCH and
 // OpenRouter sides stay real (both `*-endpoint` modules are pure env reading).
@@ -8,10 +8,6 @@ vi.mock("@/lib/llm/foundry-endpoint", () => ({
 }));
 
 import { resolveChatEndpoint } from "@/lib/llm/endpoint";
-
-beforeEach(() => {
-  vi.unstubAllEnvs();
-});
 
 describe("resolveChatEndpoint", () => {
   it("SCCH → the SCCH chat URL with the static Bearer key", async () => {

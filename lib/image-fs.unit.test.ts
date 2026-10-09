@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -120,7 +119,6 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-  vi.unstubAllEnvs();
   for (const root of roots.splice(0)) {
     await chmod(root, 0o700).catch(() => {});
     await rm(root, { recursive: true, force: true }).catch(() => {});

@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Behavior-level tests for the dashboard read seam. The one I/O seam — the Drizzle

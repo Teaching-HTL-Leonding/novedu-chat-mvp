@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   openrouterApiRoot,
   openrouterAuthHeader,
@@ -10,10 +10,6 @@ import {
 
 // Pure env reading — no mocks needed (the module imports nothing), so the whole
 // surface is exercised against stubbed environment variables.
-
-beforeEach(() => {
-  vi.unstubAllEnvs();
-});
 
 describe("openrouterConfigured", () => {
   it("is the API key alone — the base URL has a default", () => {

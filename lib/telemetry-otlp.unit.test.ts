@@ -1,5 +1,4 @@
-// @vitest-environment node
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Only the NodeSDK class is replaced (recording its constructor argument, no-op
 // start); the `resources` namespace and the instrumentation packages stay real
@@ -37,10 +36,6 @@ import {
 beforeEach(() => {
   mocks.configurations.length = 0;
   mocks.started = 0;
-});
-
-afterEach(() => {
-  vi.unstubAllEnvs();
 });
 
 describe("resource detectors", () => {

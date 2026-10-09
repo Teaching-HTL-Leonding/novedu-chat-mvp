@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The tutor thread actions ("start over", "resume"). The two I/O seams — the session and the code
@@ -45,8 +43,6 @@ const USER = "student-1";
 const MINUTE = 60 * 1000;
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  process.env.AUTH_SECRET = "unit-test-secret";
   resetThreadTokenSecretForTests();
   getSession.mockResolvedValue({ user: { id: USER } });
   checkCode.mockResolvedValue({

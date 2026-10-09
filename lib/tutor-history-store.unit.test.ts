@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The store's own logic, with the database faked: the thread-id guard, the

@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The chat runtime route gates every DATA request (run/connect/stop) with three
@@ -43,11 +41,6 @@ const getLocalAgent = vi.hoisted(() =>
   vi.fn(({ agentId }: { agentId: string }) => ({ agentId, description: `stub ${agentId}` })),
 );
 const getLocalAgents = vi.hoisted(() => vi.fn(() => ({})));
-// The real runtime (used by one `/info` case) has its own telemetry client,
-// configured once at import — keep it from ever phoning home from a test.
-vi.hoisted(() => {
-  process.env.COPILOTKIT_TELEMETRY_DISABLED = "true";
-});
 const endpointFetch = vi.hoisted(() =>
   vi.fn(async (_req: Request) => new Response("{}", { status: 200 })),
 );
@@ -99,10 +92,6 @@ vi.mock("@copilotkit/runtime/v2", () => ({
   AgentRunner: class {},
   InMemoryAgentRunner: class {},
 }));
-
-// AUTH_SECRET must exist before the thread-token secret is first derived; the
-// thread-token module is REAL and memoizes it, so reset between tests.
-process.env.AUTH_SECRET = "test-secret-for-route-unit";
 
 import { InMemoryAgentRunner } from "@copilotkit/runtime/v2";
 import { HistorySnapshotRunner } from "@/app/api/copilotkit/history-snapshot-runner";
@@ -176,7 +165,7 @@ function lastRuntimeAgentIds(): string[] {
 const INTERNAL_AGENT_IDS = ["quizEvaluator", "evalJudge", "evalTutor"];
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // The REAL thread-token module memoizes its secret; derive it afresh per test.
   resetThreadTokenSecretForTests();
   // Default: an authenticated student with a valid tutor-module code. Individual
   // tests override as needed.
@@ -297,9 +286,13 @@ describe("thread-ownership token (real HMAC)", () => {
     expect(res.status).toBe(403);
   });
 
-  it("403s a run whose token was signed for a different user", async () => {
+  it.each([
+    ["user", (threadId: string) => token(threadId, CODE, "someone-else")],
+    ["code", (threadId: string) => token(threadId, "zzzzzzzzzz")],
+    ["thread", () => token(crypto.randomUUID())],
+  ])("403s a run whose token was signed for a different %s", async (_what, sign) => {
     const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId, CODE, "someone-else") }));
+    const res = await POST(runRequest({ threadId, token: sign(threadId) }));
     expect(res.status).toBe(403);
   });
 });
@@ -344,6 +337,9 @@ describe("info endpoint (auth-only metadata)", () => {
     await GET(new Request(`${BASE}/info`));
     // Replay the exact options the route built through the library's own runtime
     // + endpoint, so the assertion is on what a browser would actually receive.
+    // Its telemetry client reads this once, when the real module loads below —
+    // keep it from ever phoning home from a test.
+    vi.stubEnv("COPILOTKIT_TELEMETRY_DISABLED", "true");
     const actual =
       await vi.importActual<typeof import("@copilotkit/runtime/v2")>("@copilotkit/runtime/v2");
     const runtime = new actual.CopilotRuntime(

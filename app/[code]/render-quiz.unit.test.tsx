@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -59,7 +57,6 @@ async function render() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getUserSettings.mockResolvedValue({ saveQuizResults: false });
 });
 

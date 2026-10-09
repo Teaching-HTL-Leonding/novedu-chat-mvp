@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { forgetSession, revokeSession, storedSession } from "../auth";
@@ -27,7 +26,6 @@ function runLogout(...args: string[]): Promise<Command> {
 let log: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  vi.clearAllMocks();
   log = vi.spyOn(console, "log").mockImplementation(() => {});
 });
 

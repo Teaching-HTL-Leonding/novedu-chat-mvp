@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { BaseEvent } from "@ag-ui/client";

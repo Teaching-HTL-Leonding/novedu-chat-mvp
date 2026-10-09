@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { describe, expect, it } from "vitest";
 import { MAX_IMAGE_BYTES, validateAnswerImages } from "@/lib/answer-images";
 

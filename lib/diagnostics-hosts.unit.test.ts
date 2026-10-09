@@ -1,15 +1,9 @@
-// @vitest-environment node
-
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { providerHostMap } from "@/lib/diagnostics-hosts";
 import { providerForHost } from "@/lib/diagnostics-shape";
 
 // Hosts come from the configured provider endpoints, never from literals: an
 // unconfigured provider is simply absent and its calls read as "other".
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
 
 function stub(env: Record<string, string>) {
   for (const key of ["SCCH_BASE_URL", "AZURE_FOUNDRY_ENDPOINT", "OPENROUTER_BASE_URL"]) {

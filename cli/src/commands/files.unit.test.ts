@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,7 +48,6 @@ let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.stubGlobal("fetch", fetchMock);
   log = vi.spyOn(console, "log").mockImplementation(() => {});
   error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -57,8 +55,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.unstubAllEnvs();
   log.mockRestore();
   error.mockRestore();
   process.exitCode = undefined;

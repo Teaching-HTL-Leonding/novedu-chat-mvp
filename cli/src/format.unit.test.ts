@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { BuildResult, FragmentCheckResult } from "@/lib/prompt-fragments";
 import type { QuizCheckResult } from "@/lib/quiz-validate";

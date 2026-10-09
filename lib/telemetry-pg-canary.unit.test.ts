@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { createRequire } from "node:module";
 import type { NodeSDK } from "@opentelemetry/sdk-node";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -50,7 +49,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await receiver.close();
-  vi.unstubAllEnvs();
 });
 
 describe("pg instrumentation privacy", () => {

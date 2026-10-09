@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The Settings page's actions: each acts ONLY on the session user's own row (the
@@ -21,7 +20,6 @@ vi.mock("next/cache", () => ({ revalidatePath }));
 import { deleteMyQuizResults, updateUserSettings } from "@/lib/user-settings-actions";
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockResolvedValue({ user: { id: "u1" } });
   storeSettings.mockResolvedValue(true);
   deleteOwnQuizResults.mockResolvedValue(3);

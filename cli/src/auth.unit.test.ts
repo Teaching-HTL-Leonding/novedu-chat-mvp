@@ -1,9 +1,8 @@
-// @vitest-environment node
 import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   browserCommand,
   type DeviceCode,
@@ -56,14 +55,6 @@ const CODE: DeviceCode = {
   expires_in: 1800,
   interval: 5,
 };
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
 
 describe("serverOrigin", () => {
   it("keys sessions by origin, ignoring path and trailing slash", () => {

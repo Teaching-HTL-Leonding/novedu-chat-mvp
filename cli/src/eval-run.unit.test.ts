@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 import type { EvalCheckOk } from "@/lib/eval-validate";
 import { FEEDBACK_JUDGE_CRITERIA, FEEDBACK_JUDGE_SYSTEM } from "@/lib/quiz-feedback-judge";

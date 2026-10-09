@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchIdentity, getAccessToken, NotSignedInError } from "../auth";
@@ -25,14 +24,12 @@ const stdout = () => log.mock.calls.map((c: unknown[]) => c[0] as string);
 const stderr = () => error.mock.calls.map((c: unknown[]) => c[0] as string);
 
 beforeEach(() => {
-  vi.clearAllMocks();
   log = vi.spyOn(console, "log").mockImplementation(() => {});
   error = vi.spyOn(console, "error").mockImplementation(() => {});
   vi.mocked(getAccessToken).mockResolvedValue("token-123");
 });
 
 afterEach(() => {
-  vi.unstubAllEnvs();
   log.mockRestore();
   error.mockRestore();
   process.exitCode = undefined;

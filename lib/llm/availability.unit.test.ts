@@ -1,9 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { providerUnavailableReason } from "@/lib/llm/availability";
-
-beforeEach(() => {
-  vi.unstubAllEnvs();
-});
 
 describe("providerUnavailableReason", () => {
   it("SCCH is always available (it is the deployment's baseline provider)", () => {

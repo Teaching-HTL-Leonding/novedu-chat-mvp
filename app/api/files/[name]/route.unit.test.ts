@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // GET is the only UNAUTHENTICATED surface of the YAML Files feature; PUT on the
@@ -56,7 +55,6 @@ async function putRequest(name: string, body: unknown, token?: string): Promise<
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockReset();
   getSession.mockResolvedValue(null);
   mocks.upsertFileForUser.mockResolvedValue({

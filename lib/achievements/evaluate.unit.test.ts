@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import type { Achievement, FactGroup, Outcome } from "./catalog";
 import { ALMOST_THERE_MAX, almostThere, badgeView, evaluate, newGrants } from "./evaluate";

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The shared create-code pipeline behind BOTH the web form action and the
 // bearer API route. These tests pin the policy: validate-before-store ordering,
@@ -62,7 +62,6 @@ function input(overrides: Partial<Parameters<typeof createCodeForUser>[1]> = {})
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.stubEnv("CODE_ORIGIN", "");
   vi.stubEnv("TUTOR_CODE_ORIGIN", "");
   mocks.validateCodeFile.mockResolvedValue({
@@ -74,10 +73,6 @@ beforeEach(() => {
   });
   mocks.createCode.mockResolvedValue({ stored: true, code: "abc123def4" });
   mocks.getCode.mockResolvedValue(ENTRY);
-});
-
-afterEach(() => {
-  vi.unstubAllEnvs();
 });
 
 describe("createCodeForUser", () => {

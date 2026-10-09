@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { type BaseEvent, verifyEvents } from "@ag-ui/client";
 import { EventType, type Message } from "@ag-ui/core";
 import {

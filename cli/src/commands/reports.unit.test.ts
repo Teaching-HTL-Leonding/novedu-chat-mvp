@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAccessToken, NotSignedInError } from "../auth";
@@ -33,7 +32,6 @@ let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.stubGlobal("fetch", fetchMock);
   log = vi.spyOn(console, "log").mockImplementation(() => {});
   error = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -41,8 +39,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.unstubAllEnvs();
   log.mockRestore();
   error.mockRestore();
   process.exitCode = undefined;

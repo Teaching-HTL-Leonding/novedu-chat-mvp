@@ -1,8 +1,6 @@
-// @vitest-environment node
-
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { askJev, createJevClient, JEV_MODEL, JEV_TIMEOUT_MS } from "@/lib/llm/jev-client";
 
 // The Jev seam: lazy construction, our own missing-key throw, and the wire shape
@@ -13,12 +11,7 @@ import { askJev, createJevClient, JEV_MODEL, JEV_TIMEOUT_MS } from "@/lib/llm/je
 // Node realm: the SDK refuses to run in a browser-like environment without
 // `dangerouslyAllowBrowser`, and the import guard walks the filesystem.
 
-beforeEach(() => {
-  vi.unstubAllEnvs();
-});
-
 afterEach(() => {
-  vi.unstubAllGlobals();
   vi.resetModules();
 });
 

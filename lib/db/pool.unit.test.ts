@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The one connection seam: what `DATABASE_URL` turns into, and above all WHICH
@@ -112,7 +111,6 @@ describe("getPool", () => {
   it("fails with a clear message when DATABASE_URL is unset", () => {
     vi.stubEnv("DATABASE_URL", "");
     expect(() => getPool()).toThrow("DATABASE_URL is not set — database storage is unavailable");
-    vi.unstubAllEnvs();
   });
 });
 
@@ -125,7 +123,6 @@ describe("databaseHost", () => {
   it("returns null for an unset or unparseable URL", () => {
     vi.stubEnv("DATABASE_URL", "");
     expect(databaseHost(undefined)).toBeNull();
-    vi.unstubAllEnvs();
     expect(databaseHost("not a url")).toBeNull();
   });
 });

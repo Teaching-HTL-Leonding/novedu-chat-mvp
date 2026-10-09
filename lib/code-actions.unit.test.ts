@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The actions are thin auth + FormData shells around the shared pipeline in
 // lib/code-service.ts (covered by code-service.unit.test.ts) — these tests pin
@@ -66,7 +66,6 @@ function formData(note = "My class", module = "tutor"): FormData {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.stubEnv("CODE_ORIGIN", "");
   vi.stubEnv("TUTOR_CODE_ORIGIN", "");
   // The shared gate yields the teacher's user id directly (no separate session
@@ -95,10 +94,6 @@ beforeEach(() => {
     llm: null,
     createdAt: new Date(),
   });
-});
-
-afterEach(() => {
-  vi.unstubAllEnvs();
 });
 
 describe("createCodeAction", () => {

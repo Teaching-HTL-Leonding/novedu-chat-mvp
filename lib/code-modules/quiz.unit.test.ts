@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 
 // The quiz code-module (Layer 3): buildRequestContext loads the quiz YAML to set the
 // discussion system prompt + model (502 on load failure), and renderDetail dispatches
@@ -41,11 +41,6 @@ const entry = {
   fileUrl: "https://example.com/api/files/q",
 } as unknown as CodeEntry;
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.unstubAllEnvs();
-});
-
 describe("quizModule.runtime.buildRequestContext", () => {
   it("502s when the quiz YAML cannot be loaded", async () => {
     loadQuiz.mockResolvedValue({ ok: false, message: "quiz unavailable" });
@@ -83,20 +78,16 @@ describe("quizModule.runtime.buildRequestContext", () => {
 
   it("502s a Foundry quiz when the server has no AZURE_FOUNDRY_ENDPOINT (availability gate)", async () => {
     vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
-    try {
-      loadQuiz.mockResolvedValue({
-        ok: true,
-        quiz: { model: "gpt-5.4-mini", provider: "Azure Foundry", questions: [] },
-      });
-      const result = await quizModule.runtime?.buildRequestContext(entry);
-      expect(result).toMatchObject({
-        ok: false,
-        status: 502,
-        message: expect.stringContaining("Azure Foundry"),
-      });
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    loadQuiz.mockResolvedValue({
+      ok: true,
+      quiz: { model: "gpt-5.4-mini", provider: "Azure Foundry", questions: [] },
+    });
+    const result = await quizModule.runtime?.buildRequestContext(entry);
+    expect(result).toMatchObject({
+      ok: false,
+      status: 502,
+      message: expect.stringContaining("Azure Foundry"),
+    });
   });
 
   it("applies the code's LLM override pair over the quiz YAML's llm values", async () => {
@@ -133,42 +124,36 @@ describe("quizModule.runtime.buildRequestContext", () => {
     });
     // The YAML's level with no override…
     const fromYaml = await quizModule.runtime?.buildRequestContext(entry);
-    if (fromYaml?.ok) {
-      const ctx = fromYaml.context as unknown as { get(k: string): unknown };
-      expect(ctx.get("quiz-discussion-reasoning")).toBe("minimal");
-    }
+    assert(fromYaml?.ok);
+    const yamlCtx = fromYaml.context as unknown as { get(k: string): unknown };
+    expect(yamlCtx.get("quiz-discussion-reasoning")).toBe("minimal");
     // …and the override's level when the code carries one.
     const withOverride = {
       ...entry,
       llm: { provider: "SCCH", model: "override-model", reasoning: "high" },
     } as CodeEntry;
     const overridden = await quizModule.runtime?.buildRequestContext(withOverride);
-    if (overridden?.ok) {
-      const ctx = overridden.context as unknown as { get(k: string): unknown };
-      expect(ctx.get("quiz-discussion-reasoning")).toBe("high");
-    }
+    assert(overridden?.ok);
+    const overrideCtx = overridden.context as unknown as { get(k: string): unknown };
+    expect(overrideCtx.get("quiz-discussion-reasoning")).toBe("high");
   });
 
   it("502s a Foundry OVERRIDE on a server without AZURE_FOUNDRY_ENDPOINT (gate on the effective provider)", async () => {
     vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
-    try {
-      loadQuiz.mockResolvedValue({
-        ok: true,
-        quiz: { model: "gemma-4", provider: "SCCH", questions: [] },
-      });
-      const withOverride = {
-        ...entry,
-        llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" },
-      } as CodeEntry;
-      const result = await quizModule.runtime?.buildRequestContext(withOverride);
-      expect(result).toMatchObject({
-        ok: false,
-        status: 502,
-        message: expect.stringContaining("Azure Foundry"),
-      });
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    loadQuiz.mockResolvedValue({
+      ok: true,
+      quiz: { model: "gemma-4", provider: "SCCH", questions: [] },
+    });
+    const withOverride = {
+      ...entry,
+      llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" },
+    } as CodeEntry;
+    const result = await quizModule.runtime?.buildRequestContext(withOverride);
+    expect(result).toMatchObject({
+      ok: false,
+      status: 502,
+      message: expect.stringContaining("Azure Foundry"),
+    });
   });
 
   it("uses only the default frame when the quiz omits discussionInstructions", async () => {

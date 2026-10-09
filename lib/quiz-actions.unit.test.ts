@@ -1,8 +1,6 @@
-// @vitest-environment node
-
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The grading action's LLM selection and the photo-answer handling:
 // `submitAnswer` re-verifies the code, re-loads the quiz, validates the images
@@ -71,6 +69,7 @@ import {
   QUIZ_EVAL_PROVIDER,
 } from "@/app/mastra/quiz-agents";
 import { precheckAnswer, saveQuizResult, startDiscussion, submitAnswer } from "@/lib/quiz-actions";
+import { getThreadTokenSecret, verifyThreadToken } from "@/lib/thread-token";
 
 const entry = {
   code: "a1b2c3d4e5",
@@ -120,9 +119,6 @@ function gradedContext(): { get(k: string): unknown } {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  // `startDiscussion` signs a real thread token (lib/thread-token stays real).
-  process.env.AUTH_SECRET = "unit-test-secret";
   getSession.mockResolvedValue({ user: { id: "student-1" } });
   checkCode.mockResolvedValue({ ok: true, entry });
   loadQuiz.mockResolvedValue({ ok: true, quiz });
@@ -260,6 +256,24 @@ describe("action failure paths (grader/agent never invoked)", () => {
     });
     expect(createThread).not.toHaveBeenCalled();
     expect(saveMessages).not.toHaveBeenCalled();
+  });
+
+  it("startDiscussion signs the thread token for exactly this code, session user and thread", async () => {
+    const result = await startDiscussion({
+      code: entry.code,
+      questionId: "q1",
+      answer: "4",
+      result: "correct",
+      feedback: "Well done.",
+    });
+    assert(result.ok);
+    expect(createThread).toHaveBeenCalledWith({
+      threadId: result.threadId,
+      resourceId: entry.code,
+    });
+    // The REAL check the CopilotKit route runs on every discussion turn.
+    const owner = { code: entry.code, userId: "student-1", threadId: result.threadId };
+    expect(verifyThreadToken(result.threadToken, owner, getThreadTokenSecret())).toBe(true);
   });
 
   it("resolves NAMESPACED question ids in both actions (compound quizzes)", async () => {
@@ -563,7 +577,11 @@ describe("precheckAnswer classification", () => {
 
 describe("precheckAnswer fail-quiet", () => {
   it("swallows a Jev failure, reports it content-free, and shows no hint", async () => {
-    askJev.mockRejectedValue(new Error("429 rate limited"));
+    // A provider error that quotes the request — the SDK puts the response body
+    // into its message.
+    askJev.mockRejectedValue(
+      Object.assign(new Error("400 invalid: the answer text / 4 is correct."), { status: 400 }),
+    );
     const result = await precheckAnswer({
       code: entry.code,
       questionId: "q1",
@@ -571,13 +589,9 @@ describe("precheckAnswer fail-quiet", () => {
     });
     expect(result).toEqual({ ok: false });
     expect(recordError).toHaveBeenCalledTimes(1);
-    const reported = JSON.stringify(recordError.mock.calls);
-    expect(reported).not.toContain("the answer text");
-    expect(reported).not.toContain("4 is correct.");
-    expect(recordError.mock.calls[0]?.[1]).toEqual({
-      "novedu.area": "quiz-precheck",
-      stage: "jev",
-    });
+    const [reported, attributes] = recordError.mock.calls[0] ?? [];
+    expect((reported as Error).message).toBe("Jev pre-check failed");
+    expect(attributes).toEqual({ "novedu.area": "quiz-precheck", stage: "jev", status: 400 });
   });
 
   it("records no quiz answer and starts no thread (nothing is persisted)", async () => {

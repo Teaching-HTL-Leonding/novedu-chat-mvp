@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -65,7 +63,6 @@ async function render(userId = USER) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   isEffectiveTeacher.mockResolvedValue(true);
   getCode.mockResolvedValue(code());
   getSubmission.mockResolvedValue(submission("Hello world essay"));

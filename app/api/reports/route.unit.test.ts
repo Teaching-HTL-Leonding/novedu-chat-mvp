@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The bearer route for LISTING reports: the auth gate stays REAL over a stubbed
@@ -80,7 +79,6 @@ const WIRE_ROW = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockReset();
   getSession.mockResolvedValue(null);
   mocks.listReports.mockResolvedValue(unpagedResult([ROW]));

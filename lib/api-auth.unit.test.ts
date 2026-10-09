@@ -1,4 +1,3 @@
-// @vitest-environment node
 // This module is server-only (it pulls in the auth instance); the node realm is
 // the one it actually runs in.
 import { beforeEach, describe, expect, it, vi } from "vitest";

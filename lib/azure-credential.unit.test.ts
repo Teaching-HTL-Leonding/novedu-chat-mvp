@@ -1,6 +1,4 @@
-// @vitest-environment node
-
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // The explicit credential chains: `az login` first, then the Managed Identity —
 // never `DefaultAzureCredential` (see lib/azure-credential.ts for why).
@@ -21,10 +19,6 @@ const identity = vi.hoisted(() => ({
 vi.mock("@azure/identity", () => identity);
 
 import { buildMonitorCredential } from "@/lib/azure-credential";
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 describe("buildMonitorCredential", () => {
   it("chains the az CLI (ambient tenant) before the Managed Identity", () => {

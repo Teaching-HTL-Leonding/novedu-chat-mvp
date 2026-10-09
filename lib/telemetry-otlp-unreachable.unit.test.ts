@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { createServer, get, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -40,7 +39,6 @@ beforeAll(async () => {
 afterAll(async () => {
   process.off("unhandledRejection", onUnhandled);
   await new Promise<void>((resolve) => appServer.close(() => resolve()));
-  vi.unstubAllEnvs();
 });
 
 describe("OTLP path with a refusing receiver", () => {

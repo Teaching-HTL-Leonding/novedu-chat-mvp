@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { loadAndCheckEval } from "@/lib/eval-validate";
 import type { Fetcher } from "@/lib/prompt-fragments";

@@ -8,7 +8,6 @@
  * - no body H1 (the page title renders from frontmatter)
  * - every section directory is declared in src/lib/sections.ts
  */
-// @vitest-environment node
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";

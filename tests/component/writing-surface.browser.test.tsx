@@ -67,7 +67,6 @@ function renderSurface(props: {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   saveWriting.mockResolvedValue({ ok: true });
 });
 

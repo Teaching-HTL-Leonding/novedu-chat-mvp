@@ -50,7 +50,6 @@ vi.mock("@/lib/file-store", async (importOriginal) => {
 import { createFileForUser, updateFileForUser, upsertFileForUser } from "@/lib/file-service";
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.resolveAppOrigin.mockResolvedValue("http://localhost:3000");
   mocks.loadAndCheckFragmentFile.mockResolvedValue({ ok: true });
   mocks.loadAndCheckQuiz.mockResolvedValue({

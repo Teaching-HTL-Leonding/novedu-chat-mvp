@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The bearer route for bulk-RESOLVING reports: the auth gate stays REAL over a
@@ -43,7 +42,6 @@ async function postRequest(body: unknown, token?: string): Promise<Response> {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockReset();
   getSession.mockResolvedValue(null);
   mocks.setReportsResolved.mockResolvedValue(true);

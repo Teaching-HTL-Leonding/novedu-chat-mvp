@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The bearer route for ONE report's detail: the auth gate stays REAL over a
@@ -79,7 +78,6 @@ const QUIZ_ROW = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockReset();
   getSession.mockResolvedValue(null);
   mocks.getReportById.mockResolvedValue(CHAT_ROW);

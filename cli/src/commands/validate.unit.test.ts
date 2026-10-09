@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { runValidate } from "./validate";

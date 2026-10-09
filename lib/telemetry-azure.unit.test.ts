@@ -1,5 +1,4 @@
-// @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ useAzureMonitor: vi.fn() }));
 
@@ -8,10 +7,6 @@ const mocks = vi.hoisted(() => ({ useAzureMonitor: vi.fn() }));
 vi.mock("@azure/monitor-opentelemetry", () => ({ useAzureMonitor: mocks.useAzureMonitor }));
 
 import { startAzureMonitor } from "@/lib/telemetry-azure";
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 describe("startAzureMonitor", () => {
   it("calls the distro once with the connection string and nothing else", () => {

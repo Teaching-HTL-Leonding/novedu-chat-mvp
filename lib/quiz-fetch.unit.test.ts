@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, beforeEach, describe, expect, it, vi } from "vitest";
 
 // loadQuiz renders the quiz-level `instructions` host text (with inline `{{fragment}}`
 // markers resolved) into the server-only `Quiz.instructionsPreamble`. Hermetic: the
@@ -336,7 +336,8 @@ questions:
       [LOOPS_URL]: LOOPS_QUIZ,
     };
     const optedOut = await loadQuiz(QUIZ_URL);
-    expect(optedOut.ok && optedOut.quiz.immediateFeedback).toBe(false);
+    assert(optedOut?.ok);
+    expect(optedOut.quiz.immediateFeedback).toBe(false);
   });
 
   it("absolutizes relative image paths against the SOURCE url; hosted/absolute pass through", async () => {

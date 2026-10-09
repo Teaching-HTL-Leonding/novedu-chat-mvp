@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -59,7 +58,6 @@ function drizzleError() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
   Object.assign(fake.state, {
     selectRows: [],

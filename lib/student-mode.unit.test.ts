@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session } from "@/lib/session";
 
@@ -35,7 +33,6 @@ function setStudentMode(active: boolean) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   setStudentMode(false);
 });
 

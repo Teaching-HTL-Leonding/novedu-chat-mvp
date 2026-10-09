@@ -14,12 +14,22 @@ export default defineConfig({
     },
   },
   test: {
+    // Every test starts clean: mock call history, stubbed env vars and stubbed
+    // globals are reset before each one, so no file has to remember to (and a
+    // test can never inherit another's state). Defaults a file sets in its own
+    // beforeEach still apply — the reset runs first.
+    clearMocks: true,
+    unstubEnvs: true,
+    unstubGlobals: true,
     projects: [
       {
         extends: true,
         test: {
           name: "unit",
-          environment: "jsdom",
+          // Node by default; the few unit tests that need a DOM declare
+          // `// @vitest-environment jsdom` (real browser behaviour belongs in
+          // the component project).
+          environment: "node",
           setupFiles: ["./tests/setup.unit.ts"],
           include: ["tests/unit/**/*.{test,spec}.{ts,tsx}", "**/*.unit.test.{ts,tsx}"],
           exclude: sharedExclude,

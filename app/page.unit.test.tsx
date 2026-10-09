@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -65,7 +64,6 @@ import Home from "./page";
 const order = (html: string) => [...html.matchAll(/data-testid="([^"]+)"/g)].map((m) => m[1]);
 
 beforeEach(() => {
-  vi.clearAllMocks();
   effectiveTeacherForSession.mockResolvedValue(false);
 });
 

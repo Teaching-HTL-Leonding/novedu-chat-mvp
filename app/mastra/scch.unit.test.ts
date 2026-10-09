@@ -14,8 +14,8 @@ vi.mock("@ai-sdk/openai-compatible", () => ({ createOpenAICompatible }));
 // scch.ts runs a top-level model-discovery fetch on import; an empty base URL makes it
 // bail before any network call (its own env guard), so this stays hermetic.
 vi.hoisted(() => {
-  process.env.SCCH_BASE_URL = "";
-  process.env.SCCH_API_KEY = "";
+  vi.stubEnv("SCCH_BASE_URL", "");
+  vi.stubEnv("SCCH_API_KEY", "");
 });
 
 import "@/app/mastra/scch";

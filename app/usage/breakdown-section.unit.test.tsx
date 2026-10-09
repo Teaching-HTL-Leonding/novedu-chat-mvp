@@ -1,7 +1,5 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, expect, it, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import type { UsageBreakdown } from "@/lib/usage-stats-store";
 
 // `BreakdownSection` reads the breakdown ONCE and feeds both pies. Assert it maps
@@ -26,10 +24,6 @@ async function render(breakdown: UsageBreakdown | undefined) {
     await BreakdownSection({ range: "7d", now: new Date("2026-07-04T14:30:00Z") }),
   );
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 it("maps raw module ids to their display badges and labels code slices", async () => {
   const html = await render({

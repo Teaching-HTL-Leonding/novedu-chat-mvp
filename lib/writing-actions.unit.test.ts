@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The saveWriting server action. The whole app is behind the Entra gate; the
@@ -43,7 +41,6 @@ function validEntry(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockResolvedValue({ user: { id: USER_ID } });
   checkCode.mockResolvedValue(validEntry());
   loadWriting.mockResolvedValue({ ok: true, writing: { anonymous: false } });

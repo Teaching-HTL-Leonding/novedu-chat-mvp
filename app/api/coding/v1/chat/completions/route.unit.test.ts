@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // HTTP-level integration test for the OpenAI-compatible coding endpoint. It drives
@@ -86,11 +84,10 @@ function chatBody() {
 let fetchSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  process.env.SCCH_BASE_URL = "https://scch.example/v1";
-  process.env.SCCH_API_KEY = "scch-secret";
-  process.env.OPENROUTER_API_KEY = "sk-or-test";
-  process.env.OPENROUTER_BASE_URL = "";
+  vi.stubEnv("SCCH_BASE_URL", "https://scch.example/v1");
+  vi.stubEnv("SCCH_API_KEY", "scch-secret");
+  vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+  vi.stubEnv("OPENROUTER_BASE_URL", "");
   lookupCodingKey.mockResolvedValue({ status: "found", code: CODE, userId: USER_ID });
   checkCode.mockResolvedValue({ ok: true, entry: codingEntry });
   loadCoding.mockResolvedValue({
@@ -406,7 +403,7 @@ describe("POST /api/coding/v1/chat/completions — forwarding", () => {
   });
 
   it("500s (not 502) when SCCH env is unconfigured, without calling fetch", async () => {
-    process.env.SCCH_BASE_URL = "";
+    vi.stubEnv("SCCH_BASE_URL", "");
     const res = await POST(post(chatBody()));
     expect(res.status).toBe(500);
     expect(fetchSpy).not.toHaveBeenCalled();

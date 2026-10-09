@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // `resolveImageRef` turns a module's embedded `ImageRef` into a usable
@@ -18,7 +17,6 @@ import { resolveImageRef } from "@/lib/image-resolve";
 const BASE = "https://example.com/dir/quiz.yaml";
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.getActiveImage.mockResolvedValue({
     id: "11111111-2222-3333-4444-555555555555",
     name: "diagram",

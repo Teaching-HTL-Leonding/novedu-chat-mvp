@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { asc, desc } from "drizzle-orm";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -139,7 +138,6 @@ function activeRow(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   fake.state.rows = [];
   fake.state.total = 0;
   fake.state.windows = [];

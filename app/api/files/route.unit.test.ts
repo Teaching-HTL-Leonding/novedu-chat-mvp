@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The bearer file-list route: real auth gate over a stubbed `getSession`, mocked
@@ -43,7 +42,6 @@ async function getRequest(query = "", token?: string): Promise<Response> {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockReset();
   getSession.mockResolvedValue(null);
   mocks.listFiles.mockResolvedValue(

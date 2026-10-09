@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,10 +22,6 @@ async function renderPage(range?: string) {
   const element = await UsagePage({ searchParams: Promise.resolve(range ? { range } : {}) });
   return renderToStaticMarkup(element);
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 it("denies a non-teacher (or a teacher in student mode) without rendering any section", async () => {
   isEffectiveTeacher.mockResolvedValue(false);

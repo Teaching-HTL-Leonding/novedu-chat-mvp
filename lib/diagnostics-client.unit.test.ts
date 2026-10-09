@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The telemetry read seam: never throws, maps every failure to a typed one, and
@@ -37,7 +35,6 @@ let consoleError: ReturnType<typeof vi.spyOn>;
 const fetchMock = vi.fn();
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.stubEnv("APPLICATIONINSIGHTS_CONNECTION_STRING", CONNECTION);
   vi.stubGlobal("fetch", fetchMock);
   mocks.getBearerTokenProvider.mockReturnValue(vi.fn().mockResolvedValue(TOKEN));
@@ -45,8 +42,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.unstubAllEnvs();
-  vi.unstubAllGlobals();
   consoleError.mockRestore();
 });
 

@@ -1,6 +1,6 @@
 import type { AnyExportedSpan, TracingEvent } from "@mastra/core/observability";
 import { SpanType } from "@mastra/core/observability";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // The usage exporter's pure span→delta mapping (the correctness core) plus the
 // exporter object's event gating. The store + telemetry are mocked so the module
@@ -29,8 +29,6 @@ function span(overrides: Record<string, unknown>): AnyExportedSpan {
 
 const genUsage = (usage: unknown) =>
   span({ type: SpanType.MODEL_GENERATION, attributes: { usage } });
-
-beforeEach(() => vi.clearAllMocks());
 
 describe("mapSpanToUsage — MODEL_GENERATION tokens", () => {
   it("splits input into cached vs new (UsageStats: inputDetails.cacheRead)", () => {

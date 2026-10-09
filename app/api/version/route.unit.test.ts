@@ -1,7 +1,6 @@
-// @vitest-environment node
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GET } from "./route";
 
 // The public build-identity probe: the three baked env vars (lib/version.ts) plus
@@ -12,10 +11,6 @@ import { GET } from "./route";
 const packageCliVersion: string = JSON.parse(
   readFileSync(fileURLToPath(new URL("../../../cli/package.json", import.meta.url)), "utf8"),
 ).version;
-
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
 
 describe("GET /api/version", () => {
   it("answers the baked build identity plus the bundled CLI version", async () => {

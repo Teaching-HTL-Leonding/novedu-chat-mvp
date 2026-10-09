@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { getTableName, type SQL, type Table } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -124,7 +123,6 @@ function drizzleError() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
   Object.assign(fake.state, {
     log: [],

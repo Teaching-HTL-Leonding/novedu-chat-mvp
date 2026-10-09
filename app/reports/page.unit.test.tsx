@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -82,7 +80,6 @@ async function renderPage(sp: Record<string, string> = {}) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockResolvedValue({ user: { id: OID } });
   listReports.mockResolvedValue(unpagedResult([row()]));
 });
