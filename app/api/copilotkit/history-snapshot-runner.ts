@@ -8,6 +8,7 @@ import {
   type AgentRunnerStopRequest,
 } from "@copilotkit/runtime/v2";
 import { defer, from, Observable, switchMap } from "rxjs";
+import { isReasoningEvent } from "@/app/api/copilotkit/reasoning-runner";
 import {
   ownerMayReopen,
   TUTOR_RESUME_GRACE_MS,
@@ -34,9 +35,12 @@ import { loadThreadForChat } from "@/lib/tutor-history-store";
 // `<id>-agui-text` for text after a tool call), and the client APPENDS a replayed
 // TEXT_MESSAGE_CONTENT to an existing message rather than replacing it. So every
 // text/reasoning event of a stored id is dropped, and every tool call whose parent
-// is a stored message is dropped with its args/end/result. What remains is bare
-// run framing (harmless), a run whose save failed (shown, as a bonus), and a run
-// still in flight, whose reply is not stored yet (a reload mid-answer).
+// is a stored message is dropped with its args/end/result. Reasoning is never
+// stored, so a FINISHED run's reasoning is dropped too (it would otherwise land as
+// a stray block below the restored conversation; only teachers receive reasoning
+// at all). What remains is bare run framing (harmless), a run whose save failed
+// (shown, as a bonus), and a run still in flight, whose reply is not stored yet
+// (a reload mid-answer), reasoning included.
 //
 // A HISTORIC `RUN_ERROR` (a failed run the in-memory store replays) would end
 // the stream for the verifier — nothing may follow a RUN_ERROR — so it becomes a
@@ -139,49 +143,93 @@ function filterReplay(
     // The run a historic RUN_ERROR closes (RUN_ERROR itself names no run).
     let openRun: { threadId: string; runId: string } | undefined;
 
-    const subscription = inner.subscribe({
-      next: (raw) => {
-        const event = raw as LooseEvent;
-        if (event.type === EventType.RUN_STARTED) {
-          openRun = {
-            threadId: typeof event.threadId === "string" ? event.threadId : threadId,
-            runId: typeof event.runId === "string" ? event.runId : crypto.randomUUID(),
-          };
-        } else if (event.type === EventType.RUN_FINISHED) {
-          openRun = undefined;
-        } else if (event.type === EventType.RUN_ERROR && historic) {
-          const run = openRun ?? { threadId, runId: crypto.randomUUID() };
-          openRun = undefined;
-          subscriber.next({ type: EventType.RUN_FINISHED, ...run } as BaseEvent);
+    const forward = (raw: BaseEvent) => {
+      const event = raw as LooseEvent;
+      if (event.type === EventType.RUN_STARTED) {
+        openRun = {
+          threadId: typeof event.threadId === "string" ? event.threadId : threadId,
+          runId: typeof event.runId === "string" ? event.runId : crypto.randomUUID(),
+        };
+      } else if (event.type === EventType.RUN_FINISHED) {
+        openRun = undefined;
+      } else if (event.type === EventType.RUN_ERROR && historic) {
+        const run = openRun ?? { threadId, runId: crypto.randomUUID() };
+        openRun = undefined;
+        subscriber.next({ type: EventType.RUN_FINISHED, ...run } as BaseEvent);
+        return;
+      }
+
+      if (MESSAGE_EVENT_TYPES.has(event.type)) {
+        if (typeof event.messageId === "string" && known.has(event.messageId)) return;
+      } else if (
+        event.type === EventType.TOOL_CALL_START ||
+        (event.type === EventType.TOOL_CALL_CHUNK && typeof event.parentMessageId === "string")
+      ) {
+        if (
+          typeof event.parentMessageId === "string" &&
+          known.has(event.parentMessageId) &&
+          typeof event.toolCallId === "string"
+        ) {
+          droppedToolCalls.add(event.toolCallId);
           return;
         }
-
-        if (MESSAGE_EVENT_TYPES.has(event.type)) {
-          if (typeof event.messageId === "string" && known.has(event.messageId)) return;
-        } else if (
-          event.type === EventType.TOOL_CALL_START ||
-          (event.type === EventType.TOOL_CALL_CHUNK && typeof event.parentMessageId === "string")
-        ) {
-          if (
-            typeof event.parentMessageId === "string" &&
-            known.has(event.parentMessageId) &&
-            typeof event.toolCallId === "string"
-          ) {
-            droppedToolCalls.add(event.toolCallId);
-            return;
-          }
-        } else if (TOOL_FOLLOW_UP_TYPES.has(event.type)) {
-          if (typeof event.toolCallId === "string" && droppedToolCalls.has(event.toolCallId)) {
-            return;
-          }
+      } else if (TOOL_FOLLOW_UP_TYPES.has(event.type)) {
+        if (typeof event.toolCallId === "string" && droppedToolCalls.has(event.toolCallId)) {
+          return;
         }
-        subscriber.next(raw);
+      }
+      subscriber.next(raw);
+    };
+
+    // The history arrives synchronously during the subscribe call; it is held
+    // back and flushed afterwards, so a whole run can be judged at once (below),
+    // and a completion or error that arrives inside the same call is passed on
+    // only after it.
+    const batch: BaseEvent[] = [];
+    let ended: { error: unknown } | "complete" | undefined;
+    const subscription = inner.subscribe({
+      next: (raw) => {
+        if (historic) batch.push(raw);
+        else forward(raw);
       },
-      error: (error) => subscriber.error(error),
-      complete: () => subscriber.complete(),
+      error: (error) => {
+        if (historic) ended = { error };
+        else subscriber.error(error);
+      },
+      complete: () => {
+        if (historic) ended = "complete";
+        else subscriber.complete();
+      },
     });
+    for (const event of withoutFinishedRunsReasoning(batch)) forward(event);
     historic = false;
+    if (ended === "complete") subscriber.complete();
+    else if (ended) subscriber.error(ended.error);
     return () => subscription.unsubscribe();
+  });
+}
+
+/**
+ * The history batch minus the reasoning of every run that already ENDED in it.
+ * Reasoning is never stored (it is live-only, docs/chat.md), so the snapshot
+ * cannot carry it; replaying it would append a stray reasoning block BELOW the
+ * restored conversation. A run still in flight keeps its reasoning: its live
+ * remainder follows, and dropping only the start would break the protocol.
+ */
+function withoutFinishedRunsReasoning(batch: BaseEvent[]): BaseEvent[] {
+  const runOf: number[] = [];
+  const finishedRuns = new Set<number>();
+  let run = -1;
+  for (const event of batch) {
+    if (event.type === EventType.RUN_STARTED) run += 1;
+    runOf.push(run);
+    if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR) {
+      finishedRuns.add(run);
+    }
+  }
+  return batch.filter((event, index) => {
+    const eventRun = runOf[index] ?? -1;
+    return !(isReasoningEvent(event) && finishedRuns.has(eventRun));
   });
 }
 
