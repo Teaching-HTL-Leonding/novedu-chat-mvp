@@ -307,7 +307,7 @@ taxonomy, the system prompt, the subject builder and the schema factory:
 
 Every definition lives **in the judge system prompt**, not in code comments, so the two
 cannot drift; `lib/quiz-feedback-judge.unit.test.ts` asserts the prompt names all four.
-Three guardrails in that prompt are load-bearing and were measured before shipping: "do
+Three guardrails in that prompt are load-bearing: "do
 NOT judge the verdict itself" (a re-grading judge produces unactionable noise), "be
 strict about real violations, do not invent issues… when in doubt, the feedback is ok",
 and — critically — **there is no `ok` boolean**. Flagged ⇔ `issues.length > 0`. Weak
@@ -318,8 +318,8 @@ requiring a named issue removes that failure mode by construction.
 
 `lib/tutor-judge.ts` is the sibling of `lib/quiz-feedback-judge.ts` — CLI-bundled,
 grep-guard-pure, reusing the same `judgmentSchema` factory and the same
-`{ criterion, note }` issue type, so **`POST /api/eval/judge` and `evalJudge` needed zero
-server change** to serve a second eval kind. It exports the taxonomy, the judge system
+`{ criterion, note }` issue type, so the kind-agnostic **`POST /api/eval/judge` and
+`evalJudge` serve it unchanged**. It exports the taxonomy, the judge system
 prompt and the subject builder.
 
 The same insight one activity kind over: **the specification for a good tutor response
@@ -430,7 +430,7 @@ It is **kind-agnostic by construction**: the judge system prompt, the assembled 
 AND the criteria taxonomy all arrive in the request body, and the criteria become the
 structured-output enum — so the model can never name something the caller's report cannot
 render, and another eval kind can reuse the endpoint with **zero server change**.
-That is the same property the `--llm` override proved out on the grade route.
+The grade route's `--llm` override rests on the same property.
 
 Safety follows the grade route's argument, one step stronger: **`evalJudge` is never
 web-reachable by students** (the CopilotKit runtime route only accepts the one agent id a
@@ -462,7 +462,7 @@ activity prompt the app runs — and it is a deliberate property, not an oversig
 
 | Situation | Behavior |
 | --- | --- |
-| HTTP 5xx, or a network failure | **Retry**: 4 attempts, linear backoff (5 s, 10 s, 15 s) — the shape the Python PoC needed against SCCH's occasional 504s |
+| HTTP 5xx, or a network failure | **Retry**: 4 attempts, linear backoff (5 s, 10 s, 15 s) |
 | Any 4xx (bad body, unavailable provider, …) | **Terminal** — retrying cannot help |
 | 401 / 403 / not signed in | **Abort the whole run** with one clear message. Token expiry mid-run is real on a 252 × 3 run; hundreds of per-case auth errors would be useless |
 | A case that exhausts its retries | `errored` — the run CONTINUES |
@@ -670,9 +670,9 @@ novedu-cli eval "./**/*.eval.yaml"                 # quoted: the CLI expands it
   **stderr**, so stdout stays clean. The live counter is a `\r` spinner and is
   suppressed off a TTY (it would fill a CI log with carriage-return noise); in its
   place each FINISHED file writes one newline-terminated summary line. That keeps a
-  redirected or backgrounded run greppable and visibly alive — the earlier behaviour
-  printed nothing at all after the scope banner, which reads exactly like a hang and
-  has already cost one long run to a premature kill. It ticks on file boundaries only,
+  redirected or backgrounded run greppable and visibly alive — printing nothing after
+  the scope banner would read exactly like a hang and invite killing a healthy run.
+  It ticks on file boundaries only,
   so a single long file is still quiet; deliberately no per-file timings, which would
   invite extrapolating an unreliable ETA. The run's scope (`N case(s) × R repeat(s) =
   M grading call(s)`, or `N conversation(s) × R repeat(s) = M generation call(s)` — one
@@ -734,7 +734,7 @@ bodies only when a level applies, and the JSON records `llm.overrides` whenever 
 effective spec differs from the file's in ANY part — so a level-only run still renders
 as a comparison run.
 
-This required **zero server change**: the endpoint is already LLM-agnostic (the CLI
+The override is purely client-side: the endpoint is LLM-agnostic (the CLI
 supplies the pair in every request body, availability-gated by the route's
 `providerUnavailableReason` check). The report header renders
 `quiz-llm → override-llm` and the JSON records `llm.overrides`, so a comparison
@@ -762,7 +762,7 @@ or the code keeps serving the old rubric (or the old tutor prompt). Likewise, an
 Eval gradings, tutor generations **and** judge calls are metered under the pseudo-code
 **`cli-eval`** and the module **`eval`**, with the teacher's user id as the user
 (`docs/usage-metering.md`) — the same three sentinel RequestContext keys set by all three
-routes, landing in the same buckets on purpose. No pipeline change was needed.
+routes, landing in the same buckets on purpose, through the regular usage pipeline.
 `cli-eval` is not a `novedu_codes` row (minted codes are 10 random characters,
 so a collision is impossible); it simply appears as its own row/group in the usage
 dashboard, with NULL code metadata.

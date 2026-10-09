@@ -149,8 +149,9 @@ instructions: |
   (the shared prompt-fragment core — `docs/prompt-fragments.md`) and place fragments
   inline in `instructions` with `{{fragment "alias.id" …}}` markers, embedding plain-text
   files (e.g. a sample solution) with `{{file "alias"}}` (spliced verbatim, never
-  compiled). `loadCoding` (`lib/coding-fetch.ts`) renders the block through
-  `assembleFragmentPrompt(block, baseUrl, fetch, { validateLibraries: false }, instructions)`
+  compiled). `loadCoding` (`lib/coding-fetch.ts`) hands the parsed YAML to the pure
+  `resolveCoding` (`lib/coding-resolve.ts`), which renders the block through
+  `assembleFragmentPrompt(block, url, fetcher, { validateLibraries: false, allowedSchemes }, instructions)`
   and stores the rendered host text back as `instructions`, identical to writing; a
   YAML with **neither** `fragment_files` nor `text_files` returns `instructions`
   byte-verbatim (never compiled), and a fetch / consistency / assembly failure fails the

@@ -80,7 +80,7 @@ keeps its first-seen value — negligible for a cost aggregate).
 |---|---|---|
 | tokens + tool calls — tutor, quiz discussion, writing, quiz grader | Mastra observability exporter | `MODEL_GENERATION` + tool-call spans, attributed via `requestContext` |
 | tokens + coding requests — coding proxy | the coding route | taps the passthrough response for the `usage` chunk; both tables, `coding_requests` `+1` per metered response |
-| tokens — CLI grader evals | `POST /api/eval/grade` and `POST /api/eval/judge` | the same exporter path (they run `quizEvaluator` / `evalJudge`), both tagged with the `cli-eval` sentinel keys below — grading and feedback-judging tokens land in the SAME buckets on purpose (`docs/cli-eval.md`) |
+| tokens — CLI evals | `POST /api/eval/grade`, `POST /api/eval/respond` and `POST /api/eval/judge` | the same exporter path (they run `quizEvaluator` / `evalTutor` / `evalJudge`), all tagged with the `cli-eval` sentinel keys below — grading, tutor-generation and judging tokens land in the SAME buckets on purpose (`docs/cli-eval.md`) |
 | user messages | CopilotKit route (`run`) | `after()` → `recordUserMessage` |
 | quiz answers | `submitAnswer` (`lib/quiz-actions.ts`) | `after()` → `recordQuizAnswer` on a successful grade |
 | writing saves | `saveWriting` (`lib/writing-actions.ts`) | `after()` → `recordWritingSave` after a successful save |
@@ -92,10 +92,10 @@ the CopilotKit route sets them on `built.context` before `getLocalAgent`; the qu
 grader sets them on the RequestContext it builds for `submitAnswer`. `usageUserId` is
 set for **all** codes including anonymous ones (it only ever reaches `usage_by_user`).
 
-**CLI grader evals** (`novedu-cli eval`, `docs/cli-eval.md`) ride the identical
+**CLI evals** (`novedu-cli eval`, `docs/cli-eval.md`) ride the identical
 pipeline with a **sentinel attribution**: `usageCode = "cli-eval"`,
 `usageModule = "eval"`, `usageUserId` = the teacher's user id. No pipeline change was
-needed — the route just sets the three keys like every other agent seam. `cli-eval`
+needed — each route just sets the three keys like every other agent seam. `cli-eval`
 is deliberately **not** a `novedu_codes` row: minted codes are 10 random characters,
 so a collision is impossible, and a teacher's eval spend lands in its own
 `usage_by_code` row (and its own module group) instead of being mistaken for a

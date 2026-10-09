@@ -404,8 +404,9 @@ no bearer route.
 
 ## Error handling
 
-The stores return `undefined` (or `false`) on a database error and never throw.
-They never pass the raw error on: a Drizzle error's message embeds the SQL
+The stores return `undefined` (or `false`) on a database error and never throw —
+except `deleteResultsForCode` (`lib/quiz-result-store.ts`), which lets its delete error
+propagate so the code-delete transaction rolls back. They never pass the raw error on: a Drizzle error's message embeds the SQL
 parameters (user ids, counts), so `reportStoreFailure` logs and records a fixed
 `Error("<store>: <op> failed")` plus the SQLSTATE (`sqlState()`) only.
 

@@ -1,6 +1,6 @@
 ---
 title: Hosting images
-description: Upload an image in Novedu and show it in a quiz or tutor by name, without running your own image hosting.
+description: Upload an image in Novedu and show it in a quiz question by name, without running your own image hosting.
 sidebar:
   order: 8
 audience: teacher
@@ -15,7 +15,7 @@ related:
 A picture often explains more than a paragraph: a diagram in a quiz question, a
 map, a chart students should interpret. You can host such images directly in
 Novedu. The image gets a stable name, you don't need a public web server, and
-every activity you write can reference it by that name.
+every quiz you write can reference it by that name.
 
 ## Upload an image in the app
 
@@ -76,8 +76,8 @@ image:
   the YAML for each place you use the image.
 - `credit` is optional here: without it, the credit stored at upload is shown.
 
-Tutors and fragments accept the same kind of image block; check the authoring
-guide of the module you're writing for where it goes.
+Image blocks work in quizzes only, one optional image per question. Tutor,
+fragment, writing, and coding files have no image block.
 
 ## Replace or delete an image
 

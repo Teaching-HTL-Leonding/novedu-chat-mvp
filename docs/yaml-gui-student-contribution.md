@@ -115,12 +115,8 @@ prompt:
   fragment_files:            # libraries this tutor pulls fragments from
     - id: general            # alias used below
       url: "general-fragments.yaml"   # absolute http(s) OR relative to this file
-  fragments:                 # which fragments to include, with parameters
-    - file: general          # must match a fragment_files alias
-      id: persona            # a fragment id inside that file
-      variables:             # values for that fragment's input_schema
-        subject: "math"
-  tutor_instructions: |      # required, appended last
+  tutor_instructions: |      # required; a Handlebars template when fragment_files are declared
+    {{fragment "general.persona" subject="math"}}
     Be patient and Socratic.
 ```
 
@@ -130,8 +126,7 @@ prompt:
 id: my-fragments             # required, file id
 fragments:                   # at least one
   - id: persona              # required, unique within the file
-    version: 1               # required
-    priority: 100            # required, unique across referenced fragments (render order)
+    version: 1               # optional
     input_schema:            # OPTIONAL — the variables this fragment expects
       type: object
       required: [subject]
@@ -144,11 +139,14 @@ fragments:                   # at least one
 
 Rules your GUI must respect (the validator enforces all of these):
 
-- **Strict schema** — unknown/misspelled keys are rejected (e.g. `prioirty:` fails).
+- **Strict schema** — unknown/misspelled keys are rejected (e.g. `contnet:` fails).
 - **Handlebars** in `content` (`{{var}}`, `{{#each}}`, `{{#if}}`).
-- **Unique `priority`** across all referenced fragments.
-- **Variable types must match** — a tutor's `variables` value must match the
-  fragment's declared `input_schema` type (`string` / `boolean` / `array`).
+- **Inline placement** — a tutor uses a fragment by placing a
+  `{{fragment "alias.id" key="value"}}` marker in `tutor_instructions`; `alias` must
+  match a `fragment_files` id, and the marker's position is where the fragment renders.
+- **Variable types must match** — each marker argument (`key="value"`, `key=true`, or
+  `key=(array "a" "b")`) must match the fragment's declared `input_schema` type
+  (`string` / `boolean` / `array`).
 - **`kind` is frozen** at create time — your editor cannot change a file from tutor to
   fragment.
 - **Name pattern** — `^[A-Za-z0-9_-]{1,100}$` (use `validateFileName`).
@@ -219,7 +217,7 @@ TutorSchema, FragmentFileSchema           // Zod schemas — .parse()/.safeParse
 getFragmentInputSchema(file: FragmentFile, fragmentId: string): InputSchema | undefined
 formatZodIssues(zodIssues): string[]      // flatten a schema error into readable lines
 FILE_NAME_PATTERN, validateFileName, isFileKind, type FileKind
-// plus the TypeScript types: Tutor, Fragment, FragmentFile, FragmentRef, InputSchema,
+// plus the TypeScript types: Tutor, Fragment, FragmentFile, InputSchema,
 // ExampleQuestion, VariableValue, ValidationError, ValidationWarning, ErrorCode, WarningCode
 ```
 
@@ -281,9 +279,9 @@ function SaveBar({ name, model }: { name: string; model: unknown }) {
 
 ### Read a tutor's fragment parameters (the important one)
 
-To let the teacher fill a tutor's per-fragment `variables`, you must learn what each
-referenced fragment expects. Load each fragment file, parse it, and read its
-`input_schema`:
+To let the teacher fill the arguments of a tutor's `{{fragment}}` markers, you must
+learn what each referenced fragment expects. Load each fragment file, parse it, and
+read its `input_schema`:
 
 ```tsx
 import {

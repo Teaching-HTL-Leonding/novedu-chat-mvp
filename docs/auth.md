@@ -117,14 +117,14 @@ only sign-in provider. Key facts so future runs don't have to rediscover the set
 ## The user id
 
 The session user id is **`novedu_user.id`** — never the Entra `oid` directly, though the
-two coincide for rows that predate this table: those were seeded with the former Entra
-`oid` as their id (so every pre-existing `novedu_codes.created_by`,
-`novedu_user_chats.user_id`, etc. still resolves), and the `oid` itself is kept in
-`novedu_account.account_id` either way (that is what makes a pre-existing, oid-keyed user
-row link to the right identity on its first sign-in — the callback matches by
-`(provider_id, account_id)`, so the placeholder seed email never matters). A person
-signing in for the first time gets a random 32-character id. Nothing that joins on the user id needs to
-know or care which case it is: it is always `novedu_user.id`, by value, everywhere.
+two coincide for the user rows that migrations seed: those carry the Entra `oid` as their
+id (the value their `novedu_codes.created_by`, `novedu_user_chats.user_id`, etc. hold),
+and the `oid` itself is kept in `novedu_account.account_id` either way (that is what
+makes a seeded, oid-keyed user row link to the right identity on its first sign-in —
+the callback matches by `(provider_id, account_id)`, so the placeholder seed email
+never matters). A person signing in for the first time gets a random 32-character id.
+Nothing that joins on the user id needs to know or care which case it is: it is always
+`novedu_user.id`, by value, everywhere.
 
 ## Teacher role
 

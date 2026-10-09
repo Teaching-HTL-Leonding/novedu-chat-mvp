@@ -11,13 +11,11 @@ channel the command speaks is `docs/api.md`.
 ## Why
 
 A publication that embeds activities — the driving case is the Creative Coding
-Quarto book, `rstropek/ddp-ts-p5-beginner-course` — used to hardcode a minted
-code at every reference site (`{{< quiz hb34gpvahn … >}}`). Minting was a manual
-per-activity ritual (validate the YAML, build the raw URL by hand, `codes
-create`, paste the code into the chapter), and NOTHING machine-readable linked an
-activity YAML to the code minted for it: that mapping lived only in
-`novedu_codes` and in free-text notes. With 21 quizzes and more coming, this does
-not scale.
+Quarto book, `rstropek/ddp-ts-p5-beginner-course` — references a minted code at
+every reference site (`{{< quiz hb34gpvahn … >}}`). Minting each code by hand
+(validate the YAML, build the raw URL, `codes create`, paste the code into the
+chapter) does not scale to dozens of activities, and `novedu_codes` alone links no
+activity YAML to its code in a form the publication can read.
 
 The registry is the BibTeX of activity codes. One hand-written file lists the
 activity URLs plus their minting parameters under stable keys; `codes sync`

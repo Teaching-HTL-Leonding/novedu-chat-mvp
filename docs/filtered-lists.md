@@ -163,8 +163,8 @@ subsystems repeat it.
 else = that user id verbatim. Two existing `ListFilterBar` behaviors then do the work:
 the serializer drops empty `<select>` values, so the default view has NO query string,
 and "Clear" is a bare `router.push(pathname)` — which therefore lands back on the
-teacher's own items with no code of its own. (The old `?mine=0` checkbox is gone from
-these three pages; the bearer API routes keep their own `mine` param — `docs/api.md`.)
+teacher's own items with no code of its own. (The bearer API routes have their own
+`mine` param — `docs/api.md`.)
 
 A user id outside the option list — a stale bookmark, or an owner whose last item was
 deleted — is **kept**, not silently swapped for the default: it filters (and finds
@@ -219,10 +219,11 @@ and behaves identically and improves once. The pieces:
 way to delete a code / file / image: there is no per-row trash button and no
 edit-page single delete. The store keeps the per-item work in a helper that takes a
 **`DbExecutor`** (the shared `Db | Transaction` type from `lib/db`):
-`closeActiveFile` (files), `closeActiveImage` (images), `deleteCodeRows` +
-`deleteCodeConversations` (codes). The bulk action loops that helper inside **one
-`getDb().transaction(...)`**, so every selected item is removed with identical
-per-item logic.
+`closeActiveFile` (files), `closeActiveImage` (images), `deleteCodeRows` (codes).
+The bulk action loops that helper inside **one `getDb().transaction(...)`**, so every
+selected item is removed with identical per-item logic. Codes also have
+`deleteCodeConversations`, which takes only the code and runs on Mastra storage
+outside that transaction (below).
 
 **Two-pool transaction caveat.** Drizzle (`novedu_*`) and Mastra (`mastra_*`) are
 separate pools that can't share a transaction. So files (pure Drizzle soft-delete)

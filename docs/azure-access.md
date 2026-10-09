@@ -13,8 +13,8 @@ before changing how you run the app locally, and whenever a login has expired.
 ## Two environments
 
 Novedu runs in a two-stage Azure Container Apps environment in the tenant of
-HTL Leonding (`docs/azure-runtime-env.md`). The single App Service it used to
-run on, in a different tenant and subscription, is kept on standby.
+HTL Leonding (`docs/azure-runtime-env.md`). A single App Service in a
+different tenant and subscription is kept on standby.
 
 | | Old environment (standby) | New environment (production) |
 |---|---|---|
@@ -23,9 +23,9 @@ run on, in a different tenant and subscription, is kept on standby.
 | Database | Postgres server `db-pgnovedu`, database `novedu` | Postgres server `psql-novedu`, databases `novedu_dev` / `novedu_prod` |
 | Image files | share `novedu-files` in `stnoveduchatmvp` | share `novedu-files` per stage (`docs/azure-runtime-env.md`) |
 
-The prod stage started empty: it did **not** receive the old environment's
-data. That data lives on in two places — unchanged in the old environment, and
-as the copy in the dev stage (`docs/azure-runtime-env.md`, "Data in the dev
+The prod stage holds **no** copy of the old environment's data. That data
+lives in two places — unchanged in the old environment, and as the copy in the
+dev stage (`docs/azure-runtime-env.md`, "Data in the dev
 stage").
 
 What is still open: Azure Foundry in the new tenant (both stages run on SCCH

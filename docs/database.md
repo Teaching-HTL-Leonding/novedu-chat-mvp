@@ -262,9 +262,9 @@ only by the prod stage's own boot.
   migration aborts startup on purpose.
 - Applying migrations seeds `novedu_user` and `novedu_account` from every user
   id already referenced across the app's other tables (`created_by`, `user_id`,
-  `resolved_by`, `closed_by`, …), so every row that predates the auth tables
-  still resolves: each seeded `novedu_user.id` is the id already in use by that
-  row (the former Entra `oid` for a pre-existing user), and its matching
+  `resolved_by`, `closed_by`, …), so every user id those tables reference
+  resolves: each seeded `novedu_user.id` is the id already in use by that
+  row (the user's Entra `oid`), and its matching
   `novedu_account` row (`provider_id = 'microsoft'`, `account_id` = that same
   id) is what lets that identity's first sign-in through better-auth link back
   to the seeded row instead of minting a second one. A user signing in for the

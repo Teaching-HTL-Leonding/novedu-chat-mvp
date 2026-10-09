@@ -207,11 +207,11 @@ An activity that declares neither `fragment_files:` nor `text_files:` is left ex
 Once an activity does declare a fragment library or a text file, its instructions are read as a template. Two things follow:
 
 - If you want a literal `{{` in your own wording (not a marker), write it as `\{{` so it isn't mistaken for one.
-- A marker only works when its library is declared. If you write `{{fragment "…"}}` but forget the matching `fragment_files:` entry, the text is sent to the model as-is instead of being replaced. Declare every library you place a marker from.
+- A marker only works when its library is declared. If you write `{{fragment "…"}}` but forget the matching `fragment_files:` entry, validation reports an unknown library and the activity doesn't start. Declare every library you place a marker from.
 
 ## Validating a library
 
-You can validate a fragment library on its own, before any activity uses it: on the app's Validate page, switch the selector to **Fragment library** and paste the library's address, or run the CLI with `--kind fragment`. The check confirms the file's structure, that fragment ids are unique, and that every fragment's content renders against its own declared inputs, so a typo in a template surfaces before a colleague's activity trips over it.
+You can validate a fragment library on its own, before any activity uses it: on the app's Files page, select **New file**, enter a name, set **Kind** to **Fragment**, paste the library's YAML, and select **Validate**, or run the CLI with `--kind fragment`. The check confirms the file's structure, that fragment ids are unique, and that every fragment's content renders against its own declared inputs, so a typo in a template surfaces before a colleague's activity trips over it.
 
 Validating or sharing an *activity* runs the same thorough check over every fragment in every library the activity references, even fragments it doesn't place. A library that validates once is safe for everyone who builds on it. The activity check also fetches every declared text file and checks each placed line range against the real file, so a `from=` or `to=` past the end of the file fails validation instead of surprising a class later.
 
