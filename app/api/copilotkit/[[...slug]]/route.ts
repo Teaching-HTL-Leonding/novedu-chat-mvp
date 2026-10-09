@@ -79,6 +79,23 @@ export function trimToNewTurn<T extends { role?: unknown }>(messages: T[]): T[] 
 // required parameter. Distinct from any real code (codes are [a-z0-9-]{1,32}).
 const INFO_RESOURCE_ID = "__info__";
 
+/**
+ * The agent ids the BROWSER may know about: every module's `runtime.agentId`
+ * (tutor, quiz discussion, writing — derived from the registry, never listed by
+ * hand). `/info` advertises exactly these, because CopilotKit's client resolves a
+ * chat's agent from the `/info` agent list and throws for an id it does not find.
+ * The internal agents Mastra also knows (`quizEvaluator`, `evalJudge`,
+ * `evalTutor`) are deliberately absent: no module runs them through this route,
+ * so their names and descriptions have no business reaching a browser.
+ */
+function studentFacingAgentIds(): string[] {
+  const ids = new Set<string>();
+  for (const def of Object.values(codeModules)) {
+    if (def.runtime) ids.add(def.runtime.agentId);
+  }
+  return [...ids];
+}
+
 // The runtime endpoints the CopilotKit v2 client actually uses, classified
 // from the request path (segments after the /api/copilotkit base). Everything
 // else 404s — see the THREAT MODEL note below.
@@ -190,15 +207,17 @@ async function resolveThreadOwnership(
 //     `x-thread-token` HMAC binding (code, session user, threadId), signed when
 //     the threadId was issued (lib/thread-token.ts).
 //  4. AGENT — each module RUNS exactly one agent (codeModules[module].runtime
-//     .agentId); any other agent id 404s, so the registered-but-internal
-//     `quizEvaluator` grader and `evalJudge` feedback judge are never reachable
-//     through this web route. (Their only other callers are the teacher-only
-//     bearer routes /api/eval/grade and /api/eval/judge, which bring their own
-//     system prompts — docs/cli-eval.md.)
+//     .agentId), and the per-request runtime REGISTERS only that one agent. Any
+//     other agent id 404s here before a runtime is built (and the runtime would
+//     not know it anyway), so the Mastra-registered but internal `quizEvaluator`
+//     grader, `evalJudge` feedback judge and `evalTutor` eval tutor are never
+//     reachable through this web route. (Their only other callers are
+//     `submitAnswer` and the teacher-only bearer routes /api/eval/{grade,judge,
+//     respond}, which bring their own system prompts — docs/cli-eval.md.)
 //
-// The lone exception is GET `/info`: runtime metadata (the agent registry +
-// capabilities) with no chat data, gated by AUTHENTICATION ALONE — the teacher's
-// read-only conversation viewer needs it without a code.
+// The lone exception is GET `/info`: runtime metadata (the student-facing agent
+// list + capabilities) with no chat data, gated by AUTHENTICATION ALONE — the
+// teacher's read-only conversation viewer needs it without a code.
 //
 // Past those gates the route makes ONE role-dependent choice — the only one it
 // has: which AgentRunner feeds the SSE writer, so that a thinking model's
@@ -243,14 +262,26 @@ async function handler(req: Request): Promise<Response> {
     );
   }
 
-  // INFO is runtime METADATA — the agent registry and AG-UI capabilities, with
-  // NO chat data — gated by AUTHENTICATION ALONE. The teacher's read-only
-  // conversation viewer pings `/info` on mount without any access header, so
-  // requiring one here would 403 it for no benefit. The placeholder resourceId
-  // is never consulted: `/info` runs no agent.
+  // INFO is runtime METADATA — the student-facing agent list and AG-UI
+  // capabilities, with NO chat data — gated by AUTHENTICATION ALONE. The
+  // teacher's read-only conversation viewer pings `/info` on mount without any
+  // access header, so requiring one here would 403 it for no benefit. The
+  // placeholder resourceId is never consulted: `/info` runs no agent.
+  //
+  // Two things keep it from advertising more than the browser needs: the agent
+  // list is exactly `studentFacingAgentIds()` (never the internal agents), and
+  // the runner is the stripping one — which deliberately does not re-expose
+  // `ɵsupportsLocalThreadEndpoints`, so `threadEndpoints.list`/`inspect` report
+  // false instead of offering the local thread endpoints this route 404s anyway.
   if (runtimeRequest.kind === "info") {
     const runtime = new CopilotRuntime({
-      agents: MastraAgent.getLocalAgents({ mastra, resourceId: INFO_RESOURCE_ID }),
+      agents: Object.fromEntries(
+        studentFacingAgentIds().map((agentId) => [
+          agentId,
+          MastraAgent.getLocalAgent({ mastra, agentId, resourceId: INFO_RESOURCE_ID }),
+        ]),
+      ),
+      runner: new ReasoningStrippingRunner(),
     });
     const app = createCopilotEndpoint({ runtime, basePath: "/api/copilotkit" });
     return app.fetch(req);
@@ -273,9 +304,9 @@ async function handler(req: Request): Promise<Response> {
   }
 
   // AGENT: each module runs exactly one agent; any other id 404s, so the
-  // registered-but-internal `quizEvaluator` grader and `evalJudge` feedback
-  // judge stay unreachable from the web (the teacher-only /api/eval/grade and
-  // /api/eval/judge are their one other caller each).
+  // Mastra-registered but internal `quizEvaluator`, `evalJudge` and `evalTutor`
+  // stay unreachable from the web. Defense in depth with the runtime below,
+  // which registers ONLY this module's agent.
   if (runtimeRequest.agentId !== def.runtime.agentId) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
@@ -308,12 +339,18 @@ async function handler(req: Request): Promise<Response> {
   built.context.set(USAGE_USER_ID, userId);
   built.context.set(USAGE_MODULE, entry.module);
 
+  // ONLY the module's own agent is registered — never Mastra's whole registry —
+  // keyed by the id the client addresses it with.
+  const agentId = def.runtime.agentId;
   const runtime = new CopilotRuntime({
-    agents: MastraAgent.getLocalAgents({
-      mastra,
-      resourceId: code,
-      requestContext: built.context,
-    }),
+    agents: {
+      [agentId]: MastraAgent.getLocalAgent({
+        mastra,
+        agentId,
+        resourceId: code,
+        requestContext: built.context,
+      }),
+    },
     // A teacher gets the library's own runner — the very one the stripping runner
     // wraps — so their stream is the unmodified behaviour, reasoning included.
     // BOTH are wrapped for failure reporting: a turn that dies inside the agent

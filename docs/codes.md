@@ -165,8 +165,12 @@ header scheme: **`x-code`** (+ `x-thread-token`; headers, not a query string,
 because CopilotKit appends sub-paths like `/info` to the runtime URL). It
 `checkCode`s the header, reads `module` off the row, looks up
 `codeModules[module].runtime` to pick the agent id and build the
-`RequestContext`, and runs that one agent. `resourceId` is the **code** for every
-module. One access check, one header scheme, module-driven agent selection.
+`RequestContext`, and runs that one agent: any other agent id in the path 404s, and
+the per-request CopilotKit runtime **registers only that agent**
+(`MastraAgent.getLocalAgent`, never Mastra's whole registry), so the internal
+agents (`quizEvaluator`, `evalJudge`, `evalTutor`) are not even known to it.
+`resourceId` is the **code** for every module. One access check, one header scheme,
+module-driven agent selection.
 
 The tutor agent additionally resolves the YAML's opt-in **built-in tools**
 (top-level `tools:`, default `[]`) per request, alongside its prompt and model —
@@ -205,7 +209,9 @@ with its token) is useless to anyone else. This is the ONLY thread isolation
 there is — Mastra fetches threads by id without checking the resourceId — and it
 is stateless on purpose; an ownership table would break the anonymity promise
 below. All runtime endpoints the app does not use (`/threads/*`, `/transcribe`,
-…) return 404.
+…) return 404, and `/info` does not advertise them: its runner is the
+`ReasoningStrippingRunner`, which does not claim local thread-endpoint support, so
+`threadEndpoints.list`/`inspect` report `false`.
 
 ## URLs & the code field
 
@@ -435,8 +441,11 @@ isolation and is unaffected.
   the frontend rendering (the shared message components, the agent-less provider)
   is `docs/chat.md`. Its `CopilotKitProvider` still pings `/api/copilotkit/info`
   once on mount; that ping succeeds (200) because the runtime route serves **`/info`
-  as auth-only metadata** — the agent registry + capabilities, no chat data, gated by
-  authentication ALONE — even though the viewer sends no `x-code` header. The DATA
+  as auth-only metadata** — the student-facing agent list + capabilities, no chat
+  data, gated by authentication ALONE — even though the viewer sends no `x-code`
+  header. The list is every module's `runtime.agentId`, derived from the registry
+  (CopilotKit's client resolves a chat's agent from it and throws for an id it does
+  not find, so every `ModuleChat` agent must appear); the internal agents never do. The DATA
   endpoints (`run`/`connect`/`stop`) stay gated by the code AND the thread-ownership
   token. Keep this split in mind when touching the runtime route.
 - **Conversation export** — not a page but the bearer route
@@ -712,7 +721,8 @@ in-page discussion live in `app/[code]/_quiz/`.
   runs the agent with `structuredOutput: { schema: QUIZ_VERDICT_SCHEMA }`. No
   `Memory` → a `generate()` persists nothing. **The grader is never web-reachable
   by students** — it is not any module's `runtime.agentId`, so
-  `agent/quizEvaluator/*` 404s on the runtime route, and `submitAnswer` is its only
+  `agent/quizEvaluator/*` 404s on the runtime route (whose runtime never registers
+  it, and whose `/info` never lists it), and `submitAnswer` is its only
   student-facing caller. The **one other caller** is the teacher-only bearer route
   `POST /api/eval/grade` (`novedu-cli eval`, `docs/cli-eval.md`), which supplies its
   OWN system prompt from the client: the server-only `evaluation` prompts still
@@ -766,7 +776,9 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
 - The security-critical paths run in CI with **no** DB, because the gate
   short-circuits before any runtime is built: the runtime gate
   (`app/api/copilotkit/[[...slug]]/route.unit.test.ts`, real thread-token HMAC,
-  asserts module dispatch + that the grader 404s), the dispatcher's consumption of
+  asserts module dispatch, that the grader 404s, that a run/connect runtime registers
+  only the module's agent, and — through the real CopilotKit runtime — that `/info`
+  lists only the student-facing agents and no thread endpoints), the dispatcher's consumption of
   `checkCode` (`app/[code]/page.unit.test.tsx`) and the tutor render
   (`render-tutor.unit.test.tsx`), the Layer-2 validator seam and the Layer-3
   module dispatch, plus the rejection/error UI
