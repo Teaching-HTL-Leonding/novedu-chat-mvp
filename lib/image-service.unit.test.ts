@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -37,7 +36,6 @@ function content(size: number, type = "image/png"): Blob {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.writeNewObject.mockResolvedValue({ ok: true, byteLength: 1234 });
   mocks.deleteObject.mockResolvedValue({ ok: true, existed: true });
   mocks.getActiveImage.mockResolvedValue(null); // name free by default

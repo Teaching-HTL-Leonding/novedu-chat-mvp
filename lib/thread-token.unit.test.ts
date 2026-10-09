@@ -71,7 +71,6 @@ describe("canonicalThreadPayload", () => {
 
 describe("getThreadTokenSecret", () => {
   afterEach(() => {
-    vi.unstubAllEnvs();
     resetThreadTokenSecretForTests();
   });
 

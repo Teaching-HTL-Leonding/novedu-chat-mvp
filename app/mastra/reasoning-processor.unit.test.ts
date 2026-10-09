@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import type { MastraDBMessage } from "@mastra/core/memory";
 import type { ProcessOutputResultArgs } from "@mastra/core/processors";
 import { describe, expect, it } from "vitest";

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 
 // The writing code-module (Layer 3): buildRequestContext loads the writing YAML and
 // sets the agent instructions + model on the RequestContext (502 on load failure); and
@@ -44,11 +44,6 @@ const entry = {
   anonymous: false,
 } as unknown as CodeEntry;
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.unstubAllEnvs();
-});
-
 describe("writingModule descriptor", () => {
   it("references the writing file kind", () => {
     expect(writingModule.fileKind).toBe("writing");
@@ -68,20 +63,16 @@ describe("writingModule.runtime.buildRequestContext", () => {
 
   it("502s a Foundry activity when the server has no AZURE_FOUNDRY_ENDPOINT (availability gate)", async () => {
     vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
-    try {
-      loadWriting.mockResolvedValue({
-        ok: true,
-        writing: { model: "gpt-5.4-mini", provider: "Azure Foundry", instructions: "Coach." },
-      });
-      const result = await writingModule.runtime?.buildRequestContext(entry);
-      expect(result).toMatchObject({
-        ok: false,
-        status: 502,
-        message: expect.stringContaining("Azure Foundry"),
-      });
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    loadWriting.mockResolvedValue({
+      ok: true,
+      writing: { model: "gpt-5.4-mini", provider: "Azure Foundry", instructions: "Coach." },
+    });
+    const result = await writingModule.runtime?.buildRequestContext(entry);
+    expect(result).toMatchObject({
+      ok: false,
+      status: 502,
+      message: expect.stringContaining("Azure Foundry"),
+    });
   });
 
   it("sets the model, provider and the teacher's instructions on the request context", async () => {
@@ -133,42 +124,36 @@ describe("writingModule.runtime.buildRequestContext", () => {
     });
     // The YAML's level with no override…
     const fromYaml = await writingModule.runtime?.buildRequestContext(entry);
-    if (fromYaml?.ok) {
-      const ctx = fromYaml.context as unknown as { get(k: string): unknown };
-      expect(ctx.get("writing-reasoning")).toBe("minimal");
-    }
+    assert(fromYaml?.ok);
+    const yamlCtx = fromYaml.context as unknown as { get(k: string): unknown };
+    expect(yamlCtx.get("writing-reasoning")).toBe("minimal");
     // …and the override's level when the code carries one.
     const withOverride = {
       ...entry,
       llm: { provider: "SCCH", model: "override-model", reasoning: "high" },
     } as CodeEntry;
     const overridden = await writingModule.runtime?.buildRequestContext(withOverride);
-    if (overridden?.ok) {
-      const ctx = overridden.context as unknown as { get(k: string): unknown };
-      expect(ctx.get("writing-reasoning")).toBe("high");
-    }
+    assert(overridden?.ok);
+    const overrideCtx = overridden.context as unknown as { get(k: string): unknown };
+    expect(overrideCtx.get("writing-reasoning")).toBe("high");
   });
 
   it("502s a Foundry OVERRIDE on a server without AZURE_FOUNDRY_ENDPOINT (gate on the effective provider)", async () => {
     vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "");
-    try {
-      loadWriting.mockResolvedValue({
-        ok: true,
-        writing: { model: "gemma-4", provider: "SCCH", instructions: "Coach." },
-      });
-      const withOverride = {
-        ...entry,
-        llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" },
-      } as CodeEntry;
-      const result = await writingModule.runtime?.buildRequestContext(withOverride);
-      expect(result).toMatchObject({
-        ok: false,
-        status: 502,
-        message: expect.stringContaining("Azure Foundry"),
-      });
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    loadWriting.mockResolvedValue({
+      ok: true,
+      writing: { model: "gemma-4", provider: "SCCH", instructions: "Coach." },
+    });
+    const withOverride = {
+      ...entry,
+      llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" },
+    } as CodeEntry;
+    const result = await writingModule.runtime?.buildRequestContext(withOverride);
+    expect(result).toMatchObject({
+      ok: false,
+      status: 502,
+      message: expect.stringContaining("Azure Foundry"),
+    });
   });
 });
 

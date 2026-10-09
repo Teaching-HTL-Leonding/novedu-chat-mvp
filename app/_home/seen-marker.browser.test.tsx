@@ -11,7 +11,6 @@ vi.mock("@/lib/achievement-actions", () => ({ markAchievementsSeen }));
 import { SeenMarker } from "./seen-marker";
 
 beforeEach(() => {
-  vi.clearAllMocks();
   markAchievementsSeen.mockResolvedValue({ ok: true });
 });
 

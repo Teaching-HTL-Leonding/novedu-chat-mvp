@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The report server actions. Every I/O seam is mocked — the session, the code
@@ -94,8 +92,6 @@ function quizInput(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  process.env.AUTH_SECRET = "unit-test-secret";
   resetThreadTokenSecretForTests();
   getSession.mockResolvedValue({ user: { id: USER } });
   checkCode.mockResolvedValue({ ok: true, entry: { code: CODE } });

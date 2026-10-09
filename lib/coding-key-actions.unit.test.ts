@@ -24,7 +24,6 @@ const CODE = "a1b2c3d4e5";
 const codingEntry = { code: CODE, module: "coding", fileUrl: "https://example.com/c.yaml" };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.requireTeacherUserId.mockResolvedValue({ ok: true, userId: "teacher-oid-1" });
   mocks.getCode.mockResolvedValue(codingEntry);
   mocks.getOrCreateCodingKey.mockResolvedValue({

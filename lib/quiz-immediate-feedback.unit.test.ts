@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   immediateFeedbackConfigured,
   immediateFeedbackMisconfigured,
@@ -7,10 +7,6 @@ import {
 // Pure env reading (like the openrouter-endpoint tests): the gate is the
 // case-insensitive flag AND the OpenRouter key, with the "flag without key" case
 // split out so a boot warning can tell an operator why nothing happens.
-
-beforeEach(() => {
-  vi.unstubAllEnvs();
-});
 
 /** The full flag matrix against a present / absent key. */
 const FLAGS: Array<[label: string, value: string | undefined, meansOn: boolean]> = [

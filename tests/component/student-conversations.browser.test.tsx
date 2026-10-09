@@ -28,7 +28,6 @@ const CONVERSATIONS = [
 ];
 
 beforeEach(() => {
-  vi.clearAllMocks();
   loadConversationTranscript.mockResolvedValue([
     { id: "m1", role: "user", content: "Hi" },
     { id: "m2", role: "assistant", content: "Hello" },

@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { Writable } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -56,7 +55,6 @@ let written: string;
 let sink: Writable;
 
 beforeEach(() => {
-  vi.clearAllMocks();
   written = "";
   sink = new Writable({
     write(chunk, _encoding, callback) {

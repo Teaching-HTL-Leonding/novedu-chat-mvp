@@ -1,7 +1,5 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // `app/diagnostics/page.tsx` is the teacher gate + shell. The gate must stop a
 // non-teacher before any query starts; a bare URL must not query until the
@@ -42,7 +40,6 @@ async function renderPage(params: Record<string, string>) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.stubEnv("APPLICATIONINSIGHTS_CONNECTION_STRING", CONFIGURED);
   vi.stubEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "");
   vi.stubEnv("OTEL_SDK_DISABLED", "");
@@ -52,10 +49,6 @@ beforeEach(() => {
     failedCalls: Promise.resolve({ state: "empty" }),
     impact: Promise.resolve({ state: "empty" }),
   });
-});
-
-afterEach(() => {
-  vi.unstubAllEnvs();
 });
 
 it("denies a non-teacher without loading anything", async () => {

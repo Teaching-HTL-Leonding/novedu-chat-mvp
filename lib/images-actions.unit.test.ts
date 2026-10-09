@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The image actions are a thin auth + parsing shell around the service and the
@@ -55,7 +54,6 @@ function uploadForm(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.requireTeacherUserId.mockResolvedValue({ ok: true, userId: "teacher-1" });
   mocks.createImageForUser.mockResolvedValue({
     ok: true,

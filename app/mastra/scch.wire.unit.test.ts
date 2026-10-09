@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import type { LanguageModelV3Prompt } from "@ai-sdk/provider";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,11 +22,11 @@ interface CapturedCall {
 
 const captured = vi.hoisted(() => [] as CapturedCall[]);
 
-// Env + the fetch stub must exist BEFORE app/mastra/scch.ts is imported: it reads
+// Env + the fetch fake must exist BEFORE app/mastra/scch.ts is imported: it reads
 // the env at module scope and runs its model discovery in a top-level await.
 vi.hoisted(() => {
-  process.env.SCCH_BASE_URL = "https://scch.test/v1";
-  process.env.SCCH_API_KEY = "sk-wire-test";
+  vi.stubEnv("SCCH_BASE_URL", "https://scch.test/v1");
+  vi.stubEnv("SCCH_API_KEY", "sk-wire-test");
 
   const chatCompletion = JSON.stringify({
     id: "cmpl-1",
@@ -55,7 +53,7 @@ vi.hoisted(() => {
     "",
   ].join("\n\n");
 
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+  const fetchFake = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     // The startup model discovery (a GET) — answer it so the import stays offline.
     if (url.endsWith("/models")) {
@@ -68,7 +66,8 @@ vi.hoisted(() => {
     return body.stream === true
       ? new Response(sse, { headers: { "content-type": "text/event-stream" } })
       : new Response(chatCompletion, { headers: { "content-type": "application/json" } });
-  });
+  };
+  vi.spyOn(globalThis, "fetch").mockImplementation(fetchFake);
 });
 
 import { scchProvider } from "@/app/mastra/scch";

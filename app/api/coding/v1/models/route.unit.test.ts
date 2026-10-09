@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // HTTP-level integration test for the OpenAI-conventional models list. It drives the
@@ -61,7 +59,6 @@ function siblingPost(headers: Record<string, string> = {}): Request {
 let fetchSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  vi.clearAllMocks();
   lookupCodingKey.mockResolvedValue({ status: "found", code: CODE, userId: USER_ID });
   checkCode.mockResolvedValue({ ok: true, entry: codingEntry });
   loadCoding.mockResolvedValue({

@@ -1,6 +1,5 @@
-// @vitest-environment node
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // Each async server section, called directly with its data mocked and rendered
 // to HTML (the app/usage/*-section.unit.test.tsx pattern). The page data is
@@ -88,8 +87,6 @@ async function render(
 }
 
 const UNAVAILABLE = "could not be loaded";
-
-beforeEach(() => vi.clearAllMocks());
 
 describe("RecentList", () => {
   it("labels each code with its module and falls back to the code without a note", async () => {

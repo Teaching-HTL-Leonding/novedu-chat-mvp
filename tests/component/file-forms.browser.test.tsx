@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-react";
 
 // The create/edit forms gained a standalone "Validate" button that checks the
@@ -54,10 +54,6 @@ const SCHEMA_ERROR = {
   ok: false,
   errors: [{ code: "FRAGMENT_FILE_SCHEMA_ERROR", message: "bad" }],
 };
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 test("create: Validate surfaces the validator's errors and does NOT create", async () => {
   actions.validateNewFileAction.mockResolvedValue(SCHEMA_ERROR);

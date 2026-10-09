@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The bearer multipart upload route: real auth gate over a stubbed
@@ -101,7 +100,6 @@ function chunked(totalBytes: number, contentType: string): Request {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockReset();
   getSession.mockResolvedValue(null);
   mocks.createImageForUser.mockResolvedValue({

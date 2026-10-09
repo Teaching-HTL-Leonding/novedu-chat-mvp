@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // The coding code-module (Layer 3): it has NO `runtime` (the module is reached only
 // through its own public OpenAI-compatible route, never the CopilotKit runtime), and
@@ -21,10 +21,6 @@ const entry = {
   fileUrl: "https://example.com/api/files/c",
   anonymous: true,
 } as unknown as CodeEntry;
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 describe("codingModule descriptor", () => {
   it("references the coding file kind and has NO runtime", () => {

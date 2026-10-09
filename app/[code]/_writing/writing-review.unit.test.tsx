@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,10 +31,6 @@ const CODE = "a1b2c3d4e5";
 async function render(props: { search?: string } = {}) {
   return renderToStaticMarkup(await WritingSaversList({ code: CODE, search: props.search }));
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 describe("rows", () => {
   beforeEach(() => {

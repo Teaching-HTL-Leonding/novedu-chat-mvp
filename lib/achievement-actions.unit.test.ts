@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -13,7 +12,6 @@ vi.mock("@/lib/home-data", () => ({ invalidateHome: mocks.invalidateHome }));
 import { markAchievementsSeen } from "@/lib/achievement-actions";
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.getSession.mockResolvedValue({ user: { id: "session-user" } });
   mocks.markSeen.mockResolvedValue(true);
 });

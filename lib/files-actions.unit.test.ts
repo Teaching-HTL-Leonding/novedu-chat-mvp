@@ -67,7 +67,6 @@ import {
 } from "@/lib/files-actions";
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.requireTeacherUserId.mockResolvedValue({ ok: true, userId: "teacher-1" });
   mocks.resolveAppOrigin.mockResolvedValue("http://localhost:3000");
   mocks.loadAndCheckFragmentFile.mockResolvedValue({ ok: true });

@@ -1,7 +1,5 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { TokenBucket } from "@/lib/usage-range";
 
 // `TokenSection` reads the time series ONCE and renders both the (stubbed here) bar
@@ -37,10 +35,6 @@ async function render() {
     await TokenSection({ range: "24h", now: new Date("2026-07-04T14:30:00Z") }),
   );
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 it("renders the bar chart and a table row with the summed total", async () => {
   getTokenTimeSeries.mockResolvedValue([bucket("14:00", 1000, 2500, 500)]);

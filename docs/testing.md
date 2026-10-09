@@ -101,9 +101,9 @@ non-secret dummy — see `docs/ci-security.md`.
 
 | Layer | Tool (vitest project) | File glob | Env | In CI |
 | --- | --- | --- | --- | --- |
-| Unit | Vitest `unit` | `**/*.unit.test.{ts,tsx}` | jsdom (or `node` per-file) | ✅ |
+| Unit | Vitest `unit` | `**/*.unit.test.{ts,tsx}` | Node (or `jsdom` per-file) | ✅ |
 | Component | Vitest `component` | `**/*.browser.test.tsx` | Playwright Chromium (real browser) | ✅ |
-| CLI unit | Vitest `unit` | `cli/src/**/*.unit.test.ts` | jsdom — colocated, rides the root `unit` glob | ✅ |
+| CLI unit | Vitest `unit` | `cli/src/**/*.unit.test.ts` | Node — colocated, rides the root `unit` glob | ✅ |
 | CLI integration | Vitest (`cli/vitest.config.mts`) | `cli/test/*.test.ts` | the built binary + the offline fixtures server | ✅ |
 | Hermetic e2e | Playwright | `e2e/*.spec.ts` (untagged) | dev server + the Postgres it boots against (session minting only) | ✅ |
 | `@live-db` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-db` | same Postgres, read/written beyond session minting (container in CI / Azure Postgres local) | ✅ |
@@ -122,8 +122,9 @@ non-secret dummy — see `docs/ci-security.md`.
 - Config: **`vitest.config.mts`** defines the `unit` + `component` projects;
   **`playwright.config.ts`** the e2e suite (with `e2e/auth.setup.ts` minting
   session cookies — see `docs/auth.md`).
-- A unit test that needs Web `fetch` types or to import a server route uses the
-  per-file pragma `// @vitest-environment node` (still in the `unit` project).
+- Unit tests run in Node. The few that need a DOM declare
+  `// @vitest-environment jsdom`; real browser behaviour belongs in a component
+  test.
 - The `component` project loads **no global CSS**: tests see the UA stylesheet
   plus inline styles only, which is all a behavioral test needs. A test that
   **measures layout** (sizes, positions, wrapping, overflow) must itself
@@ -137,6 +138,23 @@ non-secret dummy — see `docs/ci-security.md`.
   layout assertion is non-vacuous: reintroduce the fault it guards and watch
   it fail (see `tests/component/list-overflow.browser.test.tsx`,
   `dialog-shell.browser.test.tsx`, `image-lightbox.browser.test.tsx`).
+
+## House conventions
+
+- **Every test starts clean.** `vitest.config.mts` sets `clearMocks`,
+  `unstubEnvs` and `unstubGlobals`, so mock call history, `vi.stubEnv` and
+  `vi.stubGlobal` are reset before each test — no file resets them itself. A
+  `beforeEach` only sets defaults. Mock implementations are not reset, so a
+  default that some test overrides belongs in `beforeEach`.
+- **Env only through `vi.stubEnv`**, never `process.env.X = …` (a write
+  survives the reset; `tests/test-conventions.unit.test.ts` guards this).
+  `tests/setup.unit.ts` stubs `AUTH_SECRET` for every unit test. A stub made
+  outside a test or `beforeEach` (module scope, `vi.hoisted`, `beforeAll`) is
+  reset before the first test — fine for a value read once at import or setup,
+  wrong for one the code reads again during a test.
+- **No assertion behind a condition.** `if (r.ok) expect(…)` skips its checks
+  when `r` failed, and `expect(r.ok && r.x).toBe(false)` passes when it failed.
+  Narrow with Vitest's `assert(r.ok)`, then assert unconditionally.
 
 ## Test fixtures
 
@@ -288,14 +306,13 @@ runtime is built, and the page maps a check result to a view. The pattern (see
 `app/api/copilotkit/[[...slug]]/route.unit.test.ts` and
 `app/[code]/page.unit.test.tsx`):
 
-1. `// @vitest-environment node`.
-2. `vi.mock` the I/O seams — `@/lib/session` (the cookie-session gate), the
+1. `vi.mock` the I/O seams — `@/lib/session` (the cookie-session gate), the
    `novedu_*` stores, `@/app/mastra`, and (past the gate) the CopilotKit
    runtime / Mastra agent factory. Bearer routes mock `@/auth` instead — see
    `docs/api.md`.
-3. Keep the **security-critical pure module REAL** — e.g. `lib/thread-token.ts`
+2. Keep the **security-critical pure module REAL** — e.g. `lib/thread-token.ts`
    (the HMAC), so the test exercises the actual check, not a stub of it.
-4. Drive real `Request` objects through the exported handler, or call the
+3. Drive real `Request` objects through the exported handler, or call the
    `async` server component directly and render its element with
    `renderToStaticMarkup`; assert status / JSON / HTML.
 

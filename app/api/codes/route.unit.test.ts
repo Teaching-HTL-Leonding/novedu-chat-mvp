@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The bearer routes for codes: the auth gate stays REAL over a stubbed
@@ -88,7 +87,6 @@ const WIRE_ENTRY = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockReset();
   getSession.mockResolvedValue(null);
   mocks.listCodes.mockResolvedValue(unpagedResult([ENTRY]));

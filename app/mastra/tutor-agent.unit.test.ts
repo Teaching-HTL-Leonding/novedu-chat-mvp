@@ -68,8 +68,6 @@ function requestContext(values: Record<string, unknown>) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  vi.unstubAllEnvs();
   loadAndBuildTutorPrompt.mockResolvedValue({
     ok: true,
     prompt: "YAML PROMPT",

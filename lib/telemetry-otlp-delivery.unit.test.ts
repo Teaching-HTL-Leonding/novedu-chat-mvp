@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { trace } from "@opentelemetry/api";
 import type { NodeSDK } from "@opentelemetry/sdk-node";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -46,7 +45,6 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await receiver.close();
-  vi.unstubAllEnvs();
 });
 
 describe("OTLP delivery from environment configuration", () => {

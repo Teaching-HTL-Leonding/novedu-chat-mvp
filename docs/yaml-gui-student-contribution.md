@@ -54,7 +54,8 @@ e2e/yaml-gui/                  ← 🟢 your end-to-end (Playwright) tests
 - Components & files: `kebab-case.tsx` (e.g. `variable-field.tsx`), one component per
   file where reasonable.
 - Unit/component tests live **next to** the code they test:
-  - `*.unit.test.tsx` — fast logic tests (run in jsdom).
+  - `*.unit.test.tsx` — fast logic tests (run in Node; add
+    `// @vitest-environment jsdom` as the first line if a test needs a DOM).
   - `*.browser.test.tsx` — component tests (run in a real browser).
 - End-to-end tests: `e2e/yaml-gui/*.spec.ts`.
 
@@ -336,7 +337,7 @@ keys), **type** (`string` / `boolean` / `array`), whether it is **required**, an
 Your tests run as part of the normal suite (no special setup):
 
 ```bash
-npm run test:unit        # *.unit.test.tsx (jsdom)
+npm run test:unit        # *.unit.test.tsx (Node)
 npm run test:component   # *.browser.test.tsx (real browser)
 npm run test:e2e         # Playwright specs in e2e/ (yours go in e2e/yaml-gui/)
 npm run check            # Biome lint + format (run before every commit)

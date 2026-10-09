@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { eq, type SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -67,7 +66,6 @@ const NOW = new Date("2026-10-04T17:30:00Z");
 const START = new Date("2026-09-04T22:00:00.000Z");
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.spyOn(console, "error").mockImplementation(() => {});
   Object.assign(fake.state, {
     codeRows: [],

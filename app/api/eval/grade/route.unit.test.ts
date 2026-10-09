@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { APICallError } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -83,7 +82,6 @@ async function postRequest(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockReset();
   getSession.mockResolvedValue(null);
   mocks.providerUnavailableReason.mockReturnValue(null);

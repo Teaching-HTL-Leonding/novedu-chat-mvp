@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -120,9 +118,6 @@ function gradedContext(): { get(k: string): unknown } {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  // `startDiscussion` signs a real thread token (lib/thread-token stays real).
-  process.env.AUTH_SECRET = "unit-test-secret";
   getSession.mockResolvedValue({ user: { id: "student-1" } });
   checkCode.mockResolvedValue({ ok: true, entry });
   loadQuiz.mockResolvedValue({ ok: true, quiz });

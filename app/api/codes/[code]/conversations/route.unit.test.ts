@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The creator-only bearer route for the conversation export: the auth gate
@@ -72,7 +71,6 @@ const CONVERSATION = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockReset();
   getSession.mockResolvedValue(null);
   mocks.getCode.mockResolvedValue(ENTRY);

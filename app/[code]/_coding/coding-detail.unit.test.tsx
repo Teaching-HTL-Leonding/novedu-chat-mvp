@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -56,7 +54,6 @@ const teacherKey = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockResolvedValue({ user: { id: "teacher-oid-1" } });
   loadCoding.mockResolvedValue({
     ok: true,

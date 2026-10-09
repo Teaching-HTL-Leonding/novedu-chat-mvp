@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { INCIDENT_2026_09_25 } from "@/lib/diagnostics-report.fixture";

@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { context, TraceFlags, trace } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { logs as sdkLogs, node as sdkNode } from "@opentelemetry/sdk-node";
@@ -28,7 +27,6 @@ let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.stubEnv("OTEL_SDK_DISABLED", "");
   vi.stubEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "");
   vi.stubEnv("APPLICATIONINSIGHTS_CONNECTION_STRING", "");
@@ -38,7 +36,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 

@@ -1,7 +1,5 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // The tutor module's student render: it loads + builds the tutor prompt from the
 // code's file_url and renders the chat, or shows the validation errors on a broken
@@ -48,10 +46,6 @@ async function render(frozenAnonymous = true) {
   });
   return renderToStaticMarkup(element);
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 describe("RenderTutor", () => {
   it("valid + loadable tutor → renders the chat", async () => {

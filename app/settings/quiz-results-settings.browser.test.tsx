@@ -13,7 +13,6 @@ vi.mock("@/lib/user-settings-actions", () => ({ updateUserSettings, deleteMyQuiz
 import { QuizResultsSettings } from "./quiz-results-settings";
 
 beforeEach(() => {
-  vi.clearAllMocks();
   updateUserSettings.mockResolvedValue({ ok: true });
   deleteMyQuizResults.mockResolvedValue({ ok: true, deleted: 4 });
 });

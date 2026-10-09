@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,9 +38,6 @@ vi.mock("./render-coding", () => ({
 // after() schedules the recents mutation; run it inline so the call is observable.
 vi.mock("next/server", () => ({ after: (fn: () => void) => fn() }));
 
-// signThreadToken (real) runs on the valid path; it needs AUTH_SECRET.
-process.env.AUTH_SECRET = "test-secret-for-page-unit";
-
 import CodePage from "./page";
 
 const CODE = "a1b2c3d4e5";
@@ -56,7 +51,6 @@ async function renderPage(code = CODE) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   getSession.mockResolvedValue({ user: { id: USER_ID } });
 });
 

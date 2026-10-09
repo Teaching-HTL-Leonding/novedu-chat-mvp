@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { parseQuiz, type Quiz, toPublicQuiz } from "@/lib/quiz-yaml";
 
 const VALID = `
@@ -236,8 +236,9 @@ questions:
 
   it("defaults imageInput to false and carries the two-level flags", () => {
     const defaulted = parseQuiz(VALID);
-    expect(defaulted.ok && defaulted.quiz.imageInput).toBe(false);
-    expect(defaulted.ok && defaulted.quiz.questions[0]?.imageInput).toBeUndefined();
+    assert(defaulted?.ok);
+    expect(defaulted.quiz.imageInput).toBe(false);
+    expect(defaulted.quiz.questions[0]?.imageInput).toBeUndefined();
 
     const result = parseQuiz(`
 llm:

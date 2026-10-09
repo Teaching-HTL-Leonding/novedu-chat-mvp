@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getBearerTokenProvider: vi.fn(),
@@ -16,11 +16,6 @@ import {
   foundryModelsUrl,
   foundryV1Base,
 } from "@/lib/llm/foundry-endpoint";
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  vi.unstubAllEnvs();
-});
 
 describe("foundry URL builders", () => {
   it("appends /openai/v1 to the bare resource endpoint", () => {

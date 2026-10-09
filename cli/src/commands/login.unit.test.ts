@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -55,7 +54,6 @@ const stdout = () => log.mock.calls.map((c: unknown[]) => c[0] as string);
 const stderr = () => error.mock.calls.map((c: unknown[]) => c[0] as string);
 
 beforeEach(() => {
-  vi.clearAllMocks();
   log = vi.spyOn(console, "log").mockImplementation(() => {});
   error = vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -190,11 +188,7 @@ describe("login", () => {
     vi.stubEnv("NOVEDU_SERVER", "http://localhost:9999");
     vi.mocked(getAccessToken).mockResolvedValue("stored-token");
     vi.mocked(fetchIdentity).mockResolvedValue(IDENTITY);
-    try {
-      await runLogin();
-      expect(JSON.parse(stdout()[0]).server).toBe("http://localhost:9999");
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    await runLogin();
+    expect(JSON.parse(stdout()[0]).server).toBe("http://localhost:9999");
   });
 });

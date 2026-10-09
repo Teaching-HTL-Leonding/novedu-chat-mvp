@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -48,7 +46,6 @@ async function render(code = CODE, threadId = THREAD, from?: string) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   isEffectiveTeacher.mockResolvedValue(true);
 });
 

@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import type { Message } from "@ag-ui/core";
 import { describe, expect, it } from "vitest";
 import { collapseReplayedRuns, toAguiMessage } from "@/lib/conversation-collapse";

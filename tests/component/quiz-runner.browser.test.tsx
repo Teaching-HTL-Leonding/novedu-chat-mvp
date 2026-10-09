@@ -113,7 +113,6 @@ function quizOf(n: number, immediateFeedback = true): ResolvedQuiz {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   submitAnswer.mockResolvedValue({ ok: true, result: "correct", feedback: "Well done." });
   precheckAnswer.mockResolvedValue({ ok: true, hint: { verdict: "correct" } });
   // Pass-through by default: the runner walks the pool in order. Individual tests

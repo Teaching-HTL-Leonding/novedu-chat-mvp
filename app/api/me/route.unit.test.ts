@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The bearer identity probe: real auth gate over a stubbed `getSession`. Pins the

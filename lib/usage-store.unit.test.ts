@@ -60,7 +60,6 @@ const COUNTER_KEYS = [
 ];
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.onConflictDoUpdate.mockResolvedValue(undefined);
 });
 

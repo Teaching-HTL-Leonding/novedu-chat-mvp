@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -47,7 +46,6 @@ const day = (date: string, extra: Partial<UsageDay> = {}): UsageDay => ({
 const USAGE = [day("2026-09-22", { quizAnswers: 12 }), day("2026-09-28"), day("2026-10-01")];
 
 beforeEach(() => {
-  vi.clearAllMocks();
   resetHomeCacheForTests();
   mocks.loadStudentFacts.mockResolvedValue({ usage: USAGE, keys: [], quiz: [], reports: [] });
   mocks.listGrants.mockResolvedValue([]);

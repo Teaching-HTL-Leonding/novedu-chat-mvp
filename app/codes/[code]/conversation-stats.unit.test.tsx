@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -48,10 +46,6 @@ const interaction = {
 async function render(e = entry()) {
   return renderToStaticMarkup(await ConversationStats({ entry: e }));
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-});
 
 describe("error + empty", () => {
   it("shows a transient notice when stats fail to load", async () => {

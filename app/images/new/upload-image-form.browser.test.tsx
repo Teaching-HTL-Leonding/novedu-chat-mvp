@@ -43,7 +43,6 @@ function submitForm() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.uploadImage.mockResolvedValue({ ok: true, name: "diagram" });
 });
 

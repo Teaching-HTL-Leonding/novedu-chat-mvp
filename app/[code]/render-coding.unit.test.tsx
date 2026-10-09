@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -34,7 +32,6 @@ async function render() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   loadCoding.mockResolvedValue({ ok: true, coding: { title: "My Coding Activity" } });
 });
 

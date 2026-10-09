@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -57,7 +56,6 @@ function get(id = ID, headers: HeadersInit = {}) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   mocks.getSession.mockResolvedValue(session(false));
   mocks.getActiveImageById.mockResolvedValue(row());
   mocks.openObject.mockResolvedValue({

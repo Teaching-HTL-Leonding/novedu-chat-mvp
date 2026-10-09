@@ -30,7 +30,6 @@ const PROPS = {
 };
 
 beforeEach(() => {
-  vi.clearAllMocks();
   saveQuizResult.mockResolvedValue({ ok: true, saved: true });
 });
 

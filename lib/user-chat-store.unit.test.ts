@@ -34,7 +34,6 @@ const USER = "student-sub-1";
 const FILE_URL = "https://example.com/tutor.yaml";
 
 beforeEach(() => {
-  vi.clearAllMocks();
   resetUserChatDedupeCacheForTests();
   mocks.onConflictDoNothing.mockResolvedValue(undefined);
   // Default tutor/quiz: anonymous (the YAML default) — nothing must be stored.

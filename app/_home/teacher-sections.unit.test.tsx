@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -110,7 +109,6 @@ const withFacts = (facts: TeacherFacts, ...grants: [Grant[] | undefined] | []) =
   );
 
 beforeEach(() => {
-  vi.clearAllMocks();
   withFacts(FACTS);
 });
 

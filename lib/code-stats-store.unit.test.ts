@@ -1,5 +1,3 @@
-// @vitest-environment node
-
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Behavior-level tests for the stats/delete store. The two I/O seams — the
