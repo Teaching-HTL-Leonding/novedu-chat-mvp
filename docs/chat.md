@@ -186,7 +186,8 @@ chat input and nothing runs or connects an agent.
 
 It shares only two things with the live chat: `runtimeUrl="/api/copilotkit"` (its
 `CopilotKitProvider` needs one, and pings `/info` once on mount — served as
-auth-only metadata) and the `MarkdownRenderer`. It does not fit `ModuleChat`'s
+auth-only metadata listing only the modules' student-facing agents) and the
+`MarkdownRenderer`. It does not fit `ModuleChat`'s
 contract (it has none of the chat slots and would have to defeat the threadId
 pinning), so folding it in would add branches for a fundamentally different,
 agent-less surface. It stays separate on purpose.
@@ -198,7 +199,9 @@ threadId={…} headers={…} />` from the module's render component, adding
 `children` only if the module needs a slot inside the provider (a frontend tool,
 a header) and `className` only for module-specific deltas. Everything else
 (provider, headers, the threadId decision, the markdown renderer, the base
-container) comes for free.
+container) comes for free. The `agentId` must be the module descriptor's
+`runtime.agentId`: `/info` lists exactly those ids (derived from the registry), and
+the client throws for a chat whose agent `/info` does not list.
 
 Wiring the new module into the rest of the app — the descriptor, the registry
 line, the label, the render case, the validator/`readAnonymousFlag` branch, the

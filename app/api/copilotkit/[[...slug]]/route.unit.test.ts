@@ -14,7 +14,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // What is REAL here: `classifyRequest` (the endpoint allowlist) and the
 // thread-token HMAC (`lib/thread-token.ts`). What is mocked: the session, the code
 // lookup, the module registry, and everything downstream of a passed gate (the
-// CopilotKit runtime, the Mastra agent factory, the attribution write).
+// CopilotKit runtime, the Mastra agent factory, the attribution write). One
+// `/info` case additionally replays the captured runtime options through the
+// REAL CopilotKit runtime, so what `/info` advertises is asserted on the
+// library's own response, not on a mock.
 
 const getSession = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
@@ -32,7 +35,19 @@ const buildRequestContext = vi.hoisted(() =>
     > => ({ ok: true, context: { set: contextSet } }),
   ),
 );
-const getLocalAgents = vi.hoisted(() => vi.fn(() => []));
+// `getLocalAgent` returns a recognisable stub per agent id, so a test can read
+// the exact agent set a runtime was built with off the CopilotRuntime options.
+// `getLocalAgents` (every Mastra agent) must never be used — it is kept as a spy
+// only to assert exactly that.
+const getLocalAgent = vi.hoisted(() =>
+  vi.fn(({ agentId }: { agentId: string }) => ({ agentId, description: `stub ${agentId}` })),
+);
+const getLocalAgents = vi.hoisted(() => vi.fn(() => ({})));
+// The real runtime (used by one `/info` case) has its own telemetry client,
+// configured once at import — keep it from ever phoning home from a test.
+vi.hoisted(() => {
+  process.env.COPILOTKIT_TELEMETRY_DISABLED = "true";
+});
 const endpointFetch = vi.hoisted(() =>
   vi.fn(async (_req: Request) => new Response("{}", { status: 200 })),
 );
@@ -48,24 +63,26 @@ vi.mock("next/headers", () => ({ cookies }));
 vi.mock("@/lib/code-store", () => ({ checkCode }));
 vi.mock("@/lib/user-chat-store", () => ({ recordUserChat }));
 vi.mock("@/lib/usage-store", () => ({ recordUserMessage }));
-// The module registry decides which agent runs per module. Both modules share one
-// buildRequestContext mock so a test can flip it to the error path.
+// The module registry decides which agent runs per module. All runtime modules
+// share one buildRequestContext mock so a test can flip it to the error path;
+// `coding` mirrors the real descriptor — no runtime, so no agent in `/info`.
 vi.mock("@/lib/code-modules/registry", () => ({
   codeModules: {
     tutor: { fileKind: "tutor", runtime: { agentId: "tutor", buildRequestContext } },
     quiz: { fileKind: "quiz", runtime: { agentId: "quizDiscussion", buildRequestContext } },
     writing: { fileKind: "writing", runtime: { agentId: "writing", buildRequestContext } },
+    coding: { fileKind: "coding" },
   },
 }));
 // Importing the real Mastra instance would pull in @mastra/pg + the Azure
-// credential chain; the handler only passes it through to getLocalAgents.
+// credential chain; the handler only passes it through to getLocalAgent.
 vi.mock("@/app/mastra", () => ({ mastra: {} }));
 // after() needs a Next request scope; the happy-path tests don't assert the
 // scheduled attribution, so a no-op keeps them in the plain node env.
 vi.mock("next/server", () => ({ after: vi.fn() }));
 // Stub everything past the gate so a passed request returns deterministically
 // without a real runtime, agent, or model.
-vi.mock("@ag-ui/mastra", () => ({ MastraAgent: { getLocalAgents } }));
+vi.mock("@ag-ui/mastra", () => ({ MastraAgent: { getLocalAgent, getLocalAgents } }));
 // `ReasoningStrippingRunner` stays REAL (it is the security-critical filter), so
 // the two runner classes it extends/wraps must exist on the stubbed module. The
 // stub `InMemoryAgentRunner` is also what the route hands a teacher, so the tests
@@ -134,6 +151,23 @@ function token(threadId: string, code = CODE, userId = USER_ID) {
   return signThreadToken({ code, userId, threadId }, getThreadTokenSecret());
 }
 
+/** The options the route handed to the last `new CopilotRuntime(...)`. */
+function lastRuntimeOptions(): { agents?: Record<string, unknown>; runner?: unknown } {
+  const options = CopilotRuntime.mock.lastCall?.[0] as
+    | { agents?: Record<string, unknown>; runner?: unknown }
+    | undefined;
+  expect(options).toBeDefined();
+  return options ?? {};
+}
+
+/** The agent ids the last runtime was built with, sorted. */
+function lastRuntimeAgentIds(): string[] {
+  return Object.keys(lastRuntimeOptions().agents ?? {}).sort();
+}
+
+// Mastra-registered agents that no module runs through this route.
+const INTERNAL_AGENT_IDS = ["quizEvaluator", "evalJudge", "evalTutor"];
+
 beforeEach(() => {
   vi.clearAllMocks();
   resetThreadTokenSecretForTests();
@@ -147,7 +181,6 @@ beforeEach(() => {
     entry: { module: "tutor", fileUrl: "https://example.com/t.yaml" },
   });
   buildRequestContext.mockResolvedValue({ ok: true, context: { set: contextSet } });
-  getLocalAgents.mockReturnValue([]);
   endpointFetch.mockResolvedValue(new Response("{}", { status: 200 }));
 });
 
@@ -270,9 +303,55 @@ describe("info endpoint (auth-only metadata)", () => {
     expect(res.status).toBe(200);
     expect(endpointFetch).toHaveBeenCalledOnce();
     expect(checkCode).not.toHaveBeenCalled();
-    expect(getLocalAgents).toHaveBeenCalledWith(
-      expect.objectContaining({ resourceId: "__info__" }),
+    expect(getLocalAgent).toHaveBeenCalledWith(expect.objectContaining({ resourceId: "__info__" }));
+  });
+
+  it("lists exactly the student-facing agents — never the internal ones", async () => {
+    const res = await GET(new Request(`${BASE}/info`));
+    expect(res.status).toBe(200);
+    // Derived from the registry: every module's runtime.agentId, nothing more
+    // (`coding` has no runtime, so contributes none).
+    expect(lastRuntimeAgentIds()).toEqual(["quizDiscussion", "tutor", "writing"]);
+    for (const internal of INTERNAL_AGENT_IDS) {
+      expect(lastRuntimeAgentIds()).not.toContain(internal);
+      expect(getLocalAgent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ agentId: internal }),
+      );
+    }
+    // Never Mastra's whole registry, and no request context: /info runs nothing.
+    expect(getLocalAgents).not.toHaveBeenCalled();
+    for (const [options] of getLocalAgent.mock.calls) {
+      expect(options).not.toHaveProperty("requestContext");
+    }
+  });
+
+  it("uses a runner that does not advertise local thread endpoints", async () => {
+    await GET(new Request(`${BASE}/info`));
+    const { runner } = lastRuntimeOptions();
+    expect(runner).toBeInstanceOf(ReasoningStrippingRunner);
+    expect(runner).not.toBeInstanceOf(InMemoryAgentRunner);
+    expect(runner).not.toHaveProperty("ɵsupportsLocalThreadEndpoints");
+  });
+
+  it("the REAL runtime's /info response lists only those agents and no thread endpoints", async () => {
+    await GET(new Request(`${BASE}/info`));
+    // Replay the exact options the route built through the library's own runtime
+    // + endpoint, so the assertion is on what a browser would actually receive.
+    const actual =
+      await vi.importActual<typeof import("@copilotkit/runtime/v2")>("@copilotkit/runtime/v2");
+    const runtime = new actual.CopilotRuntime(
+      lastRuntimeOptions() as ConstructorParameters<typeof actual.CopilotRuntime>[0],
     );
+    const app = actual.createCopilotEndpoint({ runtime, basePath: "/api/copilotkit" });
+    const res = await app.fetch(new Request(`${BASE}/info`));
+    expect(res.status).toBe(200);
+    const info = (await res.json()) as {
+      agents: Record<string, unknown>;
+      threadEndpoints: { list: boolean; inspect: boolean };
+    };
+    expect(Object.keys(info.agents).sort()).toEqual(["quizDiscussion", "tutor", "writing"]);
+    expect(info.threadEndpoints.list).toBe(false);
+    expect(info.threadEndpoints.inspect).toBe(false);
   });
 
   it("401s GET /info without a session (auth still required)", async () => {
@@ -287,7 +366,9 @@ describe("happy path past the gate (tutor module)", () => {
     const threadId = crypto.randomUUID();
     const res = await POST(runRequest({ threadId, token: token(threadId) }));
     expect(res.status).toBe(200);
-    expect(getLocalAgents).toHaveBeenCalledWith(expect.objectContaining({ resourceId: CODE }));
+    expect(getLocalAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: "tutor", resourceId: CODE }),
+    );
     // The three usage-attribution keys are set on the request context for the
     // observability exporter (usageUserId is set even though tutor defaults anonymous).
     expect(contextSet).toHaveBeenCalledWith(USAGE_CODE, CODE);
@@ -301,6 +382,40 @@ describe("happy path past the gate (tutor module)", () => {
       runRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
     );
     expect(res.status).toBe(404);
+  });
+
+  it("registers ONLY the module's own agent on the run runtime", async () => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(runRequest({ threadId, token: token(threadId) }));
+    expect(res.status).toBe(200);
+    expect(lastRuntimeAgentIds()).toEqual(["tutor"]);
+    expect(getLocalAgent).toHaveBeenCalledOnce();
+    expect(getLocalAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "tutor",
+        resourceId: CODE,
+        requestContext: { set: contextSet },
+      }),
+    );
+    expect(getLocalAgents).not.toHaveBeenCalled();
+  });
+
+  it("registers ONLY the module's own agent on the connect runtime", async () => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(
+      new Request(`${BASE}/agent/tutor/connect`, {
+        method: "POST",
+        headers: {
+          "x-code": CODE,
+          "content-type": "application/json",
+          "x-thread-token": token(threadId),
+        },
+        body: runBody(threadId),
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(lastRuntimeAgentIds()).toEqual(["tutor"]);
+    expect(getLocalAgents).not.toHaveBeenCalled();
   });
 });
 
@@ -409,8 +524,12 @@ describe("quiz module (reached via a quiz-module code)", () => {
       runRequest({ threadId, token: token(threadId), agent: "quizDiscussion" }),
     );
     expect(res.status).toBe(200);
-    // resourceId is the CODE for every module now (not the quiz URL).
-    expect(getLocalAgents).toHaveBeenCalledWith(expect.objectContaining({ resourceId: CODE }));
+    // resourceId is the CODE for every module (not the quiz URL).
+    expect(getLocalAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: "quizDiscussion", resourceId: CODE }),
+    );
+    // The runtime holds the discussion agent alone — the grader is not even registered.
+    expect(lastRuntimeAgentIds()).toEqual(["quizDiscussion"]);
   });
 
   it("404s a quiz-module request targeting quizEvaluator (grader is never web-reachable)", async () => {
@@ -419,7 +538,8 @@ describe("quiz module (reached via a quiz-module code)", () => {
       runRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
     );
     expect(res.status).toBe(404);
-    expect(getLocalAgents).not.toHaveBeenCalled();
+    expect(getLocalAgent).not.toHaveBeenCalled();
+    expect(CopilotRuntime).not.toHaveBeenCalled();
   });
 
   it("404s a quiz-module request targeting evalJudge (the judge is never web-reachable)", async () => {
@@ -428,7 +548,8 @@ describe("quiz module (reached via a quiz-module code)", () => {
     const threadId = crypto.randomUUID();
     const res = await POST(runRequest({ threadId, token: token(threadId), agent: "evalJudge" }));
     expect(res.status).toBe(404);
-    expect(getLocalAgents).not.toHaveBeenCalled();
+    expect(getLocalAgent).not.toHaveBeenCalled();
+    expect(CopilotRuntime).not.toHaveBeenCalled();
   });
 
   it("404s a quiz-module request targeting evalTutor (the eval tutor is never web-reachable)", async () => {
@@ -437,7 +558,8 @@ describe("quiz module (reached via a quiz-module code)", () => {
     const threadId = crypto.randomUUID();
     const res = await POST(runRequest({ threadId, token: token(threadId), agent: "evalTutor" }));
     expect(res.status).toBe(404);
-    expect(getLocalAgents).not.toHaveBeenCalled();
+    expect(getLocalAgent).not.toHaveBeenCalled();
+    expect(CopilotRuntime).not.toHaveBeenCalled();
   });
 
   it("forwards the runtime status when buildRequestContext fails (e.g. quiz load 502)", async () => {
@@ -447,7 +569,8 @@ describe("quiz module (reached via a quiz-module code)", () => {
       runRequest({ threadId, token: token(threadId), agent: "quizDiscussion" }),
     );
     expect(res.status).toBe(502);
-    expect(getLocalAgents).not.toHaveBeenCalled();
+    expect(getLocalAgent).not.toHaveBeenCalled();
+    expect(CopilotRuntime).not.toHaveBeenCalled();
   });
 });
 
@@ -464,7 +587,10 @@ describe("writing module (reached via a writing-module code)", () => {
     const res = await POST(runRequest({ threadId, token: token(threadId), agent: "writing" }));
     expect(res.status).toBe(200);
     expect(buildRequestContext).toHaveBeenCalledOnce();
-    expect(getLocalAgents).toHaveBeenCalledWith(expect.objectContaining({ resourceId: CODE }));
+    expect(getLocalAgent).toHaveBeenCalledWith(
+      expect.objectContaining({ agentId: "writing", resourceId: CODE }),
+    );
+    expect(lastRuntimeAgentIds()).toEqual(["writing"]);
   });
 
   it("404s a writing-module request targeting a non-runtime agent id", async () => {
@@ -473,7 +599,8 @@ describe("writing module (reached via a writing-module code)", () => {
       runRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
     );
     expect(res.status).toBe(404);
-    expect(getLocalAgents).not.toHaveBeenCalled();
+    expect(getLocalAgent).not.toHaveBeenCalled();
+    expect(CopilotRuntime).not.toHaveBeenCalled();
   });
 
   it("forwards the runtime status when buildRequestContext fails (writing load 502)", async () => {
@@ -485,7 +612,8 @@ describe("writing module (reached via a writing-module code)", () => {
     const threadId = crypto.randomUUID();
     const res = await POST(runRequest({ threadId, token: token(threadId), agent: "writing" }));
     expect(res.status).toBe(502);
-    expect(getLocalAgents).not.toHaveBeenCalled();
+    expect(getLocalAgent).not.toHaveBeenCalled();
+    expect(CopilotRuntime).not.toHaveBeenCalled();
   });
 });
 

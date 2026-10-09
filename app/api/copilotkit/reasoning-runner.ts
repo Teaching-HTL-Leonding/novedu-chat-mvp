@@ -62,7 +62,8 @@ export function isReasoningEvent(event: BaseEvent): boolean {
  *
  * Note it deliberately does NOT re-expose `ɵsupportsLocalThreadEndpoints`, so
  * the runtime's local thread endpoints stay unsupported through this runner —
- * the route 404s them anyway (docs/codes.md).
+ * the route 404s them anyway (docs/codes.md). The `/info` runtime relies on
+ * this: it is built with this runner so `/info` never advertises them.
  */
 export class ReasoningStrippingRunner extends AgentRunner {
   private readonly inner: AgentRunner;

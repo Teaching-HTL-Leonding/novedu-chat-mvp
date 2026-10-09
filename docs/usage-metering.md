@@ -88,7 +88,7 @@ keeps its first-seen value — negligible for a cost aggregate).
 
 Agent attribution rides three RequestContext keys — `usageCode`, `usageUserId`,
 `usageModule` (`lib/usage-context-keys.ts`) — set on the per-request RequestContext:
-the CopilotKit route sets them on `built.context` before `getLocalAgents`; the quiz
+the CopilotKit route sets them on `built.context` before `getLocalAgent`; the quiz
 grader sets them on the RequestContext it builds for `submitAnswer`. `usageUserId` is
 set for **all** codes including anonymous ones (it only ever reaches `usage_by_user`).
 
