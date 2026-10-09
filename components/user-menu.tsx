@@ -79,7 +79,7 @@ export function UserMenu({
       >
         {user.isTeacher && (
           <span
-            className="inline-flex cursor-help items-center text-foreground/70"
+            className="inline-flex cursor-help items-center text-foreground/70 [&_svg]:pointer-events-none"
             role="img"
             title="Teacher — may perform teacher-only operations"
             aria-label="Teacher"
