@@ -1,8 +1,8 @@
 // @vitest-environment node
 
-import { beforeEach, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The tutor "start over" action. The two I/O seams — the session and the code
+// The tutor thread actions ("start over", "resume"). The two I/O seams — the session and the code
 // gate — are mocked, but `lib/thread-token` stays REAL (docs/testing.md:
 // security-critical pure modules are exercised for real), so the minted token is
 // a genuine HMAC and the assertions below prove the actual binding: the token
@@ -10,8 +10,10 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const getSession = vi.hoisted(() => vi.fn());
 const checkCode = vi.hoisted(() => vi.fn());
+const threadLastMessageAt = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/session", () => ({ getSession }));
+vi.mock("@/lib/tutor-history-store", () => ({ threadLastMessageAt }));
 vi.mock("@/lib/code-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/code-store")>()),
   checkCode,
@@ -20,12 +22,14 @@ vi.mock("@/lib/code-store", async (importOriginal) => ({
 import {
   getThreadTokenSecret,
   resetThreadTokenSecretForTests,
+  signThreadToken,
   verifyThreadToken,
 } from "@/lib/thread-token";
-import { startNewTutorThread } from "@/lib/tutor-actions";
+import { resumeTutorThread, startNewTutorThread } from "@/lib/tutor-actions";
 
 const CODE = "a1b2c3d4e5";
 const USER = "student-1";
+const MINUTE = 60 * 1000;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -33,6 +37,7 @@ beforeEach(() => {
   resetThreadTokenSecretForTests();
   getSession.mockResolvedValue({ user: { id: USER } });
   checkCode.mockResolvedValue({ ok: true, entry: { code: CODE, module: "tutor" } });
+  threadLastMessageAt.mockResolvedValue(new Date(Date.now() - 5 * MINUTE));
 });
 
 it("mints a thread whose token verifies for (code, session user, thread)", async () => {
@@ -119,4 +124,78 @@ it("re-checks the code on every call — a window that closed mid-session stops 
 
   expect((await startNewTutorThread({ code: CODE })).ok).toBe(false);
   expect(checkCode).toHaveBeenCalledTimes(2);
+});
+
+describe("resumeTutorThread", () => {
+  const THREAD = "0b6f0c1e-1111-4222-8333-444455556666";
+
+  function ownToken(over: { code?: string; userId?: string; threadId?: string } = {}) {
+    return signThreadToken(
+      { code: over.code ?? CODE, userId: over.userId ?? USER, threadId: over.threadId ?? THREAD },
+      getThreadTokenSecret(),
+    );
+  }
+
+  function resume(threadToken = ownToken(), threadId = THREAD) {
+    return resumeTutorThread({ code: CODE, threadId, threadToken });
+  }
+
+  it("accepts the owner's token on a thread last written 59 minutes ago", async () => {
+    threadLastMessageAt.mockResolvedValue(new Date(Date.now() - 59 * MINUTE));
+    expect(await resume()).toEqual({ ok: true });
+    expect(threadLastMessageAt).toHaveBeenCalledWith(CODE, THREAD);
+  });
+
+  it("rejects a malformed thread id before any lookup", async () => {
+    expect(await resume(ownToken({ threadId: "x".repeat(65) }), "x".repeat(65))).toEqual({
+      ok: false,
+    });
+    expect(await resume(ownToken({ threadId: "a b" }), "a b")).toEqual({ ok: false });
+    expect(checkCode).not.toHaveBeenCalled();
+    expect(threadLastMessageAt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["another user's token", () => ownToken({ userId: "someone-else" })],
+    ["a token for another code", () => ownToken({ code: "f5e4d3c2b1" })],
+    ["a token for another thread", () => ownToken({ threadId: "another-thread" })],
+    ["an empty token", () => ""],
+  ])("rejects %s", async (_label, token) => {
+    expect(await resume(token())).toEqual({ ok: false });
+    expect(threadLastMessageAt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["no messages", null],
+    ["exactly 60 minutes idle", new Date(Date.now() - 60 * MINUTE)],
+    ["61 minutes idle", new Date(Date.now() - 61 * MINUTE)],
+    ["a store failure", undefined],
+  ])("rejects a thread with %s", async (_label, lastAt) => {
+    threadLastMessageAt.mockResolvedValue(lastAt);
+    expect(await resume()).toEqual({ ok: false });
+  });
+
+  it("rejects a non-tutor code", async () => {
+    checkCode.mockResolvedValue({ ok: true, entry: { code: CODE, module: "writing" } });
+    expect(await resume()).toEqual({ ok: false });
+  });
+
+  it.each(["unknown-code", "not-started", "expired", "lookup-failed"] as const)(
+    "rejects a %s code",
+    async (reason) => {
+      checkCode.mockResolvedValue({ ok: false, reason });
+      expect(await resume()).toEqual({ ok: false });
+    },
+  );
+
+  it("rejects without a session", async () => {
+    getSession.mockResolvedValue(null);
+    expect(await resume()).toEqual({ ok: false });
+  });
+
+  it("binds to the SESSION user: the owner's token fails for anyone else signed in", async () => {
+    const token = ownToken();
+    getSession.mockResolvedValue({ user: { id: "someone-else" } });
+    expect(await resume(token)).toEqual({ ok: false });
+  });
 });

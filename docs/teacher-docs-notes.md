@@ -32,6 +32,11 @@ prose carries everything an editor needs.
   number of students. A restart with nothing typed into it does not count at all.
 - Only the tutor chat has the button. Do not generalise it to quizzes or writing
   activities.
+- A reload brings the current conversation back only in the SAME browser tab and
+  only while its last message is less than one hour old. Closing the tab, another
+  tab or another device, and signing out all start fresh. Never call the
+  conversation "saved" for this: nothing new is stored, and a resumed conversation
+  adds nothing to the statistics.
 
 ## 00-introduction/07-environments
 

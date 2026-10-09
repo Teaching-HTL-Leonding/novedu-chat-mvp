@@ -65,7 +65,9 @@ export default async function CodePage({ params }: { params: Promise<{ code: str
   // the code and the session user. The chat runtime route only accepts
   // thread-touching requests whose (code, user, threadId) triple matches the
   // token — that, not Mastra, is what isolates students' chats from each other
-  // (see lib/thread-token.ts). A page reload starts a fresh thread.
+  // (see lib/thread-token.ts). A page load always mints one; a tutor tab that
+  // resumes its stored conversation after a reload simply leaves it unused
+  // (app/tutor-chat.tsx).
   const threadId = randomUUID();
   const threadToken = signThreadToken({ code, userId, threadId }, getThreadTokenSecret());
 

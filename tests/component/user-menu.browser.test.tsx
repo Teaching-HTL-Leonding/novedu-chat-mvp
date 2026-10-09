@@ -5,9 +5,10 @@ import { render } from "vitest-browser-react";
 // exist in the browser test runner. The mocks record invocations so the tests
 // can assert which action a control triggers. vi.hoisted because vi.mock
 // factories are hoisted above ordinary top-level declarations.
-const { enterStudentMode, exitStudentMode } = vi.hoisted(() => ({
+const { enterStudentMode, exitStudentMode, signOut } = vi.hoisted(() => ({
   enterStudentMode: vi.fn(async () => {}),
   exitStudentMode: vi.fn(async () => {}),
+  signOut: vi.fn(async () => {}),
 }));
 
 // next/link reads Next-server globals that don't exist in the browser test
@@ -21,7 +22,7 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-vi.mock("@/lib/auth-actions", () => ({ signOutAction: vi.fn(async () => {}) }));
+vi.mock("@/lib/auth-actions", () => ({ signOutAction: signOut }));
 vi.mock("@/lib/student-mode-actions", () => ({
   enterStudentModeAction: enterStudentMode,
   exitStudentModeAction: exitStudentMode,
@@ -89,4 +90,26 @@ test("every signed-in user reaches Settings from the menu", async () => {
       .toHaveAttribute("href", "/settings");
     await screen.unmount();
   }
+});
+
+test("signing out forgets the tab's tutor threads BEFORE the sign-out action runs", async () => {
+  window.sessionStorage.clear();
+  window.sessionStorage.setItem(
+    "novedu.tutorThread.a1b2c3d4e5",
+    JSON.stringify({ threadId: "t-1", threadToken: "abc" }),
+  );
+  window.sessionStorage.setItem("unrelated", "keep");
+  // What the tab still held at the moment the action was invoked.
+  let storedWhenSigningOut: string | null = "not called";
+  signOut.mockImplementation(async () => {
+    storedWhenSigningOut = window.sessionStorage.getItem("novedu.tutorThread.a1b2c3d4e5");
+  });
+  const screen = await render(<UserMenu user={{ name: "Sam Student", isTeacher: false }} />);
+
+  await screen.getByRole("button", { name: /Sam Student/ }).click();
+  await screen.getByRole("menuitem", { name: "Sign out" }).click();
+
+  await vi.waitFor(() => expect(signOut).toHaveBeenCalledTimes(1));
+  expect(storedWhenSigningOut).toBeNull();
+  expect(window.sessionStorage.getItem("unrelated")).toBe("keep");
 });

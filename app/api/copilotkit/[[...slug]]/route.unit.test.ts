@@ -83,6 +83,9 @@ vi.mock("next/server", () => ({ after: vi.fn() }));
 // Stub everything past the gate so a passed request returns deterministically
 // without a real runtime, agent, or model.
 vi.mock("@ag-ui/mastra", () => ({ MastraAgent: { getLocalAgent, getLocalAgents } }));
+// The snapshot runner's DB read; only consulted on a connect the stubbed runtime
+// never performs, but the import must not reach a real database.
+vi.mock("@/lib/tutor-history-store", () => ({ loadThreadForChat: vi.fn() }));
 // `ReasoningStrippingRunner` stays REAL (it is the security-critical filter), so
 // the two runner classes it extends/wraps must exist on the stubbed module. The
 // stub `InMemoryAgentRunner` is also what the route hands a teacher, so the tests
@@ -99,6 +102,7 @@ vi.mock("@copilotkit/runtime/v2", () => ({
 process.env.AUTH_SECRET = "test-secret-for-route-unit";
 
 import { InMemoryAgentRunner } from "@copilotkit/runtime/v2";
+import { HistorySnapshotRunner } from "@/app/api/copilotkit/history-snapshot-runner";
 import { ReasoningStrippingRunner } from "@/app/api/copilotkit/reasoning-runner";
 import { RunErrorReportingRunner } from "@/app/api/copilotkit/run-error-runner";
 import {
@@ -463,11 +467,13 @@ describe("reasoning gate (teacher-only, fail-closed)", () => {
   });
 
   it("lets an EFFECTIVE teacher through on the library's own runner (reasoning streams)", async () => {
-    // The plain InMemoryAgentRunner — the unmodified library stream, REASONING_*
+    // The library's own InMemoryAgentRunner (behind the tutor's snapshot runner,
+    // which never touches reasoning) — the unmodified library stream, REASONING_*
     // frames intact — and emphatically NOT the filter.
     const runner = await runnerFor({ user: { id: USER_ID, isTeacher: true } });
-    expect(runner).toBeInstanceOf(InMemoryAgentRunner);
     expect(runner).not.toBeInstanceOf(ReasoningStrippingRunner);
+    expect(runner).toBeInstanceOf(HistorySnapshotRunner);
+    expect((runner as HistorySnapshotRunner).wrapped).toBeInstanceOf(InMemoryAgentRunner);
   });
 
   it("strips reasoning for a REAL teacher while student mode is active", async () => {
@@ -507,6 +513,73 @@ describe("reasoning gate (teacher-only, fail-closed)", () => {
     );
     expect(res.status).toBe(200);
     expect(lastRunnerOption()).toBeInstanceOf(ReasoningStrippingRunner);
+  });
+});
+
+// A tutor's `connect` is answered with the stored conversation by the snapshot
+// runner, which must sit INNERMOST — directly around the library's runner — so
+// the reasoning stripper and the failure reporter see its frames like any other.
+// Writing and quiz connect exactly as before.
+describe("history snapshot runner (tutor only, innermost)", () => {
+  function runnerChain(): unknown[] {
+    const options = CopilotRuntime.mock.lastCall?.[0] as { runner?: unknown } | undefined;
+    const chain: unknown[] = [];
+    let runner: unknown = options?.runner;
+    while (runner) {
+      chain.push(runner);
+      runner = (runner as { wrapped?: unknown }).wrapped;
+    }
+    return chain;
+  }
+
+  async function connectAs(session: unknown, agent = "tutor"): Promise<unknown[]> {
+    getSession.mockResolvedValue(session);
+    const threadId = crypto.randomUUID();
+    const res = await POST(
+      new Request(`${BASE}/agent/${agent}/connect`, {
+        method: "POST",
+        headers: {
+          "x-code": CODE,
+          "content-type": "application/json",
+          "x-thread-token": token(threadId),
+        },
+        body: runBody(threadId),
+      }),
+    );
+    expect(res.status).toBe(200);
+    return runnerChain();
+  }
+
+  it("student: failure reporting → reasoning stripping → snapshot → library runner", async () => {
+    const chain = await connectAs({ user: { id: USER_ID } });
+    expect(chain.map((runner) => (runner as object).constructor)).toEqual([
+      RunErrorReportingRunner,
+      ReasoningStrippingRunner,
+      HistorySnapshotRunner,
+      InMemoryAgentRunner,
+    ]);
+  });
+
+  it("teacher: failure reporting → snapshot → library runner", async () => {
+    const chain = await connectAs({ user: { id: USER_ID, isTeacher: true } });
+    expect(chain.map((runner) => (runner as object).constructor)).toEqual([
+      RunErrorReportingRunner,
+      HistorySnapshotRunner,
+      InMemoryAgentRunner,
+    ]);
+  });
+
+  it.each([
+    ["quiz", "quizDiscussion"],
+    ["writing", "writing"],
+  ])("a %s code gets no snapshot runner", async (module, agent) => {
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { module, fileUrl: "https://example.com/api/files/x" },
+    });
+    const chain = await connectAs({ user: { id: USER_ID } }, agent);
+    expect(chain.some((runner) => runner instanceof HistorySnapshotRunner)).toBe(false);
+    expect(chain.at(-1)).toBeInstanceOf(InMemoryAgentRunner);
   });
 });
 

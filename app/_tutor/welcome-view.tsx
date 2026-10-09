@@ -12,17 +12,24 @@ import type { ExampleQuestion } from "@/lib/tutors";
 //
 // This override works against CopilotKit internals (it reaches into the view's
 // gating flags and the welcome-message slot), so it is fragile across upgrades.
-// Pinned to @copilotkit/react-core 1.60.1 — re-verify the flag names and the
+// Pinned to @copilotkit/react-core 1.69.2 — re-verify the flag names and the
 // welcomeScreen slot shape when bumping the package.
 
 export function useTutorWelcomeView({
   description,
   exampleQuestions,
+  restoring = false,
 }: {
   /** Tutor `description`: rendered below the greeting on the welcome screen. */
   description: string;
   /** ≤5 questions, sampled server-side; clicking one fills the chat input. */
   exampleQuestions: ExampleQuestion[];
+  /**
+   * The chat was mounted on a resumed or reopened thread whose messages arrive
+   * with the `connect`: hold the welcome screen back until they do, or it would
+   * flash before the restored conversation.
+   */
+  restoring?: boolean;
 }): ComponentProps<typeof CopilotChat>["chatView"] {
   // The welcome screen needs to write into the chat input (clicking an example
   // question fills it in), but CopilotChat keeps the input value in internal
@@ -75,8 +82,11 @@ export function useTutorWelcomeView({
           // tutor's title, description and example questions — so override the
           // two flags that gate it: the view then shows the welcome screen
           // exactly while the chat has no messages, as in the default mode.
+          // `isConnecting` follows `restoring` instead of CopilotChat's own
+          // flag: that one clears after the provisional agent's first connect,
+          // BEFORE the real connect that carries a restored conversation.
           hasExplicitThreadId={false}
-          isConnecting={false}
+          isConnecting={restoring}
           welcomeScreen={
             description || exampleQuestions.length > 0
               ? { welcomeMessage: WelcomeWithDescription }
@@ -89,5 +99,5 @@ export function useTutorWelcomeView({
     // namespace statics (WelcomeMessage, ScrollView, …) — copy them onto the
     // wrapper so it satisfies the slot without a type assertion.
     return Object.assign(TutorChatView, CopilotChat.View);
-  }, [description, exampleQuestions]);
+  }, [description, exampleQuestions, restoring]);
 }

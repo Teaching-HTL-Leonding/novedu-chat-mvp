@@ -25,6 +25,8 @@ From there it's a normal back-and-forth conversation. Students ask in their own 
 
 Students can also start a tutor conversation over. A button above the chat clears what they've discussed and begins a fresh conversation, and it asks them to confirm first. It helps when a conversation has drifted off topic, or when a student wants to approach a question again from the beginning. The tutor won't remember anything from the earlier conversation, but you still see that conversation under the code, and a student who chats both before and after starting over counts as two conversations in your statistics.
 
+Reloading the page doesn't lose the conversation: as long as the student stays in the same browser tab, a reload brings back the current conversation if the last message was less than an hour ago.
+
 ## How you shape a tutor
 
 Everything the tutor does comes from instructions you write. Typical instructions cover:

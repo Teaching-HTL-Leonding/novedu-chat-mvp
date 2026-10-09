@@ -317,8 +317,23 @@ The Mastra memory **`resourceId` is the code** (set in the runtime route), and
 the CopilotKit client via CopilotChat's `threadId` prop (explicit mode — the shared
 `ModuleChat` primitive owns this frontend wiring; see `docs/chat.md` for why the
 prop, not the configuration provider) and proven back to the runtime by the
-`x-thread-token` ownership token (nothing is persisted client-side — a reload starts
-a fresh thread).
+`x-thread-token` ownership token.
+
+**Resume on reload (tutor only).** A tutor tab keeps its current
+`{ threadId, threadToken }` in `sessionStorage` (`lib/tutor-thread-storage.ts`): it
+survives a reload of that tab and is gone with the tab, so two tabs are two
+conversations (a duplicated tab inherits its source's entry and shares its thread).
+On mount the chat asks `resumeTutorThread` (`lib/tutor-actions.ts`), which re-runs
+the gate (session, `checkCode`, `module === "tutor"`), re-verifies the token over
+`(code, session user, threadId)` and requires the thread's last stored message to be
+less than **60 minutes** old (`lib/tutor-history-gate.ts`); every refusal is the same
+opaque `{ ok: false }`, and the chat then uses the thread `app/[code]/page.tsx`
+minted for this load. The messages themselves reach the browser with the chat's
+`connect`, answered from the database by the runtime's snapshot runner
+(`docs/chat.md`). Nothing new is persisted and no user↔thread link is written, so an
+anonymous tutor stays unlinkable. Sign-out clears every stored pair in the tab. A
+teacher in "view as student" resumes under their own `novedu_user.id` (student mode
+changes only the role, never the user id).
 
 Three places mint a thread, all server-side and all re-verifying the code first:
 `app/[code]/page.tsx` on every page load (tutor + writing), `startDiscussion`

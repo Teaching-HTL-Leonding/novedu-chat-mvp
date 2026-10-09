@@ -66,27 +66,31 @@ export function isReasoningEvent(event: BaseEvent): boolean {
  * this: it is built with this runner so `/info` never advertises them.
  */
 export class ReasoningStrippingRunner extends AgentRunner {
-  private readonly inner: AgentRunner;
+  /**
+   * The runner this one filters — PUBLIC (as on `RunErrorReportingRunner`) so the
+   * route's suite can assert what a student's stream is built on.
+   */
+  readonly wrapped: AgentRunner;
 
   /** Wraps a fresh `InMemoryAgentRunner` — the same default `CopilotRuntime` builds. */
   constructor(inner: AgentRunner = new InMemoryAgentRunner()) {
     super();
-    this.inner = inner;
+    this.wrapped = inner;
   }
 
   run(request: AgentRunnerRunRequest): Observable<BaseEvent> {
-    return this.inner.run(request).pipe(filter((event) => !isReasoningEvent(event)));
+    return this.wrapped.run(request).pipe(filter((event) => !isReasoningEvent(event)));
   }
 
   connect(request: AgentRunnerConnectRequest): Observable<BaseEvent> {
-    return this.inner.connect(request).pipe(filter((event) => !isReasoningEvent(event)));
+    return this.wrapped.connect(request).pipe(filter((event) => !isReasoningEvent(event)));
   }
 
   isRunning(request: AgentRunnerIsRunningRequest): Promise<boolean> {
-    return this.inner.isRunning(request);
+    return this.wrapped.isRunning(request);
   }
 
   stop(request: AgentRunnerStopRequest): Promise<boolean | undefined> {
-    return this.inner.stop(request);
+    return this.wrapped.stop(request);
   }
 }

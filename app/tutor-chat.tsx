@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ImageErrorNotice } from "@/components/image-error-notice";
 import { ReportButton } from "@/components/report-button";
+import { LoadingPanel } from "@/components/spinner";
 import {
   IMAGE_ACCEPT_WITH_EXTENSIONS,
   type ImageDiagnostics,
@@ -14,6 +15,8 @@ import {
   RUNTIME_THREAD_TOKEN_HEADER,
   type RuntimeHeaders,
 } from "@/lib/runtime-headers";
+import { resumeTutorThread } from "@/lib/tutor-actions";
+import { readTutorThread, removeTutorThread, writeTutorThread } from "@/lib/tutor-thread-storage";
 import type { ExampleQuestion } from "@/lib/tutors";
 import { StartOverButton } from "./_tutor/start-over-button";
 import { useTutorWelcomeView } from "./_tutor/welcome-view";
@@ -41,6 +44,30 @@ import { ModuleChat } from "./module-chat";
 // props below only SEED it. Everything that identifies the conversation — the
 // runtime headers, the report target, the provider remount key — is derived from
 // that state, never from the props, so a restart moves them all together.
+//
+// RESUME ON RELOAD (docs/chat.md → Resuming a conversation): the tab remembers
+// its current thread in `sessionStorage` (lib/tutor-thread-storage.ts). That
+// storage exists only in the browser, so the server render and the first client
+// render both show a "deciding" placeholder — reading it during render would
+// break hydration — and an effect decides: with a stored thread the server is
+// asked whether it may be resumed (`resumeTutorThread`); otherwise, or when it
+// refuses, the server-minted thread from the props is used and stored. A resumed
+// thread mounts with `restoring` set: its messages arrive with the chat's
+// `connect` (app/api/copilotkit/history-snapshot-runner.ts), and until they do
+// the welcome screen must not flash.
+
+/** The conversation the chat runs on; `restoring` = its messages arrive with the connect. */
+interface ChatThread {
+  threadId: string;
+  threadToken: string;
+  restoring: boolean;
+}
+
+/** Before the effect decided (`deciding`), while the server checks a stored thread (`resuming`), or the thread. */
+type ThreadPhase =
+  | { kind: "deciding" }
+  | { kind: "resuming" }
+  | { kind: "ready"; thread: ChatThread };
 
 /** The accumulated upload notice: one sentence per rejected file, plus what we learned about each. */
 interface UploadFailures {
@@ -76,7 +103,6 @@ export function TutorChat({
   /** ≤5 questions, sampled server-side; clicking one fills the chat input. */
   exampleQuestions?: ExampleQuestion[];
 }) {
-  const chatView = useTutorWelcomeView({ description, exampleQuestions });
   // Rejected uploads (undecodable, too large, wrong type) call onUploadFailed and
   // silently drop the file — without this notice the student would never learn why.
   const [uploadFailures, setUploadFailures] = useState<UploadFailures | null>(null);
@@ -84,25 +110,83 @@ export function TutorChat({
   // drop the placeholder chip; `onUploadFailed` is where the reason surfaces.
   // The diagnostics ride between them here, so state is written in exactly one place.
   const pendingDiagnostics = useRef<ImageDiagnostics | null>(null);
-  // The live conversation, seeded from the server render and replaced wholesale
-  // by "start over". Both halves move together — a token only ever proves the
-  // thread it was signed for.
-  const [thread, setThread] = useState({
-    threadId,
-    threadToken: runtimeHeaders[RUNTIME_THREAD_TOKEN_HEADER],
+  // The live conversation: decided after mount (resumed from this tab's storage,
+  // or the server-minted one from the props) and replaced wholesale by "start
+  // over". Both halves move together — a token only ever proves the thread it
+  // was signed for.
+  const [phase, setPhase] = useState<ThreadPhase>({ kind: "deciding" });
+  const thread = phase.kind === "ready" ? phase.thread : null;
+  const serverThreadToken = runtimeHeaders[RUNTIME_THREAD_TOKEN_HEADER];
+
+  useEffect(() => {
+    let cancelled = false;
+    const minted: ChatThread = { threadId, threadToken: serverThreadToken, restoring: false };
+    const adoptMinted = () => {
+      writeTutorThread(code, minted);
+      setPhase({ kind: "ready", thread: minted });
+    };
+
+    const stored = readTutorThread(code);
+    if (!stored) {
+      adoptMinted();
+      return;
+    }
+    setPhase({ kind: "resuming" });
+    // Any failure, a network error included, starts fresh: the stored entry is
+    // dropped and the server-minted thread takes its place.
+    Promise.resolve()
+      .then(() =>
+        resumeTutorThread({ code, threadId: stored.threadId, threadToken: stored.threadToken }),
+      )
+      .then(
+        (result) => result.ok,
+        () => false,
+      )
+      .then((ok) => {
+        if (cancelled) return;
+        if (ok) {
+          setPhase({ kind: "ready", thread: { ...stored, restoring: true } });
+        } else {
+          removeTutorThread(code);
+          adoptMinted();
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [code, threadId, serverThreadToken]);
+
+  /** Swaps the chat onto another thread and remembers it for this tab. */
+  function switchThread(next: ChatThread) {
+    writeTutorThread(code, next);
+    setPhase({ kind: "ready", thread: next });
+  }
+
+  const chatView = useTutorWelcomeView({
+    description,
+    exampleQuestions,
+    restoring: thread?.restoring ?? false,
   });
   // Memoized so the provider sees a stable headers object between renders and
   // a NEW one exactly when the thread changes.
-  const headers = useMemo(
-    () => buildRuntimeHeaders(code, thread.threadToken),
-    [code, thread.threadToken],
-  );
+  const threadToken = thread?.threadToken ?? "";
+  const headers = useMemo(() => buildRuntimeHeaders(code, threadToken), [code, threadToken]);
 
   function addFailure(message: string, diagnostics: ImageDiagnostics | null) {
     setUploadFailures((prev) => ({
       messages: [...(prev?.messages ?? []), message],
       diagnostics: [...(prev?.diagnostics ?? []), ...(diagnostics ? [diagnostics] : [])],
     }));
+  }
+
+  if (!thread) {
+    // Deciding renders nothing visible (it lasts one tick); resuming waits on
+    // the server, so it says what is happening.
+    return phase.kind === "resuming" ? (
+      <LoadingPanel label="Restoring your conversation…" />
+    ) : (
+      <div className="flex-1" aria-busy="true" />
+    );
   }
 
   return (
@@ -124,7 +208,7 @@ export function TutorChat({
         <StartOverButton
           code={code}
           onStarted={(next) => {
-            setThread(next);
+            switchThread({ ...next, restoring: false });
             // A banner about a file the previous conversation rejected must not
             // outlive that conversation.
             setUploadFailures(null);
