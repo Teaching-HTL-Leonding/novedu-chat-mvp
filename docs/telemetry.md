@@ -121,9 +121,9 @@ and not ours to align). Pinning `api-logs` to a version the distro does not use
 installs a second copy instead. `sdk-node`, `api-logs`, every instrumentation and
 every exporter are lockstep 0.x releases — **bump them together with the distro**
 and re-pin `api-logs` to the version the new distro resolves to, or the copies
-drift apart. All of them patch modules at `require` time, so they are
-listed in `serverExternalPackages` (`next.config.ts`) beside the distro and `pg`,
-and traced into the standalone Docker output.
+drift apart. `sdk-node` and the three instrumentations patch modules at `require`
+time, so they are listed in `serverExternalPackages` (`next.config.ts`) beside the
+distro and `pg`, and traced into the standalone Docker output.
 
 ## The Azure Monitor path
 

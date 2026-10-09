@@ -340,7 +340,8 @@ wrapped failure classifies exactly like a raw one.
   the free-form field is the one most likely to grow to echo request content. An
   operator reads both in Application Insights (`docs/telemetry.md`).
 
-Consumed by `POST /api/eval/grade` (`docs/api.md`, `docs/cli-eval.md`). The **student**
+Consumed by the eval routes `POST /api/eval/grade`, `/api/eval/judge` and
+`/api/eval/respond` (`docs/api.md`, `docs/cli-eval.md`). The **student**
 paths deliberately do NOT use it: a student can neither fix a deployment nor be shown
 infrastructure detail, so `lib/quiz-actions.ts` keeps its single generic sentence.
 

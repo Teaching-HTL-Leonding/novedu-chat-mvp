@@ -34,8 +34,7 @@ through exactly that fixed set of seams; nothing in the generic flow changes.
   CodeModuleDef` with `fileKind: "writing"` (create validation derives from it via the
   registry's `validateCodeFile`), a `runtime` (`agentId: "writing"`,
   `buildRequestContext` loading the YAML and setting the instructions + model on the
-  `RequestContext`), and a `renderDetail` (the teacher review, below). It does not set
-  `renderResult`, so the create/edit screen shows the default share link.
+  `RequestContext`), and a `renderDetail` (the teacher review, below).
 - **Registry + label** — one line in `codeModules` (`lib/code-modules/registry.ts`),
   `"writing"` in `CODE_MODULES`, and the label `{ badge: "Writing", countColumn:
   "Conversations" }` in `codeModuleLabels` (`lib/code-modules/types.ts`).
@@ -265,7 +264,7 @@ Behaviour:
 
 ## AI feedback via a read-only frontend tool
 
-This is the keystone, and the app's **first** frontend tool. The chat
+This is the keystone frontend tool. The chat
 (`WritingChat`) **consumes the shared `ModuleChat` primitive** (`docs/chat.md`) —
 it hands it `agentId="writing"`, `providerKey={code}` (navigating between codes
 remounts it → a fresh thread per code, matching the per-code memory scope), the

@@ -1,8 +1,8 @@
 # App-hosted Images
 
 Deep reference for the **module-agnostic image subsystem**: teachers upload PNG /
-JPEG / SVG images *in the app* and reference them by name from any activity YAML
-(tutor, fragment, quiz). The bytes live under a configured filesystem root
+JPEG / SVG images *in the app* and reference them by name from quiz YAML (one
+optional image per question). The bytes live under a configured filesystem root
 (`IMAGE_STORAGE_ROOT`) and are served by the app itself through the
 **same-origin, cookie-session** route `GET /api/image-content/<id>` — there is
 NO direct-to-storage traffic and no signed URL of any kind. The always-on
@@ -252,9 +252,9 @@ the adapter while streaming.
 
 ## The upload flow
 
-The direct-to-storage flow is gone. Both channels stream the bytes THROUGH the
-app in one request and get back the confirmed result — no slot, no separate
-confirm step, no retry-with-backoff wire contract to reason about.
+Both channels stream the bytes THROUGH the app in one request and get back the
+confirmed result — no slot, no separate confirm step, no retry-with-backoff wire
+contract to reason about.
 
 - **Web:** the form (`upload-image-form.tsx`) infers the MIME from the file's
   extension, pre-checks size/MIME client-side, builds one `FormData` (`file`,
@@ -383,7 +383,7 @@ shared component both content images and the management list open.
 - `<ContentImage>` (`components/content-image.tsx`) is the content-image trigger:
   it renders a bounded responsive thumbnail (a real `<button>`) that opens the
   shared `<ImageLightbox>`. A thumbnail that fails to load falls back to a muted
-  note. This is what tutor / fragment / quiz YAML images render as.
+  note. This is what quiz YAML images render as.
 - The `/images` list's **"View"** button (`app/images/view-image-button.tsx`) is
   the other trigger — an icon button (no inline preview) opening the same
   `<ImageLightbox>` from the row's `/api/image-content/<id>` URL.

@@ -77,7 +77,7 @@ So a load failure is reported as one structured
 strict, structured authoring check (schema errors, duplicate ids, thorough
 whole-library fragment validation) use **`validate`**; the two are complementary.
 
-The refactor that made this possible split each runtime loader in two:
+Each runtime loader is split in two:
 
 | Pure, fetcher-injected | App-hosted / DB seam |
 | --- | --- |

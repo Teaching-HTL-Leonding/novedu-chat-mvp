@@ -87,9 +87,9 @@ run untrusted PR code.**
 short-lived OIDC token that GitHub mints for the run and Azure exchanges for an
 access token, against a user-assigned identity per stage.
 
-- **`id-token: write` is granted per job**, to those two (`deploy-dev` and
-  `promote.yml`'s `promote` job) and to `publish-cli.yml`'s npm trusted
-  publishing — nowhere else. A job cannot grant
+- **`id-token: write` is granted per job** to those two (`deploy-dev` and
+  `promote.yml`'s `promote` job), and at workflow level in the single-job
+  `publish-cli.yml` for npm trusted publishing — nowhere else. A job cannot grant
   itself the permission, and the token is worthless without a matching
   federated subject on the other side.
 - **The federated subjects are exact.** The dev identity trusts only
@@ -143,9 +143,10 @@ access token, against a user-assigned identity per stage.
   LLM — geo-blocked to Austria + un-containerizable) and `@live-storage` (the
   manual smoke against a REAL mounted Azure Files share, `docs/images.md`;
   everything else image-related is `@live-db`) are both excluded from the PR
-  run via `npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage"`) and run
-  local-only. Tests against **real** Azure Postgres, SCCH, or Azure Files must run
-  only on a **trusted trigger** — `push` to `main`, a `schedule`, or a
+  run via `npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage|@live-telemetry"`,
+  which also excludes `@live-telemetry`, the specs against the real Application
+  Insights query API) and run local-only. Tests against **real** Azure
+  Postgres, SCCH, or Azure Files must run only on a **trusted trigger** — `push` to `main`, a `schedule`, or a
   reviewer-gated GitHub *Environment* — never on fork PR code.
 - **Keep `permissions:` least-privilege.** `qa.yml` only reads code and runs
   tests, so `contents: read`. Any workflow that needs more should request the

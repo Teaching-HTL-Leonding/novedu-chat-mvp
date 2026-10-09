@@ -166,9 +166,9 @@ rest of the app:
   surfaces `title` + the `anonymous` flag (which defaults **`false`** for writing — see
   `docs/writing.md`).
 
-The create-file kind selector therefore offers **tutor / fragment / quiz / writing**,
-and the `/files` list adds a single **"Create code"** action on every row whose kind
-is a **module** — tutor, quiz, and writing, i.e. everything except `fragment`
+The create-file kind selector therefore offers **tutor / fragment / quiz / writing /
+coding**, and the `/files` list adds a single **"Create code"** action on every row whose
+kind is a **module** — tutor, quiz, writing, and coding, i.e. everything except `fragment`
 (gated by `isCodeModule`, linking to `/codes/new?module=<kind>&file=<url>`).
 
 The public origin is resolved once on the server (`resolveAppOrigin` /

@@ -142,7 +142,10 @@ non-secret dummy — see `docs/ci-security.md`.
 
 Tests own their fixtures — **nothing under test reads `activities/`** (that folder
 is demo content, free to restructure, and — an accepted trade-off — validated by
-no test or CI check; both workflows `paths-ignore` it). Fixtures are deliberately
+no test or CI check; `qa.yml` and `docker-publish.yml` skip a change confined to
+it). The one exception is the committed `activities/**/*-yaml.schema.json`, which
+the drift guard `lib/schema-gen/generated-schemas.unit.test.ts` compares with a
+fresh generation. Fixtures are deliberately
 **synthetic**
 (ids like `test-tutor`, content built from `MARKER` strings) so they never read as
 real activities. Two homes, by what the layer needs:

@@ -208,7 +208,7 @@ it — and is not served by the Next.js app at all. The moving parts:
   the guide.
 - `promote.yml` builds the guide in its `docs-build` job, which holds **no**
   `id-token` (npm ci and the Astro build run third-party code), hands `dist/`
-  over as an artifact, and the `production` job uploads it with the Static Web
-  App's deployment token, fetched at runtime with the prod OIDC identity and
-  never stored in GitHub (`docs/ci-security.md`). The `novedu-publish` skill
+  over as an artifact, and the `promote` job (in the `production` environment)
+  uploads it with the Static Web App's deployment token, fetched at runtime with
+  the prod OIDC identity and never stored in GitHub (`docs/ci-security.md`). The `novedu-publish` skill
   notes this.

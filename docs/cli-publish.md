@@ -68,15 +68,14 @@ To cut a release:
 
 ```bash
 # 1. Bump the version (PRs only — main is protected). In cli/package.json,
-#    e.g. the next patch after the current 0.3.0:
-#      "version": "0.3.1"
+#    set "version" to the next version X.Y.Z (e.g. the next patch).
 #    Keep the lockfile in sync, then commit:
 npm install --package-lock-only
-git add cli/package.json package-lock.json && git commit -m "release @novedu/cli 0.3.1"
+git add cli/package.json package-lock.json && git commit -m "release @novedu/cli X.Y.Z"
 # 2. Open a PR, let QA go green, merge to main.
 # 3. Tag the merged commit and push the tag:
-git tag cli-v0.3.1
-git push origin cli-v0.3.1        # -> publish-cli.yml runs and publishes 0.3.1
+git tag cli-vX.Y.Z
+git push origin cli-vX.Y.Z        # -> publish-cli.yml runs and publishes X.Y.Z
 ```
 
 Release-worthy changes are not only `cli/` diffs: the CLI **bundles** the app's

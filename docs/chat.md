@@ -123,7 +123,7 @@ fragile welcome-screen override, pinned to a CopilotKit version in a comment nex
 to itself), and, when the tutor's `llm.imageInput` is set, an `attachments` config
 (vision-capable model, `onUpload` running the normalizer below, `onUploadFailed`
 driving the notice). Tutor needs
-no height/padding delta, so it passes the base `.chat` class directly.
+no height/padding delta, so it passes no `className`: `ModuleChat`'s base container fits it.
 
 It is also the only surface that **owns its thread after mount**. The server props
 merely seed a `thread` state (`{ threadId, threadToken, restoring }`), decided after
@@ -399,7 +399,7 @@ The decision is made **once per request in the runtime route** and enforced in
 the runtime, not in React:
 
 - **`app/api/copilotkit/reasoning-runner.ts`** — `ReasoningStrippingRunner`, an
-  `AgentRunner` decorator around the library's own `InMemoryAgentRunner`. AG-UI's
+  `AgentRunner` decorator around the route's base runner (below). AG-UI's
   abstract `AgentRunner` has exactly four methods; `run` (the live turn) and
   `connect` (the replay/reconnect stream) are the **only two paths into the SSE
   writer**, so both are `filter`ed (rxjs) against the `EventType` enum's whole
@@ -418,12 +418,13 @@ the runtime, not in React:
 - **`app/api/copilotkit/[[...slug]]/route.ts`** — past the existing gates it
   computes `effectiveTeacherForSession(session)` (concurrently with the
   thread-ownership check and the `RequestContext` build, since it needs only the
-  session already in hand) and passes `runner: showReasoning ? new
-  InMemoryAgentRunner() : new ReasoningStrippingRunner()`, wrapped in the
-  `RunErrorReportingRunner` below (which observes and alters nothing, so the
-  reasoning decision is still the one that reaches the writer). A teacher gets the
-  library's own runner — the very one the filter wraps — so their stream is the
-  unmodified library behaviour. This is the route's only role-dependent branch
+  session already in hand) and passes `runner: showReasoning ? baseRunner : new
+  ReasoningStrippingRunner(baseRunner)`, wrapped in the `RunErrorReportingRunner`
+  below (which observes and alters nothing, so the reasoning decision is still the
+  one that reaches the writer). `baseRunner` is the library's own
+  `InMemoryAgentRunner`, for the tutor module wrapped in `HistorySnapshotRunner`. A
+  teacher gets that base runner — the very one the filter wraps — so their stream
+  is the unmodified behaviour. This is the route's only role-dependent branch
   and it changes **nothing** about access — the `checkCode` + `x-thread-token`
   model is identical for every caller (`docs/codes.md`).
 - **Fail-closed.** The default is stripping. Only a *proven* effective teacher
@@ -495,8 +496,7 @@ point; `lib/answer-images.ts` keeps the constants and the server-authoritative
 `validateAnswerImages` and stays free of DOM code, because `lib/quiz-actions.ts`
 (`"use server"`) imports it.
 
-Three things a phone hands over that the pipeline could not previously survive
-(GitHub #26):
+Three things a phone hands over that the pipeline must handle (GitHub #26):
 
 - **Resolution.** 24.5 MP (5712×4284, the iPhone default) is ~3 MB of JPEG and
   ~4 MB of base64 in the run body — and the image is REPLAYED from Mastra memory
@@ -586,8 +586,8 @@ each to `recordError`, and passes every frame through untouched and in order.
 
 The route additionally rejects a run/connect whose **declared** `Content-Length`
 exceeds `MAX_RUN_BODY_BYTES` (24 MB) with a 413, before the body is read. The
-browser now picks files larger than it may send, and nothing on this path
-previously looked at the size at all.
+browser may pick files larger than it may send, and this check is the only size
+gate on this path.
 
 ## Backend seam
 
@@ -599,8 +599,7 @@ through `runtimeUrl` + the runtime headers.
 
 ## Tests
 
-The shared-wiring tests follow `docs/testing.md`'s no-duplication principle: the
-common chat logic is tested **exactly once**, against `ModuleChat`; the per-module
+The common chat logic is tested **exactly once**, against `ModuleChat`; the per-module
 tests **mock `@/app/module-chat`**, so they assert only what is unique to the
 module.
 

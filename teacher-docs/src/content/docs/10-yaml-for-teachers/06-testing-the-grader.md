@@ -274,7 +274,7 @@ Three or four per question you care about is already useful: one clearly right, 
 
 ## What you tested is what you must publish
 
-A green run certifies the file **on your machine**. If your quiz is hosted in the app, upload the same file afterwards, otherwise the shared code keeps grading with the old criteria you just improved. Nothing else is stored anywhere: no eval file, no answer, no mark, and no judgment is saved by a run.
+A green run certifies the file **on your machine**. If your quiz is hosted in the app, upload the same file afterwards, otherwise the shared code keeps grading with the old criteria you just improved. A run stores nothing in Novedu: no eval file, no answer, no mark, and no judgment is saved in the app. The only files a run writes are reports on your own computer, and only when you ask for them, for example with `--report`.
 
 Two current limits: eval files are text-only, so photo answers can't be tested this way yet, and an eval file is not an activity: it never gets a code and students never see it.
 

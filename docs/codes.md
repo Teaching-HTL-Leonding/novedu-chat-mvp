@@ -824,7 +824,8 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
 - `e2e/code.utils.ts` mints codes (`mintCode({ module, file, … })`, plus a
   `mintTutorCode` wrapper) by inserting rows directly into `novedu_codes` (loads
   `.env` like Next does), so any browser spec that mints or resolves a code needs
-  the live database and is tagged `@live` (local only).
+  the live database and is tagged `@live` plus `@live-db` (runs in CI) — or
+  `@live-llm` (local only) when it also needs the real LLM.
 - The security-critical paths run in CI with **no** DB, because the gate
   short-circuits before any runtime is built: the runtime gate
   (`app/api/copilotkit/[[...slug]]/route.unit.test.ts`, real thread-token HMAC,

@@ -74,8 +74,9 @@ prose carries everything an editor needs.
   hosted in the app, the same file still has to be uploaded afterwards, or the
   shared code keeps serving the old criteria. The most important caveat in the
   chapter; the same holds for a tutor eval.
-- Nothing is stored: no eval file, no answer, no mark and no judgment is saved
-  anywhere. Same for tutor evals.
+- Nothing is stored in Novedu: no eval file, no answer, no mark and no judgment is
+  saved in the app. The only files a run writes are local reports the teacher asks
+  for (`--report`, `--out`). Same for tutor evals.
 
 ## 10-yaml-for-teachers/07-testing-a-tutor
 

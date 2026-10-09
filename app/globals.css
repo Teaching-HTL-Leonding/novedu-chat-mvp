@@ -8,11 +8,11 @@
 @layer theme, base, mantine, components, utilities;
 
 /* Sources are ALLOWLISTED (`source(none)` + the explicit `@source` lines below):
-   only code that renders markup may generate utilities. Automatic detection
+   only app/, components/ and lib/ may generate utilities. Automatic detection
    would scan every non-gitignored file — docs, teaching YAML (activities/),
-   tests — where a class-shaped string is prose, not a template (a
-   literal `flex-[var(…)]` in a doc once broke the dev CSS parse), and test-only
-   classes would ship in the production stylesheet. */
+   e2e/, test-fixtures/ — where a class-shaped string is prose, not a template (a
+   literal `flex-[var(…)]` in a doc once broke the dev CSS parse). Tests
+   colocated under the three allowlisted directories are still scanned. */
 @import "tailwindcss" source(none);
 @plugin "@tailwindcss/typography";
 

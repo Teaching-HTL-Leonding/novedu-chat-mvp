@@ -77,10 +77,16 @@ For a coding activity:
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
 ```
 
-There is one more schema, for a file that is not an activity: the **activity registry**, the list of activities you keep next to a book or a course repository. If you write one, it takes this line:
+Two more schemas cover files that are not activities. The first is for the **activity registry**, the list of activities you keep next to a book or a course repository. If you write one, it takes this line:
 
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/registry/registry-yaml.schema.json
+```
+
+The second is for an **eval file**, the test file you run with the Novedu CLI to check a quiz's grader or a tutor's behaviour. It takes this line:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
 ```
 
 ## The editor helps, Novedu decides

@@ -322,11 +322,12 @@ stage*).
 ### Deliberately not set
 
 - **`AZURE_FOUNDRY_ENDPOINT`, `OPENROUTER_API_KEY` / `OPENROUTER_BASE_URL`** —
-  the new stages run on **SCCH only**. A provider's variables are its switch:
-  without them the app boots normally, `providerUnavailableReason` reports the
-  provider as not configured (visible on `/health`), every default provider
-  is SCCH, and an activity or code that names Azure Foundry or OpenRouter is
-  rejected as unavailable on these stages (`docs/ai-models.md`).
+  these stages run on **SCCH only**. A provider's variables are its switch:
+  without them the app boots normally, `/health` reports the provider as
+  `Not configured (<variable> is missing)`, every default provider is SCCH,
+  and `providerUnavailableReason` rejects an activity, code or eval request
+  that names Azure Foundry or OpenRouter as unavailable on these stages
+  (`docs/ai-models.md`).
 - **`STORAGE_TENANT_ID`** — it only pins the tenant of a local `az` credential
   and means nothing to a managed identity.
 - **`OTEL_EXPORTER_OTLP_ENDPOINT`** — it would win over the Application
@@ -448,9 +449,9 @@ The copy differs from the old environment in four deliberate ways:
 - **App-hosted file URLs point at the dev stage.** `novedu_codes.file_url` is an
   absolute URL, and the app resolves it from its own database only when it
   starts with the stage's `CODE_ORIGIN`; any other origin is fetched over
-  HTTPS. Every `…/api/files/…` URL of the old hostnames was therefore
-  rewritten to `https://dev.novedu.at`. Changing a stage's hostname needs the
-  same rewrite.
+  HTTPS. Every app-hosted `…/api/files/…` URL in this stage's database
+  therefore has the origin `https://dev.novedu.at`. Changing a stage's
+  hostname means rewriting them to the new `CODE_ORIGIN`.
 - **Only active images.** The share holds the bytes of the active image rows
   under `images/<key>/content`; closed rows had no bytes in the old environment either.
 
