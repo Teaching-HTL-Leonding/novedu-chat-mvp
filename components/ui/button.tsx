@@ -6,8 +6,11 @@ import { cn } from "@/lib/utils";
 // can override sizing (link renders as inline text) through cn()'s merge.
 // Links styled as buttons consume `buttonVariants` directly:
 //   <Link className={cn(buttonVariants({ variant: "outline" }))} …>
+// `[&_svg]:pointer-events-none`: an icon inside a button is never interactive on
+// its own, and Chrome shows no HTML `title` over inline SVG, so a titled button
+// would lose its tooltip wherever the icon sits (see components/ui/icon-button.tsx).
 export const buttonVariants = cva(
-  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full font-semibold text-sm no-underline transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4",
+  "inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-full font-semibold text-sm no-underline transition-colors focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4",
   {
     variants: {
       size: {

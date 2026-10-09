@@ -140,8 +140,10 @@ export function RowSelectCheckbox({ id, label }: { id: string; label?: string })
 
 // The bare square icon buttons in the selection header — deliberately smaller
 // and borderless (they sit inside a table header, not a toolbar).
+// The icon is pointer-transparent so the button's `title` tooltip shows over it
+// (components/ui/icon-button.tsx explains why).
 const SELECT_ICON_BUTTON =
-  "inline-flex size-6 cursor-pointer items-center justify-center rounded-md text-foreground/65 not-disabled:hover:bg-foreground/10 not-disabled:hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4";
+  "inline-flex size-6 cursor-pointer items-center justify-center rounded-md text-foreground/65 not-disabled:hover:bg-foreground/10 not-disabled:hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4";
 
 /** The header cell's select-all / unselect-all icon buttons. */
 export function SelectAllControls() {
