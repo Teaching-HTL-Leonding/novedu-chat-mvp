@@ -3,8 +3,9 @@ name: Build and publish Docker image
 on:
   push:
     branches: [main]
-    # A doc-only or sample-spec push doesn't change the image — skip the
-    # build/publish/deploy entirely. Mixed pushes (code + docs) still publish.
+    # A doc-only, sample-spec or dev-tooling (agent skills, worktree config)
+    # push doesn't change the image — skip the build/publish/deploy entirely.
+    # Mixed pushes (code + docs) still publish.
     # EXCEPTION: teacher-docs/** is re-included (last matching pattern wins).
     # The image no longer contains the guide, but its version is the release
     # unit: promote.yml builds the guide from the promoted image's commit, so a
@@ -15,6 +16,9 @@ on:
       - '!**.md'
       - '!docs/**'
       - '!activities/**'
+      - '!.agents/**'
+      - '!.claude'
+      - '!.worktreeinclude'
       - 'teacher-docs/**'
   workflow_dispatch:
 
