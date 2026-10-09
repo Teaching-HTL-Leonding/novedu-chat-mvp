@@ -20,11 +20,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // `verifyEvents`, the check the browser applies.
 
 const loadThreadForChat = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/tutor-history-store", () => ({ loadThreadForChat }));
+const ownsTutorThread = vi.hoisted(() => vi.fn());
+const readAnonymousFlag = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/tutor-history-store", () => ({ loadThreadForChat, ownsTutorThread }));
+vi.mock("@/lib/file-validators", () => ({ readAnonymousFlag }));
 
 import { HistorySnapshotRunner } from "./history-snapshot-runner";
 
 const CODE = "c0de";
+const USER = "student-1";
+const FILE_URL = "https://example.com/api/files/tutor";
+// A per-user code by default; the ownership branch only matters past the limit.
+const SCOPE = { code: CODE, frozenAnonymous: false, fileUrl: FILE_URL, userId: USER };
 const MINUTE = 60 * 1000;
 
 const STORED: Message[] = [
@@ -156,13 +163,15 @@ function messageIdsOf(events: BaseEvent[]): string[] {
 
 beforeEach(() => {
   loadThreadForChat.mockReset();
+  ownsTutorThread.mockReset().mockResolvedValue(false);
+  readAnonymousFlag.mockReset().mockResolvedValue({ anonymous: false, definitive: true });
 });
 
 describe("HistorySnapshotRunner.connect — the snapshot", () => {
   it("cold process with stored messages → exactly RUN_STARTED, MESSAGES_SNAPSHOT, RUN_FINISHED", async () => {
     loadThreadForChat.mockResolvedValue(stored());
     const threadId = freshThread();
-    const runner = new HistorySnapshotRunner(new InMemoryAgentRunner(), { code: CODE });
+    const runner = new HistorySnapshotRunner(new InMemoryAgentRunner(), SCOPE);
 
     const out = await collectVerified(runner.connect(connectRequest(threadId)));
 
@@ -198,7 +207,7 @@ describe("HistorySnapshotRunner.connect — the snapshot", () => {
       isRunning: vi.fn(),
       stop: vi.fn(),
     };
-    const runner = new HistorySnapshotRunner(inner as unknown as AgentRunner, { code: CODE });
+    const runner = new HistorySnapshotRunner(inner as unknown as AgentRunner, SCOPE);
 
     const out = await collect(runner.connect(connectRequest(freshThread())));
 
@@ -208,9 +217,75 @@ describe("HistorySnapshotRunner.connect — the snapshot", () => {
 
   it("still snapshots inside the grace (64 min: past the limit, within limit + grace)", async () => {
     loadThreadForChat.mockResolvedValue(stored(STORED, 64 * MINUTE));
-    const runner = new HistorySnapshotRunner(new InMemoryAgentRunner(), { code: CODE });
+    const runner = new HistorySnapshotRunner(new InMemoryAgentRunner(), SCOPE);
     const out = await collectVerified(runner.connect(connectRequest(freshThread())));
     expect(out.map((event) => event.type)).toContain(EventType.MESSAGES_SNAPSHOT);
+  });
+});
+
+describe("HistorySnapshotRunner.connect — a reopened conversation past the limit", () => {
+  const innerEvents = [{ type: EventType.CUSTOM, name: "x", value: 1 }] as BaseEvent[];
+  function stubbed(scope = SCOPE) {
+    const inner = {
+      run: vi.fn(),
+      connect: vi.fn(() => of(...innerEvents)),
+      isRunning: vi.fn(),
+      stop: vi.fn(),
+    };
+    return new HistorySnapshotRunner(inner as unknown as AgentRunner, scope);
+  }
+
+  it("snapshots the session user's own thread on a history-enabled code, however old", async () => {
+    loadThreadForChat.mockResolvedValue(stored(STORED, 30 * 24 * 60 * MINUTE));
+    ownsTutorThread.mockResolvedValue(true);
+    const threadId = freshThread();
+
+    const out = await collect(stubbed().connect(connectRequest(threadId)));
+
+    expect(out.map((event) => event.type)).toContain(EventType.MESSAGES_SNAPSHOT);
+    expect(ownsTutorThread).toHaveBeenCalledWith(USER, CODE, threadId);
+    expect(readAnonymousFlag).toHaveBeenCalledWith("tutor", FILE_URL);
+  });
+
+  it.each([
+    ["no ownership row", () => ownsTutorThread.mockResolvedValue(false)],
+    ["an ownership lookup failure", () => ownsTutorThread.mockResolvedValue(undefined)],
+    [
+      "a live anonymous YAML",
+      () => {
+        ownsTutorThread.mockResolvedValue(true);
+        readAnonymousFlag.mockResolvedValue({ anonymous: true, definitive: true });
+      },
+    ],
+    [
+      "an unreadable YAML",
+      () => {
+        ownsTutorThread.mockResolvedValue(true);
+        readAnonymousFlag.mockResolvedValue({ anonymous: true, definitive: false });
+      },
+    ],
+  ])("connects as before with %s", async (_label, arrange) => {
+    loadThreadForChat.mockResolvedValue(stored(STORED, 2 * 60 * MINUTE));
+    arrange();
+    expect(await collect(stubbed().connect(connectRequest(freshThread())))).toEqual(innerEvents);
+  });
+
+  it("never consults the ownership row on a frozen-anonymous code", async () => {
+    loadThreadForChat.mockResolvedValue(stored(STORED, 2 * 60 * MINUTE));
+    ownsTutorThread.mockResolvedValue(true);
+    const out = await collect(
+      stubbed({ ...SCOPE, frozenAnonymous: true }).connect(connectRequest(freshThread())),
+    );
+    expect(out).toEqual(innerEvents);
+    expect(ownsTutorThread).not.toHaveBeenCalled();
+    expect(readAnonymousFlag).not.toHaveBeenCalled();
+  });
+
+  it("within the limit, needs no ownership row and no YAML read", async () => {
+    loadThreadForChat.mockResolvedValue(stored());
+    await collect(stubbed().connect(connectRequest(freshThread())));
+    expect(ownsTutorThread).not.toHaveBeenCalled();
+    expect(readAnonymousFlag).not.toHaveBeenCalled();
   });
 });
 
@@ -220,7 +295,7 @@ describe("HistorySnapshotRunner.connect — the filtered in-process replay (warm
     const threadId = freshThread();
     const inner = new InMemoryAgentRunner();
     await completeRun(inner, threadId, "r1", fakeAgent(storedTurn(threadId, "r1")));
-    const runner = new HistorySnapshotRunner(inner, { code: CODE });
+    const runner = new HistorySnapshotRunner(inner, SCOPE);
 
     const out = await collectVerified(runner.connect(connectRequest(threadId)));
 
@@ -242,7 +317,7 @@ describe("HistorySnapshotRunner.connect — the filtered in-process replay (warm
     const threadId = freshThread();
     const inner = new InMemoryAgentRunner();
     await completeRun(inner, threadId, "r1", fakeAgent(unstoredTurn(threadId, "r1")));
-    const runner = new HistorySnapshotRunner(inner, { code: CODE });
+    const runner = new HistorySnapshotRunner(inner, SCOPE);
 
     const out = await collectVerified(runner.connect(connectRequest(threadId)));
 
@@ -268,7 +343,7 @@ describe("HistorySnapshotRunner.connect — the filtered in-process replay (warm
     const raw = await collect(inner.connect(connectRequest(threadId)));
     expect(raw.some((event) => event.type === EventType.RUN_ERROR)).toBe(true);
 
-    const runner = new HistorySnapshotRunner(inner, { code: CODE });
+    const runner = new HistorySnapshotRunner(inner, SCOPE);
     const out = await collectVerified(runner.connect(connectRequest(threadId)));
 
     expect(out.some((event) => event.type === EventType.RUN_ERROR)).toBe(false);
@@ -309,7 +384,7 @@ describe("HistorySnapshotRunner.connect — the filtered in-process replay (warm
       ),
     );
     const liveDone = collect(live);
-    const runner = new HistorySnapshotRunner(inner, { code: CODE });
+    const runner = new HistorySnapshotRunner(inner, SCOPE);
 
     const connected = collectVerified(runner.connect(connectRequest(threadId)));
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -344,7 +419,7 @@ describe("HistorySnapshotRunner.connect — the filtered in-process replay (warm
         ),
       ),
     ).catch(() => undefined);
-    const runner = new HistorySnapshotRunner(inner, { code: CODE });
+    const runner = new HistorySnapshotRunner(inner, SCOPE);
 
     const connected = collectVerified(runner.connect(connectRequest(threadId)));
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -386,7 +461,7 @@ describe("HistorySnapshotRunner delegation", () => {
 
   it("delegates run verbatim (no store read)", async () => {
     const inner = stubInner();
-    const runner = new HistorySnapshotRunner(inner as unknown as AgentRunner, { code: CODE });
+    const runner = new HistorySnapshotRunner(inner as unknown as AgentRunner, SCOPE);
     const request = { threadId: "t1" } as unknown as AgentRunnerRunRequest;
     expect(await collect(runner.run(request))).toEqual([{ type: EventType.RUN_FINISHED }]);
     expect(inner.run).toHaveBeenCalledWith(request);
@@ -395,7 +470,7 @@ describe("HistorySnapshotRunner delegation", () => {
 
   it("delegates isRunning and stop verbatim", async () => {
     const inner = stubInner();
-    const runner = new HistorySnapshotRunner(inner as unknown as AgentRunner, { code: CODE });
+    const runner = new HistorySnapshotRunner(inner as unknown as AgentRunner, SCOPE);
     await expect(runner.isRunning({ threadId: "t1" })).resolves.toBe(true);
     await expect(runner.stop({ threadId: "t1" })).resolves.toBe(true);
     expect(inner.isRunning).toHaveBeenCalledWith({ threadId: "t1" });

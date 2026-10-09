@@ -162,8 +162,10 @@ export const fileValidators: Record<FileKind, FileValidator> = {
 // YAML could not be read or the kind carries no anonymity flag: the caller then
 // applies the privacy-safe default (`true`) but does NOT cache it, so a transient
 // load failure does not permanently silence attribution. Co-located with the
-// validators so each FileKind's privacy semantics live in ONE place (the sole
-// caller is lib/user-chat-store.ts).
+// validators so each FileKind's privacy semantics live in ONE place. Callers:
+// lib/user-chat-store.ts (whether to attribute a chat) and the tutor history gate
+// lib/tutor-history-gate.ts (the live half of "Previous conversations"), both
+// treating an unreadable YAML as anonymous.
 export async function readAnonymousFlag(
   kind: FileKind,
   fileUrl: string,

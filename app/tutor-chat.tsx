@@ -18,6 +18,7 @@ import {
 import { resumeTutorThread } from "@/lib/tutor-actions";
 import { readTutorThread, removeTutorThread, writeTutorThread } from "@/lib/tutor-thread-storage";
 import type { ExampleQuestion } from "@/lib/tutors";
+import { PreviousConversationsButton } from "./_tutor/previous-conversations-button";
 import { StartOverButton } from "./_tutor/start-over-button";
 import { useTutorWelcomeView } from "./_tutor/welcome-view";
 import { ModuleChat } from "./module-chat";
@@ -83,6 +84,7 @@ export function TutorChat({
   title,
   description,
   exampleQuestions = [],
+  historyEnabled = false,
 }: {
   /** The code the chat was opened with — half of the provider key. */
   code: string;
@@ -102,6 +104,11 @@ export function TutorChat({
   description: string;
   /** ≤5 questions, sampled server-side; clicking one fills the chat input. */
   exampleQuestions?: ExampleQuestion[];
+  /**
+   * A per-user tutor (frozen AND live `anonymous` false): offers "Previous
+   * conversations" and the per-user Start-over wording.
+   */
+  historyEnabled?: boolean;
 }) {
   // Rejected uploads (undecodable, too large, wrong type) call onUploadFailed and
   // silently drop the file — without this notice the student would never learn why.
@@ -201,12 +208,25 @@ export function TutorChat({
         />
       ) : null}
 
-      {/* The chat toolbar. "Start over" mints a fresh thread server-side and we
-          swap it in here; the report always targets the CURRENT conversation,
+      {/* The chat toolbar. "Start over" mints a fresh thread server-side and
+          "Previous conversations" (per-user tutors) reopens an earlier one; either
+          is swapped in here. The report always targets the CURRENT conversation,
           and its server action re-verifies the token over (code, userId, threadId). */}
       <div className="mx-5 mb-2 flex shrink-0 items-center justify-end gap-2">
+        {historyEnabled ? (
+          <PreviousConversationsButton
+            code={code}
+            currentThreadId={thread.threadId}
+            onOpened={(next) => {
+              // Like a resume: the messages arrive with the remounted chat's connect.
+              switchThread({ ...next, restoring: true });
+              setUploadFailures(null);
+            }}
+          />
+        ) : null}
         <StartOverButton
           code={code}
+          historyEnabled={historyEnabled}
           onStarted={(next) => {
             switchThread({ ...next, restoring: false });
             // A banner about a file the previous conversation rejected must not

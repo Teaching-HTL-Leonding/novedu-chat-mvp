@@ -352,7 +352,12 @@ async function handler(req: Request): Promise<Response> {
   // frames like any other. Writing and quiz connect as before.
   const baseRunner: AgentRunner =
     entry.module === "tutor"
-      ? new HistorySnapshotRunner(new InMemoryAgentRunner(), { code })
+      ? new HistorySnapshotRunner(new InMemoryAgentRunner(), {
+          code,
+          frozenAnonymous: entry.anonymous,
+          fileUrl: entry.fileUrl,
+          userId,
+        })
       : new InMemoryAgentRunner();
 
   // ONLY the module's own agent is registered — never Mastra's whole registry —

@@ -23,9 +23,9 @@ You can also offer clickable starter questions on the empty screen. A student pi
 
 From there it's a normal back-and-forth conversation. Students ask in their own words, the tutor answers within your rules, and they can dig deeper for as long as they need. Nobody is graded, and there is no fixed path through the material.
 
-Students can also start a tutor conversation over. A button above the chat clears what they've discussed and begins a fresh conversation, and it asks them to confirm first. It helps when a conversation has drifted off topic, or when a student wants to approach a question again from the beginning. The tutor won't remember anything from the earlier conversation, but you still see that conversation under the code, and a student who chats both before and after starting over counts as two conversations in your statistics.
+Students can also start a tutor conversation over. A button above the chat clears what they've discussed and begins a fresh conversation, and it asks them to confirm first. In an anonymous tutor that earlier conversation is gone for the student; in a per-user tutor they can reopen it later and continue. It helps when a conversation has drifted off topic, or when a student wants to approach a question again from the beginning. The tutor won't remember anything from the earlier conversation, but you still see that conversation under the code, and a student who chats both before and after starting over counts as two conversations in your statistics.
 
-Reloading the page doesn't lose the conversation: as long as the student stays in the same browser tab, a reload brings back the current conversation if the last message was less than an hour ago.
+Reloading the page doesn't lose the conversation: as long as the student stays in the same browser tab, a reload brings back the current conversation if the last message was less than an hour ago. In a per-user tutor, students can also reopen any of their earlier conversations with that tutor and pick up where they left off.
 
 ## How you shape a tutor
 
@@ -37,7 +37,7 @@ Everything the tutor does comes from instructions you write. Typical instruction
 
 You write these instructions in your own words. For rules you want to apply across many tutors, such as a teaching style or a safety policy, you can also pull in a fragment, a named piece of prompt written once and reused. That way a whole team of teachers shares one carefully worded safety policy instead of each rewriting it.
 
-By default, tutor chats are anonymous: the app doesn't record which student had which conversation.
+By default, tutor chats are anonymous: the app doesn't record which student had which conversation. The trade-off: since nothing links a conversation to a student, students can't go back to an earlier conversation either.
 
 ## When a tutor is the right choice
 

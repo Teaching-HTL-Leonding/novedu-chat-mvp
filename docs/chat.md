@@ -116,8 +116,8 @@ provider, or the threadId decision.
 
 **Tutor** (`app/tutor-chat.tsx`) wraps `ModuleChat` (`agentId="tutor"`, a
 `providerKey` of `code:threadId`) in the tutor-specific shell: the dismissible
-**image-upload error notice** and the toolbar row (**start over** + the shared
-`ReportButton`). It passes `labels` (the optional welcome greeting),
+**image-upload error notice** and the toolbar row (**previous conversations** for a
+per-user tutor + **start over** + the shared `ReportButton`). It passes `labels` (the optional welcome greeting),
 a `chatView` from `useTutorWelcomeView(...)` (`app/_tutor/welcome-view.tsx` — the
 fragile welcome-screen override, pinned to a CopilotKit version in a comment next
 to itself), and, when the tutor's `llm.imageInput` is set, an `attachments` config
@@ -134,7 +134,11 @@ them together. Every thread change is written to the tab's `sessionStorage`.
 ### "Start over" (tutor only)
 
 `app/_tutor/start-over-button.tsx` is an `IconButton` (`aria-label` + `title` —
-the app has no tooltip component) that opens a `DialogShell` confirmation, then
+the app has no tooltip component) that opens a `DialogShell` confirmation in one of
+two wordings, keyed by `historyEnabled`: an anonymous tutor's ("Start over?": the
+conversation is gone for the student for good, the teacher can still read it but
+cannot see whose it was) and a per-user tutor's ("Start a new conversation?": the
+current one is kept and can be reopened under Previous conversations). It then
 calls **`startNewTutorThread`** (`lib/tutor-actions.ts`). That action re-runs the
 full gate — session user id, `checkCode`, `module === "tutor"` — and returns a fresh
 `(threadId, threadToken)` pair. `TutorChat` swaps it in, the `providerKey` changes,
@@ -228,9 +232,13 @@ or a database error fall back to the plain inner connect, never a `RUN_ERROR`.
 
 **The resume rule** (`lib/tutor-history-gate.ts`): the action accepts a thread whose
 last stored message is under 60 minutes old; the runner allows 5 minutes of grace
-on top (the gap between the action's check and the connect). The connect is already
-token-verified, so a hand-crafted client holding an old token gets no more from
-`connect` than the action would allow.
+on top (the gap between the action's check and the connect). Past that, both accept
+only a thread the student may reopen anyway (`ownerMayReopen`: a history-enabled
+code and their own `novedu_user_chats` row), so a conversation reopened from
+Previous conversations survives a reload too; that branch reads the YAML, but only
+runs past the limit. The connect is already token-verified, so a hand-crafted
+client holding an old token gets no more from `connect` than the actions would
+allow.
 
 Consequences worth knowing:
 
@@ -253,6 +261,34 @@ Consequences worth knowing:
 reload round-trip `e2e/tutor-reload-roundtrip.spec.ts` locally — next to wrapping
 any new `AgentRunner` method in all three decorators. It is the only test of the
 replay filter against a real browser in a warm process, and CI does not run it.
+
+### Previous conversations (per-user tutors only)
+
+`app/_tutor/previous-conversations-button.tsx` is rendered only when `TutorChat`
+gets `historyEnabled` (`app/[code]/render-tutor.tsx`: frozen AND live `anonymous`
+false, `docs/codes.md`). An `IconButton` with the `HistoryIcon` (left of Start over)
+opens a `DialogShell` (`size="fit"`, `w-[min(36rem,92vw)]`) that calls
+`listTutorThreads` every time it opens:
+
+- a notice first: this tutor is not anonymous, the teacher sees the conversations
+  and that they are the student's;
+- full-width row buttons, newest last activity first: the time
+  (`formatConversationTime`, `lib/conversation-time.ts`, the browser's locale and
+  zone: "Today, 14:32", "Yesterday, 09:10", "Mon, 6 Oct, 11:05", "6 Oct 2025,
+  11:05"), the student's message count, and the preview as plain text
+  (`line-clamp-2`; "📷 Photo" for a photo-only first message, "(no text)" for none);
+- the current thread sits where its time puts it, marked "Current" and disabled; a
+  fresh, still-empty current thread has no row;
+- a footer when there are more than 50; states for loading, empty ("No earlier
+  conversations with this tutor yet."), and a list failure with **Try again**.
+
+Picking a row calls `openTutorThread` (spinner in that row, the others disabled).
+On success the dialog closes and `TutorChat` switches to the returned
+`{ threadId, threadToken }` with `restoring: true`, writing it to the tab's storage;
+the messages arrive with the remounted chat's `connect`, where the snapshot runner's
+ownership branch admits it however old it is. A refusal shows "This conversation
+can't be opened." inline and leaves the chat as it was. Switching mid-answer behaves
+like Start over: the provider remounts and the browser drops the stream.
 
 **Writing** (`app/[code]/_writing/writing-chat.tsx`) wraps `ModuleChat`
 (`agentId="writing"`, `providerKey={code}`) with one child — the keystone,
@@ -657,6 +693,23 @@ module.
   (`lib/tutor-thread-storage.unit.test.ts`), the store's conversions
   (`lib/tutor-history-store.unit.test.ts`) and its importer guard
   (`lib/tutor-history-isolation.unit.test.ts`).
+- **History (per-user tutors)** — `lib/tutor-actions.unit.test.ts` also covers
+  `listTutorThreads` / `openTutorThread`: refused for each of the three "history
+  off" flag combinations and an unreadable YAML; the list passes only the session
+  user id to the store; open refuses without the ownership row, on an empty thread
+  or a store failure, always with the same message, and its token verifies only
+  for `(code, session user, thread)`. Beside it: `lib/tutor-history-preview.unit.test.ts`,
+  `lib/conversation-time.unit.test.ts`, the gate's four flag combinations and
+  ownership branch, the store's list conversions, `render-tutor.unit.test.tsx`
+  (`historyEnabled` per the both-flags rule), and the browser suites
+  `tests/component/previous-conversations.browser.test.tsx` (rows, "Current",
+  photo / empty previews, footer, empty and error states with Try again, open
+  success and refusal), `tests/component/start-over-button.browser.test.tsx` (both
+  wordings) and the history cases in `tutor-chat.browser.test.tsx`.
+  **`e2e/tutor-history.live.spec.ts`** (`@live-db`, CI) seeds conversations of the
+  e2e student on two codes plus another user's: the dialog lists only this code's
+  own, a five-day-old one reopens with its messages and survives a reload; plus the
+  per-user smoke.
 - **`tests/unit/runtime-headers.unit.test.ts`** — `buildRuntimeHeaders(code, token)`
   returns `{ "x-code": code, "x-thread-token": token }` exactly (a cheap guard on
   the header names the backend re-reads).

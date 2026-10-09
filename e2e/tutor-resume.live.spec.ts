@@ -151,6 +151,11 @@ test("smoke: an anonymous tutor loads and reloads without an error", {
   await expect(page.getByText(WELCOME_TEXT)).toBeVisible();
   await expect.poll(async () => (await storedThread(page, code))?.threadId).not.toBe(threadId);
 
+  // An anonymous tutor has no history, and Start over warns that it is final.
+  await expect(page.getByRole("button", { name: "Previous conversations" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Start over" }).click();
+  await expect(page.getByText(/you cannot come back to this conversation later/)).toBeVisible();
+
   await expect(page.locator("[data-nextjs-dialog-root]")).toHaveCount(0);
   expect(errors).toEqual([]);
 });

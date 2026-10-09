@@ -4,8 +4,18 @@ import { randomUUID } from "node:crypto";
 import { type CodeRejection, checkCode } from "@/lib/code-store";
 import { getSession } from "@/lib/session";
 import { getThreadTokenSecret, signThreadToken, verifyThreadToken } from "@/lib/thread-token";
-import { withinResumeWindow } from "@/lib/tutor-history-gate";
-import { threadLastMessageAt } from "@/lib/tutor-history-store";
+import {
+  historyEnabled,
+  liveTutorAnonymous,
+  ownerMayReopen,
+  withinResumeWindow,
+} from "@/lib/tutor-history-gate";
+import {
+  listOwnTutorThreads,
+  ownsTutorThread,
+  threadLastMessageAt,
+} from "@/lib/tutor-history-store";
+import type { ListTutorThreadsResult, OpenTutorThreadResult } from "@/lib/tutor-history-types";
 
 // The student-facing tutor server actions: decide WHICH thread the chat uses.
 // None of them returns a message — the conversation itself reaches the browser
@@ -15,6 +25,9 @@ import { threadLastMessageAt } from "@/lib/tutor-history-store";
 //   continue in a fresh Mastra thread.
 // - "resume" (`resumeTutorThread`): after a reload, may this tab keep the thread
 //   it stored in `sessionStorage` (lib/tutor-thread-storage.ts)?
+// - "previous conversations" (`listTutorThreads`, `openTutorThread`): for a
+//   per-user tutor only (lib/tutor-history-gate.ts), list the session user's own
+//   conversations under this code and hand back a token for one of them.
 //
 // A thread is only usable with its `x-thread-token` — the stateless HMAC over
 // `(code, userId, threadId)` keyed off AUTH_SECRET (lib/thread-token.ts,
@@ -74,8 +87,9 @@ export async function startNewTutorThread(input: { code: string }): Promise<Star
 /**
  * May this tab keep the thread it stored before a reload? `{ ok: true }` only for
  * the session user's own token over `(code, user, threadId)` on a valid,
- * in-window tutor code whose thread's last stored message is less than
- * `TUTOR_RESUME_IDLE_MS` old (lib/tutor-history-gate.ts). The token is not
+ * in-window tutor code whose thread has messages and EITHER its last one is less
+ * than `TUTOR_RESUME_IDLE_MS` old OR (a per-user tutor) the student owns it, as
+ * for a conversation reopened from "Previous conversations" (lib/tutor-history-gate.ts). The token is not
  * re-issued; the caller keeps using the one it holds, and the messages arrive
  * with the chat's `connect`. Persists nothing.
  *
@@ -111,8 +125,81 @@ export async function resumeTutorThread(input: {
   }
 
   const lastMessageAt = await threadLastMessageAt(input.code, input.threadId);
-  if (lastMessageAt === undefined || !withinResumeWindow(lastMessageAt, new Date())) {
+  if (!(lastMessageAt instanceof Date)) return refused;
+  if (withinResumeWindow(lastMessageAt, new Date())) return { ok: true };
+  // Past the limit, only a conversation the student may reopen anyway (a
+  // per-user tutor and their own ownership row): the same rule the snapshot
+  // runner applies, so a reopened older conversation survives a reload too.
+  const reopenable = await ownerMayReopen({
+    code: input.code,
+    frozenAnonymous: verification.entry.anonymous,
+    fileUrl: verification.entry.fileUrl,
+    userId,
+    threadId: input.threadId,
+  });
+  return reopenable ? { ok: true } : refused;
+}
+
+/** The one answer to every refused open: no oracle for why. */
+const OPEN_REFUSED_MESSAGE = "This conversation can't be opened.";
+
+/**
+ * The shared gate of the two history actions: the session user on a valid,
+ * in-window tutor code whose history is enabled (frozen AND live `anonymous`
+ * false). `undefined` when any part fails.
+ */
+async function historyGate(code: string): Promise<{ userId: string } | undefined> {
+  const session = await getSession();
+  const userId = session?.user?.id;
+  if (!userId) return undefined;
+  const verification = await checkCode(code);
+  if (!verification.ok || verification.entry.module !== "tutor") return undefined;
+  const { entry } = verification;
+  // The frozen flag first: an anonymous code never pays the YAML read.
+  if (entry.anonymous) return undefined;
+  if (!historyEnabled(entry.anonymous, await liveTutorAnonymous(entry.fileUrl))) {
+    return undefined;
+  }
+  return { userId };
+}
+
+/**
+ * "Previous conversations": the session user's own conversations with THIS
+ * tutor code, newest last activity first (at most 50, `more` when older ones
+ * exist). Only on a history-enabled code; any refusal or failure is `{ ok: false }`.
+ */
+export async function listTutorThreads(input: { code: string }): Promise<ListTutorThreadsResult> {
+  const gate = await historyGate(input.code);
+  if (!gate) return { ok: false };
+  const listed = await listOwnTutorThreads(gate.userId, input.code);
+  if (!listed) return { ok: false };
+  return { ok: true, threads: listed.threads, more: listed.more };
+}
+
+/**
+ * Reopens one of the session user's earlier conversations: on a history-enabled
+ * code, a `novedu_user_chats` row for exactly `(user, code, threadId)` and at
+ * least one stored message, it signs a token for `(code, user, threadId)`. No
+ * time limit. The chat swaps to that thread, and its messages arrive with the
+ * `connect`. Every refusal carries the same message.
+ */
+export async function openTutorThread(input: {
+  code: string;
+  threadId: string;
+}): Promise<OpenTutorThreadResult> {
+  const refused = { ok: false as const, message: OPEN_REFUSED_MESSAGE };
+  if (typeof input.threadId !== "string" || !THREAD_ID_PATTERN.test(input.threadId)) {
     return refused;
   }
-  return { ok: true };
+  const gate = await historyGate(input.code);
+  if (!gate) return refused;
+  if ((await ownsTutorThread(gate.userId, input.code, input.threadId)) !== true) return refused;
+  const lastMessageAt = await threadLastMessageAt(input.code, input.threadId);
+  if (!(lastMessageAt instanceof Date)) return refused;
+
+  const threadToken = signThreadToken(
+    { code: input.code, userId: gate.userId, threadId: input.threadId },
+    getThreadTokenSecret(),
+  );
+  return { ok: true, threadToken };
 }

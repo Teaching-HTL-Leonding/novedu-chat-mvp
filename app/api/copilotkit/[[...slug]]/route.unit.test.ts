@@ -85,7 +85,10 @@ vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("@ag-ui/mastra", () => ({ MastraAgent: { getLocalAgent, getLocalAgents } }));
 // The snapshot runner's DB read; only consulted on a connect the stubbed runtime
 // never performs, but the import must not reach a real database.
-vi.mock("@/lib/tutor-history-store", () => ({ loadThreadForChat: vi.fn() }));
+vi.mock("@/lib/tutor-history-store", () => ({
+  loadThreadForChat: vi.fn(),
+  ownsTutorThread: vi.fn(),
+}));
 // `ReasoningStrippingRunner` stays REAL (it is the security-critical filter), so
 // the two runner classes it extends/wraps must exist on the stubbed module. The
 // stub `InMemoryAgentRunner` is also what the route hands a teacher, so the tests

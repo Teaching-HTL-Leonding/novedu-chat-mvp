@@ -23,6 +23,8 @@ export const BROKEN_TUTOR_URL = `${FIXTURES_BASE}/tutors/broken-tutor.yaml`;
 // A minimal tutor with a REAL model for the @live-llm chat specs (they send a
 // message and only assert a non-empty reply — content is irrelevant).
 export const LIVE_TUTOR_URL = `${FIXTURES_BASE}/tutors/live-tutor.yaml`;
+/** A per-user (`anonymous: false`) test-model tutor — offers "Previous conversations". */
+export const PER_USER_TUTOR_URL = `${FIXTURES_BASE}/tutors/per-user-tutor.yaml`;
 // A REAL-model tutor with image input enabled for the @live-llm image round-trip.
 export const VISION_TUTOR_URL = `${FIXTURES_BASE}/tutors/vision-tutor.yaml`;
 // A REAL-model tutor with the random_number tool for the @live-llm tool-call spec.

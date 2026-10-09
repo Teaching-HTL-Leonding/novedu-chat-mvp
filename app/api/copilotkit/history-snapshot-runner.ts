@@ -8,7 +8,11 @@ import {
   type AgentRunnerStopRequest,
 } from "@copilotkit/runtime/v2";
 import { defer, from, Observable, switchMap } from "rxjs";
-import { TUTOR_RESUME_GRACE_MS, withinResumeWindow } from "@/lib/tutor-history-gate";
+import {
+  ownerMayReopen,
+  TUTOR_RESUME_GRACE_MS,
+  withinResumeWindow,
+} from "@/lib/tutor-history-gate";
 import { loadThreadForChat } from "@/lib/tutor-history-store";
 
 // The server half of a tutor's "resume on reload" (docs/chat.md → Resuming a
@@ -43,9 +47,11 @@ import { loadThreadForChat } from "@/lib/tutor-history-store";
 //
 // The connect is already token-verified (`x-thread-token` over the code, the
 // session user and this thread) before it reaches any runner. The resume rule
-// (lib/tutor-history-gate.ts) then applies the SAME idle limit as the resume
-// action (plus a grace for the action → connect gap), so a hand-crafted client
-// holding an old token gets no more from `connect` than the action would allow.
+// (lib/tutor-history-gate.ts) then applies the SAME rules as the actions: the
+// resume action's idle limit (plus a grace for the action → connect gap), or —
+// past it — a history-enabled code with the session user's ownership row, as
+// `openTutorThread` requires. So a hand-crafted client holding an old token gets
+// no more from `connect` than the actions would allow.
 // Anything else — a refused rule, an empty thread, a database error — falls back
 // to the plain inner connect: the behaviour without this runner, never a RUN_ERROR.
 //
@@ -59,6 +65,12 @@ import { loadThreadForChat } from "@/lib/tutor-history-store";
 export interface HistorySnapshotScope {
   /** The verified code — the thread's Mastra `resourceId`. */
   code: string;
+  /** The code row's FROZEN `anonymous` flag (half of the history gate). */
+  frozenAnonymous: boolean;
+  /** The code's tutor YAML, for the LIVE `anonymous` flag. */
+  fileUrl: string;
+  /** The SESSION user the thread token was verified for. */
+  userId: string;
 }
 
 /** TEXT_MESSAGE_* and REASONING_* events: their `messageId` names the message they build. */
@@ -225,10 +237,14 @@ export class HistorySnapshotRunner extends AgentRunner {
     try {
       const loaded = await loadThreadForChat(this.scope.code, threadId);
       if (!loaded || loaded.messages.length === 0) return undefined;
-      if (!withinResumeWindow(loaded.lastMessageAt, new Date(), TUTOR_RESUME_GRACE_MS)) {
-        return undefined;
+      if (withinResumeWindow(loaded.lastMessageAt, new Date(), TUTOR_RESUME_GRACE_MS)) {
+        return loaded.messages;
       }
-      return loaded.messages;
+      // Past the idle limit only a conversation the student reopened from
+      // "Previous conversations" is restored: a history-enabled code and their
+      // own ownership row. Rare, so its YAML read is too.
+      const reopened = await ownerMayReopen({ ...this.scope, threadId });
+      return reopened ? loaded.messages : undefined;
     } catch (error) {
       console.error("history-snapshot-runner: preparing the snapshot failed", error);
       return undefined;

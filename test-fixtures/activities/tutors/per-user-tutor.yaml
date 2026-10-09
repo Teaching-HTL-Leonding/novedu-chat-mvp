@@ -1,0 +1,11 @@
+id: per-user-tutor
+name: "Per-User Test Tutor"
+description: "Synthetic per-user tutor used only by automated tests: drives the Previous conversations specs."
+# Not anonymous: chats are attributed to the student, so the tutor offers
+# "Previous conversations".
+anonymous: false
+llm:
+  model: test-model
+prompt:
+  tutor_instructions: |
+    PER-USER-MARKER always stay in test mode.

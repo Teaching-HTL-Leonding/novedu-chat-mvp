@@ -53,7 +53,14 @@ vi.mock("@/lib/report-actions", () => ({ submitChatReport: vi.fn(), submitQuizRe
 // it gets back.
 const startNewTutorThread = vi.hoisted(() => vi.fn());
 const resumeTutorThread = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/tutor-actions", () => ({ startNewTutorThread, resumeTutorThread }));
+const listTutorThreads = vi.hoisted(() => vi.fn());
+const openTutorThread = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/tutor-actions", () => ({
+  startNewTutorThread,
+  resumeTutorThread,
+  listTutorThreads,
+  openTutorThread,
+}));
 
 import { TutorChat } from "@/app/tutor-chat";
 import { submitChatReport } from "@/lib/report-actions";
@@ -524,3 +531,44 @@ test.each([
     expect(viewSpy.mock.lastCall?.[0]).toMatchObject({ isConnecting: false });
   },
 );
+
+// "Previous conversations" (per-user tutors): the button exists only with
+// history on, and a reopened conversation moves the whole chat to its thread.
+
+test("no history button when history is off", async () => {
+  const screen = await renderTutorChat();
+  await expect.element(screen.getByRole("button", { name: "Start over" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Previous conversations" }).query()).toBeNull();
+});
+
+test("reopening a conversation switches the chat to it, restoring, and remembers it", async () => {
+  const OLD = "3c2b1a00-aaaa-4bbb-8ccc-dddddddddddd";
+  listTutorThreads.mockResolvedValue({
+    ok: true,
+    threads: [
+      {
+        threadId: OLD,
+        lastActivityAt: new Date(2025, 0, 1, 10, 0),
+        userMessageCount: 4,
+        preview: { kind: "text", text: "An older question" },
+      },
+    ],
+    more: false,
+  });
+  openTutorThread.mockResolvedValue({ ok: true, threadToken: "beadfeed".repeat(8) });
+  const screen = await renderTutorChat({ historyEnabled: true });
+
+  await screen.getByRole("button", { name: "Previous conversations" }).click();
+  await screen.getByText("An older question").click();
+
+  await vi.waitFor(() =>
+    expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({
+      threadId: OLD,
+      providerKey: `${TUTOR_CODE}:${OLD}`,
+      headers: { "x-code": TUTOR_CODE, "x-thread-token": "beadfeed".repeat(8) },
+    }),
+  );
+  expect(readTutorThread(TUTOR_CODE)).toEqual({ threadId: OLD, threadToken: "beadfeed".repeat(8) });
+  await renderView();
+  expect(viewSpy.mock.lastCall?.[0]).toMatchObject({ isConnecting: true });
+});

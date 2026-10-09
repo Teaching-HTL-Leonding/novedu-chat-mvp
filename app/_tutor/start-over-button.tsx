@@ -23,18 +23,38 @@ import { startNewTutorThread } from "@/lib/tutor-actions";
 // accessible name and `title` doubles as the resting tooltip, the same pairing
 // app/images/view-image-button.tsx uses — the app has no tooltip component.
 
+// Two wordings, because what "starting over" costs differs: in an anonymous
+// tutor the earlier conversation is gone for the student for good, in a per-user
+// tutor it stays reopenable under "Previous conversations".
+const WORDINGS = {
+  anonymous: {
+    title: "Start over?",
+    text: "Your conversation so far will be cleared and the tutor starts fresh. It will not remember what you have discussed, and you cannot come back to this conversation later. Your teacher can still read it, but cannot see that it was yours.",
+    action: "Start over",
+  },
+  perUser: {
+    title: "Start a new conversation?",
+    text: "The tutor starts fresh and will not remember what you have discussed here. Your current conversation is saved: you can reopen it under Previous conversations (the history button) and continue where you left off. Your teacher can see both conversations.",
+    action: "Start new conversation",
+  },
+} as const;
+
 export function StartOverButton({
   code,
+  historyEnabled,
   onStarted,
 }: {
   /** The tutor code — re-verified server-side before a thread is minted. */
   code: string;
+  /** A per-user tutor (history on): the earlier conversation stays reopenable. */
+  historyEnabled: boolean;
   /** Hands the caller the fresh thread to swap into the chat surface. */
   onStarted: (thread: { threadId: string; threadToken: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const wording = historyEnabled ? WORDINGS.perUser : WORDINGS.anonymous;
 
   function close() {
     setOpen(false);
@@ -71,17 +91,14 @@ export function StartOverButton({
       <DialogShell
         open={open}
         onClose={close}
-        title="Start over?"
+        title={wording.title}
         // size="fit" shrink-wraps the short confirmation and centers it (see
         // the variant in components/ui/dialog-shell.tsx for why h-auto can't).
         size="fit"
         className="w-[min(32rem,92vw)]"
       >
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
-          <p>
-            Your conversation so far will be cleared and the tutor starts fresh — it will not
-            remember what you have discussed. Your teacher can still see the earlier conversation.
-          </p>
+          <p>{wording.text}</p>
 
           <div className="flex items-center gap-3">
             <Button variant="outline" onClick={onConfirm} disabled={pending}>
@@ -90,7 +107,7 @@ export function StartOverButton({
                   <Spinner /> Starting over…
                 </>
               ) : (
-                "Start over"
+                wording.action
               )}
             </Button>
           </div>

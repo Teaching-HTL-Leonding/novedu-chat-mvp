@@ -149,6 +149,15 @@ export const RotateCcwIcon = (props: SVGProps<SVGSVGElement>) => (
   </Icon>
 );
 
+/** Clock with a counter-clockwise arrow — "Previous conversations" (history). */
+export const HistoryIcon = (props: SVGProps<SVGSVGElement>) => (
+  <Icon {...props}>
+    <path d="M3 3v5h5" />
+    <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
+    <path d="M12 7v5l4 2" />
+  </Icon>
+);
+
 /** Circled check — the quiz pre-check hint "looks correct". */
 export const CircleCheckIcon = (props: SVGProps<SVGSVGElement>) => (
   <Icon {...props}>
