@@ -1,5 +1,6 @@
 import { ApiAuthError, requireBearerUser } from "@/lib/api-auth";
 import { recordError } from "@/lib/telemetry";
+import { authErrorResponse, json } from "../shared";
 
 // Identity probe for the CLI/API bearer channel (docs/api.md): `novedu-cli
 // whoami` calls it to verify the full token round-trip. Excluded from the
@@ -12,18 +13,10 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const user = await requireBearerUser(request);
-    return Response.json({ name: user.name, userId: user.userId, isTeacher: user.isTeacher });
+    return json({ name: user.name, userId: user.userId, isTeacher: user.isTeacher }, 200);
   } catch (error) {
-    if (error instanceof ApiAuthError) {
-      // Generic body: which check failed (no header, no live session) stays
-      // server-side.
-      // `{ message }` is the ONE failure key on the bearer channel (docs/api.md).
-      return Response.json(
-        { message: error.message },
-        { status: error.status, headers: { "WWW-Authenticate": "Bearer" } },
-      );
-    }
+    if (error instanceof ApiAuthError) return authErrorResponse(error);
     recordError(error, { "novedu.area": "api-me" });
-    return Response.json({ message: "Internal server error" }, { status: 500 });
+    return json({ message: "Internal server error" }, 500);
   }
 }

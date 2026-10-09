@@ -41,7 +41,8 @@ module-filtered list).
 stateless link form: an activity opens if (and only while) a row with that code
 exists and "now" is inside its window. The single check lives in `checkCode()`
 (`lib/code-store.ts`) and is used by every gate (the student entry route, the
-runtime route, and the quiz actions), each re-checking on **every** server touch
+runtime route, the public coding routes, and the module server actions — quiz,
+writing, tutor), each re-checking on **every** server touch
 — one PK SELECT on the pooled connection — so an open activity stops accepting
 input the moment its window closes (403 / error with a human-readable reason).
 Malformed codes are pattern-rejected without a database round-trip — which also
@@ -132,9 +133,9 @@ shareable activities.
 
 Student **rendering** is also NOT a registry seam: it is a thin `switch (entry.module)`
 in `app/[code]/page.tsx` delegating to each module's own server component
-(`render-tutor.tsx`, `render-quiz.tsx`, `render-writing.tsx`). (The *teacher* detail
-body IS a registry seam — `renderDetail` above — but descriptors keep JSX out by
-calling components as plain functions.)
+(`render-tutor.tsx`, `render-quiz.tsx`, `render-writing.tsx`, `render-coding.tsx`).
+(The *teacher* detail body IS a registry seam — `renderDetail` above — but
+descriptors keep JSX out by calling components as plain functions.)
 
 **Adding a module** touches a small, fixed set of seams: a descriptor file (with its
 `renderDetail`) + one `codeModules` line, a client label (`lib/code-modules/types.ts`),
@@ -849,5 +850,4 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
 
 - **Custom/memorable codes** (the `code` column + the centralized code seam in
   `lib/code-store.ts` are already sized for them).
-- A **real quiz validator** (the Layer-2 stub becomes a one-spot change).
 - Result/attempt recording for per-question aggregates; finer-grained RBAC.

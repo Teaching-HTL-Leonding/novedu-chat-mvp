@@ -180,7 +180,8 @@ explicitly at those sites if you want them exported.
 
 ## What the signals look like
 
-Both backends run the same instrumentation set, so a receiver gets:
+Both backends run the HTTP and `pg` instrumentations; the standard OTLP path adds
+`instrumentation-runtime-node`. A receiver gets:
 
 - **Request spans.** Next emits its own spans whenever a global tracer provider is
   registered: `BaseServer.handleRequest` (kind SERVER) plus a route-resolved
@@ -207,7 +208,7 @@ Both backends run the same instrumentation set, so a receiver gets:
   an `AppExceptions` row whose message names the SQLSTATE
   (`PostgreSQL error … (code: 42501)`) — the first place to look when a boot
   logs a privilege problem (`docs/database.md`, ownership hazard).
-- **Runtime metrics.** `instrumentation-runtime-node`: `nodejs.eventloop.*`
+- **Runtime metrics** (OTLP path only). `instrumentation-runtime-node`: `nodejs.eventloop.*`
   (utilization, time, delay percentiles) and `v8js.*` (heap sizes, GC duration).
   The metrics reader alone emits nothing; these instruments are what appears.
 - **HTTP metrics.** Under the default semantic-convention mode the names are

@@ -373,7 +373,7 @@ any page, and its handler re-validates the session itself on top of that.
   the `proxy.ts` matcher (`api/me(?:/|$)`, `api/codes(?:/|$)`,
   `api/reports(?:/|$)`, `api/images(?:/|$)`, `api/eval(?:/|$)` — which bounds ALL THREE
   eval routes) — never a blanket `/api` prefix. The files handlers ride
-  the pre-existing public `api/files` exclusion and self-gate. Adding a bearer endpoint = new route
+  the public `api/files` exclusion and self-gate. Adding a bearer endpoint = new route
   file gated by `requireBearerUser`/`requireBearerTeacher` + its own matcher
   exclusion + documentation here.
 - **The service seam:** the bearer write routes and the web server actions
@@ -476,10 +476,10 @@ any page, and its handler re-validates the session itself on top of that.
   `--concurrency`, plus — unless `--no-judge-feedback` — one `POST /api/eval/judge` per
   successful repeat) and prints a run report, keeping the machine-readable batch
   shape behind `--json` / `--out`. Which generation endpoint it calls follows the eval
-  file's own `kind`; a batch may mix both. It is the first command that both talks to the
+  file's own `kind`; a batch may mix both. It both talks to the
   server and does substantial offline work: the prompts are assembled locally
   through the app's own dump seam. Per-case failures are handled by the command
-  (`performApiRequest({ quiet: true })` + the new `status` / `authFailed` markers:
+  (`performApiRequest({ quiet: true })` + the `status` / `authFailed` markers:
   retry 5xx and network, abort the whole run on 401/403); hard failures — no usable
   eval file, half an `--llm-*` pair, an unwritable `--out` — stay JSON on stderr with
   exit 1. It is also the one command that probes **`GET /api/version`** (public, no

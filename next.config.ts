@@ -15,8 +15,8 @@ const nextConfig: NextConfig = {
   // must also stay external: `@azure/monitor-opentelemetry` and the standard
   // `@opentelemetry/*` SDK + instrumentations patch modules at require time,
   // which only works when those modules load through Node's loader rather than
-  // a bundle. Both backends share the same instrumentation packages
-  // (docs/telemetry.md).
+  // a bundle. Both backends share the HTTP and `pg` instrumentation packages;
+  // the OTLP path adds `instrumentation-runtime-node` (docs/telemetry.md).
   serverExternalPackages: [
     "@mastra/*",
     "pg",
