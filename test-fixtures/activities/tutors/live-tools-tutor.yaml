@@ -1,6 +1,6 @@
 id: live-tools-tutor
 name: "Live Tools Tutor"
-description: "Tutor with a REAL model AND the random_number tool — drives the @live-llm
+description: "Tutor with a real model id AND the random_number tool — drives the
   tool-call spec, which asks for a random number and asserts the reply carries an
   in-range value the model could only have from the tool."
 # A REAL model (the same one the plain live-tutor uses; tool-calling support on it

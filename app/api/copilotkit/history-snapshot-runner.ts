@@ -63,8 +63,9 @@ import { loadThreadForChat } from "@/lib/tutor-history-store";
 // abstract `AgentRunner` methods one by one (guarded in
 // reasoning-runner.unit.test.ts), and it relies on undocumented behaviour of
 // CopilotKit / AG-UI / Mastra (the connect wipe, the verifier's rules, the replay
-// shape, the id alignment). Run the `@live-llm` reload round-trip
-// (e2e/tutor-reload-roundtrip.spec.ts) before bumping any of them.
+// shape, the id alignment). CI guards that with the reload round-trip
+// (e2e/tutor-reload-roundtrip.spec.ts); also run `npm run test:e2e:live-llm`
+// locally before bumping any of them (docs/chat.md).
 
 export interface HistorySnapshotScope {
   /** The verified code — the thread's Mastra `resourceId`. */

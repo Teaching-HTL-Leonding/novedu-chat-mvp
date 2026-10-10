@@ -3,16 +3,18 @@ import { getStoredMessages, LIVE_TUTOR_URL, mintCode, mintTutorCode } from "./co
 import { query } from "./db";
 import { watchErrors } from "./page.utils";
 
-// The reload round-trip against a REAL model in a WARM dev server — the one test
+// The reload round-trip through a real chat in a WARM dev server — the one test
 // of the snapshot runner's in-process replay filter that a unit test cannot give
 // (app/api/copilotkit/history-snapshot-runner.ts). After a turn, the library's
 // in-memory runner replays it on the next `connect` while the snapshot runner
 // also sends it from the database; only the id alignment between the two
 // (client-minted user ids, streamed assistant ids, both stored by Mastra) keeps
 // the browser from showing every message twice. That alignment is undocumented
-// behaviour of CopilotKit / AG-UI / Mastra, so this spec is MANDATORY before any
-// `@copilotkit/*`, `@ag-ui/*` or `@mastra/*` bump (docs/chat.md). Local only:
-// it needs the live SCCH endpoint (docs/testing.md).
+// behaviour of CopilotKit / AG-UI / Mastra, so this spec guards every
+// `@copilotkit/*`, `@ag-ui/*` or `@mastra/*` bump (docs/chat.md). It runs in CI
+// against the fake LLM (docs/testing.md, "Fake LLM"), whose streamed replies take
+// the same path as a real model's; `@live-db` because it reads the stored
+// messages through e2e/db.ts.
 
 test.setTimeout(240_000);
 
@@ -64,7 +66,7 @@ async function reloadAndWaitForChat(page: Page) {
 }
 
 test("a reload in a warm process shows each message exactly once", {
-  tag: ["@live", "@live-llm"],
+  tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   const code = await mintTutorCode({ tutor: LIVE_TUTOR_URL });
   const errors = watchErrors(page);
@@ -101,10 +103,10 @@ test("a reload in a warm process shows each message exactly once", {
 });
 
 test("a failed turn followed by a good one still reloads cleanly", {
-  tag: ["@live", "@live-llm"],
+  tag: ["@live", "@live-db"],
 }, async ({ page }) => {
-  // An override onto a model the endpoint does not serve: the first turn fails
-  // IN-BAND, so the in-memory runner keeps it with a terminal RUN_ERROR — which
+  // An override onto a model the endpoint does not serve (the fake LLM answers
+  // any `no-such-model` id with a 404): the first turn fails IN-BAND, so the in-memory runner keeps it with a terminal RUN_ERROR — which
   // the snapshot runner must close as a RUN_FINISHED on the replay, or the
   // browser's verifier rejects every run after it.
   const code = await mintCode({

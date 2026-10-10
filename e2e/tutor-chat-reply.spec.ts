@@ -70,21 +70,23 @@ test("sending a message gets a non-empty reply from the tutor", {
 });
 
 // The tool round-trip: a tutor with `tools: [random_number]` is asked for a random
-// number in a range the tool must be called for. Asserts the full server-side tool
-// path (per-request tools resolver → Mastra tool execution → the result woven into
-// the reply): the answer must carry a number INSIDE the requested range. A model
-// inventing a plausible number could theoretically land in range too — but a broken
-// tools path fails loudly (resolver throw = no reply; tool never called = gemma has
-// no number to echo), so in-range + no error is a faithful smoke of the wiring.
-// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
+// number in a range. Asserts the full server-side tool path (per-request tools
+// resolver → Mastra tool execution → the result fed back to the model): the fake
+// LLM (docs/testing.md, "Fake LLM") calls the tool on the `[tool:…]` marker and
+// then echoes the tool result, so the reply carries a number INSIDE the requested
+// range only if the tool really ran. A broken tools path fails loudly (resolver
+// throw = no reply; unknown tool = a failed run).
+// @live-db: mints the code through e2e/db.ts — runs in CI.
 test("a tutor with the random_number tool weaves a tool result into its reply", {
-  tag: ["@live", "@live-llm"],
+  tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   await page.goto(`/${await mintTutorCode({ tutor: LIVE_TOOLS_TUTOR_URL })}`);
 
   const composer = page.getByTestId("copilot-chat-textarea");
   await expect(composer).toBeVisible();
-  await composer.fill("Give me a random number between 100000 and 999999.");
+  await composer.fill(
+    '[tool:random_number {"min":100000,"max":999999}] Give me a random number between 100000 and 999999.',
+  );
   await page.getByTestId("copilot-send-button").click();
 
   // After a tool round-trip the reply renders as TWO nodes with this testid (a

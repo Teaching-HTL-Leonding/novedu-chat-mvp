@@ -260,10 +260,14 @@ Consequences worth knowing:
 - `CopilotChat` connects twice per mount (provisional agent, then the real one):
   two database reads, harmless.
 
-**Before any `@copilotkit/*`, `@ag-ui/*` or `@mastra/*` bump**, run the `@live-llm`
-reload round-trip `e2e/tutor-reload-roundtrip.spec.ts` locally — next to wrapping
-any new `AgentRunner` method in all three decorators. It is the only test of the
-replay filter against a real browser in a warm process, and CI does not run it.
+**Before any `@copilotkit/*`, `@ag-ui/*` or `@mastra/*` bump**, wrap any new
+`AgentRunner` method in all three decorators, and run `npm run test:e2e:live-llm`
+locally. CI already runs the reload round-trip `e2e/tutor-reload-roundtrip.spec.ts`
+— the only test of the replay filter against a real browser in a warm process —
+and `e2e/reasoning-visibility.spec.ts` against the fake LLM (`docs/testing.md`);
+the local real-LLM run adds what the fake cannot: a real thinking model's
+reasoning stream (the `@live-llm` twin of the reasoning-visibility teacher leg)
+and the provider smoke tests.
 
 ### Previous conversations (per-user tutors only)
 
@@ -681,8 +685,8 @@ module.
 - **`e2e/tutor-resume.live.spec.ts`** (`@live-db`, CI) — seeds a conversation
   under the tab's stored thread: a reload restores it without the welcome screen;
   backdated 61 minutes, the reload starts fresh. Plus the anonymous-tutor smoke.
-  **`e2e/tutor-reload-roundtrip.spec.ts`** (`@live-llm`, local, mandatory before
-  the bumps above) — one copy of each message after reloads in a warm process,
+  **`e2e/tutor-reload-roundtrip.spec.ts`** (`@live-db`, CI, against the fake LLM;
+  guards the bumps above) — one copy of each message after reloads in a warm process,
   and a failed-then-good thread that still reloads without a verifier error.
 - **`lib/tutor-actions.unit.test.ts`** — `startNewTutorThread` with the session and
   `checkCode` mocked but **`lib/thread-token` real**: the minted token verifies for
@@ -722,5 +726,6 @@ module.
 The refactor is behavior-preserving, so the live e2e specs are coverage, not
 duplication — they drive the **real** CopilotKit end-to-end (which the component
 layer mocks away), per module: `e2e/tutor-chat-reply.spec.ts`, `e2e/quiz.spec.ts`,
-`e2e/writing.spec.ts` (and `e2e/chat-no-replay-persistence.spec.ts`). They are
-`@live-llm`, local-only — see `docs/testing.md` for the `@live` boundary.
+`e2e/writing.spec.ts` (and `e2e/chat-no-replay-persistence.spec.ts`). Those that
+test no specific provider run in CI against the fake LLM — see `docs/testing.md`
+for the `@live` boundary.

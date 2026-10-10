@@ -19,8 +19,13 @@ import { LIVE_TUTOR_URL, mintCode } from "./code.utils";
 //  2. the same teacher, view-as-student → zero
 //  3. a genuine student session        → zero
 //
-// Needs a REASONING model, so the code carries a per-code LLM override pair on
-// top of the plain live tutor fixture.
+// The three legs run against the fake LLM (docs/testing.md, "Fake LLM"): the
+// `[reasoning:…]` marker makes it stream reasoning frames for EVERY session, so
+// the two student legs prove the server strips them. A fourth leg, the
+// `@live-llm` twin at the end, repeats the teacher leg against a real thinking
+// model, so `npm run test:e2e:live-llm` keeps a real reasoning stream exercised.
+// The code carries a per-code LLM override pair naming that thinking model on top
+// of the plain live tutor fixture; the fake answers whatever model it is asked for.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
 test.describe.configure({ mode: "serial" });
@@ -32,6 +37,8 @@ const REASONING_LLM = {
 } as const;
 
 const QUESTION = "A train travels 120 km in 90 minutes. What is its average speed in km/h?";
+// What the fake-LLM legs send: the same question behind a reasoning marker.
+const FAKE_QUESTION = `[reasoning:Speed is distance over time: 120 km in 1.5 hours is 80 km/h.] ${QUESTION}`;
 
 /** One recorded runtime stream: the endpoint, and the bytes received so far. */
 interface CapturedStream {
@@ -123,16 +130,18 @@ test.beforeAll(async () => {
   });
 });
 
-// A real reasoning-model round-trip — give it room.
+// A real reasoning-model round-trip (the twin) — give it room.
 test.setTimeout(240_000);
 
-// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
-test("an effective teacher receives the reasoning and sees the thinking block", {
-  tag: ["@live", "@live-llm"],
-}, async ({ page }) => {
+/**
+ * The teacher leg's body, shared by the fake-LLM leg and its real-model twin:
+ * the thinking block is visible and the reasoning frames were on the wire.
+ * Returns how many reasoning frames arrived.
+ */
+async function expectTeacherSeesReasoning(page: Page, question: string): Promise<number> {
   await captureRuntimeStreams(page);
   await page.goto(`/${code}`);
-  await sendAndExpectReply(page, { message: QUESTION, timeout: 120_000 });
+  await sendAndExpectReply(page, { message: question, timeout: 120_000 });
 
   // The collapsible reasoning block ("Thinking…" while streaming, "Thought for
   // Ns" once done) is the visible half.
@@ -141,13 +150,19 @@ test("an effective teacher receives the reasoning and sees the thinking block", 
   // ...and the frames really were on the wire.
   const streams = await readRuntimeStreams(page);
   expect(countFrames(streams, "TEXT_MESSAGE_CONTENT")).toBeGreaterThan(0);
-  teacherReasoningFrames = countFrames(streams, "REASONING_MESSAGE_CONTENT");
-  expect(teacherReasoningFrames).toBeGreaterThan(0);
+  const reasoningFrames = countFrames(streams, "REASONING_MESSAGE_CONTENT");
+  expect(reasoningFrames).toBeGreaterThan(0);
+  return reasoningFrames;
+}
+
+test("an effective teacher receives the reasoning and sees the thinking block", {
+  tag: ["@live", "@live-db"],
+}, async ({ page }) => {
+  teacherReasoningFrames = await expectTeacherSeesReasoning(page, FAKE_QUESTION);
 });
 
-// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("a teacher in view-as-student mode receives ZERO reasoning frames", {
-  tag: ["@live", "@live-llm"],
+  tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   // Same session, same model, same activity — only the student-mode cookie
   // differs. Setting it directly keeps this spec about the reasoning gate; the
@@ -162,7 +177,7 @@ test("a teacher in view-as-student mode receives ZERO reasoning frames", {
 
   const composer = page.getByTestId("copilot-chat-textarea");
   await expect(composer).toBeVisible();
-  await composer.fill(QUESTION);
+  await composer.fill(FAKE_QUESTION);
   await page.getByTestId("copilot-send-button").click();
 
   // While the run is in flight the student sees the generic note instead of the
@@ -181,9 +196,8 @@ test("a teacher in view-as-student mode receives ZERO reasoning frames", {
   await expect(page.getByText(/Thought for/)).toHaveCount(0);
 });
 
-// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("a real student session receives ZERO reasoning frames", {
-  tag: ["@live", "@live-llm"],
+  tag: ["@live", "@live-db"],
 }, async ({ browser }) => {
   // The genuine article: the default (student) storage state, no cookie games —
   // the case the view-as-student leg only SIMULATES.
@@ -193,11 +207,19 @@ test("a real student session receives ZERO reasoning frames", {
   try {
     await captureRuntimeStreams(page);
     await page.goto(`/${code}`);
-    await sendAndExpectReply(page, { message: QUESTION, timeout: 120_000 });
+    await sendAndExpectReply(page, { message: FAKE_QUESTION, timeout: 120_000 });
 
     expectStudentStreams(await readRuntimeStreams(page));
     await expect(page.getByText(/Thought for/)).toHaveCount(0);
   } finally {
     await context.close();
   }
+});
+
+// The real-model twin of the teacher leg: a plain question (no marker) to the
+// thinking model the code names. Only `npm run test:e2e:live-llm` selects it.
+test("a real thinking model streams its reasoning to an effective teacher", {
+  tag: ["@live", "@live-llm"],
+}, async ({ page }) => {
+  await expectTeacherSeesReasoning(page, QUESTION);
 });
