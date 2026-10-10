@@ -258,6 +258,24 @@ message**, never by a spec's wording. The first matching rule wins
 - Streamed replies arrive in 10-character chunks 40 ms apart, so a run stays in
   flight long enough to observe the chat's "generating" note.
 - Usage is estimated from the text length, so usage metering works unchanged.
+- `/v1/models` lists one model, **`novedu-fake`** (its own fixture in
+  `fake-llm/server.mjs`, answering exactly like the catch-all). Every other model
+  id gets the same replies, so an activity's real model id works unchanged.
+
+**Container image.** `fake-llm/Dockerfile` (built from the repo root) packages
+`server.mjs` and `markers.mjs` with aimock at the root `package.json` pin, so the
+image and the e2e suite run the same fake. The server listens on `127.0.0.1`
+unless `FAKE_LLM_HOST` names another address; the image sets `0.0.0.0` and port
+`4010`. `docker-publish.yml`'s `build-and-push-demo` job publishes it as
+`rstropek/novedu-chat-mvp:fake-llm` (amd64 + arm64) for `compose.yaml`, which runs
+it beside the `:demo` image (README, "Try Novedu locally").
+
+**Compose smoke test.** The `demo` leg of `qa.yml`'s `prod-build` boots
+`compose.yaml` on the demo image it just built and a fake image built from the PR
+(`NOVEDU_IMAGE` / `NOVEDU_FAKE_LLM_IMAGE`), waits for every healthcheck, then runs
+`scripts/ci/compose-smoke.mjs`: the demo teacher signs in, and the health probes
+for the database, SCCH (the fake) and the image root must pass. Run it locally
+the same way against `docker compose up -d --wait`.
 
 ## Demo login `@demo`
 
@@ -523,7 +541,7 @@ delay tuning.
 telemetry code):
 
 1. `docker compose -f compose.telemetry.yaml up -d`; open the dashboard login URL
-   from `docker compose logs aspire`.
+   from `docker compose -f compose.telemetry.yaml logs aspire`.
 2. `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 npm run dev`; the app log
    shows `telemetry: mode=otlp`.
 3. Sign in at `http://localhost:3000` with a teacher account; upload a
@@ -555,7 +573,8 @@ the same Postgres container: `test:e2e:ci` runs the `@demo` suite against a demo
 production build, then `check-demo-markers.mjs .next --expect present` is the positive
 control), and a PR-only `prod-build` matrix that builds both Docker images (no push) and
 checks each one's compiled output for the demo markers — absent from the Entra image,
-present in the demo image. Every job is **secret-free**; that is a hard security
+present in the demo image; the demo leg also boots `compose.yaml` on its image and runs
+the Compose smoke test ("Fake LLM" above). Every job is **secret-free**; that is a hard security
 invariant, not a convenience — see **`docs/ci-security.md`**.
 
 ## Subsystem specifics

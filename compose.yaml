@@ -1,0 +1,105 @@
+# Try Novedu locally: the demo build of the app, a Postgres database and the
+# fake LLM — no Microsoft sign-in, no real model, no repo clone needed
+# (README.md, "Try Novedu locally"; docs/auth.md, "Demo mode").
+#
+#   docker compose up -d                    # the whole app → http://localhost:3000
+#   docker compose up -d postgres fake-llm  # only the infrastructure, for `npm run dev`
+#   docker compose down -v                  # stop and delete all data
+#
+# NOT for production. The demo login lets anyone who can reach the app sign in
+# as any of the four demo people with a public password, and the passwords
+# below are published dummies — use sample data only. That is why every port
+# is published on loopback only: never expose this stack to a network.
+#
+# Never add an AZURE_* or TEACHER_GROUP_ID setting here — the demo image refuses
+# to start with any Entra setting. The database volume belongs to the demo
+# build; an Entra build refuses it. Image tags are pinned, never `latest`.
+name: novedu-demo
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: novedu
+      POSTGRES_PASSWORD: novedu-demo-not-a-secret # dummy, see the header
+      POSTGRES_DB: novedu
+    volumes:
+      - postgres:/var/lib/postgresql
+    ports:
+      - "127.0.0.1:${NOVEDU_PG_PORT:-5432}:5432" # postgresql://novedu:novedu-demo-not-a-secret@localhost:5432/novedu
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "novedu", "-d", "novedu"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # The OpenAI-compatible fake model (fake-llm/). Every reply says it is fake.
+  fake-llm:
+    image: ${NOVEDU_FAKE_LLM_IMAGE:-rstropek/novedu-chat-mvp:fake-llm}
+    ports:
+      - "127.0.0.1:${NOVEDU_FAKE_LLM_PORT:-4010}:4010" # SCCH_BASE_URL=http://127.0.0.1:4010/v1
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4010/v1/models"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Provisions the image root once: the app never creates it, its `images/`
+  # directory or its sentinel file (docs/images.md), and runs as uid 1001.
+  image-root:
+    image: busybox:1.37.0
+    volumes:
+      - images:/var/lib/novedu
+    command:
+      - sh
+      - -c
+      - >-
+        mkdir -p /var/lib/novedu/images &&
+        printf 'novedu-files-v1\n' > /var/lib/novedu/.novedu-files-root &&
+        chown -R 1001:1001 /var/lib/novedu
+    restart: "no"
+
+  app:
+    image: ${NOVEDU_IMAGE:-rstropek/novedu-chat-mvp:demo}
+    # The published app image is amd64-only; Apple silicon runs it emulated.
+    platform: linux/amd64
+    depends_on:
+      postgres:
+        condition: service_healthy
+      # The app lists the fake's models once at boot, so the fake must be up.
+      fake-llm:
+        condition: service_healthy
+      image-root:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://novedu:novedu-demo-not-a-secret@postgres:5432/novedu
+      AUTH_SECRET: ${AUTH_SECRET:-novedu-demo-auth-secret-not-a-secret}
+      # The address the browser opens; sign-in fails the origin check without it.
+      AUTH_URL: http://localhost:${NOVEDU_PORT:-3000}
+      CODE_ORIGIN: http://localhost:${NOVEDU_PORT:-3000}
+      IMAGE_STORAGE_ROOT: /var/lib/novedu
+      # The fake LLM stands in for the SCCH provider.
+      SCCH_BASE_URL: http://fake-llm:4010/v1
+      SCCH_API_KEY: fake-llm
+      # Optional: a real model through OpenRouter (docs/ai-models.md).
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    volumes:
+      - images:/var/lib/novedu
+    ports:
+      - "127.0.0.1:${NOVEDU_PORT:-3000}:3000" # the app → http://localhost:3000
+    # A refused boot (an Entra setting, a database of the other sign-in mode)
+    # keeps running but answers 500 to everything — this check catches it.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/version').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+
+volumes:
+  postgres:
+  images:

@@ -419,6 +419,10 @@ demo builds**, and each database belongs to exactly one mode.
   `DATABASE_URL` naming a database of its own (below).
 - The published images: the production image is an Entra build; the `:demo` tag is the
   demo build of the same commit (`README.md`, `docs/ci-security.md`).
+- **`compose.yaml`** (repo root) is the ready-made way to run the `:demo` image: a
+  Postgres database of its own, the fake LLM as SCCH, a provisioned image root, ports on
+  loopback only and no Entra setting (README, "Try Novedu locally"). Contributors start
+  only its `postgres` and `fake-llm` services for `npm run dev`.
 
 ### The auth instance in a demo build
 

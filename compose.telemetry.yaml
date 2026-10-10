@@ -2,7 +2,7 @@
 # development and diagnostic sessions (docs/telemetry.md, "Aspire local setup").
 #
 #   docker compose -f compose.telemetry.yaml up -d      # dashboard only (app on the host)
-#   docker compose logs aspire | grep "login?t="         # the browser-token login URL
+#   docker compose -f compose.telemetry.yaml logs aspire | grep "login?t="  # the browser-token login URL
 #   docker compose -f compose.telemetry.yaml down
 #
 # Defaults are kept on purpose: the UI needs the browser token from the container

@@ -42,8 +42,9 @@ Deep reference lives in `docs/` — those docs are **not** auto-loaded, so read 
 
 ### Auth, teacher roles & student mode → `docs/auth.md`
 
-Read before touching: `auth.ts`, `lib/auth-*.ts`, `lib/demo-*.ts`, `lib/db/auth-mode-preflight.ts`, `lib/session.ts`, `lib/db/auth-schema.ts`, `proxy.ts`, `app/sign-in/**`, `app/device/**`, `lib/device-actions.ts`, `NOVEDU_AUTH_MODE`, sessions, teacher gating, student mode.
+Read before touching: `auth.ts`, `lib/auth-*.ts`, `lib/demo-*.ts`, `lib/db/auth-mode-preflight.ts`, `lib/session.ts`, `lib/db/auth-schema.ts`, `proxy.ts`, `app/sign-in/**`, `app/device/**`, `lib/device-actions.ts`, `NOVEDU_AUTH_MODE`, `compose.yaml`, sessions, teacher gating, student mode.
 
+- `compose.yaml` is a demo-only environment (the `:demo` image, Postgres, the fake LLM; ports on loopback only) — it never sets an Entra variable, which the demo build's env lock would refuse anyway.
 - Entra ID via better-auth (a demo build: the demo login instead — one sign-in mode per build and per database, "Demo mode" in the doc); the gate is `proxy.ts` at the repo root (Next 16's rename of `middleware`, Node.js runtime; a session-cookie presence check). Every page/action/route re-validates the session itself. Teacher gating: see the security block.
 
 ### CLI / API bearer auth → `docs/api.md`
@@ -229,7 +230,7 @@ Read before touching: `.github/workflows/`, or adding a secret / real infra to C
 
 ### Testing → `docs/testing.md`
 
-Read before adding a test or tagging one `@live`.
+Read before adding a test or tagging one `@live`, or touching `fake-llm/**` (incl. its `Dockerfile`) or `scripts/ci/compose-smoke.mjs`.
 
 - Prefer fast, secret-free tests; `@live` only when the real DB/LLM/storage is genuinely needed, always with exactly one of `@live-db`/`@live-llm`/`@live-storage`/`@live-telemetry`. CI runs hermetic + `@live-db` only — LLM-backed specs among them run against the fake LLM (`fake-llm/`); `@live-llm` is only for a specific provider or real model behaviour (`npm run test:e2e:live-llm`, local). `@demo` specs run only against a demo build — the Playwright config picks the suite by `NOVEDU_AUTH_MODE` (CI: the `e2e-demo` job).
 - Mock the I/O seams, but keep security-critical pure modules (e.g. `lib/thread-token.ts`) real.

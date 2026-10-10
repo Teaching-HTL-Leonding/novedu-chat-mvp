@@ -254,7 +254,8 @@ jobs:
   #
   # One leg per published image: the production (Entra) image and `:demo`. Each
   # leg checks the shipped artifact itself for the demo markers — absent from the
-  # Entra image, present in the demo image.
+  # Entra image, present in the demo image. The demo leg then boots compose.yaml
+  # on its image and smoke-tests the demo login against it.
   prod-build:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -298,3 +299,37 @@ jobs:
           docker cp "$id:/app/.next" "$out/.next"
           docker rm "$id"
           node scripts/ci/check-demo-markers.mjs "$out" --expect ${{ matrix.markers }}
+
+      # The demo leg also boots compose.yaml on the image it just built, beside
+      # a fake LLM image built from this PR, and signs in through the demo
+      # login (scripts/ci/compose-smoke.mjs). Its passwords are the published
+      # dummies in compose.yaml — no secret involved.
+      - name: Build the fake LLM image (no push)
+        if: matrix.mode == 'demo'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: fake-llm/Dockerfile
+          push: false
+          load: true
+          tags: novedu-fake-llm:ci
+          cache-from: type=gha,scope=fake-llm
+
+      - name: Start compose.yaml
+        if: matrix.mode == 'demo'
+        env:
+          NOVEDU_IMAGE: novedu-prod-build:demo
+          NOVEDU_FAKE_LLM_IMAGE: novedu-fake-llm:ci
+        run: docker compose up -d --wait --wait-timeout 180
+
+      - name: Smoke-test compose.yaml
+        if: matrix.mode == 'demo'
+        run: node scripts/ci/compose-smoke.mjs
+
+      - name: Compose logs
+        if: failure() && matrix.mode == 'demo'
+        run: docker compose logs --no-color
+
+      - name: Stop compose.yaml
+        if: always() && matrix.mode == 'demo'
+        run: docker compose down -v

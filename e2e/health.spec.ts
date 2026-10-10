@@ -75,9 +75,10 @@ test.describe("as a teacher", () => {
     await expect(page.getByTestId("health-scch")).toContainText("OK");
     await expect(page.getByTestId("health-scch")).toContainText("models available");
 
-    // FQDN + at least one resolved IP for both dependency hosts. The FQDNs
-    // come from .env, so assert shape (host — dotted address), not values.
-    const hostPattern = /\S+\.\S+ — \d+\.\d+\.\d+\.\d+|\S+\.\S+ — [0-9a-f:]+/i;
+    // Host + at least one resolved IP for both dependency hosts. The hosts
+    // come from .env — an FQDN, or a single label such as `localhost` or a
+    // Compose service name — so assert shape (host — address), not values.
+    const hostPattern = /\S+ — \d+\.\d+\.\d+\.\d+|\S+ — [0-9a-f:]+/i;
     await expect(page.getByTestId("health-db-host")).toHaveText(hostPattern);
     await expect(page.getByTestId("health-scch-host")).toHaveText(hostPattern);
 

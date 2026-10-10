@@ -65,6 +65,42 @@ See [`docs/azure-runtime-env.md`](docs/azure-runtime-env.md).
    the code's page, and an external agent calls `POST /api/coding/v1/chat/completions`
    with that key as its bearer token. See [`docs/coding.md`](docs/coding.md).
 
+## Try Novedu locally (Docker Compose)
+
+To look around without an Entra app registration, a model endpoint or a clone of
+this repo, download [`compose.yaml`](compose.yaml) and run it with Docker:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/main/compose.yaml
+docker compose up -d --wait
+```
+
+Then open `http://localhost:3000` and pick one of the four demo people — two teachers,
+two students. The stack is the **`:demo` image** (the demo login, "Demo login and the
+`:demo` image" below), a Postgres database of its own, and Novedu's **fake LLM**: every
+chat reply says that it comes from a fake model and echoes what you wrote, so the flows
+work but the answers are not real.
+
+- **It is not for production.** Anyone who can reach the app can sign in as anyone, and
+  the passwords in the file are public. All ports are published on `127.0.0.1` only;
+  never expose the stack to a network, and use sample data only.
+- **The CLI** works against it: `npx @novedu/cli@latest login --server http://localhost:3000`.
+- **A real model:** set `OPENROUTER_API_KEY` before `docker compose up` (or put it in a
+  `.env` file next to `compose.yaml`) and put `provider: OpenRouter` and an OpenRouter
+  model id in an activity's `llm:` block, or in a code's LLM override
+  ([`docs/ai-models.md`](docs/ai-models.md)). Activities without a provider stay on the
+  fake.
+- **Run from a clone,** Compose reads the repo's own `.env` for the `${…}` values in
+  `compose.yaml`: a personal `OPENROUTER_API_KEY` or `AUTH_SECRET` there reaches the
+  demo app too. Entra settings in `.env` never do — `compose.yaml` does not reference
+  them.
+- **Ports and images:** `NOVEDU_PORT` (app, 3000), `NOVEDU_PG_PORT` (Postgres, 5432) and
+  `NOVEDU_FAKE_LLM_PORT` (fake LLM, 4010) move the published ports; `NOVEDU_IMAGE` and
+  `NOVEDU_FAKE_LLM_IMAGE` replace the images (e.g. a local `docker build`).
+- **Apple silicon:** the app image is amd64-only and runs under emulation — slower to
+  start, otherwise the same.
+- **Reset:** `docker compose down -v` deletes the database and the uploaded images.
+
 ## Prerequisites
 
 - **Node.js 24+** (developed against v24.15).
@@ -301,8 +337,34 @@ same app built in demo mode, which the image can never leave. It needs only
 `DATABASE_URL` (password auth), `AUTH_SECRET`, `AUTH_URL` (the address visitors open,
 e.g. `http://localhost:3000` — without it the browser's sign-in fails the origin check)
 and the LLM settings, and refuses to start with any Entra setting or a `novedu.at`
-`AUTH_URL`. See
-[`docs/auth.md`](docs/auth.md), "Demo mode".
+`AUTH_URL`. [`compose.yaml`](compose.yaml) runs it with all of that set ("Try Novedu
+locally" above). See [`docs/auth.md`](docs/auth.md), "Demo mode".
+
+For `npm run dev` without Azure, start only the infrastructure from `compose.yaml` —
+its Postgres and the fake LLM — and point `.env.local` at it:
+
+```bash
+docker compose up -d --wait postgres fake-llm
+```
+
+```bash
+# .env.local — wins over .env
+NOVEDU_AUTH_MODE=demo
+AZURE_CLIENT_ID=
+AZURE_CLIENT_SECRET=
+AZURE_TENANT_ID=
+TEACHER_GROUP_ID=
+# Port 5432 unless NOVEDU_PG_PORT moves it.
+DATABASE_URL=postgresql://novedu:novedu-demo-not-a-secret@localhost:5432/novedu
+SCCH_BASE_URL=http://127.0.0.1:4010/v1
+SCCH_API_KEY=fake-llm
+# Provision it once with `npm run images:init-root`.
+IMAGE_STORAGE_ROOT=/absolute/path/outside/the/repo
+```
+
+That database is a demo database (an Entra build refuses it), and it is the same one the
+full stack's app uses. Start the infrastructure before `npm run dev` — the app lists the
+fake's models once at boot.
 
 ## Scripts
 
