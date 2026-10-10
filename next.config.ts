@@ -1,7 +1,16 @@
 import type { NextConfig } from "next";
+import { parseAuthMode } from "./lib/auth-mode";
 import { TEACHER_GUIDE_URL } from "./lib/teacher-guide";
 
+// The build's sign-in mode, validated once when the config is evaluated (docs/auth.md,
+// "Demo mode"). `next dev` evaluates this file once at startup, so the mode is frozen
+// for the process: changing it needs a restart.
+const authMode = parseAuthMode(process.env);
+
 const nextConfig: NextConfig = {
+  // ALWAYS emitted, so every `process.env.NOVEDU_AUTH_MODE === "demo"` branch site
+  // folds to a constant at build time and the other mode's code never ships.
+  env: { NOVEDU_AUTH_MODE: authMode },
   // Emit a self-contained server (.next/standalone) for the Docker image — see
   // Dockerfile. Only traced files end up in the image, not the full node_modules.
   output: "standalone",

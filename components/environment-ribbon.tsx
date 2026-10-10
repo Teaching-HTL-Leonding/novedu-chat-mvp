@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { IconButton } from "@/components/ui/icon-button";
+import { RibbonFrame } from "@/components/ribbon-frame";
 import { TEACHER_GUIDE_URL } from "@/lib/teacher-guide";
-import { cn } from "@/lib/utils";
 
 // A coloured ribbon under the status bar naming the environment this page runs
 // in, so nobody works on DEV (or a local server) by mistake. The environment is
 // read from the browser's own hostname — the server renders nothing and the
 // ribbon appears after hydration. The "X" hides it for the rest of the tab's
 // session; the root layout persists across client navigations, so it never
-// re-appears while someone works.
+// re-appears while someone works. A demo build renders components/demo-ribbon.tsx
+// instead (app/layout.tsx).
 
 export type AppEnvironment = "local" | "dev" | "prod";
 
@@ -86,27 +86,15 @@ export function EnvironmentRibbon() {
   }
 
   return (
-    <aside
-      aria-label="Environment"
-      className={cn("flex shrink-0 items-center gap-3 px-5 py-1.5 text-sm", ribbon.className)}
-    >
-      <p className="min-w-0 flex-1">
-        <strong className="font-bold">{ribbon.label}</strong> · {ribbon.message}{" "}
-        {ribbon.link && (
-          // The guide is a static export with no way back into the app (as in
-          // the nav menu), so it opens in its own tab.
-          <a href={ribbon.link.href} target="_blank" rel="noopener" className="underline">
-            {ribbon.link.text}
-          </a>
-        )}
-      </p>
-      <IconButton
-        aria-label="Hide this notice"
-        onClick={dismiss}
-        className="size-6 border-0 text-base not-disabled:hover:bg-current/15"
-      >
-        ×
-      </IconButton>
-    </aside>
+    <RibbonFrame label={ribbon.label} className={ribbon.className} onDismiss={dismiss}>
+      {ribbon.message}{" "}
+      {ribbon.link && (
+        // The guide is a static export with no way back into the app (as in
+        // the nav menu), so it opens in its own tab.
+        <a href={ribbon.link.href} target="_blank" rel="noopener" className="underline">
+          {ribbon.link.text}
+        </a>
+      )}
+    </RibbonFrame>
   );
 }

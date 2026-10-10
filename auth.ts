@@ -1,125 +1,42 @@
 import "server-only";
 
-import { betterAuth } from "better-auth";
+import { type BetterAuthOptions, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { bearer, deviceAuthorization } from "better-auth/plugins";
-import { eq } from "drizzle-orm";
+import { demoAuthOptions } from "@/lib/auth-demo-options";
+import { entraAuthOptions } from "@/lib/auth-entra-options";
+import { mergeAuthOptions } from "@/lib/auth-options-merge";
 import { getDb } from "@/lib/db";
-import { authSchema, authUsers } from "@/lib/db/auth-schema";
-import { givenNameFromIdToken } from "@/lib/given-name";
-import { teacherFromIdToken } from "@/lib/teacher";
-import { recordError } from "@/lib/telemetry";
-
-// Fail fast (and clearly) at startup if a required credential is missing, rather
-// than interpolating `undefined` into the issuer URL and failing mid-sign-in
-// with an opaque OAuth discovery error.
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
-  return value;
-}
-
-// The Entra security group whose members are teachers. It lives in `.env`
-// because it is tenant-specific configuration (not a secret).
-const TEACHER_GROUP_ID = required("TEACHER_GROUP_ID");
+import { authSchema } from "@/lib/db/auth-schema";
+import { requiredEnv } from "@/lib/required-env";
 
 const DAY_SECONDS = 60 * 60 * 24;
 
-/**
- * The SERVER-OWNED user fields that come from the ID token, recomputed on every
- * sign-in and written to `novedu_user` in one update:
- *
- *  - `is_teacher` — membership of `TEACHER_GROUP_ID` in the `groups` claim.
- *  - `given_name` — the `given_name` claim (NULL without one); the start page
- *    greets with it.
- *
- * `input: false` below keeps both off every API surface, and this hook is their
- * only writer. It has to be: better-auth drops `input: false` fields from
- * `mapProfileToUser`'s result, so the provider mapping cannot set them.
- *
- * It runs on the account row (created on the first sign-in of an identity,
- * updated on every later one), where better-auth has just stored the fresh
- * `id_token` — and it runs BEFORE the session is created, so the very next
- * `getSession` already reflects the new values.
- *
- * Everything is wrapped: a failure here must never block sign-in. Both fields
- * then keep their previous values, which for a new user is non-teacher (fail
- * closed) and no given name.
- */
-async function applyIdTokenClaims(account: { userId: string; idToken?: string | null }) {
-  try {
-    if (typeof account.idToken !== "string") return;
-    const { isTeacher, overage } = teacherFromIdToken(account.idToken, TEACHER_GROUP_ID);
-    if (overage) {
-      console.warn(
-        "[auth] Entra returned a group overage claim; teacher status cannot be derived " +
-          "from the token and defaults to non-teacher. A Microsoft Graph lookup would be " +
-          "required to resolve membership for this user.",
-      );
-    }
-    const givenName = givenNameFromIdToken(account.idToken);
-    await getDb()
-      .update(authUsers)
-      .set({ isTeacher, givenName })
-      .where(eq(authUsers.id, account.userId));
-  } catch (error) {
-    recordError(error, { "novedu.auth.stage": "apply-id-token-claims" });
-    console.error("[auth] applying the ID token claims failed", error);
-  }
-}
-
-// The one auth system. Microsoft Entra ID (single tenant) is the only provider;
-// any signed-in account passes the gate, and finer-grained authorization
-// (teacher-only work) is enforced per action from `user.isTeacher` — through
-// `requireEffectiveTeacher()` wherever student mode applies (docs/auth.md).
+// The one auth system, with exactly ONE sign-in mode per build (docs/auth.md):
+//
+//  - Entra builds (the default): Microsoft Entra ID (single tenant) is the only
+//    provider — `entraAuthOptions()`.
+//  - Demo builds (`NOVEDU_AUTH_MODE=demo`, frozen at build time by next.config.ts):
+//    one-click sign-in as one of four seeded demo personas — `demoAuthOptions()`.
+//
+// The literal comparison below folds to a constant at build time, so each build
+// calls only its own factory. Everything else is shared: any signed-in account
+// passes the gate, and finer-grained authorization (teacher-only work) is enforced
+// per action from `user.isTeacher` — through `requireEffectiveTeacher()` wherever
+// student mode applies.
 //
 // Sessions live in the database (`novedu_session`), so both channels share one
 // notion of "signed in": the browser sends the session token in a signed cookie,
 // the CLI sends the same token as a bearer (the `bearer()` plugin).
-//
-// The Entra credentials live in `.env` under the app's own AZURE_* names.
-export const auth = betterAuth({
+const shared = {
   database: drizzleAdapter(getDb(), { provider: "pg", schema: authSchema }),
   // Signs the session cookie (and, elsewhere, derives the thread-ownership HMAC
   // key — see lib/thread-token.ts).
-  secret: required("AUTH_SECRET"),
+  secret: requiredEnv("AUTH_SECRET"),
   // Undefined locally: better-auth then infers the base URL from the request.
   // Production sets AUTH_URL, which also makes that host a trusted origin.
   baseURL: process.env.AUTH_URL,
-  socialProviders: {
-    microsoft: {
-      clientId: required("AZURE_CLIENT_ID"),
-      clientSecret: required("AZURE_CLIENT_SECRET"),
-      tenantId: required("AZURE_TENANT_ID"),
-      // Require fresh Entra authentication when starting a session on a shared
-      // computer, even if the previous user's Microsoft SSO session is still active.
-      prompt: "login",
-      // The Entra profile is authoritative for the display name and email: both
-      // are overwritten on every sign-in.
-      overrideUserInfoOnSignIn: true,
-      // No avatars anywhere in the app — the user menu renders initials — so the
-      // provider's Microsoft Graph photo fetch (an untimed extra request on every
-      // callback) is skipped entirely.
-      disableProfilePhoto: true,
-      // The provider spreads this over `{ name, email, image, emailVerified }`,
-      // both when it creates the user and on the `overrideUserInfoOnSignIn`
-      // update, so these three fields are what every sign-in writes.
-      mapProfileToUser: (profile) => ({
-        // `novedu_user.name` is NOT NULL and every name fallback in the app
-        // (`??`, `COALESCE`) treats an empty string as a real name, so a profile
-        // without a `name` claim must not store `""`.
-        name: profile.name?.trim() || profile.preferred_username || profile.email || profile.oid,
-        // A profile with no `email` claim would otherwise be rejected with
-        // EMAIL_NOT_FOUND; `preferred_username` is the tenant-unique UPN.
-        email: profile.email ?? profile.preferred_username ?? `${profile.oid}@entra.invalid`,
-        // A NULL is what clears the column; `undefined` would leave whatever the
-        // provider supplied in place. better-auth types the mapped `image` as
-        // `string | undefined`, hence the cast.
-        image: null as unknown as string,
-      }),
-    },
-  },
   user: {
     modelName: "novedu_user",
     additionalFields: {
@@ -127,14 +44,16 @@ export const auth = betterAuth({
         type: "boolean",
         required: false,
         defaultValue: false,
-        // Server-owned: settable only by `applyIdTokenClaims`, never through the API.
+        // Server-owned: written only server-side — the Entra account hook
+        // (lib/auth-entra-options.ts) or the demo seed (lib/demo-seed.ts) — never
+        // through the API.
         input: false,
         returned: true,
       },
       givenName: {
         type: "string",
         required: false,
-        // Server-owned like `isTeacher`: written only by `applyIdTokenClaims`.
+        // Server-owned like `isTeacher`, by the same writers.
         input: false,
         returned: true,
       },
@@ -157,25 +76,10 @@ export const auth = betterAuth({
   // That keeps sign-out and a changed `is_teacher` visible immediately on both
   // channels, with no staleness window to reason about. It is one line to enable
   // later if the queries ever matter.
-  account: {
-    modelName: "novedu_account",
-    // One person, one `novedu_user` row: an Entra identity whose `oid` is not yet
-    // in `novedu_account` links to the existing user row with the same email
-    // instead of creating a second one. BOTH options are needed
-    // (`oauth2/link-account.mjs`): Entra ID tokens carry no `email_verified`
-    // claim, and the app's own rows have `email_verified = false`.
-    //
-    // SAFE ONLY WHILE THE ENTRA APP IS SINGLE-TENANT — the tenant owns every
-    // email it can present. Revisit before admitting a second tenant, where one
-    // tenant could claim another's address.
-    accountLinking: {
-      trustedProviders: ["microsoft"],
-      requireLocalEmailVerified: false,
-    },
-  },
+  account: { modelName: "novedu_account" },
   verification: { modelName: "novedu_verification" },
   // The app owns display names: they come from the Entra profile on every
-  // sign-in, and teacher-facing lists resolve user ids through
+  // sign-in (or the demo seed), and teacher-facing lists resolve user ids through
   // `novedu_user.name`. Without this, any signed-in user could rewrite their own
   // name (and image) through `POST /api/auth/update-user`; the path 404s instead.
   disabledPaths: ["/update-user"],
@@ -185,12 +89,6 @@ export const auth = betterAuth({
     // shared `better-auth` prefix would let any other better-auth app on
     // localhost overwrite this app's session cookie.
     cookiePrefix: "novedu",
-  },
-  databaseHooks: {
-    account: {
-      create: { after: applyIdTokenClaims },
-      update: { after: applyIdTokenClaims },
-    },
   },
   plugins: [
     // The CLI's sign-in: it asks for a device code and polls while the person
@@ -206,7 +104,14 @@ export const auth = betterAuth({
     // last: it wraps the response of every plugin declared before it.
     nextCookies(),
   ],
-});
+} satisfies BetterAuthOptions;
+
+export const auth = betterAuth(
+  mergeAuthOptions(
+    shared,
+    process.env.NOVEDU_AUTH_MODE === "demo" ? demoAuthOptions() : entraAuthOptions(),
+  ),
+);
 
 /** The `{ session, user }` pair `auth.api.getSession` returns when signed in. */
 export type Session = NonNullable<Awaited<ReturnType<typeof auth.api.getSession>>>;

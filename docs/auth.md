@@ -2,16 +2,24 @@
 
 Deep reference for the auth subsystem. The always-on invariants are summarized in
 `AGENTS.md`; this file has the full mechanics. Read it before touching `auth.ts`,
+`lib/auth-*.ts`, `lib/demo-*.ts`, `lib/db/auth-mode-preflight.ts`, `NOVEDU_AUTH_MODE`,
 `lib/session.ts`, `lib/db/auth-schema.ts`, `proxy.ts`, `app/sign-in/**`, `app/device/**`,
 `lib/device-actions.ts`, sessions, teacher gating, or student mode.
 
 This app is gated by **better-auth**, with Microsoft Entra ID (single tenant) as the
-only sign-in provider. Key facts so future runs don't have to rediscover the setup:
+only sign-in provider of Entra builds — the default, and every image a stage runs. A
+**demo build** replaces it with one-click sign-in as four seeded demo personas (see
+"Demo mode" below); everything after the sign-in is the same in both. Key facts so
+future runs don't have to rediscover the setup:
 
 ## The instance and its tables
 
 - **`auth.ts`** (repo root, server-only) — the single `betterAuth({...})` instance,
-  exporting `auth` and the `Session` type. The Entra provider reads `AZURE_CLIENT_ID`,
+  exporting `auth` and the `Session` type: a shared base (database, secret, sessions,
+  cookies, user fields, plugins) plus exactly one mode block, `entraAuthOptions()`
+  (`lib/auth-entra-options.ts`) or a demo build's `demoAuthOptions()` ("Demo mode").
+  The Entra block is a factory, so its settings are read only when an Entra build
+  builds the instance. The Entra provider reads `AZURE_CLIENT_ID`,
   `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID` directly from `.env` (not a better-auth env
   naming convention). `overrideUserInfoOnSignIn: true` means name/email are overwritten
   from the Entra profile on every sign-in, through `mapProfileToUser`, which the provider
@@ -49,9 +57,10 @@ only sign-in provider. Key facts so future runs don't have to rediscover the set
   from the Entra profile at every sign-in, and teacher-facing lists resolve user ids
   through `novedu_user.name` — a user rewriting their own name would rewrite what teachers
   see.
-- **Route handler:** `app/api/auth/[...all]/route.ts` re-exports `{ GET, POST }` from
+- **Route handler:** `app/api/auth/[...all]/route.ts` hands `GET`/`POST` to
   `toNextJsHandler(auth)` — every better-auth endpoint (`/api/auth/*`, incl. the sign-in
   callback and the device-flow endpoints below) lives behind this one catch-all route.
+  A demo build answers only its allowlist there ("Demo mode").
 - **Five database tables**, all in the app's `novedu_` naming inside `public`, defined
   by hand in `lib/db/auth-schema.ts` (a maintained mirror of better-auth's own schema —
   the header comment there explains how to check it after a better-auth upgrade) and
@@ -136,7 +145,7 @@ Finer-grained access is by Entra **group** membership, but the result is a plain
   `groups` claim: `groupMembershipClaims` is `All` (or `ApplicationGroup` with the group
   assigned to the application) — under `SecurityGroup` it never appears and every teacher
   signs in as a student.
-- `applyIdTokenClaims` in `auth.ts` is a `databaseHooks.account.create.after` /
+- `applyIdTokenClaims` in `lib/auth-entra-options.ts` is a `databaseHooks.account.create.after` /
   `account.update.after` hook — it runs on the **account** row, once for a brand-new
   identity and again on every later sign-in of an existing one (including the seeded
   account's first sign-in), reading the fresh `id_token` better-auth has just stored
@@ -150,7 +159,9 @@ Finer-grained access is by Entra **group** membership, but the result is a plain
 - **Server-owned, fail-closed.** `additionalFields.isTeacher` on the `user` config sets
   `input: false`, so `is_teacher` can never be set through the API — and
   `/api/auth/update-user`, the endpoint that would carry it, is disabled outright (above)
-  — the hook is the only writer. A failure inside the hook (a DB hiccup, a malformed token) is caught
+  — in an Entra build the hook is the only writer at runtime. (Two other writers
+  exist outside it: a demo build's persona seed, which replaces the hook there, and the
+  e2e principal minting, which writes the rows directly — `docs/testing.md`.) A failure inside the hook (a DB hiccup, a malformed token) is caught
   and logged; the flag simply keeps its previous value, which for a brand-new user is
   `false` — fail closed, never fail open.
 - **Group overage.** When a user belongs to too many groups to fit in the token, Entra
@@ -214,11 +225,13 @@ Finer-grained access is by Entra **group** membership, but the result is a plain
   away), and it arrives in two shapes the button treats alike: `signIn.social` RESOLVES
   with `{ error }` on a non-2xx (better-fetch throws only when configured to) and rejects
   on a network error. Both re-enable the button and render one inline "Sign-in failed"
-  line, so it never sticks on "Signing in…".
+  line, so it never sticks on "Signing in…". A demo build renders the demo persona
+  buttons in that card instead ("Demo mode"); the callback validation and the error line
+  are shared.
 
 ## Sign-out
 
-The Microsoft provider in `auth.ts` sets `prompt: "login"`, so every new browser
+The Microsoft provider in `lib/auth-entra-options.ts` sets `prompt: "login"`, so every new browser
 sign-in requests fresh Entra authentication even when a Microsoft SSO session is
 already active. This protects the shared-computer flow: after a teacher signs out,
 clicking sign-in must not silently sign the next person in as that teacher. Existing
@@ -366,3 +379,187 @@ teacher-only specs opt in via `test.use({ storageState: TEACHER_STORAGE_STATE })
 bearer-channel equivalent, `mintSessionToken` in `e2e/api-auth.utils.ts`, does the same
 upsert-plus-session-row dance but returns the raw token for use as a bearer header
 (`docs/api.md`, `docs/testing.md`).
+
+## Demo mode
+
+A **demo build** signs people in without Entra: the sign-in page offers two demo
+teachers and two demo students, one click each. It exists for evaluators, training
+setups and contributors who have no Entra app registration. After sign-in nothing
+differs — the teacher role from `novedu_user.is_teacher`, the same database sessions,
+student mode, sign-out, and the CLI device flow. "Demo" is an openly labelled
+replacement: the sign-in page and an undismissable ribbon say that anyone who can reach
+the instance can sign in as anyone. Because it is a sign-in bypass, it exists **only in
+demo builds**, and each database belongs to exactly one mode.
+
+### The switch: `NOVEDU_AUTH_MODE`, frozen at build time
+
+- **`NOVEDU_AUTH_MODE`** is `entra` (also when unset or empty) or `demo`. It is read in
+  one place, `next.config.ts` (through `parseAuthMode` in `lib/auth-mode.ts`), which
+  fails `next build` / `next dev` on any other value and on a set
+  `NEXT_PUBLIC_NOVEDU_AUTH_MODE`, and **always** re-emits the normalized value through
+  `nextConfig.env`. Next inlines every `config.env` entry at build time, in server and
+  client code alike — unlike a `NEXT_PUBLIC_*` variable, which it inlines only when it is
+  set at build time, so an unset one would leave a live runtime lookup.
+- Every branch site compares the literal `process.env.NOVEDU_AUTH_MODE === "demo"`, which
+  folds to a constant, so each build carries only its own mode's code. The demo-only
+  modules (`lib/demo-personas.ts`, `lib/demo-boot.ts`, `lib/demo-seed.ts`,
+  `lib/auth-demo-allowlist.ts`, `app/sign-in/demo-sign-in.tsx`,
+  `components/demo-ribbon.tsx`) load only through `await import()` inside such a branch.
+  The one static import is `demoAuthOptions()` (`lib/auth-demo-options.ts`), because
+  `betterAuth({...})` is built synchronously; it is inert configuration with no password
+  and no persona data. `tests/unit/auth-mode-guard.test.ts` confines the variable to its
+  files, pins the literal comparison, and rejects static imports of the demo modules.
+- **Frozen per process.** A built image keeps the mode it was built with: setting
+  `NOVEDU_AUTH_MODE` at runtime changes nothing. `next dev` evaluates `next.config.ts`
+  once at startup, so editing the mode in `.env.local` while it runs changes nothing
+  either — **changing the mode needs a dev-server restart.**
+- Contributors set `NOVEDU_AUTH_MODE=demo` in `.env.local` for `npm run dev`, together
+  with **empty** `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID` and
+  `TEACHER_GROUP_ID` lines (an empty `.env.local` value wins over `.env`) and a
+  `DATABASE_URL` naming a database of its own (below).
+- The published images: the production image is an Entra build; the `:demo` tag is the
+  demo build of the same commit (`README.md`, `docs/ci-security.md`).
+
+### The auth instance in a demo build
+
+`demoAuthOptions()` is merged into the shared base by `mergeAuthOptions`
+(`lib/auth-options-merge.ts`) — explicitly, not a shallow spread: `account` options merge
+one level deep (the shared `account.modelName` survives), `disabledPaths` concatenate,
+and any other key set on both sides throws. The demo block:
+
+- `emailAndPassword: { enabled: true, disableSignUp: true }` — sign-in only.
+- `rateLimit.customRules["/sign-in/email"] = { window: 60, max: 100 }`. better-auth
+  rate-limits in production by default, at 3 sign-ins per 10 s per IP, and a class
+  behind one NAT or one Docker port mapping shares one IP. The password is public, so
+  throttling protects nothing; the cap only bounds the scrypt CPU an abuser can burn.
+- It calls the env lock (below) and throws on a refusal — a second line behind the boot.
+
+In an Entra build `emailAndPassword` stays off: `POST /api/auth/sign-in/email` answers
+`400 EMAIL_PASSWORD_DISABLED`.
+
+### The HTTP surface: an allowlist
+
+The personas are shared by everyone who can reach the instance, so every better-auth
+endpoint that touches a user's own account or sessions would leak between visitors
+(`/list-sessions` hands out the others' session tokens, `/revoke-sessions` signs everyone
+out, `/change-password` locks everyone out). In a demo build the catch-all route answers
+only `lib/auth-demo-allowlist.ts`'s **allowlist** and returns `404` for everything else,
+before better-auth's router runs:
+
+- `POST /sign-in/email`, `POST /sign-out`, `GET /get-session`;
+- `POST /device/code`, `POST /device/token` — the CLI's device flow. Viewing, approving
+  and denying a code happen server-side on `/device` through `auth.api.*`, which never
+  passes through the route.
+
+The match is exact on method and path, normalized the way better-auth's router does it
+(`/api/auth` stripped, trailing slashes removed). `lib/auth-demo-allowlist.unit.test.ts`
+enumerates every HTTP endpoint the installed better-auth exposes on this instance against
+a reviewed list, so a better-auth bump that adds one fails until someone classifies it.
+
+### One mode per database: the provenance preflight
+
+better-auth resolves a session from its row without asking how it was created, so an
+Entra build pointed at a demo database would keep honouring the demo sessions and bearer
+tokens — and a demo build pointed at real data would let anyone in as whoever it seeds.
+Both builds therefore run `lib/db/auth-mode-preflight.ts` at boot, **read-only and
+before migrations** (so a wrong configuration never writes DDL to the wrong database):
+
+- no `novedu_account` table yet → a fresh database, accepted;
+- an **Entra build** refuses any `credential` account (a demo persona);
+- a **demo build** refuses any account of another provider (someone ever signed in
+  through a real identity provider, e.g. a copy of `novedu_dev`). The e2e principals are
+  user and session rows **without** account rows, so a database the e2e suite ran
+  against keeps booting in either mode.
+
+A refusal fails startup with the mode, the reason and the remedy: a separate database.
+Like any failure in `instrumentation.ts` (a failed migration, say), it fails Next's
+instrumentation hook: the process logs the error and stays up, but answers **every**
+request with `500` — nothing is served, sign-in included. The env lock below fails the
+same way.
+A contributor who runs both modes locally needs two databases. A future sign-in method
+that creates `credential` accounts in an Entra build (an email-code login, say) has to
+revisit this check together with it.
+
+### The env lock
+
+`demoBootRefusal` (`lib/demo-env-lock.ts`) refuses a demo build, before any database
+work and also when `DATABASE_URL` is unset, when:
+
+- any of `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `TEACHER_GROUP_ID`
+  is set to a non-empty value;
+- `AUTH_URL`'s host is `novedu.at` or ends in `.novedu.at` (lower-cased, a trailing dot
+  removed — ports and `app.novedu.at.` are caught, `novedu.at.example.com` is not);
+- `AUTH_URL` does not parse (fails closed).
+
+It runs at boot (`startDemoBoot`, `lib/demo-boot.ts`) and again when the auth instance is
+built — which also happens during `next build`, so a demo **build** refuses the Entra
+settings too (the Dockerfile sets its Entra placeholders for Entra builds only). Accepted
+false positives: `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` exported globally in a shell, or a
+contributor `.env` with Entra values — blank them in `.env.local`.
+
+### The personas and the seed
+
+`lib/demo-personas.ts` (client-safe; the sign-in buttons need it):
+
+| user id | account id | name | email | role |
+| --- | --- | --- | --- | --- |
+| `demo-teacher-1` | `demo-teacher-1-credential` | Anna Berger | `anna.berger@demo.novedu.invalid` | teacher |
+| `demo-teacher-2` | `demo-teacher-2-credential` | Lukas Huber | `lukas.huber@demo.novedu.invalid` | teacher |
+| `demo-student-1` | `demo-student-1-credential` | Mia Gruber | `mia.gruber@demo.novedu.invalid` | student |
+| `demo-student-2` | `demo-student-2-credential` | Noah Wagner | `noah.wagner@demo.novedu.invalid` | student |
+
+The given name is the first word of the name. Two teachers show that a teacher's codes
+are scoped to their creator; two students show the per-student views. `DEMO_PASSWORD`
+(`novedu-demo-login-not-a-secret`) is public by design.
+
+A demo build's boot, in order (`instrumentation.ts`): the env lock, the log line
+`instrumentation: auth mode DEMO — one-click demo accounts, no Entra` (an Entra build
+logs `instrumentation: auth mode Entra ID`), the preflight, migrations and Mastra
+storage, then **the seed** (`lib/demo-seed.ts`) — one transaction under a fixed
+`pg_advisory_xact_lock`, because a dev server may boot twice concurrently:
+
+- upserts the four `novedu_user` rows by id (`name`, `given_name`, `email`,
+  `email_verified = true`, `is_teacher`, timestamps);
+- upserts the four `credential` accounts by their fixed id, with `account_id` = the
+  user id — better-auth's email sign-in accepts only `provider_id = 'credential'` with
+  `account_id = user.id`, and `novedu_account` has no unique index on
+  `(provider_id, account_id)`, so the fixed primary key is what makes the upsert
+  repeatable;
+- keeps the stored password hash when `verifyPassword` accepts it and re-hashes
+  (`hashPassword`, `better-auth/crypto`) only otherwise — scrypt salts randomly;
+- aborts, naming the email, when a persona email belongs to a row with a different id —
+  no silent takeover.
+
+Every boot resets drift (a changed role, name or password). In a demo build the seed is
+the only runtime writer of the personas' `is_teacher`; the Entra account hook is not
+registered.
+
+### What a visitor sees
+
+- **`/sign-in`** renders `DemoSignIn` (`app/sign-in/demo-sign-in.tsx`): the heading
+  "Sign in as a demo person", a line saying that anyone who can open the page can sign in
+  as any of these people, and one button per persona ("Anna Berger · Teacher"), each
+  calling `authClient.signIn.email({ email, password: DEMO_PASSWORD, callbackURL })`.
+  Failures are handled like `SignInButton`'s: a resolved `{ error }` and a rejection both
+  re-enable the buttons and show one "Sign-in failed" line.
+- **The DEMO ribbon** (`components/demo-ribbon.tsx`) replaces the hostname-based
+  environment ribbon in the root layout: rendered on the server (in the first HTML, no
+  hydration-time hostname logic), with no "×" and blind to the dismissal key the other
+  ribbon honours, so a tab that once hid LOCAL still sees DEMO. It sits outside
+  `AppChrome`, so `/sign-in` and `/device` show it too. Both ribbons share
+  `components/ribbon-frame.tsx`.
+- After sign-in: the greeting by given name, teacher or student home, student mode,
+  sign-out back to `/sign-in`, and `novedu login --server http://localhost:3000`
+  approved at `/device` by a signed-in persona.
+
+### Build markers
+
+Two literals only a demo build uses at runtime — `DEMO_PASSWORD` and the demo boot log
+line — identify a demo build's compiled output. `scripts/ci/check-demo-markers.mjs <dir>
+--expect absent|present` reads both from source (so it never passes vacuously) and greps
+only compiled output: `.next/server` and `.next/static`, and in a standalone tree or an
+image `server.js` + `.next/server` + `.next/static` — never `.next/dev` or `.next/cache`,
+where a local demo `npm run dev` leaves demo chunks. CI expects them absent from every
+Entra build and image and present in the demo ones (`docs/testing.md`,
+`docs/ci-security.md`). The behavioural proof that an Entra build has no email sign-in is
+the e2e assertion on `sign-in/email`, not the grep.

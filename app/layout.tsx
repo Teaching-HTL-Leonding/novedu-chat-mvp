@@ -22,18 +22,26 @@ export const metadata: Metadata = {
   description: BRAND,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // A demo build names itself on every page, undismissably (docs/auth.md, "Demo
+  // mode"). The comparison folds at build time; an Entra build has no demo ribbon.
+  let ribbon = <EnvironmentRibbon />;
+  if (process.env.NOVEDU_AUTH_MODE === "demo") {
+    const { DemoRibbon } = await import("@/components/demo-ribbon");
+    ribbon = <DemoRibbon />;
+  }
+
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
       <body>
         <AppChrome>
           <StatusBar />
         </AppChrome>
-        <EnvironmentRibbon />
+        {ribbon}
         {children}
       </body>
     </html>

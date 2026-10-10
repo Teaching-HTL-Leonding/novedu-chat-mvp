@@ -252,6 +252,11 @@ only by the prod stage's own boot.
   `--hints` argument naming the create (drizzle-kit otherwise cannot tell that
   apart from a rename); `npx drizzle-kit generate --help` documents the flag's
   shape.
+- Before anything writes to the database, startup runs the read-only **provenance
+  preflight** (`lib/db/auth-mode-preflight.ts`): one sign-in mode per database, so an
+  Entra build refuses a database holding demo (`credential`) accounts and a demo
+  build refuses one holding any other provider's accounts; a database without
+  `novedu_account` yet is fresh and accepted (`docs/auth.md`, "Demo mode").
 - Migrations are applied **automatically at server startup**
   (`instrumentation.ts` → `lib/db/migrate.ts`, `drizzle-orm/node-postgres/migrator`),
   bookkept in **`novedu_drizzle_migrations`**. `migrationsSchema` is pinned to
@@ -282,7 +287,8 @@ only by the prod stage's own boot.
   yet a teacher's code detail page would degrade to "Stats temporarily
   unavailable". Doing it at boot keeps the contract simple: **once startup
   finishes, every table this server reads exists.** Fails loud, same as a
-  migration failure. The Dockerfile copies `drizzle/` into the standalone
+  migration failure. A demo build then seeds its four personas
+  (`lib/demo-seed.ts`, `docs/auth.md`). The Dockerfile copies `drizzle/` into the standalone
   image. (`instrumentation.ts` has a second, independent duty — bringing up
   telemetry *before* migrations and exporting the `onRequestError` hook; that
   is gated on its own connection string and documented in

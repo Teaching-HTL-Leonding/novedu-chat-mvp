@@ -2,7 +2,8 @@ name: QA
 
 # Full quality gate: biome check, typecheck, unit + component tests, production
 # build, and the Playwright e2e suite (hermetic + DB-backed @live-db against an
-# ephemeral Postgres container). Runs standalone on pull requests and as a
+# ephemeral Postgres container), plus the demo login's @demo suite on a demo
+# production build. Runs standalone on pull requests and as a
 # reusable workflow (workflow_call) gating the Docker publish on main.
 on:
   pull_request:
@@ -42,8 +43,13 @@ permissions:
 # reviewer-gated environment). See docker-publish.yml for the secret-bearing
 # main-only path.
 #
-# auth.ts (the better-auth instance) requires the AZURE_* vars and
-# TEACHER_GROUP_ID at module load (also during `next build`), and its drizzle
+# NOVEDU_AUTH_MODE is set explicitly, so a stray value can never flip a build:
+# every job here builds and tests the Entra build, except `e2e-demo` (and the
+# `demo` leg of `prod-build`), which builds the demo login (docs/auth.md, "Demo
+# mode").
+#
+# auth.ts (the better-auth instance) of an Entra build requires the AZURE_* vars
+# and TEACHER_GROUP_ID at module load (also during `next build`), and its drizzle
 # adapter is constructed from DATABASE_URL at that same module load — the pool
 # never connects during a build, so a placeholder connection string is enough.
 # AUTH_SECRET only needs to match between the e2e helpers and the dev server
@@ -53,6 +59,7 @@ permissions:
 # job level, which overrides this workflow-level placeholder with the
 # ephemeral Postgres container's real connection string.
 env:
+  NOVEDU_AUTH_MODE: entra
   AUTH_SECRET: ci-e2e-auth-secret
   AZURE_CLIENT_ID: ci-placeholder
   AZURE_CLIENT_SECRET: ci-placeholder
@@ -96,6 +103,10 @@ jobs:
       - run: npm run test:cli
 
       - run: npm run build
+
+      # The Entra build carries none of the demo login: neither the public demo
+      # password nor the demo boot's log line appears in its compiled output.
+      - run: node scripts/ci/check-demo-markers.mjs .next --expect absent
 
       # Teacher guide (Astro static export) — fails fast on schema violations and
       # dead related: slugs in the corpus. Corpus-only (.md) PRs skip this whole
@@ -163,6 +174,71 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  # The demo login (docs/auth.md, "Demo mode") on a PRODUCTION build: Playwright's
+  # web server runs `next build` + `next start` in demo mode, so this exercises the
+  # build-time switch, the production rate limit and the real boot (env lock,
+  # provenance preflight, persona seed) — and runs ONLY the `@demo` specs
+  # (playwright.config.ts picks the suite by mode). Secret-free like `e2e`: the
+  # same throwaway Postgres container, no credential of any kind.
+  e2e-demo:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: "Test-Passw0rd!" # dummy, non-secret — see docs/ci-security.md
+          POSTGRES_DB: novedu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: "postgresql://postgres:Test-Passw0rd!@localhost:5432/novedu"
+      NOVEDU_AUTH_MODE: demo
+      # A demo build refuses to build or boot with any Entra setting present —
+      # blank the workflow-level placeholders.
+      AZURE_CLIENT_ID: ""
+      AZURE_CLIENT_SECRET: ""
+      AZURE_TENANT_ID: ""
+      TEACHER_GROUP_ID: ""
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Wait for Postgres
+        run: node scripts/ci/wait-for-db.mjs
+
+      - run: npm run test:e2e:ci
+
+      # Positive control for the `qa` job's absent-check: the demo build Playwright
+      # just ran DOES carry both markers, so the check can tell the builds apart.
+      - run: node scripts/ci/check-demo-markers.mjs .next --expect present
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-demo
+          path: playwright-report/
+          retention-days: 7
+
   # Production Docker build (NO push) — reproduces the multi-stage image build
   # exactly as docker-publish.yml does it, so a build break surfaces on the PR
   # instead of only after merge during CD. The plain `npm run build` step in the
@@ -175,20 +251,50 @@ jobs:
   # build-only placeholder env, and we never log in or push. PR-only — on a main
   # push (workflow_call) the real build+push in docker-publish.yml is the gate,
   # so building here too would just be a redundant ~4-minute rebuild.
+  #
+  # One leg per published image: the production (Entra) image and `:demo`. Each
+  # leg checks the shipped artifact itself for the demo markers — absent from the
+  # Entra image, present in the demo image.
   prod-build:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: entra
+            markers: absent
+            cache-from: type=gha,scope=entra
+          - mode: demo
+            markers: present
+            cache-from: |
+              type=gha,scope=demo
+              type=gha,scope=entra
     steps:
       - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build production image (no push)
+      - name: Build the ${{ matrix.mode }} image (no push)
         uses: docker/build-push-action@v7
         with:
           context: .
           push: false
-          # Read the layer cache the main publish populates; don't write it
-          # (cache export is restricted for fork pull_request tokens).
-          cache-from: type=gha
+          load: true
+          tags: novedu-prod-build:${{ matrix.mode }}
+          build-args: NOVEDU_AUTH_MODE=${{ matrix.mode }}
+          # Read the layer cache the main publish populates (one scope per
+          # image); don't write it (cache export is restricted for fork
+          # pull_request tokens).
+          cache-from: ${{ matrix.cache-from }}
+
+      - name: Check the image's sign-in mode
+        run: |
+          out="$RUNNER_TEMP/image-app"
+          mkdir -p "$out"
+          id=$(docker create "novedu-prod-build:${{ matrix.mode }}")
+          docker cp "$id:/app/server.js" "$out/server.js"
+          docker cp "$id:/app/.next" "$out/.next"
+          docker rm "$id"
+          node scripts/ci/check-demo-markers.mjs "$out" --expect ${{ matrix.markers }}

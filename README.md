@@ -286,6 +286,24 @@ npm run build
 npm run start
 ```
 
+### Demo login and the `:demo` image
+
+Without an Entra app registration, run a **demo build**: the sign-in page offers two
+demo teachers and two demo students, one click each, and a ribbon on every page says
+that anyone who can reach the instance can sign in as anyone — use sample data only.
+From source, put `NOVEDU_AUTH_MODE=demo` in `.env.local` together with empty
+`AZURE_CLIENT_ID=`, `AZURE_CLIENT_SECRET=`, `AZURE_TENANT_ID=` and `TEACHER_GROUP_ID=`
+lines and a `DATABASE_URL` naming a database of its own (a demo build refuses a database
+that ever had a Microsoft sign-in, and an Entra build refuses a demo database), then
+restart `npm run dev` — the mode is fixed when the server starts. The published Docker
+image also comes as **`rstropek/novedu-chat-mvp:demo`** (and `:<version>-demo`): the
+same app built in demo mode, which the image can never leave. It needs only
+`DATABASE_URL` (password auth), `AUTH_SECRET`, `AUTH_URL` (the address visitors open,
+e.g. `http://localhost:3000` — without it the browser's sign-in fails the origin check)
+and the LLM settings, and refuses to start with any Entra setting or a `novedu.at`
+`AUTH_URL`. See
+[`docs/auth.md`](docs/auth.md), "Demo mode".
+
 ## Scripts
 
 | Script | What it does |

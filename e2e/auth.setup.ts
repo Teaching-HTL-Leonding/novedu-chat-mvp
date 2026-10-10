@@ -48,7 +48,8 @@ setup("authenticate", async () => {
     // Specs leave the codes and files they create behind; previous runs' rows
     // go here. Every principal and creator the suite writes is `e2e-…`, which
     // no real id can be (better-auth ids are alphanumeric, Entra oids are
-    // UUIDs); every file the suite creates is also named `e2e-…`. The hour
+    // UUIDs, a demo build's personas are `demo-…`); every file the suite
+    // creates is also named `e2e-…`. The hour
     // spares rows created moments ago — it is no guard against a concurrently
     // running suite (home-teacher.live.spec backdates its rows by days).
     const stale = await query<{ code: string }>(
