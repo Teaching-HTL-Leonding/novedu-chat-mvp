@@ -25,7 +25,7 @@ Put the eval next to the quiz it tests:
 
 ```yaml
 # 0010-welcome-quiz.eval.yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json
 id: welcome-quiz-eval
 target: ./0010-welcome-quiz.yaml       # relative to THIS file, or an http(s) URL
 questions:
@@ -86,7 +86,7 @@ A tutor eval scripts a conversation and asks: **what does the tutor say next?**
 
 ```yaml
 # loops-tutor.eval.yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json
 id: loops-tutor-eval
 kind: tutor                              # this line is what makes it a tutor eval
 target: ./loops-tutor.yaml               # relative to THIS file, or an http(s) URL

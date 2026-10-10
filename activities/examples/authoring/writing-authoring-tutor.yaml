@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 # "Writing Tutor" — an authoring tutor FOR TEACHERS: it helps them write valid
 # writing-activity YAML files (split-screen Markdown editor + AI writing
 # coach), e.g. from their teaching material. Part of the authoring set (see
@@ -47,7 +47,7 @@ prompt:
     # Writing file — exact supported fields
 
     ```yaml
-    # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/writings/writing-yaml.schema.json
+    # yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/writings/writing-yaml.schema.json
     id: my-writing              # required; short, stable, kebab-case
     name: "My Writing Task"     # optional label
     title: "Welcome!"           # optional; replaces the default greeting

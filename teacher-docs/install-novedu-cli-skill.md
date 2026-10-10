@@ -3,9 +3,9 @@
 ## What is being installed
 
 The source skill is
-[`novedu-tutor-cli`](https://github.com/Teaching-HTL-Leonding/novedu-chat-mvp/blob/main/.agents/skills/novedu-tutor-cli/SKILL.md)
+[`novedu-tutor-cli`](https://github.com/htl-leo-novedu/novedu-app/blob/main/.agents/skills/novedu-tutor-cli/SKILL.md)
 in the public
-[`Teaching-HTL-Leonding/novedu-chat-mvp`](https://github.com/Teaching-HTL-Leonding/novedu-chat-mvp)
+[`htl-leo-novedu/novedu-app`](https://github.com/htl-leo-novedu/novedu-app)
 repository. Its source directory contains `SKILL.md` plus a `references/`
 directory of per-command deep dives that `SKILL.md` links to. The skills CLI
 recognizes it because `.agents/skills/` is one of its standard skill discovery
@@ -21,7 +21,7 @@ on demand with `npx @novedu/cli ...`.
 Run this command from the root of this repository:
 
 ```bash
-npx --yes skills@latest add Teaching-HTL-Leonding/novedu-chat-mvp \
+npx --yes skills@latest add htl-leo-novedu/novedu-app \
   --skill novedu-tutor-cli \
   --agent codex \
   --yes
@@ -111,7 +111,7 @@ missing, rerun the `add` command above.
 List the skills exposed by the upstream repository without installing them:
 
 ```bash
-npx --yes skills@latest add Teaching-HTL-Leonding/novedu-chat-mvp --list
+npx --yes skills@latest add htl-leo-novedu/novedu-app --list
 ```
 
 Opt out of the skills CLI's anonymous telemetry for an individual command if
@@ -126,7 +126,7 @@ DISABLE_TELEMETRY=1 npx --yes skills@latest update novedu-tutor-cli --project --
 - [skills.sh CLI reference](https://skills.sh/docs/cli)
 - [skills.sh instructions for Codex](https://skills.sh/agent/codex)
 - [The skills CLI README and complete command reference](https://github.com/vercel-labs/skills#readme)
-- [Upstream `novedu-tutor-cli` skill](https://github.com/Teaching-HTL-Leonding/novedu-chat-mvp/blob/main/.agents/skills/novedu-tutor-cli/SKILL.md)
+- [Upstream `novedu-tutor-cli` skill](https://github.com/htl-leo-novedu/novedu-app/blob/main/.agents/skills/novedu-tutor-cli/SKILL.md)
 
 The skill did not need a skills.sh catalog page for installation: the skills
 CLI successfully discovered it directly from the public GitHub repository.

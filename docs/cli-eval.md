@@ -45,7 +45,7 @@ byte-for-byte. Both shapes share the one `$schema` modeline.
 ### The quiz kind
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json
 id: welcome-quiz-eval
 target: ./0010-welcome-quiz.yaml   # relative to THIS file, or an http(s) URL
 questions:

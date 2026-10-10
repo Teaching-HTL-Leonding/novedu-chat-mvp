@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json",
+  "$id": "https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/coding/coding-yaml.schema.json",
   "$comment": "Generated from lib/coding-schema.ts by `npm run generate:schemas` — do not edit by hand.",
   "title": "Coding Activity YAML",
   "description": "Schema for a coding activity: an OpenAI-compatible coding endpoint an external coding agent (e.g. little-coder) points at.",

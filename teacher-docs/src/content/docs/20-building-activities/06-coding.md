@@ -20,7 +20,7 @@ A coding activity gives your class an AI coding assistant that behaves the way y
 A coding file has one required trio and two optional labels:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/coding/coding-yaml.schema.json
 id: sorting-visualizer
 name: "Sorting Visualizer — TypeScript + p5.js"
 title: "Sortieren sichtbar machen (TypeScript + p5.js)"

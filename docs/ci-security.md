@@ -7,7 +7,7 @@ workflow, or wiring real infra (Azure Postgres / SCCH) into CI.
 
 ## The threat
 
-This is a teaching repo (Teaching-HTL-Leonding) — **anyone can fork it and open a
+This is a teaching repo (htl-leo-novedu) — **anyone can fork it and open a
 pull request**, and a PR can change *any* file CI executes: a test, a build step,
 a script. So PR code is **untrusted code that runs on our runners**. If a workflow
 exposes a secret (an LLM API key, a database credential, a registry password) to a
@@ -93,10 +93,13 @@ access token, against a user-assigned identity per stage.
   itself the permission, and the token is worthless without a matching
   federated subject on the other side.
 - **The federated subjects are exact.** The dev identity trusts only
-  `repo:<this repo>:ref:refs/heads/main`, the prod identity only
-  `repo:<this repo>:environment:production`. A fork PR runs under its own
+  `repo:<owner>@<owner-id>/<repo>@<repo-id>:ref:refs/heads/main`, the prod
+  identity only `repo:<owner>@<owner-id>/<repo>@<repo-id>:environment:production`
+  — GitHub's immutable subject format, which carries the owner's and the
+  repository's numeric ids beside their names. A fork PR runs under its own
   repository and a feature branch under its own ref, so **neither produces a
-  subject any identity trusts** — the exchange fails before any Azure call.
+  subject any identity trusts** — the exchange fails before any Azure call. The
+  ids also mean a repository that later takes over a freed name cannot match.
   `deploy-dev` additionally carries `if: github.ref == 'refs/heads/main'`.
 - **The `production` environment is restricted to `main`** (deployment
   branches), which is what makes the prod subject reachable only from `main` —

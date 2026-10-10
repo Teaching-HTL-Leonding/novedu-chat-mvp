@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/coding/coding-yaml.schema.json
 # Coding activity for the "linked lists" unit: students implement a singly
 # linked list in TypeScript (a small music-playlist domain) with an external
 # coding agent (e.g. little-coder) pointed at this activity's endpoint.

@@ -39,8 +39,8 @@ fork minting its own id-token in its own run cannot publish our package.
 | Field | Value |
 | --- | --- |
 | Publisher | GitHub Actions |
-| Organization or user | `Teaching-HTL-Leonding` |
-| Repository | `novedu-chat-mvp` |
+| Organization or user | `htl-leo-novedu` |
+| Repository | `novedu-app` |
 | Workflow filename | `publish-cli.yml` (must match `.github/workflows/publish-cli.yml` exactly) |
 | Environment name | *(blank)* |
 | Allowed actions | `npm publish` |
@@ -98,7 +98,7 @@ is rejected at the registry with **HTTP 422** *before* the version is created:
 ```
 npm error 422 ... Error verifying sigstore provenance bundle:
 package.json: "repository.url" is "", expected to match
-"https://github.com/Teaching-HTL-Leonding/novedu-chat-mvp" from provenance
+"https://github.com/htl-leo-novedu/novedu-app" from provenance
 ```
 
 `cli/package.json` therefore declares (note `directory` for the monorepo):
@@ -106,7 +106,7 @@ package.json: "repository.url" is "", expected to match
 ```json
 "repository": {
   "type": "git",
-  "url": "git+https://github.com/Teaching-HTL-Leonding/novedu-chat-mvp.git",
+  "url": "git+https://github.com/htl-leo-novedu/novedu-app.git",
   "directory": "cli"
 }
 ```

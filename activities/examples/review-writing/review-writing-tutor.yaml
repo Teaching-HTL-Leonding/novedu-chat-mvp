@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 # Tutor for the English unit "writing a review / critique": structure, register,
 # and useful language for reviews and feedback letters (e.g. a letter to a
 # restaurant after a birthday party). Target group: 16-year-old

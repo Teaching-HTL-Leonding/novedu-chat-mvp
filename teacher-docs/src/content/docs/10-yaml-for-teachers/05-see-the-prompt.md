@@ -54,7 +54,7 @@ npx @novedu/cli prompts ./sorting-tutor.yaml --json
 A web address works in place of a file path, and reads the file as it's published:
 
 ```bash
-npx @novedu/cli prompts https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/examples/sorting-algorithms/sorting-tutor.yaml
+npx @novedu/cli prompts https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/examples/sorting-algorithms/sorting-tutor.yaml
 ```
 
 If your file lives on GitHub, commit and push before you check a web address, otherwise you're reading an older version. Nothing is uploaded either way, and you don't need to sign in: the command only reads your file.

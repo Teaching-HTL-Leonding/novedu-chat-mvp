@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 # "Quiz Tutor" — an authoring tutor FOR TEACHERS: it helps them write valid
 # quiz YAML files (LLM-graded, open-ended quizzes), e.g. from their teaching
 # material. Part of the authoring set (see also tutor-authoring-tutor.yaml,
@@ -50,7 +50,7 @@ prompt:
     # Quiz file — exact supported fields
 
     ```yaml
-    # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
+    # yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
     id: my-quiz                 # required; short, stable, kebab-case
     name: "My Quiz"             # optional label
     title: "Welcome!"           # optional; replaces the default greeting

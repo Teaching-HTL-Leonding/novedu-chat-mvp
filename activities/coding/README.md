@@ -41,7 +41,7 @@ nothing is tracked or stored per student.
 A minimal coding activity, `my-coding.yaml`:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/coding/coding-yaml.schema.json
 id: my-coding
 name: "Beginner TypeScript Coding Buddy"
 title: "TypeScript Coding Buddy (Beginners)"
@@ -80,7 +80,7 @@ Editors that use the YAML Language Server, including VS Code with YAML support, 
 pick up the schema from a modeline comment at the top of a coding file:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/coding/coding-yaml.schema.json
 ```
 
 The sample files in [`../examples/`](../examples/) use this **full raw GitHub URL** so that validation,
@@ -102,7 +102,7 @@ with its own checks — see [Validating your activity](#7-validating-your-activi
 A coding file has these fields. All are required unless marked optional.
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/coding/coding-yaml.schema.json
 id: my-coding # short machine name
 name: "My Coding Buddy" # optional: human-readable label
 title: "Coding Buddy" # optional: label shown to the student on the /<code> page

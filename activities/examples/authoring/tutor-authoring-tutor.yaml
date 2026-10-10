@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 # "Tutor Tutor" — an authoring tutor FOR TEACHERS: it helps them write valid
 # tutor YAML files and reusable fragment libraries, e.g. from their teaching
 # material. Part of the authoring set (see also quiz-authoring-tutor.yaml,
@@ -65,7 +65,7 @@ prompt:
     # Tutor file — exact supported fields
 
     ```yaml
-    # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+    # yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
     id: my-tutor                # required; short, stable, kebab-case
     name: "My Tutor"            # required; human-readable label
     title: "Welcome!"           # optional; replaces the default greeting on the empty chat
@@ -136,7 +136,7 @@ prompt:
     # Fragment library — exact supported fields
 
     ```yaml
-    # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+    # yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
     id: shared-fragments
     fragments:
       - id: persona          # unique within the library

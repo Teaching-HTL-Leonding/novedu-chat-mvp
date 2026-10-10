@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/fragments/fragment-yaml.schema.json",
+  "$id": "https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/fragments/fragment-yaml.schema.json",
   "$comment": "Generated from lib/prompt-fragments/schemas.ts by `npm run generate:schemas` — do not edit by hand.",
   "title": "Fragment Library YAML",
   "description": "Schema for a reusable fragment library: a named collection of parameterized prompt fragments shared across activities.",

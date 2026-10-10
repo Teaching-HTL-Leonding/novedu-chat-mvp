@@ -76,7 +76,7 @@ If you're comfortable with a terminal, the Novedu CLI creates codes too, with th
 
 ```bash
 npx @novedu/cli codes create --module quiz \
-  --file https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/examples/sorting-algorithms/sorting-quiz.yaml \
+  --file https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/examples/sorting-algorithms/sorting-quiz.yaml \
   --note "3AHIF sorting quiz" \
   --start 2026-07-07T08:00:00Z --end 2026-07-07T10:00:00Z
 ```
