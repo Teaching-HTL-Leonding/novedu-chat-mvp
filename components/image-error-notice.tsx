@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { CopyIconButton } from "@/components/copy-icon-button";
 import { Button } from "@/components/ui/button";
+import { noticeVariants } from "@/components/ui/notice";
 import type { ImageDiagnostics } from "@/lib/image-normalize";
 import { collectImageEnvironment, formatImageReport } from "@/lib/image-report";
 import { cn } from "@/lib/utils";
@@ -51,13 +52,7 @@ export function ImageErrorNotice({
   );
 
   return (
-    <div
-      className={cn(
-        "rounded-lg border border-destructive/45 bg-destructive/10 px-3 py-2 text-sm",
-        className,
-      )}
-      role="alert"
-    >
+    <div className={cn(noticeVariants(), className)} role="alert">
       <div className="flex items-start gap-3">
         <div className="wrap-anywhere flex min-w-0 flex-1 flex-col gap-1">
           {messages.map((message) => (

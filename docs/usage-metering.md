@@ -192,7 +192,7 @@ What is enforced:
 |---|---|---|
 | Chat output cap (`chatMaxOutputTokens`) | `defaultOptions` of the tutor, quiz-discussion and writing agents (`app/mastra/output-limit.ts`, `docs/chat.md`) | the reply stops; a content-free `limits.output.truncated` event is emitted |
 | Coding output cap (`codingMaxOutputTokens`) | `clampMaxTokens` in the coding proxy (`docs/coding.md`) | the client's `max_tokens` / `max_completion_tokens` is lowered to the cap; a request without one gets the cap |
-| Chat input length (`chatMaxInputChars`) | the CopilotKit route, before the agent runs (`docs/chat.md`) | `413` with a readable message |
+| Chat input length (`chatMaxInputChars`) | the CopilotKit route, before the agent runs (`docs/chat.md`) | `413` with a readable message, shown in the chat; the rejected message leaves the browser history and stays copyable |
 
 The quiz grader (`quizEvaluatorAgent`) carries no output cap — its truncation is
 handled by `lib/quiz-truncation-retry.ts`. The teacher-only eval agents carry none

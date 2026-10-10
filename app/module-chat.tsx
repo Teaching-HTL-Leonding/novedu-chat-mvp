@@ -1,8 +1,23 @@
 "use client";
 
-import { CopilotChat, CopilotKitProvider } from "@copilotkit/react-core/v2";
+import {
+  CopilotChat,
+  CopilotKitProvider,
+  useAgent,
+  useCopilotKit,
+} from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
-import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
+import {
+  type ComponentProps,
+  type HTMLAttributes,
+  type ReactNode,
+  useEffect,
+  useState,
+} from "react";
+import { Button } from "@/components/ui/button";
+import { noticeVariants } from "@/components/ui/notice";
+import { useCopyToClipboard } from "@/components/use-copy-to-clipboard";
+import { chatErrorMessage, isRejectedRunRequest, splitUnansweredTurn } from "@/lib/chat-error";
 import type { RuntimeHeaders } from "@/lib/runtime-headers";
 import { cn } from "@/lib/utils";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -32,6 +47,98 @@ function GenerationCursor({ className, ...props }: HTMLAttributes<HTMLDivElement
       {...props}
     >
       Generating…
+    </div>
+  );
+}
+
+// A failed run is otherwise SILENT: CopilotKit's default chat renders nothing
+// for a rejected request (the 413 of the student input limit, the 403 of a
+// closed code window) or an in-band run error — the student's message just sits
+// there unanswered. This shows what went wrong above the chat; the text comes
+// from `chatErrorMessage` (lib/chat-error.ts), which shows only the sentences
+// the route authors for students and a generic one otherwise.
+//
+// A REJECTED request (4xx) also takes its unanswered messages back out of the
+// browser's history (`splitUnansweredTurn`): the server never saw them, and the
+// route re-measures the whole unanswered tail on every run, so one refused
+// message would otherwise make every later attempt in this chat fail too. What
+// the student typed stays copyable from the notice.
+//
+// Rendered INSIDE the provider, which remounts per providerKey — so a notice
+// never outlives its conversation (e.g. the tutor's "start over").
+type RunErrorNotice = { message: string; unsentText: string };
+
+// The two codes under which CopilotKit reports a failed RUN request.
+const RUN_FAILURE_CODES = new Set<string>(["agent_run_failed", "agent_run_failed_event"]);
+
+function ChatRunErrors({ agentId }: { agentId: string }) {
+  // `useAgent({ agentId })` is the exact call CopilotChat makes, so this is the
+  // agent the chat drives (passing a threadId would register a SECOND, proxied
+  // agent instead).
+  const { agent } = useAgent({ agentId });
+  const { copilotkit } = useCopilotKit();
+  const [notice, setNotice] = useState<RunErrorNotice | null>(null);
+
+  useEffect(() => {
+    // A new run clears the notice, so an error never outlives the attempt it
+    // belongs to (a retry that fails again simply shows it again).
+    const runs = agent.subscribe({ onRunInitialized: () => setNotice(null) });
+    // The same scoping CopilotChat's own `onError` applies: this chat's agent,
+    // or an error that names none.
+    const errors = copilotkit.subscribe({
+      onError: ({ error, code, context }) => {
+        if (context?.agentId && context.agentId !== agentId) return;
+        let unsentText = "";
+        // Only a rejected RUN carried an unsent turn. A failed `connect` (e.g.
+        // a closed window on a resumed tutor thread) must leave the restored
+        // history alone, even when its last stored message is the student's.
+        if (RUN_FAILURE_CODES.has(code) && isRejectedRunRequest(error)) {
+          const turn = splitUnansweredTurn(agent.messages);
+          if (turn.dropped.length > 0) agent.setMessages(turn.kept);
+          unsentText = turn.unsentText;
+        }
+        const message = chatErrorMessage(error);
+        // CopilotKit reports one failure under two codes; the second finds the
+        // turn already dropped and must not erase the copyable text.
+        setNotice((previous) => ({
+          message,
+          unsentText: unsentText || (previous?.message === message ? previous.unsentText : ""),
+        }));
+      },
+    });
+    return () => {
+      runs.unsubscribe();
+      errors.unsubscribe();
+    };
+  }, [agent, copilotkit, agentId]);
+
+  return notice ? <ChatErrorNotice notice={notice} onDismiss={() => setNotice(null)} /> : null;
+}
+
+function ChatErrorNotice({ notice, onDismiss }: { notice: RunErrorNotice; onDismiss: () => void }) {
+  const { copied, copy } = useCopyToClipboard();
+  return (
+    <div
+      className={cn(noticeVariants(), "mx-5 mb-2 shrink-0")}
+      role="alert"
+      data-testid="chat-error-notice"
+    >
+      <div className="flex flex-wrap items-start gap-3">
+        <p className="wrap-anywhere min-w-0 flex-1">
+          {notice.message}
+          {notice.unsentText ? " Your message was not sent." : null}
+        </p>
+        <div className="flex shrink-0 gap-2">
+          {notice.unsentText ? (
+            <Button variant="outline" size="sm" onClick={() => copy(notice.unsentText)}>
+              {copied ? "Copied!" : "Copy my message"}
+            </Button>
+          ) : null}
+          <Button variant="outline" size="sm" onClick={onDismiss}>
+            Dismiss
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -84,6 +191,7 @@ export function ModuleChat({
   const body = (
     <>
       {children}
+      <ChatRunErrors agentId={agentId} />
       {/* Base chat container: fill the available height (min-h-0 against flex
           parents), never push the page taller, and let CopilotChat (*:h-full)
           own the internal scroll. */}

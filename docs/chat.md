@@ -592,6 +592,32 @@ student" mode is limited like a student. The route puts the result on the
 RequestContext as `LIMITS_EXEMPT`; the agents treat anything but `true` (including
 an absent key) as "limited".
 
+## Run errors in the chat
+
+CopilotKit's default chat renders nothing for a failed run — a rejected request
+(the 413 above, the 403 of a closed code window) or an in-band run error would
+leave the student's message sitting there unanswered. `ModuleChat` therefore
+mounts `ChatRunErrors` inside the provider, for every module:
+
+- It subscribes to the CopilotKit core's `onError`, scoped to the chat's agent (the
+  same filter `CopilotChat`'s own `onError` applies), and shows a dismissible
+  `role="alert"` notice above the chat (`noticeVariants`, `components/ui/notice.ts`).
+- The text comes from `chatErrorMessage` (`lib/chat-error.ts`): the `error` sentence
+  of a **4xx** body verbatim — the route writes those for students — and a generic
+  sentence for everything else (5xx, in-band run errors, network failures), so no
+  internal detail or provider text reaches the page.
+- A **rejected request (4xx)** also takes its unanswered `user` messages back out of
+  the agent's history (`splitUnansweredTurn`). The server never saw them, and the
+  route re-measures the whole unanswered tail on every run (`trimToNewTurn`), so one
+  refused message would otherwise make every later attempt in that chat fail too.
+  The notice says the message was not sent and offers **Copy my message**. Only a
+  failed **run** does this: a failed `connect` (e.g. a closed window on a resumed
+  tutor thread) shows the notice but leaves the restored history alone.
+- The notice clears when the next run starts (`onRunInitialized` on the agent from
+  `useAgent({ agentId })` — the exact call `CopilotChat` makes; passing a `threadId`
+  would register a second, proxied agent). Being inside the provider, it also
+  resets with every new `providerKey`.
+
 ## Failure reporting (`RunErrorReportingRunner`)
 
 A turn that dies inside the agent does so **in-band**: the route has already
@@ -752,6 +778,13 @@ module.
   (only typed `user` text counts), and the input-limit cases of the CopilotKit route
   test (413 before the agent runs; the new turn only; images and tool results not
   counted; teacher exempt, view-as-student limited; `LIMITS_EXEMPT` on the context).
+- **Run errors** — `lib/chat-error.unit.test.ts` (4xx sentence verbatim, generic
+  otherwise, which requests count as rejected, which messages are dropped and what
+  is copyable) and the run-error cases of `tests/component/module-chat.browser.test.tsx`
+  (notice text, history trimmed only for a rejected run, never for a failed
+  connect, copy offered across CopilotKit's
+  double report, other agents ignored, dismiss, cleared on the next run and on a new
+  `providerKey`, `useAgent` called without a thread).
 
 The refactor is behavior-preserving, so the live e2e specs are coverage, not
 duplication — they drive the **real** CopilotKit end-to-end (which the component
