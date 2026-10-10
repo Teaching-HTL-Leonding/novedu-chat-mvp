@@ -219,9 +219,11 @@ A user-assigned managed identity per stage for GitHub Actions OIDC, audience
 
 | Identity | Federated credential subject |
 |---|---|
-| `id-novedu-gh-dev` | `repo:Teaching-HTL-Leonding/novedu-chat-mvp:ref:refs/heads/main` |
-| `id-novedu-gh-prod` | `repo:Teaching-HTL-Leonding/novedu-chat-mvp:environment:production` |
+| `id-novedu-gh-dev` | `repo:htl-leo-novedu@330419586/novedu-app@1263139282:ref:refs/heads/main` |
+| `id-novedu-gh-prod` | `repo:htl-leo-novedu@330419586/novedu-app@1263139282:environment:production` |
 
+The subjects use GitHub's immutable format: `330419586` is the id of the
+`htl-leo-novedu` organization, `1263139282` the id of the repository.
 These are the only credentials the pipeline has: **no Azure secret is stored in
 GitHub**. A federated token is issued only for the exact subject above, so a
 run from another branch — or a fork PR — cannot obtain one

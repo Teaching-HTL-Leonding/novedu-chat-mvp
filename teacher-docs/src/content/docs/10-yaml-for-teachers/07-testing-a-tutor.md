@@ -25,7 +25,7 @@ You already have the tool. The `eval` command runs quiz evals and tutor evals, a
 Create a small YAML file next to your tutor and name it after it, for example `sorting-tutor.eval.yaml`. Each entry is one situation you want to test:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json
 id: sorting-tutor-eval
 kind: tutor                              # this line is what makes it a tutor eval
 target: ./sorting-tutor.yaml             # relative to THIS file, or a web address

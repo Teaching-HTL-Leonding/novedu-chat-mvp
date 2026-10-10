@@ -49,7 +49,7 @@ or an activity YAML changes; the render step only reads the committed lock file.
 Hand-authored, lives in the **consumer** repo, format owned and documented here.
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/registry/registry-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/registry/registry-yaml.schema.json
 # Activity registry — processed with: novedu-cli codes sync <this file>
 base-url: "https://raw.githubusercontent.com/rstropek/ddp-ts-p5-beginner-course/refs/heads/main/"
 

@@ -38,7 +38,7 @@ You can also install it from the [Red Hat YAML extension page on the Visual Stud
 The editor learns which fields your file may contain from a special comment on the first line of the file. For a tutor, the sample activities start like this:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 ```
 
 Copy the line exactly as it is, including the leading `#`. It is a comment, not a field: Novedu ignores it completely, and students never see it. Only your editor reads it, fetches the schema from that address over the internet, and switches on the suggestions, underlines, and hover help. The easiest way to get the line right is to start from one of the sample activities, which all carry it already.
@@ -50,43 +50,43 @@ There is a separate schema for each kind of file, and the line has to match the 
 For a tutor:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 ```
 
 For a library of fragments. A fragment library is not a tutor and has its own schema, even though tutors are where you use fragments most:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/fragments/fragment-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/fragments/fragment-yaml.schema.json
 ```
 
 For a quiz:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/quizzes/quiz-yaml.schema.json
 ```
 
 For a writing activity:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/writings/writing-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/writings/writing-yaml.schema.json
 ```
 
 For a coding activity:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/coding/coding-yaml.schema.json
 ```
 
 Two more schemas cover files that are not activities. The first is for the **activity registry**, the list of activities you keep next to a book or a course repository. If you write one, it takes this line:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/registry/registry-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/registry/registry-yaml.schema.json
 ```
 
 The second is for an **eval file**, the test file you run with the Novedu CLI to check a quiz's grader or a tutor's behaviour. It takes this line:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json
 ```
 
 ## The editor helps, Novedu decides

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/registry/registry-yaml.schema.json",
+  "$id": "https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/registry/registry-yaml.schema.json",
   "$comment": "Generated from lib/registry-schema.ts by `npm run generate:schemas` — do not edit by hand.",
   "title": "Activity Registry YAML",
   "description": "Schema for an activity registry: the hand-written file listing a publication's activities under stable keys, reconciled by `novedu codes sync`.",

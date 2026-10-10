@@ -28,7 +28,7 @@ npx @novedu/cli validate ./activities/examples/sorting-algorithms/sorting-tutor.
 You can also validate a published file by giving its web address instead of a file path:
 
 ```bash
-npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/examples/sorting-algorithms/sorting-tutor.yaml
+npx @novedu/cli validate https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/examples/sorting-algorithms/sorting-tutor.yaml
 ```
 
 Validating a web address checks the file that is published there, not the copy on your disk. If your file lives on GitHub, commit and push your latest changes first, otherwise you are checking an old version.

@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 # "Coding Tutor" — an authoring tutor FOR TEACHERS: it helps them write valid
 # coding-activity YAML files (an OpenAI-compatible endpoint for external
 # coding agents such as little-coder), e.g. from their teaching material.
@@ -59,7 +59,7 @@ prompt:
     # Coding file — exact supported fields
 
     ```yaml
-    # yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/coding/coding-yaml.schema.json
+    # yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/coding/coding-yaml.schema.json
     id: my-coding-activity      # required; short, stable, kebab-case
     name: "My Coding Activity"  # optional label
     title: "Shown on /<code>"   # optional; student-facing label on the connection page

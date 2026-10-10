@@ -21,7 +21,7 @@ A run checks both halves of a grading. Your expected marks check the **mark**. A
 Create a small YAML file next to your quiz and name it after it, for example `sorting-quiz.eval.yaml`. Each entry names a question of the quiz, a made-up student answer, and the mark you expect:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json
 id: sorting-quiz-eval
 target: ./sorting-quiz.yaml          # relative to THIS file, or a web address
 questions:

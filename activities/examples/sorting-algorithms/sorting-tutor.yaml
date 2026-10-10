@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/tutors/tutor-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/tutors/tutor-yaml.schema.json
 # Tutor for the "sorting algorithms" unit: Bubble Sort and Selection Sort in
 # TypeScript, visualized with p5.js (values as bars that swap positions while
 # sorting). Target group: 16-year-old vocational-college students who know

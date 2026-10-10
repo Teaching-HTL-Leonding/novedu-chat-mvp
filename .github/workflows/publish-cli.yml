@@ -13,7 +13,7 @@ name: Publish CLI to npm
 # configured on npmjs.com against THIS repo + THIS workflow filename
 # (publish-cli.yml); renaming this file breaks publishing until the npmjs.com
 # config is updated to match. Because the trusted publisher is pinned to
-# Teaching-HTL-Leonding/novedu-chat-mvp, a fork pushing its own tag cannot
+# htl-leo-novedu/novedu-app, a fork pushing its own tag cannot
 # publish our package even though it can mint an id-token in its own run.
 on:
   push:
@@ -34,7 +34,7 @@ jobs:
   publish:
     # Don't run on forks: the tag trigger would otherwise fire in a fork too,
     # wasting a run (it could never publish — see the trust pinning above).
-    if: github.repository == 'Teaching-HTL-Leonding/novedu-chat-mvp'
+    if: github.repository == 'htl-leo-novedu/novedu-app'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

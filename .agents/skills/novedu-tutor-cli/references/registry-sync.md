@@ -14,7 +14,7 @@ Needs a signed-in teacher.
 ## The registry file
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/registry/registry-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/registry/registry-yaml.schema.json
 # ddp-activities.yaml — hand-written, committed
 base-url: "https://raw.githubusercontent.com/acme/course/refs/heads/main/"
 activities:          # groups: quizzes | tutors | writing | coding

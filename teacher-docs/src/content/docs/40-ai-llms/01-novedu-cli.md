@@ -86,7 +86,7 @@ Installing the skill does not install the CLI as part of your project. The skill
 The skill is installed with [skills.sh](https://skills.sh), a small tool for managing agent skills. Open a terminal in the folder where you keep your course material and run:
 
 ```bash
-npx --yes skills@latest add Teaching-HTL-Leonding/novedu-chat-mvp \
+npx --yes skills@latest add htl-leo-novedu/novedu-app \
   --skill novedu-tutor-cli \
   --agent claude-code \
   --yes
@@ -94,7 +94,7 @@ npx --yes skills@latest add Teaching-HTL-Leonding/novedu-chat-mvp \
 
 What the parts do:
 
-- `Teaching-HTL-Leonding/novedu-chat-mvp` is the public Novedu repository the skill comes from. No sign-in needed.
+- `htl-leo-novedu/novedu-app` is the public Novedu repository the skill comes from. No sign-in needed.
 - `--skill novedu-tutor-cli` picks exactly this one skill. The repository contains several, and you only want the one about the CLI.
 - `--agent claude-code` says which assistant to install it for. Replace `claude-code` with `codex`, `cursor`, `github-copilot`, or whichever assistant you use. Naming it is safer than letting the tool guess.
 - The first `--yes` tells `npx` to fetch the skills tool without asking. The final `--yes` skips the skills tool's own questions.

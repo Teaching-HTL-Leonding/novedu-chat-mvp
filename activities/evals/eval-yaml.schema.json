@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json",
+  "$id": "https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json",
   "$comment": "Generated from lib/eval-schema.ts by `npm run generate:schemas` — do not edit by hand.",
   "title": "Eval YAML",
   "description": "Schema for an eval file run by `novedu-cli eval`: either a golden-answer eval of a quiz rubric (teacher-written student answers with the verdict each must be graded with) or a tutor eval (scripted conversations whose next tutor response is generated and judged).",

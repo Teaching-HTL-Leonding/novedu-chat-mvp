@@ -22,7 +22,7 @@ import { WritingYamlSchema } from "@/lib/writing-schema";
 
 /** The raw-GitHub base every generated `$id` (and every teacher modeline) points at. */
 const RAW_BASE =
-  "https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities";
+  "https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities";
 
 export interface SchemaRegistryEntry {
   /** Stable kind key (used only for test labels / logging). */

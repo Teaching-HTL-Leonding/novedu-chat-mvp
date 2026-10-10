@@ -27,7 +27,7 @@ npx @novedu/cli --help
 npx @novedu/cli validate ./activities/examples/sorting-algorithms/sorting-tutor.yaml
 
 # Validate a published activity by URL
-npx @novedu/cli validate https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/examples/sorting-algorithms/sorting-tutor.yaml
+npx @novedu/cli validate https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/examples/sorting-algorithms/sorting-tutor.yaml
 
 # Other kinds: fragment library, quiz, writing activity, coding activity
 npx @novedu/cli validate ./activities/examples/shared/general-fragments.yaml --kind fragment
@@ -67,7 +67,7 @@ npx @novedu/cli prompts ./my-writing.yaml --kind writing
 npx @novedu/cli prompts ./my-coding.yaml --kind coding
 
 # A published activity by URL (same argument as `validate`)
-npx @novedu/cli prompts https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/examples/sorting-algorithms/sorting-tutor.yaml
+npx @novedu/cli prompts https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/examples/sorting-algorithms/sorting-tutor.yaml
 
 # Pull out one question's grading prompt
 npx @novedu/cli prompts ./sorting-quiz.yaml --kind quiz --json \
@@ -123,7 +123,7 @@ code only reflects whether the run itself completed.
 
 ```yaml
 # sorting-quiz.eval.yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json
 id: sorting-quiz-eval
 target: ./sorting-quiz.yaml     # relative to THIS file, or an http(s) URL
 questions:
@@ -437,7 +437,7 @@ next to the material: one hand-written YAML file listing every activity under a
 stable key, plus a **lock file** the CLI generates and you commit.
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/registry/registry-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/registry/registry-yaml.schema.json
 # ddp-activities.yaml — the registry (you write this)
 base-url: "https://raw.githubusercontent.com/acme/course/refs/heads/main/"
 
@@ -551,8 +551,8 @@ npx @novedu/cli reports resolve 3f2c…                 # existing codes already
 The app repo ships a Claude Code skill that teaches coding agents the full CLI
 workflow — validation, the sign-in hand-off, code/file management, the
 report-triage loop, and improving an activity from its exported conversations:
-[`.claude/skills/novedu-tutor-cli/SKILL.md`](https://github.com/Teaching-HTL-Leonding/novedu-chat-mvp/blob/main/.claude/skills/novedu-tutor-cli/SKILL.md)
-(mirrored at `.agents/skills/novedu-tutor-cli/`). Agents working inside that
+[`.agents/skills/novedu-tutor-cli/SKILL.md`](https://github.com/htl-leo-novedu/novedu-app/blob/main/.agents/skills/novedu-tutor-cli/SKILL.md)
+(`.claude` is a symlink to `.agents`). Agents working inside that
 repo pick it up automatically.
 
 ## Development

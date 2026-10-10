@@ -29,7 +29,7 @@ Needs a signed-in teacher — it runs the model.
 
 ```yaml
 # 0010-welcome-quiz.eval.yaml — next to the quiz
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json
 id: welcome-quiz-eval
 target: ./0010-welcome-quiz.yaml     # relative to THIS file, or an http(s) URL
 questions:
@@ -50,7 +50,7 @@ For a compound quiz, `question:` must use the namespaced `"<alias>/<id>"` form �
 
 ```yaml
 # loops-tutor.eval.yaml — next to the tutor
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/evals/eval-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/evals/eval-yaml.schema.json
 id: loops-tutor-eval
 kind: tutor                          # this line selects the kind
 target: ./loops-tutor.yaml           # relative to THIS file, or an http(s) URL

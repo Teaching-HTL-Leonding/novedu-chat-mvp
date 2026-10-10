@@ -1,4 +1,4 @@
-# Code owners for novedu-chat-mvp.
+# Code owners for novedu-app.
 #
 # The "Protect main" ruleset has `require_code_owner_review: true`, so every PR
 # to `main` requires an approving review from an owner listed here. Making the

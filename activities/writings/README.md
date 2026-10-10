@@ -75,7 +75,7 @@ Editors that use the YAML Language Server, including VS Code with YAML support,
 can pick up the schema from a modeline comment at the top of a writing file:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/Teaching-HTL-Leonding/novedu-chat-mvp/refs/heads/main/activities/writings/writing-yaml.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/htl-leo-novedu/novedu-app/refs/heads/main/activities/writings/writing-yaml.schema.json
 ```
 
 The sample files in [`../examples/`](../examples/) use this **full raw GitHub URL** so that validation,
