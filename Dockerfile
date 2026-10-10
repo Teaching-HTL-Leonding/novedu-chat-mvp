@@ -13,24 +13,34 @@ RUN npm ci
 FROM node:24-alpine AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+# The build's sign-in mode (docs/auth.md, "Demo mode"): `entra` for the production
+# image, `demo` for the `:demo` image. next.config.ts freezes it into the compiled
+# output, so the runner stage needs (and honours) no such setting.
+ARG NOVEDU_AUTH_MODE=entra
+ENV NOVEDU_AUTH_MODE=$NOVEDU_AUTH_MODE
 # auth.ts (the better-auth instance) and the database pool are both constructed
 # at module load, which also runs during build-time page-data collection: the
-# drizzle adapter needs a DATABASE_URL to construct, and auth.ts validates the
-# AZURE_*/TEACHER_GROUP_ID/AUTH_SECRET vars the same way. The pool itself never
-# connects during a build — no query runs — so a placeholder connection string
-# is enough. Server code re-reads process.env at runtime, so none of these
-# placeholders are baked into the output or reach the final stage.
-ENV AZURE_CLIENT_ID=build-placeholder \
-    AZURE_CLIENT_SECRET=build-placeholder \
-    AZURE_TENANT_ID=build-placeholder \
-    TEACHER_GROUP_ID=build-placeholder \
-    AUTH_SECRET=build-placeholder \
+# drizzle adapter needs a DATABASE_URL to construct, and auth.ts validates
+# AUTH_SECRET — and, in an Entra build, the AZURE_*/TEACHER_GROUP_ID vars — the
+# same way. The pool itself never connects during a build — no query runs — so a
+# placeholder connection string is enough. Server code re-reads process.env at
+# runtime, so none of these placeholders are baked into the output or reach the
+# final stage.
+ENV AUTH_SECRET=build-placeholder \
     DATABASE_URL=postgresql://build:placeholder@localhost:5432/build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # public/ is not git-tracked, so it is absent in CI checkouts; the runner stage
-# COPYs it unconditionally.
-RUN mkdir -p public && npm run build
+# COPYs it unconditionally. The Entra placeholders are set for an Entra build
+# only: a demo build refuses to construct its auth instance with any of them set.
+RUN mkdir -p public \
+    && if [ "$NOVEDU_AUTH_MODE" = "demo" ]; then \
+         npm run build; \
+       else \
+         AZURE_CLIENT_ID=build-placeholder AZURE_CLIENT_SECRET=build-placeholder \
+         AZURE_TENANT_ID=build-placeholder TEACHER_GROUP_ID=build-placeholder \
+         npm run build; \
+       fi
 
 FROM node:24-alpine AS runner
 WORKDIR /app

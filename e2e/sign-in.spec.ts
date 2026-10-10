@@ -95,3 +95,16 @@ test("an absolute callbackURL is never handed to the sign-in flow", async ({ pag
   await expect.poll(() => posted).not.toBeNull();
   expect(posted).toMatchObject({ provider: "microsoft", callbackURL: "/" });
 });
+
+test("an Entra build has no email sign-in", async ({ request }) => {
+  // The demo login exists only in demo builds (docs/auth.md, "Demo mode"): here
+  // better-auth's email endpoint answers that the method is off, even for a
+  // well-formed request with a trusted origin.
+  const res = await request.post("/api/auth/sign-in/email", {
+    headers: { origin: "http://localhost:3000" },
+    data: { email: "someone@example.com", password: "any-password" },
+  });
+
+  expect(res.status()).toBe(400);
+  expect(await res.json()).toMatchObject({ code: "EMAIL_PASSWORD_DISABLED" });
+});

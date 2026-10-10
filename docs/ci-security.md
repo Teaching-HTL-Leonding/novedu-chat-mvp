@@ -23,7 +23,7 @@ run untrusted PR code.**
 | --- | --- | --- | --- |
 | **`qa.yml`** | `pull_request` to `main`, `workflow_call` | **Yes** | **No** — secret-free |
 | **`docs.yml`** | `pull_request` to `main` (teacher-docs paths) | **Yes** | **No** — secret-free |
-| **`docker-publish.yml`** | `push` to `main`, `workflow_dispatch` | No | Yes — in `build-and-push` only |
+| **`docker-publish.yml`** | `push` to `main`, `workflow_dispatch` | No | Yes — in `build-and-push` and `build-and-push-demo` only |
 | **`promote.yml`** | `workflow_dispatch`; job `promote` in the environment `production` | No | **No stored secret** — OIDC only |
 
 - **`qa.yml`** is the per-PR quality gate (biome, typecheck, unit + component
@@ -32,25 +32,34 @@ run untrusted PR code.**
   **secret-free by construction**: it references no `secrets.*`, sets
   `permissions: contents: read`, and feeds only **test-only dummy values** in its
   `env:` block. Those dummies exist because `auth.ts` — the better-auth instance —
-  calls `required()` for the `AZURE_*` vars, `TEACHER_GROUP_ID`, and `AUTH_SECRET`
+  of an Entra build requires the `AZURE_*` vars, `TEACHER_GROUP_ID`, and `AUTH_SECRET`
   at module load (also during `next build`), and its drizzle adapter is
   constructed from `DATABASE_URL` at that same module load, so a placeholder
   connection string is needed too — the pool never actually connects during a
   build. `AUTH_SECRET` only has to *match* between the e2e helpers and the dev
   server — e2e tests mint session cookies directly (rows in the database plus a
   hand-signed cookie value, `docs/testing.md`), so no real Entra round-trip
-  happens. There is nothing real in this environment to steal.
+  happens. There is nothing real in this environment to steal. The workflow also
+  sets `NOVEDU_AUTH_MODE=entra`, so every job builds the Entra build unless it says
+  otherwise (`docs/auth.md`, "Demo mode").
   - The `e2e` job runs an **ephemeral `postgres:18` service container** so the
     DB-backed `@live-db` tests run on every PR. This stays secret-free: the
     container's `POSTGRES_PASSWORD` is a **non-secret dummy literal**, the app
     reaches it with throwaway **password auth** (not Entra), and the database is
     discarded with the runner. No `secrets.*`, no real Azure Postgres.
+  - The `e2e-demo` job is the same setup for the demo login: its own throwaway
+    Postgres container, `NOVEDU_AUTH_MODE=demo`, and the workflow's Entra
+    placeholders blanked (a demo build refuses any Entra setting). It holds no
+    credential of any kind — the demo personas' password is a public constant.
   - The `prod-build` job (PR-only — `if: github.event_name == 'pull_request'`)
-    reproduces `docker-publish.yml`'s multi-stage image build so a build break
-    surfaces on the PR instead of after merge. It is **also secret-free**: it never
-    logs in to a registry and **`push: false`**, so no `DOCKER_*` credentials are
-    needed; it only **reads** the layer cache (`cache-from: type=gha`, no cache
-    export — write is restricted for fork PR tokens). On a `main` push
+    reproduces `docker-publish.yml`'s multi-stage image builds — a matrix over the
+    production (Entra) image and the `:demo` image — so a build break surfaces on the
+    PR instead of after merge, and checks each built image for the demo login's
+    markers (absent from the Entra image, present in the demo one). It is **also
+    secret-free**: it never logs in to a registry and **`push: false`**, so no
+    `DOCKER_*` credentials are needed; it only **reads** the layer cache
+    (`cache-from: type=gha` in the publish jobs' per-image scopes, no cache export —
+    write is restricted for fork PR tokens). On a `main` push
     (`workflow_call`) this job is skipped because `docker-publish.yml` does the real
     build+push.
 - **`docs.yml`** is the light teacher-guide gate for PRs `qa.yml` skips via its
@@ -59,9 +68,12 @@ run untrusted PR code.**
   `qa.yml`, so the same rule applies: **no secrets, no env, `contents: read`** —
   and none are needed, the docs build touches no app code.
 - **`docker-publish.yml`** holds the real secrets (`DOCKER_USERNAME` /
-  `DOCKER_PASSWORD`) — all of them in its
-  `build-and-push` job, which is the only place in the repo that references a
-  `secrets.*` value at all. It triggers **only** on `push` to `main` (a
+  `DOCKER_PASSWORD`) — all of them in its two image-publishing jobs,
+  `build-and-push` (the production image) and `build-and-push-demo` (the `:demo`
+  image, built with `NOVEDU_AUTH_MODE=demo`, tagged `:demo` and `:<version>-demo`),
+  the only places in the repo that reference a `secrets.*` value at all. Nothing
+  deploys a demo image: `deploy-dev` needs only `build-and-push`, and `promote.yml`'s
+  version check rejects a `-demo` version. It triggers **only** on `push` to `main` (a
   maintainer merge) and manual `workflow_dispatch`. A fork PR cannot produce a
   push to `main`, so it can never reach these secrets. It reuses `qa.yml` via
   `workflow_call` as a gate, then builds/publishes/deploys.

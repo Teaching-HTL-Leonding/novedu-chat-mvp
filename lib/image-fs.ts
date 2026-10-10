@@ -41,6 +41,12 @@ export const OBJECT_KEY_PATTERN =
 
 /** The object directory holding one image version, and the published file in it. */
 const OBJECTS_DIR = "images";
+// Every path this module builds or opens lies under the operator-provisioned
+// IMAGE_STORAGE_ROOT and is never a build input, so each `path.*` / `fs` call
+// carries `/*turbopackIgnore: true*/`. Without it, Next's file tracing reads them
+// as references into the project — the whole project for a fully dynamic path, every
+// `…images` directory for `path.resolve(root, "images")` — and copies that source
+// into the standalone output, and so into every image.
 const CONTENT_FILE = "content";
 
 const SENTINEL_BYTES = Buffer.from(SENTINEL_CONTENT, "utf8");
@@ -91,7 +97,7 @@ export async function verifyImageRoot(): Promise<RootCheck> {
   try {
     let rootStat: Awaited<ReturnType<typeof stat>>;
     try {
-      rootStat = await stat(root);
+      rootStat = await stat(/*turbopackIgnore: true*/ root);
     } catch (error) {
       if (isEnoent(error)) {
         return { ok: false, reason: "missing", root, detail: `${root} does not exist.` };
@@ -102,10 +108,10 @@ export async function verifyImageRoot(): Promise<RootCheck> {
       return { ok: false, reason: "not-directory", root, detail: `${root} is not a directory.` };
     }
 
-    const sentinelPath = path.join(root, SENTINEL_FILE);
+    const sentinelPath = path.join(/*turbopackIgnore: true*/ root, SENTINEL_FILE);
     let sentinelStat: Awaited<ReturnType<typeof stat>>;
     try {
-      sentinelStat = await stat(sentinelPath);
+      sentinelStat = await stat(/*turbopackIgnore: true*/ sentinelPath);
     } catch (error) {
       if (isEnoent(error)) {
         return {
@@ -134,7 +140,7 @@ export async function verifyImageRoot(): Promise<RootCheck> {
         detail: `${root}: ${SENTINEL_FILE} does not carry the expected marker bytes.`,
       };
     }
-    const sentinel = await readFile(sentinelPath);
+    const sentinel = await readFile(/*turbopackIgnore: true*/ sentinelPath);
     if (!sentinel.equals(SENTINEL_BYTES)) {
       return {
         ok: false,
@@ -145,7 +151,10 @@ export async function verifyImageRoot(): Promise<RootCheck> {
     }
 
     try {
-      await access(path.join(root, OBJECTS_DIR), FS_CONSTANTS.R_OK | FS_CONSTANTS.W_OK);
+      await access(
+        path.join(/*turbopackIgnore: true*/ root, OBJECTS_DIR),
+        FS_CONSTANTS.R_OK | FS_CONSTANTS.W_OK,
+      );
     } catch (error) {
       return {
         ok: false,
@@ -175,10 +184,14 @@ function resolveObjectDir(root: string, key: unknown): ResolvedKey {
   if (path.isAbsolute(key)) return { ok: false };
   if (!OBJECT_KEY_PATTERN.test(key)) return { ok: false };
 
-  const objectsDir = path.resolve(root, OBJECTS_DIR);
-  const objectDir = path.resolve(objectsDir, key);
+  const objectsDir = path.resolve(/*turbopackIgnore: true*/ root, OBJECTS_DIR);
+  const objectDir = path.resolve(/*turbopackIgnore: true*/ objectsDir, key);
   if (!objectDir.startsWith(objectsDir + path.sep)) return { ok: false };
-  return { ok: true, objectDir, contentPath: path.join(objectDir, CONTENT_FILE) };
+  return {
+    ok: true,
+    objectDir,
+    contentPath: path.join(/*turbopackIgnore: true*/ objectDir, CONTENT_FILE),
+  };
 }
 
 function unavailable(check: RootCheck & { ok: false }): StorageFailure {
@@ -188,7 +201,7 @@ function unavailable(check: RootCheck & { ok: false }): StorageFailure {
 /** Removes a half-written object directory. Failure is logged, never surfaced. */
 async function discardObjectDir(objectDir: string): Promise<void> {
   try {
-    await rm(objectDir, { recursive: true, force: true });
+    await rm(/*turbopackIgnore: true*/ objectDir, { recursive: true, force: true });
   } catch (error) {
     console.error("image-fs: discarding a half-written object failed", objectDir, error);
   }
@@ -226,13 +239,13 @@ export async function writeNewObject(
   try {
     // Non-recursive on purpose: EEXIST is the reservation failing, which is the
     // whole point — `mkdir(…, { recursive: true })` would silently succeed.
-    await mkdir(objectDir);
+    await mkdir(/*turbopackIgnore: true*/ objectDir);
   } catch (error) {
     if (errorCode(error) === "EEXIST") {
       // A LINK where the object directory belongs is never data we may write
       // through — refuse it as a storage error rather than treating it as a
       // taken key.
-      const linked = await lstat(objectDir).catch(() => null);
+      const linked = await lstat(/*turbopackIgnore: true*/ objectDir).catch(() => null);
       if (linked?.isSymbolicLink()) {
         return { ok: false, reason: "error", detail: "The object path is a symbolic link." };
       }
@@ -241,10 +254,13 @@ export async function writeNewObject(
     return { ok: false, reason: "error", detail: message(error) };
   }
 
-  const tempPath = path.join(objectDir, `.tmp-${randomBytes(6).toString("hex")}`);
+  const tempPath = path.join(
+    /*turbopackIgnore: true*/ objectDir,
+    `.tmp-${randomBytes(6).toString("hex")}`,
+  );
   let handle: Awaited<ReturnType<typeof open>>;
   try {
-    handle = await open(tempPath, "wx");
+    handle = await open(/*turbopackIgnore: true*/ tempPath, "wx");
   } catch (error) {
     await discardObjectDir(objectDir);
     return { ok: false, reason: "error", detail: message(error) };
@@ -304,11 +320,11 @@ export async function writeNewObject(
     await handle.close();
     // The directory was just reserved, so nothing may sit at `content` yet —
     // anything there (a link above all) means the publish must not proceed.
-    const existing = await lstat(contentPath).catch((error) =>
+    const existing = await lstat(/*turbopackIgnore: true*/ contentPath).catch((error) =>
       isEnoent(error) ? null : Promise.reject(error),
     );
     if (existing) throw new Error("An object already occupies the content path.");
-    await rename(tempPath, contentPath);
+    await rename(/*turbopackIgnore: true*/ tempPath, contentPath);
   } catch (error) {
     await closeQuietly();
     await discardObjectDir(objectDir);
@@ -336,7 +352,7 @@ export async function inspectObject(key: string): Promise<InspectObjectResult> {
   if (!resolved.ok) return { ok: false, reason: "error", detail: "Malformed object key." };
 
   try {
-    const info = await lstat(resolved.contentPath);
+    const info = await lstat(/*turbopackIgnore: true*/ resolved.contentPath);
     if (info.isSymbolicLink()) {
       return { ok: false, reason: "error", detail: "The object content is a symbolic link." };
     }
@@ -369,7 +385,7 @@ export async function openObject(key: string): Promise<OpenObjectResult> {
 
   let info: Awaited<ReturnType<typeof lstat>>;
   try {
-    info = await lstat(resolved.contentPath);
+    info = await lstat(/*turbopackIgnore: true*/ resolved.contentPath);
   } catch (error) {
     if (isEnoent(error)) return { ok: true, missing: true };
     return { ok: false, reason: "error", detail: message(error) };
@@ -382,7 +398,7 @@ export async function openObject(key: string): Promise<OpenObjectResult> {
   }
 
   try {
-    const stream = Readable.toWeb(createReadStream(resolved.contentPath));
+    const stream = Readable.toWeb(createReadStream(/*turbopackIgnore: true*/ resolved.contentPath));
     return { ok: true, stream: stream as ReadableStream<Uint8Array>, byteLength: info.size };
   } catch (error) {
     return { ok: false, reason: "error", detail: message(error) };
@@ -405,14 +421,14 @@ export async function deleteObject(key: string): Promise<DeleteObjectResult> {
 
   let existed = true;
   try {
-    await lstat(resolved.objectDir);
+    await lstat(/*turbopackIgnore: true*/ resolved.objectDir);
   } catch (error) {
     if (!isEnoent(error)) return { ok: false, reason: "error", detail: message(error) };
     existed = false;
   }
 
   try {
-    await rm(resolved.objectDir, { recursive: true, force: true });
+    await rm(/*turbopackIgnore: true*/ resolved.objectDir, { recursive: true, force: true });
   } catch (error) {
     return { ok: false, reason: "error", detail: message(error) };
   }

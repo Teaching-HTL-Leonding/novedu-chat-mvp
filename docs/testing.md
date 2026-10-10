@@ -217,7 +217,7 @@ behaviour run in CI.
 
 | Mode | Scripts | Config | The LLM | Selects |
 | --- | --- | --- | --- | --- |
-| fake (default) | `test:e2e`, `test:e2e:ci`, `test:e2e:db`, … | `playwright.config.ts` | the fake, started as the FIRST `webServer`; the app's dev server gets `SCCH_BASE_URL` / `SCCH_API_KEY` pointing at it | everything except `@live-llm` (the config's `grepInvert`) |
+| fake (default) | `test:e2e`, `test:e2e:ci`, `test:e2e:db`, … | `playwright.config.ts` | the fake, started as the FIRST `webServer`; the app's dev server gets `SCCH_BASE_URL` / `SCCH_API_KEY` pointing at it | everything except `@live-llm` and `@demo` (the config's `grepInvert`) |
 | real | `test:e2e:live-llm` | `playwright.live-llm.config.ts` | the providers `.env` configures | only `@live-llm` |
 
 - The fake starts first because the app lists the SCCH models once at boot
@@ -259,13 +259,56 @@ message**, never by a spec's wording. The first matching rule wins
   flight long enough to observe the chat's "generating" note.
 - Usage is estimated from the text length, so usage metering works unchanged.
 
+## Demo login `@demo`
+
+The demo login (`docs/auth.md`, "Demo mode") exists only in a demo build, so its specs
+need a demo server and every other spec an Entra one. **`playwright.config.ts` picks the
+suite by the build's sign-in mode**, read the way the app reads it (the environment,
+then `.env*`, through `parseAuthMode`):
+
+- **Entra** (the default): the suite above; `@demo` specs are excluded.
+- **Demo** (`NOVEDU_AUTH_MODE=demo`): ONLY `@demo` specs, against a **production
+  build** — the web server runs `npm run build && npm run start` (up to ten minutes to
+  boot) — so the build-time switch, better-auth's production rate limiting and the real
+  boot (env lock, provenance preflight, persona seed) are what is tested. No `setup`
+  project, no minted storage state, no fake LLM and no fixtures server: the specs sign in
+  as the seeded personas themselves.
+
+So a local `npm run test:e2e` never runs one suite against the other mode's server.
+A demo run needs a database of its own (`docs/auth.md`: a demo build refuses a database
+with Entra accounts, and vice versa) and empty Entra settings, e.g.:
+
+```
+NOVEDU_AUTH_MODE=demo AZURE_CLIENT_ID= AZURE_CLIENT_SECRET= AZURE_TENANT_ID= TEACHER_GROUP_ID= \
+  DATABASE_URL=postgresql://postgres:pw@localhost:5432/novedu_demo npm run test:e2e:ci
+```
+
+The demo build overwrites `.next`. The `@demo` specs:
+
+- `e2e/demo-login.spec.ts` — the sign-in page (no console errors, the four buttons, the
+  DEMO ribbon without "×"), a teacher persona to the teacher home and back out, a student
+  persona to the student home, the closed endpoints (`change-password`, `sign-up/email`,
+  `list-sessions`, `revoke-sessions`, `update-user` answer **404** while signed in, with a
+  valid origin and body — the allowlist, not an incidental 400/401), eight sign-ins in
+  quick succession from one address, and the CLI device flow for a persona.
+- `e2e/demo-boot.spec.ts` (`@demo @live @live-db`) — the provenance preflight and the
+  seed, called directly against the server's database inside a transaction that is
+  rolled back: both preflight halves, accountless e2e users accepted, a `microsoft`
+  account refused; the seed idempotent (an unchanged hash), resetting a tampered role and
+  password (checked with `verifyPassword`), and refusing a persona email held by another
+  row.
+
+The Entra suite carries the counterpart: `e2e/sign-in.spec.ts` asserts that
+`POST /api/auth/sign-in/email` answers `400 EMAIL_PASSWORD_DISABLED`. Ids starting with
+`demo-` belong to the demo personas, beside the e2e principals' `e2e-` prefix.
+
 ## Scripts
 
 | Script | Runs |
 | --- | --- |
 | `npm run test` | Vitest `unit` + `component` (`test:unit` / `test:component` for one) |
 | `npm run test:cli` | Builds the CLI, then its integration suite (`cli/test/*`) |
-| `npm run test:e2e` | Playwright in fake mode: all specs except `@live-llm` (needs `az login` + `.env` for `@live`) |
+| `npm run test:e2e` | Playwright in fake mode: all specs except `@live-llm` and `@demo` (needs `az login` + `.env` for `@live`); with `NOVEDU_AUTH_MODE=demo`, only `@demo` ("Demo login" above) |
 | `npm run test:e2e:ci` | Playwright minus `@live-llm`/`@live-storage`/`@live-telemetry` — hermetic + `@live-db`, the fake-LLM-backed specs included (CI runs this) |
 | `npm run test:e2e:live-llm` | Playwright in real mode: `@live-llm` only, against `.env`'s real providers |
 | `npm run test:e2e:db` | Playwright `@live-db` only (against a local Postgres container) |
@@ -503,11 +546,17 @@ No real student content is used at any step.
 
 ## CI
 
-`.github/workflows/qa.yml` runs `check` → `typecheck` → `test:unit` →
-`test:component` → `test:cli` → `build`, plus a separate hermetic e2e job (`test:e2e:ci`) and a
-PR-only `prod-build` job that builds the production Docker image (no push). Every
-job is **secret-free**; that is a hard security invariant, not a convenience — see
-**`docs/ci-security.md`**.
+`.github/workflows/qa.yml` sets `NOVEDU_AUTH_MODE=entra` for the whole workflow and
+runs `check` → `typecheck` → `test:unit` → `test:component` → `test:cli` → `build` →
+`check-demo-markers.mjs .next --expect absent` (the Entra build carries none of the demo
+login, `docs/auth.md`), plus a separate hermetic e2e job (`test:e2e:ci`), the
+**`e2e-demo`** job (`NOVEDU_AUTH_MODE=demo`, the workflow's Entra placeholders blanked,
+the same Postgres container: `test:e2e:ci` runs the `@demo` suite against a demo
+production build, then `check-demo-markers.mjs .next --expect present` is the positive
+control), and a PR-only `prod-build` matrix that builds both Docker images (no push) and
+checks each one's compiled output for the demo markers — absent from the Entra image,
+present in the demo image. Every job is **secret-free**; that is a hard security
+invariant, not a convenience — see **`docs/ci-security.md`**.
 
 ## Subsystem specifics
 
