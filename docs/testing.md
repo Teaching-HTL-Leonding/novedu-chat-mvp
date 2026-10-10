@@ -399,6 +399,9 @@ All secret-free and hermetic — no Aspire, no Azure, no network beyond loopback
   `tests/import-graph.ts`, which `lib/prompt-dump.unit.test.ts` uses too; each
   guard supplies its own roots and its own per-module verdict through the
   `walkClosure` callback.
+- `lib/limits/isolation.unit.test.ts` — grep-guard on the same walker:
+  `cli/src/**`'s closure never reaches `lib/limits/` (the env-reading limits
+  config stays out of the CLI bundle; `docs/usage-metering.md`, "Limits").
 
 Each real-SDK case lives in its own file on purpose: a `NodeSDK` registers global
 providers that cannot be replaced within a worker, and Vitest's per-file
