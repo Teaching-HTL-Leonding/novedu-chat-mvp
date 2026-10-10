@@ -3,7 +3,7 @@ name: novedu-publish
 description: Publish novedu into production
 ---
 
-**Prerequisite:** After your changes, you performed a full QA run including live e2e tests.
+**Prerequisite:** After your changes, you performed a full QA run including live e2e tests. For a change that touches many tests, also run `npm run test:unit` with the top-level `env:` of `.github/workflows/qa.yml` exported (e.g. CI sets `DATABASE_URL`), so a test that silently depends on the local environment fails before the push, not in CI.
 
 **Check whether the CLI must be republished** — but *not* by "are there changes under `./cli`". The CLI's `validate`, `prompts` and `eval` commands bundle app code (`lib/prompt-fragments`, the `*-validate` modules, `lib/tutors`, the prompt builders and eval schemas) into `dist/main.js` at build time, so the published `@novedu/cli` goes stale whenever those change, even with no `./cli` diff. Republish if the release touches any module the CLI imports (`grep -rhoE "@/lib/[^\"']+" cli/src`) or anything they import. If the user already decided, follow that; if borderline, ask.
 
