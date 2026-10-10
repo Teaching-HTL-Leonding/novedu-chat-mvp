@@ -71,9 +71,9 @@ describe("runValidate — tutors (local files)", () => {
     }
   });
 
-  // The @live-llm fixture tutors are consumed only by local-only e2e specs, so
-  // this CI-run check is the ONLY gate keeping them schema-valid: a break here
-  // would otherwise surface days later as an opaque chat timeout in a live run.
+  // The real-model fixture tutors back e2e chat specs, where a schema break would
+  // surface as an opaque chat timeout — and the vision one only in a local
+  // @live-llm run. This CI-run check names the break directly.
   it.each(["vision-tutor.yaml", "live-tutor.yaml", "live-tools-tutor.yaml"])(
     "keeps the live e2e fixture %s valid",
     async (fixture) => {

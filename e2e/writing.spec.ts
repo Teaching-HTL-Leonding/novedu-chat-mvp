@@ -15,11 +15,10 @@ import { deletePrincipal, signInFreshTeacher } from "./principal.utils";
 // and a teacher reviews WHO saved on /codes/[code] (the savers list), opening a
 // student to read their text on /codes/[code]/s/[userId].
 //
-// The write → save → reload-restores → savers-list → student-text leg needs the DB
-// but no LLM (@live-db, run in CI against the ephemeral Postgres container). The legs
-// that hit the SCCH model — the getCurrentText read and the full write→chat→save→
-// review round-trip — are @live-llm (excluded from CI; a `--grep @live-db` run
-// skips them).
+// Every test needs the DB (@live-db, run in CI against the ephemeral Postgres
+// container). The two chat legs — the getCurrentText read and the full
+// write→chat→save→review round-trip — talk to the fake LLM (docs/testing.md,
+// "Fake LLM").
 //
 // CopilotKit v2 testids (shared with the tutor/quiz chats):
 //   copilot-chat-textarea, copilot-send-button, copilot-assistant-message.
@@ -110,11 +109,11 @@ test("write → save → reload restores → teacher review", {
 });
 
 // The assistant reads the LIVE editor buffer through the read-only getCurrentText
-// frontend tool. Tagged @live-llm only (it also writes the DB, but an LLM test
-// implies the DB — tagging @live-db too would make a CI `--grep @live-db` run
-// select it and fail without the model).
+// frontend tool: the fake LLM calls it on the `[tool:getCurrentText]` marker, the
+// browser runs it, and the fake echoes the tool result — so the draft's sentinel
+// appears in the reply only if the buffer really reached the model.
 test("the assistant reads the draft via getCurrentText", {
-  tag: ["@live", "@live-llm"],
+  tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   test.setTimeout(180_000);
   const code = await authorWritingCode(page);
@@ -123,11 +122,11 @@ test("the assistant reads the draft via getCurrentText", {
   await expect(page.locator(".cm-content")).toBeVisible();
   await setEditorContent(page, "BANANAPHONE is my opening line.\n\nThen the essay continues.");
 
-  // Ask the coach to read the draft; the agent calls getCurrentText and echoes the
-  // first line, so the unique sentinel must appear in its reply.
+  // Ask the coach to read the draft; the fake calls getCurrentText and echoes the
+  // tool result, so the unique sentinel must appear in its reply.
   const composer = page.getByTestId("copilot-chat-textarea");
   await expect(composer).toBeVisible();
-  await composer.fill("Read my draft and state my exact first line.");
+  await composer.fill("[tool:getCurrentText] Read my draft and state my exact first line.");
   await page.getByTestId("copilot-send-button").click();
 
   // The agent emits an intermediate tool-status message before its final reply, so
@@ -141,12 +140,10 @@ test("the assistant reads the draft via getCurrentText", {
 
 // The full round-trip a teacher cares about: create a writing code from the
 // published YAML, the student writes, asks the coach a question and gets SOME reply
-// (the model's content is NOT evaluated — only that an answer arrives), saves, and
+// (the reply's content is NOT evaluated — only that an answer arrives), saves, and
 // the teacher then finds the student in the stats and reads the captured text.
-// @live-llm (the chat hits the model); an LLM test implies the DB, so it is not
-// also tagged @live-db (that would make a CI `--grep @live-db` run select it).
 test("writing round-trip: write → chat reply → save → teacher reads the saved text", {
-  tag: ["@live", "@live-llm"],
+  tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   test.setTimeout(180_000);
   // A code straight at the fixture writing YAML — anonymous:false so Save + the

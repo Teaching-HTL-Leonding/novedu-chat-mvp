@@ -230,7 +230,7 @@ Read before touching: `.github/workflows/`, or adding a secret / real infra to C
 
 Read before adding a test or tagging one `@live`.
 
-- Prefer fast, secret-free tests; `@live` only when the real DB/LLM/storage is genuinely needed, always with exactly one of `@live-db`/`@live-llm`/`@live-storage`/`@live-telemetry`. CI runs hermetic + `@live-db` only.
+- Prefer fast, secret-free tests; `@live` only when the real DB/LLM/storage is genuinely needed, always with exactly one of `@live-db`/`@live-llm`/`@live-storage`/`@live-telemetry`. CI runs hermetic + `@live-db` only — LLM-backed specs among them run against the fake LLM (`fake-llm/`); `@live-llm` is only for a specific provider or real model behaviour (`npm run test:e2e:live-llm`, local).
 - Mock the I/O seams, but keep security-critical pure modules (e.g. `lib/thread-token.ts`) real.
 
 ### CLI prompt dumps → `docs/cli-prompts.md`

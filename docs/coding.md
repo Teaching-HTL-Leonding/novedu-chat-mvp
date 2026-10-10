@@ -374,10 +374,12 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   the two rejections are byte-identical so the cheap `models` check is no oracle,
   and a non-Bearer scheme is refused like no key at all. All of it lands before
   `lookupCodingKey` touches SQL, which is what keeps it hermetic.
-- The real end-to-end path is **`e2e/coding-agent.spec.ts`** (`@live-llm`, local
-  only): drives the REAL `pi` coding agent (`@earendil-works/pi-coding-agent`, a
-  pinned devDependency — little-coder's engine) through the endpoint once per
-  provider (the Foundry and OpenRouter legs each self-skip without their env var).
+- The real end-to-end path is **`e2e/coding-agent.spec.ts`**: drives the REAL `pi`
+  coding agent (`@earendil-works/pi-coding-agent`, a pinned devDependency —
+  little-coder's engine) through the endpoint once per provider. The SCCH leg is
+  `@live-db` and runs in CI against the fake LLM (`docs/testing.md`); the Foundry
+  and OpenRouter legs are `@live-llm`, local only, and each self-skips without its
+  env var.
   The harness (`e2e/code.utils.ts`'s `mintCodingKey`) mints a code and a
   matching per-user key row directly, its value from the app's own pure
   `generateCodingKey`, and authenticates with it (the e2e setup's sweep removes the

@@ -8,8 +8,7 @@ import { buildLittleCoderConfig } from "../lib/little-coder-config";
 // devDependency — little-coder is a thin wrapper over it) against the coding
 // module's public OpenAI-compatible endpoint, exactly the way a student's tool
 // connects: a `models.json` with a minted per-user API key (`nvk-…`, from
-// `novedu_coding_keys` via `mintCodingKey`). Used only by the @live-llm
-// `coding-agent.spec.ts`.
+// `novedu_coding_keys` via `mintCodingKey`). Used only by `coding-agent.spec.ts`.
 //
 // Plain `node:child_process` + `node:fs`; `buildLittleCoderConfig` is the app's own pure,
 // client-safe config builder, so the generated file can never drift from what

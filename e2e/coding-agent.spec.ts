@@ -20,7 +20,10 @@ import { fetchServedModel, type PiAgentResult, runPiAgent } from "./pi-agent.uti
 //
 // The provider legs:
 //
-// - SCCH: the fixture's own pinned model, no override.
+// - SCCH: the fixture's own pinned model, no override. Runs against the fake LLM
+//   (docs/testing.md, "Fake LLM"), which answers any model id and echoes it back,
+//   so the served-model check still proves the proxy forwarded the pinned model.
+//   `@live-db` (it mints the code and the key through e2e/db.ts) — runs in CI.
 // - Azure Foundry: the code's LLM override pair switches the upstream, proving
 //   Managed-Identity/`az login` auth + deployment-as-model on the proxy path.
 //   Skipped when AZURE_FOUNDRY_ENDPOINT is not set.
@@ -49,9 +52,8 @@ async function attachServedCompletion(raw: string): Promise<void> {
     .attach("served-model-completion", { body: raw, contentType: "application/json" });
 }
 
-// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("pi gets a non-empty reply through the coding proxy", {
-  tag: ["@live", "@live-llm"],
+  tag: ["@live", "@live-db"],
 }, async () => {
   const code = await mintCode({
     module: "coding",

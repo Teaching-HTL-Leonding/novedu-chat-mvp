@@ -4,8 +4,8 @@ import { mintSessionToken } from "./api-auth.utils";
 // The proxy-matcher exclusions that had NO hermetic HTTP coverage: `/api/eval`
 // and `/api/coding`. Both are listed in the `matcher` in `proxy.ts` so the
 // cookie gate skips them and the route's own gate answers instead — and both
-// had their gates proven only in-process (route unit tests) or behind
-// `@live-llm` specs that never run in CI. An edit dropping either exclusion
+// had their gates proven only in-process (route unit tests) or behind specs
+// that need a minted key or a real model. An edit dropping either exclusion
 // from that regex would turn every 401 below into a 302 to the Microsoft
 // sign-in page and still ship through a green CI.
 //

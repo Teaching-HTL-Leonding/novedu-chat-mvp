@@ -34,10 +34,12 @@ fixtures live in-code in `lib/tutors/test-fixtures.ts`.
 ## Models
 
 Hermetic fixtures use a fake `model: test-model` (nothing calls an LLM). The six
-`@live-llm` fixtures carry a **real** model id because their specs drive the live
-SCCH endpoint: `tutors/live-tutor.yaml`, `tutors/live-tools-tutor.yaml`,
-`tutors/vision-tutor.yaml`, `quizzes/vision-quiz.yaml`, `writings/test-writing.yaml`
-and `coding/live-coding.yaml`.
+LLM-backed fixtures carry a **real** model id: `tutors/live-tutor.yaml`,
+`tutors/live-tools-tutor.yaml`, `tutors/vision-tutor.yaml`,
+`quizzes/vision-quiz.yaml`, `writings/test-writing.yaml` and
+`coding/live-coding.yaml`. The vision pair serves only `@live-llm` specs (the live
+SCCH endpoint); the others also back CI specs that run against the fake LLM, which
+answers whatever model id it is asked for (`docs/testing.md`, "Fake LLM").
 
 ## Layout
 
@@ -47,12 +49,12 @@ activities/
              broken-tutor.yaml (→ broken-fragments.yaml), broken-fragments.yaml,
              broken-template-fragments.yaml, tools-tutor.yaml,
              broken-tools-tutor.yaml, eval-tutor.yaml (the tutor evals' target),
-             live-tutor.yaml, live-tools-tutor.yaml, vision-tutor.yaml [@live-llm]
+             live-tutor.yaml, live-tools-tutor.yaml, vision-tutor.yaml [real model id]
   quizzes/   test-quiz.yaml, broken-quiz.yaml, fragments-quiz.yaml,
-             vision-quiz.yaml [@live-llm]
-  writings/  test-writing.yaml [@live-llm], broken-writing.yaml, fragments-writing.yaml
+             vision-quiz.yaml [real model id]
+  writings/  test-writing.yaml [real model id], broken-writing.yaml, fragments-writing.yaml
   coding/    test-coding.yaml, broken-coding.yaml, fragments-coding.yaml,
-             live-coding.yaml [@live-llm]
+             live-coding.yaml [real model id]
   evals/     quiz evals (→ quizzes/test-quiz.yaml): test-eval.yaml, mismatch-eval.yaml,
              judge-eval.yaml, broken-eval.yaml;
              tutor evals: tutor-eval.yaml, tutor-judge-eval.yaml, broken-tutor-eval.yaml

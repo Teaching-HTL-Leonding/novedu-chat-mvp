@@ -3,8 +3,9 @@ name: "Functional Test Writing"
 title: "Functional Test Writing"
 # Attributed (anonymous: false) so Save + the teacher review work.
 anonymous: false
-# A REAL model: the writing e2e round-trip drives the live SCCH endpoint, unlike
-# the hermetic fixtures which use a fake `test-model`.
+# A REAL model id, so the file also works against the live SCCH endpoint (the
+# e2e specs run against the fake LLM, which answers any id), unlike the hermetic
+# fixtures which use a fake `test-model`.
 llm:
   model: RedHatAI/gemma-4-31B-it-FP8-Dynamic
 instructions: |
