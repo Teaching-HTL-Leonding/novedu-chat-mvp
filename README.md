@@ -85,9 +85,15 @@ work but the answers are not real.
   the passwords in the file are public. All ports are published on `127.0.0.1` only;
   never expose the stack to a network, and use sample data only.
 - **The CLI** works against it: `npx @novedu/cli@latest login --server http://localhost:3000`.
-- **A real model:** set `OPENROUTER_API_KEY` before `docker compose up` and put
-  `provider: OpenRouter` and an OpenRouter model id in an activity's `llm:` block, or
-  in a code's LLM override ([`docs/ai-models.md`](docs/ai-models.md)).
+- **A real model:** set `OPENROUTER_API_KEY` before `docker compose up` (or put it in a
+  `.env` file next to `compose.yaml`) and put `provider: OpenRouter` and an OpenRouter
+  model id in an activity's `llm:` block, or in a code's LLM override
+  ([`docs/ai-models.md`](docs/ai-models.md)). Activities without a provider stay on the
+  fake.
+- **Run from a clone,** Compose reads the repo's own `.env` for the `${…}` values in
+  `compose.yaml`: a personal `OPENROUTER_API_KEY` or `AUTH_SECRET` there reaches the
+  demo app too. Entra settings in `.env` never do — `compose.yaml` does not reference
+  them.
 - **Ports and images:** `NOVEDU_PORT` (app, 3000), `NOVEDU_PG_PORT` (Postgres, 5432) and
   `NOVEDU_FAKE_LLM_PORT` (fake LLM, 4010) move the published ports; `NOVEDU_IMAGE` and
   `NOVEDU_FAKE_LLM_IMAGE` replace the images (e.g. a local `docker build`).
