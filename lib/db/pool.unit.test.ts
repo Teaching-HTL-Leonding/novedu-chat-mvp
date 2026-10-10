@@ -116,6 +116,8 @@ describe("databaseHost", () => {
   });
 
   it("returns null for an unset or unparseable URL", () => {
+    // `undefined` falls back to the env default, which CI sets.
+    vi.stubEnv("DATABASE_URL", "");
     expect(databaseHost(undefined)).toBeNull();
     expect(databaseHost("not a url")).toBeNull();
   });
