@@ -97,6 +97,8 @@ import { InMemoryAgentRunner } from "@copilotkit/runtime/v2";
 import { HistorySnapshotRunner } from "@/app/api/copilotkit/history-snapshot-runner";
 import { ReasoningStrippingRunner } from "@/app/api/copilotkit/reasoning-runner";
 import { RunErrorReportingRunner } from "@/app/api/copilotkit/run-error-runner";
+import { LIMITS_EXEMPT } from "@/app/mastra/output-limit";
+import { LIMITS } from "@/lib/limits/config";
 import {
   getThreadTokenSecret,
   resetThreadTokenSecretForTests,
@@ -774,5 +776,89 @@ describe("trimToNewTurn (replayed-history trimming)", () => {
     const body = (await forwarded.json()) as { messages: unknown[]; threadId: string };
     expect(body.messages).toEqual([{ role: "user", content: "the new turn" }]);
     expect(body.threadId).toBe(threadId);
+  });
+});
+
+describe("student input limit (lib/limits/)", () => {
+  const MAX = LIMITS.defaults.chatMaxInputChars;
+
+  beforeEach(() => {
+    vi.stubEnv("LIMITS_ENABLED", "true");
+  });
+
+  function run(messages: unknown[]) {
+    const threadId = crypto.randomUUID();
+    return POST(agentRequest({ threadId, token: token(threadId), messages }));
+  }
+
+  const userText = (length: number) => ({ id: "u1", role: "user", content: "x".repeat(length) });
+
+  it("413s a student turn longer than the limit, naming the limit, before the agent runs", async () => {
+    const res = await run([userText(MAX + 1)]);
+    expect(res.status).toBe(413);
+    expect((await res.json()).error).toMatch(/too long/i);
+    expect(endpointFetch).not.toHaveBeenCalled();
+    expect(recordUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("lets a turn of exactly the limit through", async () => {
+    expect((await run([userText(MAX)])).status).toBe(200);
+  });
+
+  it("measures only the NEW turn, not the replayed history", async () => {
+    const res = await run([
+      userText(MAX),
+      { id: "a1", role: "assistant", content: "answer" },
+      userText(10),
+    ]);
+    expect(res.status).toBe(200);
+  });
+
+  it("does not count images", async () => {
+    const res = await run([
+      {
+        id: "u1",
+        role: "user",
+        content: [
+          { type: "text", text: "what is this?" },
+          { type: "binary", mimeType: "image/png", data: "A".repeat(MAX * 2) },
+        ],
+      },
+    ]);
+    expect(res.status).toBe(200);
+  });
+
+  it("does not count a frontend tool's result (the writing module's essay)", async () => {
+    const res = await run([
+      { id: "t1", role: "tool", toolCallId: "c1", content: "essay ".repeat(MAX) },
+    ]);
+    expect(res.status).toBe(200);
+  });
+
+  it("exempts an effective teacher", async () => {
+    getSession.mockResolvedValue({ user: { id: USER_ID, isTeacher: true } });
+    expect((await run([userText(MAX + 1)])).status).toBe(200);
+  });
+
+  it("limits a real teacher in view-as-student mode", async () => {
+    getSession.mockResolvedValue({ user: { id: USER_ID, isTeacher: true } });
+    cookies.mockResolvedValue(studentModeCookies(true));
+    expect((await run([userText(MAX + 1)])).status).toBe(413);
+  });
+
+  it("is off with LIMITS_ENABLED=false", async () => {
+    vi.stubEnv("LIMITS_ENABLED", "false");
+    expect((await run([userText(MAX + 1)])).status).toBe(200);
+  });
+
+  it("puts the exemption on the agent's context — false for a student", async () => {
+    await run([userText(10)]);
+    expect(contextSet).toHaveBeenCalledWith(LIMITS_EXEMPT, false);
+  });
+
+  it("puts the exemption on the agent's context — true for an effective teacher", async () => {
+    getSession.mockResolvedValue({ user: { id: USER_ID, isTeacher: true } });
+    await run([userText(10)]);
+    expect(contextSet).toHaveBeenCalledWith(LIMITS_EXEMPT, true);
   });
 });

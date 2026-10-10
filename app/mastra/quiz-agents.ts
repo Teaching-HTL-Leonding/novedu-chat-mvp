@@ -8,6 +8,7 @@ import {
   parseLenientReasoningLevel,
 } from "@/lib/llm/provider";
 import { modelEntry } from "./model-entry";
+import { chatOutputLimitOptions } from "./output-limit";
 import { reasoningStrippingProcessor } from "./reasoning-processor";
 
 // Two agents that back the Quizzes feature. Both are configured ENTIRELY per
@@ -87,6 +88,10 @@ export const quizDiscussionAgent = new Agent({
       requiredString(requestContext, QUIZ_DISCUSSION_MODEL),
       parseLenientReasoningLevel(requestContext.get(QUIZ_DISCUSSION_REASONING)),
     ),
+  // The student output cap (app/mastra/output-limit.ts). The grader above has
+  // none on purpose: its truncation is handled by lib/quiz-truncation-retry.ts.
+  defaultOptions: ({ requestContext }) =>
+    chatOutputLimitOptions(requestContext, providerFrom(requestContext, QUIZ_DISCUSSION_PROVIDER)),
   memory: new Memory({
     options: {
       lastMessages: 40,

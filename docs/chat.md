@@ -566,6 +566,32 @@ is to have the student run it on the phone that produced the problem — and it
 runs the PRODUCTION normalizer with no option overrides, so its verdict is the
 chat's verdict. Nothing leaves the browser.
 
+## Student limits
+
+Two of the student limits (`docs/usage-metering.md`, "Limits") act on the chat:
+
+- **Input length.** The CopilotKit route measures the typed text of the new turn
+  (`userTextLength`, `lib/limits/input-length.ts`) while it trims the run body. Only
+  `user` messages count: images are bounded by the body cap and the photo pipeline
+  above, and `tool` messages are not typed by the student (the writing module's
+  `getCurrentText` returns the whole essay that way). Over `chatMaxInputChars`, the
+  route answers `413` with a readable message before the agent runs, so nothing is
+  metered or persisted.
+- **Output cap.** The tutor, quiz-discussion and writing agents set
+  `modelSettings.maxOutputTokens` through their `defaultOptions`
+  (`chatOutputLimitOptions`, `app/mastra/output-limit.ts`), resolved for the
+  **effective** provider. Mastra deep-merges these under the options
+  `@ag-ui/mastra` passes to `stream()`, which sets no `modelSettings` of its own. A
+  reply that stops at the cap (`finishReason: "length"` on the run or any step)
+  emits the content-free event `limits.output.truncated` (`{ module, provider,
+  maxOutputTokens }`).
+
+Exemption is decided once per request in the route: `isLimitExempt` over the same
+fail-closed effective-teacher check as the reasoning gate, so a teacher in "view as
+student" mode is limited like a student. The route puts the result on the
+RequestContext as `LIMITS_EXEMPT`; the agents treat anything but `true` (including
+an absent key) as "limited".
+
 ## Failure reporting (`RunErrorReportingRunner`)
 
 A turn that dies inside the agent does so **in-band**: the route has already
@@ -718,6 +744,14 @@ module.
 - **`tests/unit/runtime-headers.unit.test.ts`** — `buildRuntimeHeaders(code, token)`
   returns `{ "x-code": code, "x-thread-token": token }` exactly (a cheap guard on
   the header names the backend re-reads).
+- **Student limits** — `app/mastra/output-limit.unit.test.ts` (the cap per
+  provider, fail-closed on an absent or non-boolean exemption, the content-free
+  truncation event), the per-agent wiring in `app/mastra/tutor-agent.unit.test.ts`
+  (the override provider's cap) and `app/mastra/chat-agents-output-limit.unit.test.ts`
+  (quiz discussion, writing, and NO cap on the grader), `lib/limits/input-length.unit.test.ts`
+  (only typed `user` text counts), and the input-limit cases of the CopilotKit route
+  test (413 before the agent runs; the new turn only; images and tool results not
+  counted; teacher exempt, view-as-student limited; `LIMITS_EXEMPT` on the context).
 
 The refactor is behavior-preserving, so the live e2e specs are coverage, not
 duplication — they drive the **real** CopilotKit end-to-end (which the component

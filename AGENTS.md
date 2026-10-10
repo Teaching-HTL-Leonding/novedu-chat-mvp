@@ -179,6 +179,13 @@ Read before touching: `lib/usage-store.ts`, `app/mastra/usage-exporter.ts`, `lib
 
 - Written off the response path by the never-throwing `lib/usage-store.ts`. Anonymity: see the security block.
 
+### Student limits → `docs/usage-metering.md` ("Limits")
+
+Read before touching: `lib/limits/**`, `app/mastra/output-limit.ts`, a student-facing agent's `defaultOptions`, `clampMaxTokens`, or the input check in the CopilotKit route.
+
+- Limits resolve on the **effective** provider (after the code override) and exempt only `isLimitExempt` callers — the chat passes the EFFECTIVE teacher (view-as-student is limited), the coding proxy the key holder's `is_teacher`. `LIMITS_ENABLED` is fail-closed (only `false` disables); a missing `LIMITS_EXEMPT` context key means limited.
+- `lib/limits/**` is server-only and never CLI-bundled (grep-guarded); CLI-bundled helpers like `clampMaxTokens` take the limit as a parameter. No limit counter is ever persisted.
+
 ### Usage dashboard → `docs/dashboard.md`
 
 Read before touching: `app/usage/**`, `lib/usage-stats-store.ts`, `lib/usage-range.ts`, the shared chart building blocks `components/charts/**` + `components/dashboard-{ui,skeletons}.tsx`.

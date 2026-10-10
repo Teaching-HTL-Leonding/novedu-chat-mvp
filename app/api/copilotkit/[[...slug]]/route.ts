@@ -10,8 +10,12 @@ import { HistorySnapshotRunner } from "@/app/api/copilotkit/history-snapshot-run
 import { ReasoningStrippingRunner } from "@/app/api/copilotkit/reasoning-runner";
 import { RunErrorReportingRunner } from "@/app/api/copilotkit/run-error-runner";
 import { mastra } from "@/app/mastra";
+import { LIMITS_EXEMPT } from "@/app/mastra/output-limit";
 import { codeModules } from "@/lib/code-modules/registry";
 import { type CodeRejection, checkCode } from "@/lib/code-store";
+import { isLimitExempt } from "@/lib/limits/enabled";
+import { userTextLength } from "@/lib/limits/input-length";
+import { chatMaxInputChars } from "@/lib/limits/resolve";
 import { RUNTIME_CODE_HEADER, RUNTIME_THREAD_TOKEN_HEADER } from "@/lib/runtime-headers";
 import { getSession } from "@/lib/session";
 import { effectiveTeacherForSession } from "@/lib/student-mode";
@@ -32,6 +36,11 @@ const REJECTION_MESSAGES: Record<CodeRejection, string> = {
 
 const THREAD_REJECTION_MESSAGE =
   "This chat does not belong to your session — reload the page to start a new chat.";
+
+// The student input-length limit (lib/limits/): what one turn may carry as typed
+// text. Shown in the chat's error UI, so it names the limit.
+const inputTooLongMessage = (max: number) =>
+  `This message is too long. Please shorten it to at most ${max.toLocaleString("en-US")} characters and try again.`;
 
 // Belt-and-braces shape check before the HMAC; the page issues UUIDs but the
 // token (not this pattern) is what actually proves ownership.
@@ -155,17 +164,21 @@ function classifyRequest(req: Request): RuntimeRequest {
 //
 // `code` is the value the thread token is bound to (the same for every module:
 // the code itself, which is also the Mastra memory resourceId). Returns the
-// verified threadId + the request to forward, or a 403 response.
+// verified threadId + the request to forward + the typed text length of the new
+// turn (0 for connect/stop; checked against the input limit by the caller, which
+// knows the role), or a 403 response.
 async function resolveThreadOwnership(
   req: Request,
   runtimeRequest: Extract<RuntimeRequest, { kind: "run" | "connect" | "stop" }>,
   code: string,
   userId: string,
 ): Promise<
-  { ok: true; threadId: string; forwardReq: Request } | { ok: false; response: Response }
+  | { ok: true; threadId: string; forwardReq: Request; newTurnChars: number }
+  | { ok: false; response: Response }
 > {
   let threadId: string | undefined;
   let forwardReq: Request = req;
+  let newTurnChars = 0;
   if (runtimeRequest.kind === "stop") {
     threadId = runtimeRequest.threadId;
   } else {
@@ -178,6 +191,7 @@ async function resolveThreadOwnership(
 
     if (runtimeRequest.kind === "run" && body && Array.isArray(body.messages)) {
       const trimmed = trimToNewTurn(body.messages as Array<{ role?: unknown }>);
+      newTurnChars = userTextLength(trimmed);
       if (trimmed !== body.messages) {
         // Rebuild the request with the trimmed history. Drop content-length so
         // the platform recomputes it for the shorter body.
@@ -202,7 +216,7 @@ async function resolveThreadOwnership(
       response: Response.json({ error: THREAD_REJECTION_MESSAGE }, { status: 403 }),
     };
   }
-  return { ok: true, threadId, forwardReq };
+  return { ok: true, threadId, forwardReq, newTurnChars };
 }
 
 // The chat backend, for EVERY module. Server-side checks gate every DATA request
@@ -342,6 +356,18 @@ async function handler(req: Request): Promise<Response> {
   if (!built.ok) {
     return Response.json({ error: built.message }, { status: built.status });
   }
+
+  // STUDENT LIMITS (lib/limits/, docs/chat.md): exempt are effective teachers
+  // (the same fail-closed role check as the reasoning gate — view-as-student is
+  // limited) and a `LIMITS_ENABLED=false` environment. The input cap is checked
+  // here, before the agent runs; the output cap travels to the agent on the
+  // context (app/mastra/output-limit.ts).
+  const limitExempt = isLimitExempt({ teacher: showReasoning });
+  const maxInputChars = chatMaxInputChars();
+  if (!limitExempt && ownership.newTurnChars > maxInputChars) {
+    return Response.json({ error: inputTooLongMessage(maxInputChars) }, { status: 413 });
+  }
+  built.context.set(LIMITS_EXEMPT, limitExempt);
 
   // Usage attribution: the observability exporter (app/mastra/usage-exporter.ts)
   // reads these three keys off every span. `usageUserId` is set for ALL codes,

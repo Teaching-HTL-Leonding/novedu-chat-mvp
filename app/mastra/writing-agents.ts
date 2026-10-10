@@ -8,6 +8,7 @@ import {
   parseLenientReasoningLevel,
 } from "@/lib/llm/provider";
 import { modelEntry } from "./model-entry";
+import { chatOutputLimitOptions } from "./output-limit";
 import { reasoningStrippingProcessor } from "./reasoning-processor";
 
 // The agent that backs the Writing feature's feedback chat. It is configured
@@ -62,6 +63,9 @@ export const writingAgent = new Agent({
       requiredString(requestContext, WRITING_MODEL),
       parseLenientReasoningLevel(requestContext.get(WRITING_REASONING)),
     ),
+  // The student output cap (app/mastra/output-limit.ts).
+  defaultOptions: ({ requestContext }) =>
+    chatOutputLimitOptions(requestContext, providerFrom(requestContext)),
   memory: new Memory({
     options: {
       lastMessages: 40,

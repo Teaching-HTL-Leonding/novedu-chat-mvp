@@ -11,6 +11,7 @@ import {
 import { defaultFetcher } from "@/lib/prompt-fragments";
 import { loadAndBuildTutorPrompt } from "@/lib/tutors";
 import { modelEntry } from "./model-entry";
+import { chatOutputLimitOptions } from "./output-limit";
 import { reasoningStrippingProcessor } from "./reasoning-processor";
 import { selectTutorTools } from "./tutor-tools";
 
@@ -137,6 +138,10 @@ export const tutorAgent = new Agent({
   // an empty map for the (default) tool-less tutor. The platform never mentions
   // tools in the prompt; authors reference them in `tutor_instructions`.
   tools: async ({ requestContext }) => selectTutorTools((await loadTutor(requestContext)).tools),
+  // The student output cap for the EFFECTIVE provider (app/mastra/output-limit.ts),
+  // from the same request-scoped build as `model`.
+  defaultOptions: async ({ requestContext }) =>
+    chatOutputLimitOptions(requestContext, (await loadTutor(requestContext)).provider),
   // Persist the conversation so the tutor remembers earlier turns. No explicit
   // storage here: Memory inherits the Mastra instance's Postgres store (see
   // `index.ts`), so threads/messages land in the `mastra_*` tables. The thread

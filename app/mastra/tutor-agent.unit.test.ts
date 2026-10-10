@@ -37,6 +37,8 @@ import {
   TUTOR_URL,
   tutorAgent,
 } from "@/app/mastra/tutor-agent";
+import { chatMaxOutputTokens } from "@/lib/limits/resolve";
+import { LIMITS_EXEMPT } from "./output-limit";
 
 // The resolver returns Mastra's ModelWithRetries ARRAY form — the only shape that
 // carries `providerOptions` (the reasoning-effort seam) into a run.
@@ -238,5 +240,42 @@ describe("tutorAgent tools resolution", () => {
     });
     const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
     await expect(tools({ requestContext: ctx })).rejects.toThrow(/Unknown tutor tool/);
+  });
+});
+
+describe("tutorAgent output cap (app/mastra/output-limit.ts)", () => {
+  type Options = { modelSettings?: { maxOutputTokens?: number } };
+  const defaultOptions = config.defaultOptions as Resolver<Options>;
+
+  it("caps a student's reply for the YAML's provider", async () => {
+    const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
+    const options = await defaultOptions({ requestContext: ctx });
+    expect(options.modelSettings?.maxOutputTokens).toBe(chatMaxOutputTokens("SCCH"));
+  });
+
+  it("follows the code's override provider, so an override cannot dodge the cap", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    const ctx = requestContext({
+      [TUTOR_URL]: "https://example.com/t.yaml",
+      [TUTOR_PROVIDER_OVERRIDE]: "OpenRouter",
+      [TUTOR_MODEL_OVERRIDE]: "override-model",
+    });
+    const options = await defaultOptions({ requestContext: ctx });
+    expect(options.modelSettings?.maxOutputTokens).toBe(chatMaxOutputTokens("OpenRouter"));
+  });
+
+  it("shares the request-scoped build with the other resolvers", async () => {
+    const ctx = requestContext({ [TUTOR_URL]: "https://example.com/t.yaml" });
+    await model({ requestContext: ctx });
+    await defaultOptions({ requestContext: ctx });
+    expect(loadAndBuildTutorPrompt).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cap an exempt caller", async () => {
+    const ctx = requestContext({
+      [TUTOR_URL]: "https://example.com/t.yaml",
+      [LIMITS_EXEMPT]: true,
+    });
+    await expect(defaultOptions({ requestContext: ctx })).resolves.toEqual({});
   });
 });

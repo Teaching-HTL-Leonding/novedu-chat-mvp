@@ -116,6 +116,12 @@ OPENROUTER_API_KEY=your-openrouter-api-key
 # metered. See docs/codes.md, "Immediate feedback".
 # QUIZ_IMMEDIATE_FEEDBACK=true
 
+# --- Student limits (spam + cost protection) ---
+# ON unless set to exactly `false` (case-insensitive). The limits themselves live in
+# lib/limits/config.ts, not here. Teachers are never limited. Set `false` only for
+# local development. See docs/usage-metering.md, "Limits".
+# LIMITS_ENABLED=false
+
 # --- Microsoft Entra ID sign-in (better-auth) ---
 AZURE_TENANT_ID=your-entra-tenant-id
 AZURE_CLIENT_ID=your-entra-app-client-id
@@ -214,6 +220,9 @@ Notes:
   pill (icon + label) beside a quiz answer box, and a quiz may still switch it off with
   `immediate_feedback: false`. The hint is a quick check, never the grade, and its
   calls are not metered. See `docs/codes.md` ("Immediate feedback").
+- `LIMITS_ENABLED` is **optional and fail-closed**: the student limits apply unless it
+  is exactly `false`, so an unset or mistyped value never switches cost protection
+  off. See `docs/usage-metering.md` ("Limits").
 - Telemetry is **optional** and off unless a destination is set:
   `OTEL_EXPORTER_OTLP_ENDPOINT` selects standard OTLP export (Aspire locally, any
   receiver or Collector elsewhere), `APPLICATIONINSIGHTS_CONNECTION_STRING` selects

@@ -165,11 +165,55 @@ with the remainder (`inputTokens − cacheRead`) as `input_tokens_new`. The codi
 reads the OpenAI field directly. All input tokens (cached + new) still bill; the split
 is for cost visibility.
 
+## Limits
+
+The student limits (spam + cost protection) build on this metering. The config lives
+in **`lib/limits/`** — server-only and never CLI-bundled
+(`lib/limits/isolation.unit.test.ts` guards the CLI closure):
+
+- `config.ts` — the typed, zod-validated `LIMITS` object: `exemptTeachers`, the
+  `defaults`, and one entry per LLM provider (`Record<LlmProvider, …>`, so a new
+  provider is a compile error until it gets its limits). The schema is parsed once at
+  module load, so a broken edit fails the first import.
+- `resolve.ts` — the pure readers. Every per-provider value resolves as **the
+  effective provider's entry** (after a code's LLM override — an override cannot
+  dodge a limit) **→ `defaults`**.
+- `enabled.ts` — `limitsEnabled()` reads `LIMITS_ENABLED` and is **fail-closed**: only
+  an explicit `false` switches the limits off. `isLimitExempt({ teacher })` is the
+  one exemption rule: limits off, or an exempt teacher. The CALLER resolves the role —
+  the chat passes the **effective** teacher (`effectiveTeacherForSession`, so "view as
+  student" is limited like a student), the coding proxy the key holder's server-owned
+  `novedu_user.is_teacher` (no student mode on that channel).
+- `input-length.ts` — `userTextLength`, the typed text of one chat turn.
+
+What is enforced:
+
+| Limit | Where | Over the limit |
+|---|---|---|
+| Chat output cap (`chatMaxOutputTokens`) | `defaultOptions` of the tutor, quiz-discussion and writing agents (`app/mastra/output-limit.ts`, `docs/chat.md`) | the reply stops; a content-free `limits.output.truncated` event is emitted |
+| Coding output cap (`codingMaxOutputTokens`) | `clampMaxTokens` in the coding proxy (`docs/coding.md`) | the client's `max_tokens` / `max_completion_tokens` is lowered to the cap; a request without one gets the cap |
+| Chat input length (`chatMaxInputChars`) | the CopilotKit route, before the agent runs (`docs/chat.md`) | `413` with a readable message |
+
+The quiz grader (`quizEvaluatorAgent`) carries no output cap — its truncation is
+handled by `lib/quiz-truncation-retry.ts`. The teacher-only eval agents carry none
+either.
+
+None of these limits store anything: no counter is persisted, so the anonymity rule
+above (no `(user × code)` row) is untouched. The config already holds the values for
+the per-minute rate limits, the per-chat context cap and the daily budget, which are
+not enforced yet.
+
 ## Testing
 
 - Unit (hermetic): `hourBucket` truncation and the increment column mapping against a
   mocked executor (`lib/usage-store.unit.test.ts`), the pure span→delta mapping over
   fake spans (`app/mastra/usage-exporter.unit.test.ts`), and the coding usage
   extractor + `include_usage` request shaping (`lib/coding-proxy.unit.test.ts`).
+- Limits: the config schema, the resolvers, the fail-closed switch and the input
+  measurement (`lib/limits/*.unit.test.ts`), the chat cap and its truncation event
+  (`app/mastra/output-limit.unit.test.ts`, `app/mastra/tutor-agent.unit.test.ts`,
+  `app/mastra/chat-agents-output-limit.unit.test.ts`), the coding clamp
+  (`lib/coding-proxy.unit.test.ts`, the completions route test), and the input limit
+  in the CopilotKit route test.
 - The real UPSERT / concurrent double-increment is a `@live-db` concern (a real
   Postgres database), consistent with `docs/testing.md`.

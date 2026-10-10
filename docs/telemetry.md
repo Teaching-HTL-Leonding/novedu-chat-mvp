@@ -221,7 +221,9 @@ Both backends run the HTTP and `pg` instrumentations; the standard OTLP path add
   the invariant below: an event carries ids, counts and durations only — e.g.
   `quiz.precheck` (`{ verdict, latencyMs, code }`, the quiz pre-check hint,
   `docs/codes.md`), whose classifier failures are reported under the
-  `"novedu.area": "quiz-precheck"` attribute and never carry the student's answer.
+  `"novedu.area": "quiz-precheck"` attribute and never carry the student's answer —
+  or `limits.output.truncated` (`{ module, provider, maxOutputTokens }`, a chat reply
+  cut off by the student output cap, `docs/chat.md`), which never carries the reply.
 
 The baseline is useful signal coverage, not identical Azure and Aspire metric
 names, tables, or dashboards. Full prompt/agent tracing and capture of console
