@@ -107,6 +107,10 @@ jobs:
   # contributors. Its own job — it needs `qa`, not `build-and-push` — so it never
   # delays or fails the dev deploy. Nothing deploys it: no stage runs a demo
   # image, and promote.yml's version check rejects its `-demo` versions.
+  #
+  # The same job also pushes the fake LLM image (`:fake-llm`,
+  # fake-llm/Dockerfile) that compose.yaml runs beside `:demo`, under the same
+  # repository and login — `-fake-llm` versions are rejected by promote.yml too.
   build-and-push-demo:
     needs: qa
     runs-on: ubuntu-latest
@@ -115,11 +119,13 @@ jobs:
         uses: actions/checkout@v6
 
       # The production image's version with a `-demo` suffix, so /api/version
-      # names a demo image as one.
+      # names a demo image as one; the fake LLM image's with `-fake-llm`.
       - name: Derive image version
         id: version
         run: |
-          echo "version=$(jq -r .version package.json).${{ github.run_number }}-demo" >> "$GITHUB_OUTPUT"
+          base="$(jq -r .version package.json).${{ github.run_number }}"
+          echo "version=$base-demo" >> "$GITHUB_OUTPUT"
+          echo "fake_llm_version=$base-fake-llm" >> "$GITHUB_OUTPUT"
           echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
@@ -151,6 +157,24 @@ jobs:
             type=gha,scope=demo
             type=gha,scope=entra
           cache-to: type=gha,mode=max,scope=demo
+
+      # The fake LLM is plain JavaScript, so its arm64 variant builds quickly
+      # under QEMU — Apple silicon runs it natively.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Build and push the fake LLM image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: fake-llm/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.fake_llm_version }}
+            ${{ env.IMAGE_NAME }}:fake-llm
+          cache-from: type=gha,scope=fake-llm
+          cache-to: type=gha,mode=max,scope=fake-llm
 
   # Every publish deploys to the dev stage (docs/azure-runtime-env.md).
   # Promotion to the prod stage is the manual promote.yml.

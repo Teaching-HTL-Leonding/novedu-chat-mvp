@@ -314,7 +314,7 @@ SDK default and the documented local transport, so no gRPC port is published.
 ```bash
 # Dashboard only (the app runs on the host with `npm run dev` / `npm run start`)
 docker compose -f compose.telemetry.yaml up -d
-docker compose logs aspire | grep "login?t="          # open this URL in the browser
+docker compose -f compose.telemetry.yaml logs aspire | grep "login?t="  # open this URL in the browser
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 npm run dev
 docker compose -f compose.telemetry.yaml down
 ```

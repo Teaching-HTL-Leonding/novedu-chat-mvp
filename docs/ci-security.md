@@ -55,7 +55,10 @@ run untrusted PR code.**
     reproduces `docker-publish.yml`'s multi-stage image builds — a matrix over the
     production (Entra) image and the `:demo` image — so a build break surfaces on the
     PR instead of after merge, and checks each built image for the demo login's
-    markers (absent from the Entra image, present in the demo one). It is **also
+    markers (absent from the Entra image, present in the demo one). The demo leg
+    also builds the fake LLM image, boots `compose.yaml` on both and runs
+    `scripts/ci/compose-smoke.mjs` — the stack's passwords are the published
+    dummies in `compose.yaml`, and its ports stay on the runner's loopback. It is **also
     secret-free**: it never logs in to a registry and **`push: false`**, so no
     `DOCKER_*` credentials are needed; it only **reads** the layer cache
     (`cache-from: type=gha` in the publish jobs' per-image scopes, no cache export —
@@ -70,10 +73,11 @@ run untrusted PR code.**
 - **`docker-publish.yml`** holds the real secrets (`DOCKER_USERNAME` /
   `DOCKER_PASSWORD`) — all of them in its two image-publishing jobs,
   `build-and-push` (the production image) and `build-and-push-demo` (the `:demo`
-  image, built with `NOVEDU_AUTH_MODE=demo`, tagged `:demo` and `:<version>-demo`),
+  image, built with `NOVEDU_AUTH_MODE=demo`, tagged `:demo` and `:<version>-demo`,
+  plus the fake LLM image `:fake-llm` / `:<version>-fake-llm` for `compose.yaml`),
   the only places in the repo that reference a `secrets.*` value at all. Nothing
-  deploys a demo image: `deploy-dev` needs only `build-and-push`, and `promote.yml`'s
-  version check rejects a `-demo` version. It triggers **only** on `push` to `main` (a
+  deploys either image: `deploy-dev` needs only `build-and-push`, and `promote.yml`'s
+  version check rejects a suffixed version. It triggers **only** on `push` to `main` (a
   maintainer merge) and manual `workflow_dispatch`. A fork PR cannot produce a
   push to `main`, so it can never reach these secrets. It reuses `qa.yml` via
   `workflow_call` as a gate, then builds/publishes/deploys.
