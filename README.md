@@ -296,8 +296,9 @@ npm run start
 | `npm run lint` / `npm run format` | Biome lint only / format-write only. |
 | `npm run typecheck` | All three workspaces: `tsc --noEmit` (app) + `tsc -p cli` + `astro check` (docs site). |
 | `npm run test` | Vitest (unit + component). (`test:unit` / `test:component` for one project.) |
-| `npm run test:e2e` | Playwright end-to-end tests (all specs, incl. `@live`). |
-| `npm run test:e2e:ci` | Hermetic + `@live-db` (against a Postgres container); skips `@live-llm` and `@live-storage`. (`test:e2e:db` / `test:e2e:storage` run one live group.) |
+| `npm run test:e2e` | Playwright end-to-end tests against the fake LLM (all specs except `@live-llm`). |
+| `npm run test:e2e:ci` | Hermetic + `@live-db` (against a Postgres container and the fake LLM); skips `@live-llm`, `@live-storage` and `@live-telemetry`. (`test:e2e:db` / `test:e2e:storage` run one live group.) |
+| `npm run test:e2e:live-llm` | The `@live-llm` specs against the real providers in `.env`. |
 | `npm run db:generate` | Generate a Drizzle migration after editing `lib/db/schema.ts` (commit the result in `drizzle/`). |
 | `npm run qa` | `check` + `typecheck` + `test` + `test:cli` + `build` + `docs:build`. (`qa:e2e` adds the e2e suite.) |
 | `npm run docs:dev` | Serve the teacher guide locally at `:4321/` (Astro Starlight; `docs:build` / `docs:preview` for the static build). |

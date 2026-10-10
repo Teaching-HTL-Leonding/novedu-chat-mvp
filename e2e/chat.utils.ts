@@ -1,12 +1,13 @@
 import { expect, type Page } from "@playwright/test";
 
-// The one send-a-message-and-wait-for-a-reply sequence the @live-llm chat specs
-// share. Every module's chat is the same `ModuleChat` (docs/chat.md), so the
-// CopilotKit v2 testids and the wait shape are identical across tutor, quiz
-// discussion and writing — only the message and how long the model may take
-// differ. Specs that assert something about the CONTENT of the reply drive the
-// composer themselves; this helper only proves that SOME answer streamed back
-// without an error.
+// The one send-a-message-and-wait-for-a-reply sequence the chat specs share,
+// whether they run against the fake LLM or a real one (docs/testing.md). Every
+// module's chat is the same `ModuleChat` (docs/chat.md), so the CopilotKit v2
+// testids and the wait shape are identical across tutor, quiz discussion and
+// writing — only the message and how long the model may take differ. This
+// helper only proves that SOME answer streamed back without an error; a spec
+// that cares about the CONTENT asserts it afterwards (or drives the composer
+// itself).
 //
 // CopilotKit v2 testids used here (discovered from the rendered chat):
 //   - composer textarea: copilot-chat-textarea

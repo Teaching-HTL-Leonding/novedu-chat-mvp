@@ -24,6 +24,7 @@
     "test:component": "vitest run --project component",
     "test:e2e": "playwright test",
     "test:e2e:ci": "playwright test --grep-invert \"@live-llm|@live-storage|@live-telemetry\"",
+    "test:e2e:live-llm": "playwright test -c playwright.live-llm.config.ts",
     "test:e2e:db": "playwright test --grep @live-db",
     "test:e2e:storage": "playwright test --grep @live-storage",
     "test:e2e:telemetry": "playwright test --grep @live-telemetry",
@@ -99,6 +100,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
+    "@copilotkit/aimock": "1.44.0",
     "@earendil-works/pi-coding-agent": "0.84.3",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.2",
