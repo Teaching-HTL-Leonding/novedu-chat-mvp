@@ -9,7 +9,10 @@ import { getStoredMessages, LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 // turns stored over and over. This is the ONE thing a unit test can't prove: it
 // needs the real chat → real Mastra → real database round-trip. The route unit
 // test asserts we FORWARD a trimmed body; this asserts Mastra then STORES only
-// the new turn.
+// the new turn. The replies come from the fake LLM (docs/testing.md, "Fake LLM")
+// — their content is irrelevant here.
+//
+// @live-db: it reads the stored messages through e2e/db.ts — runs in CI.
 //
 // The check: after two turns, the FIRST user message must be stored exactly
 // once (telescoping would store it twice — once for its own turn, once replayed
@@ -26,7 +29,7 @@ import { getStoredMessages, LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 const Q1 = "QONE-please-name-one-linked-list-operation";
 const Q2 = "QTWO-please-name-another-linked-list-operation";
 
-// Two full model round-trips plus GitHub fetch + Next compile — give it room.
+// Two full chat round-trips plus the Next compile — give it room.
 test.setTimeout(180_000);
 
 // Send one turn and wait for the run to FULLY finish before returning. Waiting
@@ -64,9 +67,8 @@ async function sendTurnAndSettle(
     .toBe(true);
 }
 
-// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("a two-turn chat stores each turn once (no replayed-history duplicates)", {
-  tag: ["@live", "@live-llm"],
+  tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   const code = await mintTutorCode({ tutor: LIVE_TUTOR_URL });
   await page.goto(`/${code}`);

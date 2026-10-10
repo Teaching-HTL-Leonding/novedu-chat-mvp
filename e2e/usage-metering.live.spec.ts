@@ -2,27 +2,28 @@ import { expect, test } from "@playwright/test";
 import { LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 import { query } from "./db";
 
-// A REAL end-to-end metering check: open a tutor code, send a message, get a reply,
+// An end-to-end metering check: open a tutor code, send a message, get a reply,
 // then assert the observability exporter wrote a usage row for that code —
 // token counts AND the user-message counter — into `novedu_usage_by_code`.
 //
-// This needs the SCCH LLM (a real generation produces the MODEL_GENERATION span the
-// exporter meters) AND the DB, so it is tagged `@live-llm` (the DB it also uses is
-// implied) — local only, never CI. Uses the shared `e2e/db.ts` plain `pg` helper
+// The generation runs against the fake LLM (docs/testing.md, "Fake LLM"), which
+// streams a usage chunk like a real provider, so the MODEL_GENERATION span the
+// exporter meters fires as usual. Tagged `@live-db` (runs in CI): it reads the
+// table back through the shared `e2e/db.ts` plain `pg` helper
 // (kept independent of the app's query layer), mirroring the
 // store round-trip in `e2e/writing.spec.ts`. Metering is written OFF the response
 // path (the exporter is async; the `user_messages` counter runs in `after()`), so
 // the DB read POLLS until the row lands. See docs/usage-metering.md.
 
-// Fixture fetch + Next compile + a full model round-trip + the metering write.
+// Fixture fetch + Next compile + a chat round-trip + the metering write.
 test.setTimeout(150_000);
 
-test("a real tutor chat meters tokens + the user message into usage_by_code", {
-  tag: ["@live", "@live-llm"],
+test("a tutor chat meters tokens + the user message into usage_by_code", {
+  tag: ["@live", "@live-db"],
 }, async ({ page }) => {
   const code = await mintTutorCode({ tutor: LIVE_TUTOR_URL });
 
-  // One real round-trip so a MODEL_GENERATION span fires and the run completes.
+  // One round-trip so a MODEL_GENERATION span fires and the run completes.
   await page.goto(`/${code}`);
   const composer = page.getByTestId("copilot-chat-textarea");
   await expect(composer).toBeVisible();
