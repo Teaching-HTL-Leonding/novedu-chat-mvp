@@ -177,8 +177,8 @@ describe("pins and details", () => {
   });
 });
 
-// Proven non-vacuous: with the scroller's `overflow-x-auto` removed, the grid
-// spills out of the card unscrolled and this test fails at the scroll check.
+// The scroller's `overflow-x-auto` keeps the grid inside the card; without it
+// the grid spills out and the scroll check fails.
 describe("phone layout (390 px)", () => {
   test("the calendar scrolls inside its card, never widens the page, and starts at today", async () => {
     await page.viewport(390, 800);

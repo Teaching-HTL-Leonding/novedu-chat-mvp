@@ -307,7 +307,7 @@ describe("novedu-cli eval", () => {
 });
 
 describe("novedu-cli validate --kind eval", () => {
-  it("validates an eval offline, strict-checking the quiz it targets", async () => {
+  it("validates an eval offline", async () => {
     const { code, stdout } = await runCli(["validate", okEval, "--kind", "eval"]);
 
     expect(code).toBe(0);
@@ -498,7 +498,7 @@ describe("novedu-cli eval — the tutor kind", () => {
 });
 
 describe("novedu-cli validate --kind eval — the tutor kind", () => {
-  it("validates a tutor eval offline, strict-checking the tutor it targets", async () => {
+  it("validates a tutor eval offline", async () => {
     const { code, stdout } = await runCli(["validate", tutorEval, "--kind", "eval"]);
 
     expect(code).toBe(0);

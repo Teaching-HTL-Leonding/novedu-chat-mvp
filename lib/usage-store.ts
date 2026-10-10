@@ -1,15 +1,15 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db";
 import { usageByCode, usageByUser } from "@/lib/db/schema";
-import { recordError } from "@/lib/telemetry";
+import { reportStoreFailure } from "@/lib/store-failure";
 
 // The write seam for usage metering — the ONLY access to `novedu_usage_by_code`
 // and `novedu_usage_by_user`. Mirrors lib/user-chat-store.ts discipline: it NEVER
-// throws (errors are logged + routed to `recordError` and dropped), so a lost
-// increment can never break a chat, a grade, a save, or the coding proxy. Every
-// write is an increment-UPSERT into a tiny hourly bucket, called OFF the response
-// path (the observability exporter is async; the route/action counters run in
-// `after()` / fire-and-forget).
+// throws (errors go through `reportStoreFailure`), so a lost increment can never
+// break a chat, a grade, a save, or the coding proxy. Every write is an
+// increment-UPSERT into a tiny hourly bucket, called OFF the response path (the
+// observability exporter is async; the route/action counters run in `after()` /
+// fire-and-forget).
 //
 // Anonymity: `usage_by_code` carries no user and `usage_by_user` carries no code —
 // neither table ever links a student to an activity (docs/codes.md,
@@ -164,8 +164,7 @@ async function record(
   ]);
   for (const result of results) {
     if (result.status === "rejected") {
-      console.error(`usage-store: ${op} failed`, result.reason);
-      recordError(result.reason, { store: "usage", op });
+      reportStoreFailure("usage", op, result.reason);
     }
   }
 }

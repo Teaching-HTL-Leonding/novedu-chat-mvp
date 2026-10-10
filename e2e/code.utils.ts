@@ -42,9 +42,8 @@ export const VISION_QUIZ_URL = `${FIXTURES_BASE}/quizzes/vision-quiz.yaml`;
 export const VALID_WRITING_URL = `${FIXTURES_BASE}/writings/test-writing.yaml`;
 
 // Rows minted here are attributed to a recognizable fake teacher, so they are
-// easy to tell apart (and clean up) in the table. There is no automatic GC, so a
-// spec that mints a code cleans up after itself; in CI the whole Postgres
-// container is ephemeral and discarded with the runner, so nothing accumulates.
+// easy to tell apart in the table. Specs leave their codes behind: the auth
+// setup's sweep (e2e/auth.setup.ts) purges every `e2e-%` code older than an hour.
 const E2E_CREATOR = "e2e-test-suite";
 
 const CODE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -133,47 +132,31 @@ export function mintTutorCode(
   });
 }
 
-/** The names `auth.setup.ts` gives the two e2e principals — what `resetUserName` restores. */
-const SETUP_USER_NAMES: Record<string, string> = {
-  "e2e-student": "E2E Student",
-  "e2e-teacher": "E2E Teacher",
-};
-
 /**
- * Renames an existing `novedu_user` row (the auth setup creates one per e2e
- * principal). Lets a @live-db review spec assert that the savers list / student page
- * resolve an opaque user id to a NAME, not just the raw-id fallback. Pair with
- * `resetUserName` so the renamed principal never leaks into another spec.
+ * Removes codes with everything keyed by them, the way the app's own code delete
+ * does (`deleteCodesAndData`) plus the usage rows the app keeps: the Mastra
+ * threads (by `resourceId`) and their messages, then every app table with a
+ * `code` column, then the codes themselves.
  */
-export async function setUserName(userId: string, name: string): Promise<void> {
-  await query(`UPDATE novedu_user SET name = $2, updated_at = now() WHERE id = $1`, [userId, name]);
-}
-
-/**
- * Puts an e2e principal's name back to what `auth.setup.ts` created it with —
- * cleanup for `setUserName`. The row itself is never deleted: it is the target of
- * the session rows' foreign key.
- */
-export async function resetUserName(userId: string): Promise<void> {
-  const name = SETUP_USER_NAMES[userId];
-  if (!name) throw new Error(`resetUserName: no setup name known for "${userId}"`);
-  await setUserName(userId, name);
-}
-
-/** Removes a `novedu_codes` row — cleanup for codes a spec created via the API. */
-export async function deleteCode(code: string): Promise<void> {
-  await query(`DELETE FROM novedu_codes WHERE code = $1`, [code]);
-}
-
-/**
- * Deletes every `novedu_reports` row for a code — cleanup for the reports spec.
- * The `deleteCode` util drops only the `novedu_codes` row (the app's own
- * `deleteCodeRows` cascades to reports inside its transaction, but a raw
- * `DELETE FROM novedu_codes` does not), so a spec that mints reports tidies them
- * here so a mid-test failure leaves no strays in the shared dev database.
- */
-export async function deleteReportsByCode(code: string): Promise<void> {
-  await query(`DELETE FROM novedu_reports WHERE code = $1`, [code]);
+export async function purgeCodes(codes: string[]): Promise<void> {
+  await query(
+    `DELETE FROM mastra.mastra_messages WHERE thread_id IN
+       (SELECT id FROM mastra.mastra_threads WHERE "resourceId" = ANY($1))`,
+    [codes],
+  );
+  await query(`DELETE FROM mastra.mastra_threads WHERE "resourceId" = ANY($1)`, [codes]);
+  for (const table of [
+    "novedu_usage_by_code",
+    "novedu_reports",
+    "novedu_user_chats",
+    "novedu_recent_codes",
+    "novedu_writing_submissions",
+    "novedu_quiz_results",
+    "novedu_coding_keys",
+    "novedu_codes",
+  ]) {
+    await query(`DELETE FROM ${table} WHERE code = ANY($1)`, [codes]);
+  }
 }
 
 // A dedicated fake requester id for minted coding keys, distinct from
@@ -201,17 +184,6 @@ export async function mintCodingKey(options: { code: string; userId?: string }):
   );
 
   return apiKey;
-}
-
-/**
- * Deletes every `novedu_coding_keys` row for a code — cleanup for keys minted
- * via `mintCodingKey`, mirroring `deleteReportsByCode`: `deleteCode` drops only
- * the `novedu_codes` row, so a raw code delete does NOT cascade to key rows the
- * way the app's own bulk-delete transaction does
- * (`deleteCodingKeysForCodes`/`deleteCodesAndData`).
- */
-export async function deleteCodingKeysByCode(code: string): Promise<void> {
-  await query(`DELETE FROM novedu_coding_keys WHERE code = $1`, [code]);
 }
 
 /**

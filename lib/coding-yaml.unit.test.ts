@@ -66,9 +66,9 @@ describe("parseCoding", () => {
     ["invalid YAML", ":::not yaml::: ["],
     ["missing model", "instructions: Help.\n"],
     ["missing instructions", "llm:\n  model: m\n"],
-  ])("rejects %s with a friendly message", (_label, content) => {
+  ])("rejects %s with a message", (_label, content) => {
     const result = parseCoding(content);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(typeof result.message).toBe("string");
+    if (!result.ok) expect(result.message).toMatch(/\S/);
   });
 });

@@ -1,6 +1,5 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
+import { importSpecifiers, readModule, sourceFiles, walkClosure } from "@/tests/import-graph";
 
 // The isolation invariant (see docs/prompt-fragments.md): ALL Handlebars handling —
 // compilation, COMPILE_OPTIONS, consistency, assembly — lives ONLY in
@@ -9,70 +8,55 @@ import { describe, expect, it } from "vitest";
 // future change copies template handling into `lib/quiz-*` / `lib/writing-*` /
 // `lib/coding-*` (or anywhere else outside the shared module).
 
-const REPO_ROOT = join(__dirname, "..", "..");
-const SCAN_DIRS = ["lib", "app", "cli"];
-const ALLOWED_DIR = join("lib", "prompt-fragments");
-const IGNORE = new Set(["node_modules", "dist", ".next", ".turbo"]);
-
-function* walk(dir: string): Generator<string> {
-  for (const entry of readdirSync(dir)) {
-    if (IGNORE.has(entry)) continue;
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) {
-      yield* walk(full);
-    } else if (/\.(ts|tsx|mts|cts)$/.test(entry)) {
-      yield full;
-    }
-  }
-}
-
-function filesMatching(pattern: RegExp): string[] {
-  const hits: string[] = [];
-  for (const dirName of SCAN_DIRS) {
-    const dir = join(REPO_ROOT, dirName);
-    for (const file of walk(dir)) {
-      if (pattern.test(readFileSync(file, "utf8"))) {
-        hits.push(relative(REPO_ROOT, file));
-      }
-    }
-  }
-  return hits;
-}
-
-const isAllowed = (relPath: string) => relPath.startsWith(ALLOWED_DIR);
+const PKG = "handlebars";
+const production = sourceFiles("lib", "app", "cli");
+const isAllowed = (rel: string) => rel.startsWith("lib/prompt-fragments/");
 
 describe("prompt-fragment isolation invariant", () => {
-  it("imports `handlebars` ONLY from files under lib/prompt-fragments/", () => {
-    const importers = filesMatching(/from ["']handlebars["']|require\(["']handlebars["']\)/);
-    // Sanity: the three real importers (assemble.ts, fragment.ts, host-template.ts) must
-    // be present, so a false-negative regex can't make the guard vacuously pass.
-    expect(importers.length).toBeGreaterThanOrEqual(3);
-    const offenders = importers.filter((f) => !isAllowed(f));
-    expect(
-      offenders,
-      `handlebars imported outside lib/prompt-fragments/: ${offenders.join(", ")}`,
-    ).toEqual([]);
+  it("imports `handlebars` ONLY from files under lib/prompt-fragments/, the three known importers included", () => {
+    const importers = production.filter((rel) =>
+      importSpecifiers(readModule(rel)).some((spec) => spec === PKG || spec.startsWith(`${PKG}/`)),
+    );
+    // Not vacuous: the scan still finds the real importers.
+    expect(importers).toEqual(
+      expect.arrayContaining([
+        "lib/prompt-fragments/assemble.ts",
+        "lib/prompt-fragments/fragment.ts",
+        "lib/prompt-fragments/host-template.ts",
+      ]),
+    );
+    expect(importers.filter((rel) => !isAllowed(rel))).toEqual([]);
   });
 
   it("references COMPILE_OPTIONS ONLY from files under lib/prompt-fragments/", () => {
-    const users = filesMatching(/\bCOMPILE_OPTIONS\b/);
-    const offenders = users.filter((f) => !isAllowed(f));
+    const offenders = production.filter(
+      (rel) => !isAllowed(rel) && /\bCOMPILE_OPTIONS\b/.test(readModule(rel)),
+    );
     expect(
       offenders,
       `COMPILE_OPTIONS referenced outside lib/prompt-fragments/: ${offenders.join(", ")}`,
     ).toEqual([]);
   });
 
-  it("keeps lib/llm/endpoint.ts provider-blind and side-effect-free (no Handlebars / Fetcher / scch / fragment assembly)", () => {
+  it("keeps lib/llm/endpoint.ts's import closure free of app/**, the model resolver, the fragment core and the DB", () => {
     // The coding proxy resolves fragments in the load layer, never in endpoint.ts —
-    // which must not import Handlebars, a Fetcher, app/mastra/scch.ts, or the
-    // fragment orchestrator (see docs/coding.md).
-    const src = readFileSync(join(REPO_ROOT, "lib", "llm", "endpoint.ts"), "utf8");
-    expect(src).not.toMatch(/from ["']handlebars["']/);
-    // Must not IMPORT the Mastra-coupled `app/mastra/scch.ts` (the side-effect-free
-    // `lib/scch-endpoint`, which endpoint.ts legitimately uses, is fine). Match import
-    // specifiers only, so the invariant comment naming the file doesn't trip the guard.
-    expect(src).not.toMatch(/from ["'][^"']*mastra\/scch/);
-    expect(src).not.toMatch(/assembleFragmentPrompt|COMPILE_OPTIONS/);
+    // whose whole closure must stay side-effect-free: no app/mastra/scch.ts, no
+    // fragment assembly (see docs/coding.md).
+    const FORBIDDEN = [
+      /^app\//,
+      /^lib\/llm\/model\.ts$/,
+      /^lib\/prompt-fragments\//,
+      /^lib\/db(\/|\.ts$)/,
+    ];
+    const offenders: string[] = [];
+    const visited = walkClosure(["lib/llm/endpoint.ts"], ({ rel, imports }) =>
+      imports.flatMap(({ rel: target }) => {
+        if (target === null) return [];
+        if (FORBIDDEN.some((pattern) => pattern.test(target))) offenders.push(`${rel} → ${target}`);
+        return [target];
+      }),
+    );
+    expect(visited).toContain("lib/scch-endpoint.ts"); // not vacuous
+    expect(offenders).toEqual([]);
   });
 });

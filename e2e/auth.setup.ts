@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { test as setup } from "@playwright/test";
 import { E2E_STUDENT, E2E_TEACHER, STORAGE_STATE, TEACHER_STORAGE_STATE } from "./auth.constants";
+import { purgeCodes } from "./code.utils";
 import { closePool, query } from "./db";
 import { authSecret, mintSession, sessionCookie } from "./principal.utils";
 
@@ -43,6 +44,22 @@ setup("authenticate", async () => {
     // here bounds the growth without ever touching a live session, or any
     // session of a real account.
     await query(`DELETE FROM novedu_session WHERE user_id LIKE 'e2e-%' AND expires_at < now()`);
+
+    // Specs leave the codes and files they create behind; previous runs' rows
+    // go here. Every principal and creator the suite writes is `e2e-…`, which
+    // no real id can be (better-auth ids are alphanumeric, Entra oids are
+    // UUIDs); every file the suite creates is also named `e2e-…`. The hour
+    // spares rows created moments ago — it is no guard against a concurrently
+    // running suite (home-teacher.live.spec backdates its rows by days).
+    const stale = await query<{ code: string }>(
+      `SELECT code FROM novedu_codes
+       WHERE created_by LIKE 'e2e-%' AND created_at < now() - interval '1 hour'`,
+    );
+    await purgeCodes(stale.map((row) => row.code));
+    await query(
+      `DELETE FROM novedu_files WHERE created_by LIKE 'e2e-%' AND name LIKE 'e2e-%'
+       AND valid_from < now() - interval '1 hour'`,
+    );
 
     await writeState(await mintSession(E2E_STUDENT, false), STORAGE_STATE);
     await writeState(await mintSession(E2E_TEACHER, true), TEACHER_STORAGE_STATE);

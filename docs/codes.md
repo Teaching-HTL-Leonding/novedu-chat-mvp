@@ -835,7 +835,7 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   `checkCode` (`app/[code]/page.unit.test.tsx`) and the tutor render
   (`render-tutor.unit.test.tsx`), the Layer-2 validator seam and the Layer-3
   module dispatch, plus the rejection/error UI
-  (`tests/component/code-error.browser.test.tsx`) and the window/pattern logic
+  (`app/code-error.unit.test.tsx`) and the window/pattern logic
   itself (`lib/code-store.unit.test.ts`).
 - The **LLM override** is covered in CI end to end across its seams: validation +
   persistence + `effectiveLlm` (`lib/code-store.unit.test.ts`), the save-time

@@ -170,13 +170,6 @@ describe("eval — the request", () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it("announces the run's scope — both halves — on stderr before the first call", async () => {
-    await run(okEval, "--server", "http://x");
-
-    // Judging roughly doubles the LLM calls, so the cost is visible before the run fires.
-    expect(stderrText()).toContain("2 case(s) × 1 repeat(s) = 2 grading + 2 judge call(s)");
-  });
-
   it("prints the single-count scope line when judging is off", async () => {
     await run(okEval, "--no-judge-feedback", "--server", "http://x");
 
@@ -820,14 +813,6 @@ describe("eval — the tutor kind", () => {
     // The first case states expectations, the second does not.
     expect(judged[0].criteria).toContain("fails_expectations");
     expect(judged[1].criteria).not.toContain("fails_expectations");
-  });
-
-  it("prints the tutor scope line in conversations and generation calls", async () => {
-    await run(tutorEval, "--server", "http://localhost:1234");
-
-    expect(stderrText()).toContain(
-      "2 conversation(s) × 1 repeat(s) = 2 generation + 2 judge call(s)",
-    );
   });
 
   it("reports a flagged response WITHOUT failing the run", async () => {

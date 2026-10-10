@@ -1,6 +1,6 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
-import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
+import { mintTutorCode } from "./code.utils";
 
 // @live-db end-to-end for the "report conversation" feature (GH issue #24): a
 // student flags a chat conversation to their teacher, and the teacher works the
@@ -14,7 +14,7 @@ import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
 // The chat path is the only one this spec covers. The QUIZ-answer report path
 // cannot be reached without a graded answer, and grading calls the LLM (the
 // `quizEvaluator` agent) — so a quiz-grade report is inherently an `@live-llm`
-// flow and is out of scope here (see the note in the plan).
+// flow and is out of scope here.
 //
 // Roles: the default chromium project runs as the STUDENT (its storageState),
 // which files the report. The teacher half opens a SEPARATE browser context with
@@ -22,28 +22,6 @@ import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
 // is minted with `created_by = "e2e-test-suite"` (mintTutorCode), which is NOT the
 // signed-in teacher's id, so the inbox is always visited with `mine=0` to defeat
 // the "Only my codes" default filter.
-
-// Dev compilation of /[code] + /reports + DB round-trips; a report references a
-// zero-message thread, so no LLM latency is involved.
-test.setTimeout(120_000);
-
-// Best-effort cleanup: `deleteCode` drops only the code row, so the report rows
-// are removed explicitly (a raw code delete does NOT cascade to reports the way
-// the app's own delete transaction does). Cleaned even on a mid-test failure so
-// no strays leak into the shared dev database.
-let mintedCode: string | null = null;
-
-test.afterEach(async () => {
-  if (!mintedCode) return;
-  const code = mintedCode;
-  mintedCode = null;
-  try {
-    await deleteReportsByCode(code);
-    await deleteCode(code);
-  } catch {
-    // best-effort
-  }
-});
 
 // Open the teacher inbox at a specific status, always with mine=0 (the code's
 // creator is the e2e mint identity, not the signed-in teacher) and the run's
@@ -63,7 +41,6 @@ test("student reports a conversation and the teacher resolves, reopens, and dele
   // The default fixture tutor pins the fake `test-model`; a zero-message report
   // never touches it, so this is deliberately NOT the live-model tutor.
   const code = await mintTutorCode({ note: `e2e report code ${Date.now()}` });
-  mintedCode = code;
 
   // ---------------------------------------------------------------------------
   // STUDENT — open the chat and file a report (no message is ever sent)
@@ -85,7 +62,7 @@ test("student reports a conversation and the teacher resolves, reopens, and dele
   await page.getByRole("button", { name: "Send report" }).click();
 
   // Success / thank-you state.
-  await expect(page.getByText(/your teacher will take a look/i)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/your teacher will take a look/i)).toBeVisible();
 
   // ---------------------------------------------------------------------------
   // TEACHER — a separate context with the teacher session
@@ -98,10 +75,10 @@ test("student reports a conversation and the teacher resolves, reopens, and dele
     // The report is visible in the default OPEN view (mine=0 to see another
     // creator's code). The DB-side `q=` filter still matches on the description,
     // so the marker narrows the list to this run's row — even though the
-    // description is no longer a visible list column.
+    // description is not a visible list column.
     await gotoInbox(teacher, "open", marker);
     const row = teacher.getByRole("row").filter({ hasText: "Holy sh.." });
-    await expect(row).toHaveCount(1, { timeout: 30_000 });
+    await expect(row).toHaveCount(1);
     // The urgent reaction badge (its label is "Holy sh..").
     await expect(row).toContainText("Holy sh..");
     // The Code column links to the code's detail page (its visible text is the
@@ -116,11 +93,11 @@ test("student reports a conversation and the teacher resolves, reopens, and dele
       row.locator(`a[href^="/codes/${code}/c/"][href*="from=reports"]`).first(),
     ).toBeVisible();
 
-    // The full description is no longer a list column — open the detail dialog
+    // The full description is not a list column — open the detail dialog
     // and assert the marker text is shown there instead.
     await row.getByRole("button", { name: "View report details" }).first().click();
     const dialog = teacher.getByRole("dialog");
-    await expect(dialog).toContainText(marker, { timeout: 15_000 });
+    await expect(dialog).toContainText(marker);
     // The dialog's transcript link is likewise origin-tagged.
     await expect(
       dialog.locator(`a[href^="/codes/${code}/c/"][href*="from=reports"]`),
@@ -133,40 +110,30 @@ test("student reports a conversation and the teacher resolves, reopens, and dele
     // either of the row's paired checkboxes toggles the shared, id-keyed selection.
     await teacher.getByRole("checkbox", { name: "Select chat report" }).first().check();
     await teacher.getByRole("button", { name: /Mark resolved/i }).click();
-    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(0, {
-      timeout: 30_000,
-    });
+    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(0);
 
-    // It now appears in the RESOLVED view instead.
+    // It appears in the RESOLVED view instead.
     await gotoInbox(teacher, "resolved", marker);
     const resolvedRow = teacher.getByRole("row").filter({ hasText: marker });
-    await expect(resolvedRow).toHaveCount(1, { timeout: 30_000 });
+    await expect(resolvedRow).toHaveCount(1);
     await expect(resolvedRow).toContainText(/resolved/i);
 
     // Reopen it → it leaves the RESOLVED view.
     await teacher.getByRole("checkbox", { name: "Select chat report" }).first().check();
     await teacher.getByRole("button", { name: /Reopen/i }).click();
-    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(0, {
-      timeout: 30_000,
-    });
+    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(0);
 
     // Back in the OPEN view, delete it for good (confirm dialog).
     await gotoInbox(teacher, "open", marker);
-    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(1, {
-      timeout: 30_000,
-    });
+    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(1);
     await teacher.getByRole("checkbox", { name: "Select chat report" }).first().check();
     teacher.once("dialog", (dialog) => dialog.accept());
     await teacher.getByRole("button", { name: /Delete .*selected/i }).click();
-    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(0, {
-      timeout: 30_000,
-    });
+    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(0);
 
-    // Gone everywhere: the ALL view no longer shows it either.
+    // Gone everywhere: the ALL view does not show it either.
     await gotoInbox(teacher, "all", marker);
-    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(0, {
-      timeout: 30_000,
-    });
+    await expect(teacher.getByRole("row").filter({ hasText: marker })).toHaveCount(0);
   } finally {
     await teacherContext.close();
   }

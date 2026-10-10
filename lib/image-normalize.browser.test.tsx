@@ -216,20 +216,19 @@ test("refuses an oversized pick before decoding it", async () => {
   expect(result.diagnostics.decodedWidth).toBeUndefined();
 });
 
-test("re-encodes rather than passing through when the file exceeds the send cap", async () => {
+test("reports too-large rather than passing through a file over the send cap", async () => {
   const file = await makeFile("dense.png", "image/png", 400, 400, (ctx) => {
     for (let i = 0; i < 400; i += 2) {
       ctx.fillStyle = i % 4 === 0 ? "#ff0000" : "#00ff00";
       ctx.fillRect(i, 0, 2, 400);
     }
   });
+  expect(file.size).toBeGreaterThan(1024);
   const result = await normalizeStudentImage(file, { maxEdge: 2000, maxOutputBytes: 1024 });
-  // Either it compressed under the cap or it reported that it could not — never
-  // a silent pass-through of something over the limit.
-  if (result.ok) {
-    expect(result.diagnostics.passedThrough).toBe(false);
-    expect(result.diagnostics.outputBytes ?? 0).toBeLessThanOrEqual(1024);
-  } else {
-    expect(result.reason).toBe("too-large");
-  }
+  // Within the edge limit, so only the byte cap stands between it and a
+  // pass-through: it is decoded, re-encoded, and still cannot fit.
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.reason).toBe("too-large");
+  expect(result.diagnostics.decodedWidth).toBe(400);
 });

@@ -29,6 +29,7 @@ const recordError = vi.hoisted(() => vi.fn());
 // The result-save seams: the store and the start page's cache invalidation.
 const storeQuizResult = vi.hoisted(() => vi.fn());
 const invalidateHome = vi.hoisted(() => vi.fn());
+const recordQuizAnswer = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/session", () => ({ getSession }));
 vi.mock("@/lib/code-store", async (importOriginal) => ({
@@ -41,7 +42,7 @@ vi.mock("@/app/mastra", () => ({
     getAgent: () => ({ generate, getMemory: async () => ({ createThread, saveMessages }) }),
   },
 }));
-vi.mock("@/lib/usage-store", () => ({ recordQuizAnswer: vi.fn() }));
+vi.mock("@/lib/usage-store", () => ({ recordQuizAnswer }));
 vi.mock("@/lib/llm/jev-client", () => ({ askJev }));
 vi.mock("@/lib/quiz-result-store", () => ({ saveQuizResult: storeQuizResult }));
 vi.mock("@/lib/home-data", () => ({ invalidateHome }));
@@ -50,18 +51,7 @@ vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/quiz-immediate-feedback", () => ({ immediateFeedbackConfigured }));
 // Also reached by lib/quiz-truncation-retry.ts (emitEvent) — both exports stay here.
 vi.mock("@/lib/telemetry", () => ({ emitEvent, recordError }));
-vi.mock("next/server", () => ({ after: vi.fn() }));
-vi.mock("@mastra/core/request-context", () => ({
-  RequestContext: class {
-    private m = new Map<string, unknown>();
-    set(key: string, value: unknown) {
-      this.m.set(key, value);
-    }
-    get(key: string) {
-      return this.m.get(key);
-    }
-  },
-}));
+vi.mock("next/server", () => ({ after: (callback: () => unknown) => callback() }));
 
 import {
   QUIZ_EVAL_INSTRUCTIONS,
@@ -70,6 +60,7 @@ import {
 } from "@/app/mastra/quiz-agents";
 import { precheckAnswer, saveQuizResult, startDiscussion, submitAnswer } from "@/lib/quiz-actions";
 import { getThreadTokenSecret, verifyThreadToken } from "@/lib/thread-token";
+import { USAGE_CODE, USAGE_MODULE, USAGE_USER_ID } from "@/lib/usage-context-keys";
 
 const entry = {
   code: "a1b2c3d4e5",
@@ -134,6 +125,7 @@ describe("submitAnswer LLM selection", () => {
     expect(result).toEqual({ ok: true, result: "correct", feedback: "Well done." });
     expect(gradedContext().get(QUIZ_EVAL_MODEL)).toBe("yaml-model");
     expect(gradedContext().get(QUIZ_EVAL_PROVIDER)).toBe("SCCH");
+    expect(storeQuizResult).not.toHaveBeenCalled();
   });
 
   it("grades with the code's LLM override pair when set", async () => {
@@ -145,6 +137,29 @@ describe("submitAnswer LLM selection", () => {
     expect(result).toMatchObject({ ok: true });
     expect(gradedContext().get(QUIZ_EVAL_MODEL)).toBe("gpt-5.4-mini");
     expect(gradedContext().get(QUIZ_EVAL_PROVIDER)).toBe("Azure Foundry");
+  });
+});
+
+describe("submitAnswer usage metering", () => {
+  it("attributes the grader's usage to the code, the session user and the quiz module", async () => {
+    await submitAnswer({ code: entry.code, questionId: "q1", answer: "4" });
+    expect(gradedContext().get(USAGE_CODE)).toBe(entry.code);
+    expect(gradedContext().get(USAGE_USER_ID)).toBe("student-1");
+    expect(gradedContext().get(USAGE_MODULE)).toBe("quiz");
+  });
+
+  it("counts a graded answer once for the code and the session user", async () => {
+    await submitAnswer({ code: entry.code, questionId: "q1", answer: "4" });
+    expect(recordQuizAnswer).toHaveBeenCalledTimes(1);
+    expect(recordQuizAnswer).toHaveBeenCalledWith({ code: entry.code, userId: "student-1" });
+  });
+
+  it("counts no answer when grading fails", async () => {
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    generate.mockRejectedValueOnce(new Error("provider down"));
+    const result = await submitAnswer({ code: entry.code, questionId: "q1", answer: "4" });
+    expect(result).toMatchObject({ ok: false });
+    expect(recordQuizAnswer).not.toHaveBeenCalled();
   });
 });
 
@@ -274,6 +289,7 @@ describe("action failure paths (grader/agent never invoked)", () => {
     // The REAL check the CopilotKit route runs on every discussion turn.
     const owner = { code: entry.code, userId: "student-1", threadId: result.threadId };
     expect(verifyThreadToken(result.threadToken, owner, getThreadTokenSecret())).toBe(true);
+    expect(storeQuizResult).not.toHaveBeenCalled();
   });
 
   it("resolves NAMESPACED question ids in both actions (compound quizzes)", async () => {
@@ -541,6 +557,7 @@ describe("precheckAnswer classification", () => {
     const serialized = JSON.stringify(result);
     expect(serialized).not.toContain("confidence");
     expect(serialized).not.toContain("4 is correct.");
+    expect(storeQuizResult).not.toHaveBeenCalled();
   });
 
   it("degrades a low-confidence classification to `unsure`", async () => {
@@ -597,6 +614,7 @@ describe("precheckAnswer fail-quiet", () => {
   it("records no quiz answer and starts no thread (nothing is persisted)", async () => {
     await precheckAnswer({ code: entry.code, questionId: "q1", answer: "4" });
     expect(generate).not.toHaveBeenCalled();
+    expect(recordQuizAnswer).not.toHaveBeenCalled();
     expect(createThread).not.toHaveBeenCalled();
     expect(saveMessages).not.toHaveBeenCalled();
   });

@@ -126,6 +126,7 @@ describe("ContentImage", () => {
 
   test("renders no credit element when none is given", async () => {
     const screen = await render(<ContentImage image={image} />);
-    expect(screen.getByText("Photo by Jane — CC BY 4.0").query()).toBeNull();
+    // Neither the thumbnail's caption nor the lightbox's credit line exists.
+    expect(screen.container.querySelector("figcaption, dialog p")).toBeNull();
   });
 });

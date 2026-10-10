@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { afterEach, expect, test, vi } from "vitest";
-import { cleanup, render } from "vitest-browser-react";
+import { expect, test, vi } from "vitest";
+import { render } from "vitest-browser-react";
 
 // The quiz per-question discussion chat (app/[code]/_quiz/quiz-discussion.tsx):
 // a thin wrapper that mounts the shared ModuleChat for the `quizDiscussion`
@@ -36,12 +36,6 @@ function renderDiscussion(feedback: string) {
   );
 }
 
-// Each spec mounts a fresh tree; unmount between tests so a stale ModuleChat
-// stub never lingers in the document.
-afterEach(() => {
-  cleanup();
-});
-
 test("renders the graded feedback markdown as the ModuleChat child", async () => {
   const screen = await renderDiscussion("## Well done");
 
@@ -61,7 +55,6 @@ test("shows no feedback block when there is no feedback", async () => {
 });
 
 test("hands ModuleChat the discussion agent, threadId-keyed provider, threadId, and headers", async () => {
-  moduleChatSpy.mockClear();
   await renderDiscussion("## Well done");
 
   expect(moduleChatSpy.mock.lastCall?.[0]).toMatchObject({

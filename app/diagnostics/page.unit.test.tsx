@@ -19,7 +19,9 @@ vi.mock("./range-controls", () => ({
 }));
 vi.mock("./ensure-range", () => ({ EnsureRange: () => <div data-testid="ensure-range" /> }));
 vi.mock("./report-section", () => ({
-  ReportSection: () => <div data-testid="report-section" />,
+  ReportSection: (props: { meta: unknown }) => (
+    <div data-testid="report-section" data-props={JSON.stringify(props)} />
+  ),
   ReportPending: () => null,
 }));
 vi.mock("./kpi-section", () => ({ KpiSection: () => <div data-testid="kpi-section" /> }));
@@ -100,6 +102,25 @@ describe("teacher", () => {
     const html = await renderPage({ range: "today", tz: "UTC" });
     expect(html).toContain("diagnostics-telemetry-banner");
     expect(html).toContain("otlp");
+  });
+
+  it("never lets the connection string or a provider endpoint reach the page or the client sections", async () => {
+    vi.stubEnv(
+      "APPLICATIONINSIGHTS_CONNECTION_STRING",
+      "InstrumentationKey=KEY-SECRET;IngestionEndpoint=https://ingest.secret.example/;ApplicationId=app-1",
+    );
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "https://foundry.secret.example/openai");
+    vi.stubEnv("SCCH_BASE_URL", "https://scch.secret.example/v1");
+    const html = await renderPage({ range: "today", tz: "UTC" });
+    expect(html).toContain('data-testid="report-section"');
+    for (const secret of [
+      "KEY-SECRET",
+      "ingest.secret.example",
+      "foundry.secret.example",
+      "scch.secret.example",
+    ]) {
+      expect(html).not.toContain(secret);
+    }
   });
 
   it("shows the fallback notice for an invalid custom range", async () => {

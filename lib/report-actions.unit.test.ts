@@ -273,11 +273,16 @@ describe("teacher bulk actions", () => {
     expect(deleteReports).toHaveBeenCalledWith([REPORT_ID]);
   });
 
-  it("blocks a non-teacher", async () => {
+  it.each([
+    markSelectedReportsResolvedAction,
+    reopenSelectedReportsAction,
+    deleteSelectedReportsAction,
+  ])("blocks a non-teacher on %o", async (action) => {
     requireTeacherUserId.mockResolvedValue({ ok: false });
-    const result = await markSelectedReportsResolvedAction([REPORT_ID]);
+    const result = await action([REPORT_ID]);
     expect(result).toEqual({ ok: false, message: "Only teachers can manage reports." });
     expect(setReportsResolved).not.toHaveBeenCalled();
+    expect(deleteReports).not.toHaveBeenCalled();
   });
 
   it("rejects an empty or non-uuid id list", async () => {

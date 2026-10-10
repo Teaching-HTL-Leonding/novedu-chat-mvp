@@ -28,9 +28,9 @@ import { recordError } from "@/lib/telemetry";
 // CONTENT DISCIPLINE (docs/telemetry.md): an in-band `RUN_ERROR` message is
 // agent- or provider-authored text that may quote the request, so it is NEVER
 // recorded — only its length and the short `code` identifier beside it. A
-// THROWN error is different: it is one of ours or the ai-sdk's, and the repo
-// already routes those to App Insights complete with their message (see the
-// header of lib/llm/upstream-error.ts), so it is passed through as-is.
+// THROWN error is passed to `recordError` as-is: the facade keeps the message
+// only of a plain `Error` and withholds every other one (an ai-sdk or provider
+// error), exporting just its type and stack frames.
 //
 // FRAGILE ACROSS UPGRADES, exactly like ReasoningStrippingRunner beside it: it
 // delegates method by method to a 4-method abstract class. That method list is

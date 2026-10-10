@@ -135,7 +135,7 @@ describe("getTeacherView (the same rule, over the session it fetches itself)", (
   });
 });
 
-describe("the shorthands still gate on the effective status", () => {
+describe("the shorthands gate on the effective status", () => {
   it("isEffectiveTeacher follows getTeacherView", async () => {
     getSession.mockResolvedValue(TEACHER);
     await expect(isEffectiveTeacher()).resolves.toBe(true);

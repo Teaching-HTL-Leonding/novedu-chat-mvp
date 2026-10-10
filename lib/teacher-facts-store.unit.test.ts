@@ -51,6 +51,7 @@ const recordError = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
 vi.mock("@/lib/telemetry", () => ({ recordError }));
 
+import { SCHOOL_DAY_END, SCHOOL_DAY_START } from "@/lib/achievements/time";
 import { codes } from "@/lib/db/schema";
 import { writerVersionsStatement } from "@/lib/file-store";
 import { teacherReportsStatement } from "@/lib/report-store";
@@ -216,12 +217,14 @@ describe("loadTeacherFacts", () => {
 });
 
 describe("statement shapes", () => {
-  it("usage: per code and local day, the outside-school rule matches isSchoolHour's constants", () => {
+  it("usage: per code and local day, the outside-school rule travels as the school-day constants", () => {
     const { sql, params } = render(usageStatement("t1"));
     expect(sql).toContain("isodow");
     expect(sql).toMatch(/GROUP BY u\.code, 2\s+ORDER BY u\.code, 2/);
     // SCHOOL_DAY_START / SCHOOL_DAY_END and the time zone travel as parameters.
-    expect(params).toEqual(expect.arrayContaining([8, 17, "Europe/Vienna", "t1"]));
+    expect(params).toEqual(
+      expect.arrayContaining([SCHOOL_DAY_START, SCHOOL_DAY_END, "Europe/Vienna", "t1"]),
+    );
   });
 
   it("conversations: threads with a user message in the window (the EXISTS shape)", () => {

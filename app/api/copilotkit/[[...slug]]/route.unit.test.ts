@@ -70,9 +70,9 @@ vi.mock("@/lib/code-modules/registry", () => ({
 // Importing the real Mastra instance would pull in @mastra/pg + the Azure
 // credential chain; the handler only passes it through to getLocalAgent.
 vi.mock("@/app/mastra", () => ({ mastra: {} }));
-// after() needs a Next request scope; the happy-path tests don't assert the
-// scheduled attribution, so a no-op keeps them in the plain node env.
-vi.mock("next/server", () => ({ after: vi.fn() }));
+// after() needs a Next request scope; running the callback at once keeps the
+// tests in the plain node env and lets them assert the scheduled attribution.
+vi.mock("next/server", () => ({ after: (callback: () => unknown) => void callback() }));
 // Stub everything past the gate so a passed request returns deterministically
 // without a real runtime, agent, or model.
 vi.mock("@ag-ui/mastra", () => ({ MastraAgent: { getLocalAgent, getLocalAgents } }));
@@ -122,8 +122,9 @@ function runBody(threadId: string | undefined, messages: unknown[] = []) {
   });
 }
 
-function runRequest(
+function agentRequest(
   opts: {
+    kind?: "run" | "connect" | "stop";
     threadId?: string;
     token?: string;
     code?: string;
@@ -136,10 +137,13 @@ function runRequest(
     "content-type": "application/json",
   };
   if (opts.token !== undefined) headers["x-thread-token"] = opts.token;
-  return new Request(`${BASE}/agent/${opts.agent ?? "tutor"}/run`, {
+  const kind = opts.kind ?? "run";
+  // A stop names its thread in the URL and has no body; run/connect carry it in the body.
+  const path = kind === "stop" ? `stop/${encodeURIComponent(opts.threadId ?? "")}` : kind;
+  return new Request(`${BASE}/agent/${opts.agent ?? "tutor"}/${path}`, {
     method: "POST",
     headers,
-    body: runBody(opts.threadId, opts.messages),
+    body: kind === "stop" ? undefined : runBody(opts.threadId, opts.messages),
   });
 }
 
@@ -161,6 +165,17 @@ function lastRuntimeAgentIds(): string[] {
   return Object.keys(lastRuntimeOptions().agents ?? {}).sort();
 }
 
+/** The last runtime's runner and every runner it wraps, outermost first. */
+function runnerChain(): unknown[] {
+  const chain: unknown[] = [];
+  let runner: unknown = lastRuntimeOptions().runner;
+  while (runner) {
+    chain.push(runner);
+    runner = (runner as { wrapped?: unknown }).wrapped;
+  }
+  return chain;
+}
+
 // Mastra-registered agents that no module runs through this route.
 const INTERNAL_AGENT_IDS = ["quizEvaluator", "evalJudge", "evalTutor"];
 
@@ -174,7 +189,7 @@ beforeEach(() => {
   cookies.mockResolvedValue(studentModeCookies(false));
   checkCode.mockResolvedValue({
     ok: true,
-    entry: { module: "tutor", fileUrl: "https://example.com/t.yaml" },
+    entry: { module: "tutor", fileUrl: "https://example.com/t.yaml", anonymous: false },
   });
   buildRequestContext.mockResolvedValue({ ok: true, context: { set: contextSet } });
   endpointFetch.mockResolvedValue(new Response("{}", { status: 200 }));
@@ -183,7 +198,7 @@ beforeEach(() => {
 describe("authentication gate", () => {
   it("401s a request without a session user", async () => {
     getSession.mockResolvedValue(null);
-    const res = await POST(runRequest({ threadId: crypto.randomUUID() }));
+    const res = await POST(agentRequest({ threadId: crypto.randomUUID() }));
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "Authentication required" });
   });
@@ -192,7 +207,7 @@ describe("authentication gate", () => {
 describe("code gate (re-checked on every data request)", () => {
   it("403s an unknown code with a human-readable message", async () => {
     checkCode.mockResolvedValue({ ok: false, reason: "unknown-code" });
-    const res = await POST(runRequest({ threadId: crypto.randomUUID() }));
+    const res = await POST(agentRequest({ threadId: crypto.randomUUID() }));
     expect(res.status).toBe(403);
     expect((await res.json()).error).toMatch(/requires a valid code/i);
   });
@@ -204,7 +219,7 @@ describe("code gate (re-checked on every data request)", () => {
       validFrom: new Date("2026-06-10T10:00:00Z"),
       validUntil: new Date("2026-06-10T11:00:00Z"),
     });
-    const res = await POST(runRequest({ threadId: crypto.randomUUID() }));
+    const res = await POST(agentRequest({ threadId: crypto.randomUUID() }));
     expect(res.status).toBe(403);
     expect((await res.json()).error).toMatch(/availability window has ended/i);
   });
@@ -240,8 +255,8 @@ describe("endpoint allowlist (classifyRequest)", () => {
 
 // The client may PICK a photo several times larger than it may SEND (it is
 // normalized down in the browser first), so the gap between those two limits is
-// exactly where an unbounded POST would live — and nothing on this path used to
-// look at the body size at all.
+// exactly where an unbounded POST would live; the route rejects on the declared
+// content-length.
 describe("run-body size ceiling", () => {
   it("413s a run whose declared body is larger than any real turn", async () => {
     const threadId = crypto.randomUUID();
@@ -264,36 +279,67 @@ describe("run-body size ceiling", () => {
 
   it("lets an ordinary turn through", async () => {
     const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId) }));
+    const res = await POST(agentRequest({ threadId, token: token(threadId) }));
     expect(res.status).toBe(200);
   });
 });
 
 describe("thread-ownership token (real HMAC)", () => {
-  it("403s a run with a bogus token", async () => {
-    const res = await POST(runRequest({ threadId: crypto.randomUUID(), token: "deadbeef" }));
+  const badTokens: Array<[string, (threadId: string) => string | undefined]> = [
+    ["no token", () => undefined],
+    ["a bogus token", () => "deadbeef"],
+    ["a token for a different user", (threadId) => token(threadId, CODE, "someone-else")],
+    ["a token for a different code", (threadId) => token(threadId, "zzzzzzzzzz")],
+    ["a token for a different thread", () => token(crypto.randomUUID())],
+  ];
+  it.each(badTokens)("403s a run with %s and never builds a runtime", async (_what, sign) => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(agentRequest({ threadId, token: sign(threadId) }));
     expect(res.status).toBe(403);
     expect((await res.json()).error).toMatch(/does not belong to your session/i);
+    expect(CopilotRuntime).not.toHaveBeenCalled();
   });
 
-  it("403s a run with no token at all", async () => {
-    const res = await POST(runRequest({ threadId: crypto.randomUUID() }));
-    expect(res.status).toBe(403);
-  });
+  // connect and stop share the run's check; one foreign-thread token each shows
+  // they are gated at all.
+  it.each(["connect", "stop"] as const)(
+    "403s a %s with a token for a different thread and never builds a runtime",
+    async (kind) => {
+      const threadId = crypto.randomUUID();
+      const res = await POST(agentRequest({ kind, threadId, token: token(crypto.randomUUID()) }));
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toMatch(/does not belong to your session/i);
+      expect(CopilotRuntime).not.toHaveBeenCalled();
+    },
+  );
 
   it("403s a run whose body carries no threadId", async () => {
-    const res = await POST(runRequest({ token: token("x") }));
+    const res = await POST(agentRequest({ token: token("x") }));
     expect(res.status).toBe(403);
   });
 
-  it.each([
-    ["user", (threadId: string) => token(threadId, CODE, "someone-else")],
-    ["code", (threadId: string) => token(threadId, "zzzzzzzzzz")],
-    ["thread", () => token(crypto.randomUUID())],
-  ])("403s a run whose token was signed for a different %s", async (_what, sign) => {
+  it("forwards a stop whose URL threadId matches its token", async () => {
     const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: sign(threadId) }));
+    const res = await POST(agentRequest({ kind: "stop", threadId, token: token(threadId) }));
+    expect(res.status).toBe(200);
+    expect(CopilotRuntime).toHaveBeenCalledOnce();
+  });
+
+  it("403s a stop whose URL threadId is malformed, even with a matching token", async () => {
+    const threadId = "not a thread/id";
+    const res = await POST(agentRequest({ kind: "stop", threadId, token: token(threadId) }));
     expect(res.status).toBe(403);
+  });
+
+  it("rejects a stop whose URL threadId is not valid percent-encoding as a foreign thread (403)", async () => {
+    const res = await POST(
+      new Request(`${BASE}/agent/tutor/stop/%ZZ`, {
+        method: "POST",
+        headers: { "x-code": CODE, "x-thread-token": token("%ZZ") },
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toMatch(/does not belong to your session/i);
   });
 });
 
@@ -367,7 +413,7 @@ describe("info endpoint (auth-only metadata)", () => {
 describe("happy path past the gate (tutor module)", () => {
   it("forwards a run carrying a correctly-signed token, scoped to the code", async () => {
     const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId) }));
+    const res = await POST(agentRequest({ threadId, token: token(threadId) }));
     expect(res.status).toBe(200);
     expect(getLocalAgent).toHaveBeenCalledWith(
       expect.objectContaining({ agentId: "tutor", resourceId: CODE }),
@@ -382,14 +428,14 @@ describe("happy path past the gate (tutor module)", () => {
   it("404s a tutor-module request targeting a non-tutor agent (grader unreachable)", async () => {
     const threadId = crypto.randomUUID();
     const res = await POST(
-      runRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
+      agentRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
     );
     expect(res.status).toBe(404);
   });
 
   it("registers ONLY the module's own agent on the run runtime", async () => {
     const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId) }));
+    const res = await POST(agentRequest({ threadId, token: token(threadId) }));
     expect(res.status).toBe(200);
     expect(lastRuntimeAgentIds()).toEqual(["tutor"]);
     expect(getLocalAgent).toHaveBeenCalledOnce();
@@ -405,17 +451,7 @@ describe("happy path past the gate (tutor module)", () => {
 
   it("registers ONLY the module's own agent on the connect runtime", async () => {
     const threadId = crypto.randomUUID();
-    const res = await POST(
-      new Request(`${BASE}/agent/tutor/connect`, {
-        method: "POST",
-        headers: {
-          "x-code": CODE,
-          "content-type": "application/json",
-          "x-thread-token": token(threadId),
-        },
-        body: runBody(threadId),
-      }),
-    );
+    const res = await POST(agentRequest({ kind: "connect", threadId, token: token(threadId) }));
     expect(res.status).toBe(200);
     expect(lastRuntimeAgentIds()).toEqual(["tutor"]);
     expect(getLocalAgents).not.toHaveBeenCalled();
@@ -432,118 +468,86 @@ describe("happy path past the gate (tutor module)", () => {
 // effective-teacher rule, not a stub of it.
 describe("reasoning gate (teacher-only, fail-closed)", () => {
   /**
-   * The runner the reasoning decision produced for the last request. Every
-   * runner is additionally wrapped for failure reporting, so the variant that
-   * matters here is the one INSIDE that wrapper — asserted on the way through,
-   * because a wrapper that swallowed the stripping runner would hand students an
-   * unfiltered stream.
+   * Drive one authorized request as `session` and report the runner chain it
+   * produced. Failure reporting wraps every variant, so every path also asserts
+   * it is the outermost runner.
    */
-  function lastRunnerOption(): unknown {
-    const options = CopilotRuntime.mock.lastCall?.[0] as { runner?: unknown } | undefined;
-    expect(options).toBeDefined();
-    const runner = options?.runner;
-    expect(runner).toBeInstanceOf(RunErrorReportingRunner);
-    return (runner as RunErrorReportingRunner).wrapped;
-  }
-
-  /** Drive one authorized run as `session` and report the runner it produced. */
-  async function runnerFor(session: unknown): Promise<unknown> {
+  async function chainFor(
+    session: unknown,
+    { module = "tutor", agent = "tutor", kind = "run" as "run" | "connect" } = {},
+  ): Promise<unknown[]> {
     getSession.mockResolvedValue(session);
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { module, fileUrl: "https://example.com/api/files/x", anonymous: false },
+    });
     const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId) }));
+    const res = await POST(agentRequest({ kind, agent, threadId, token: token(threadId) }));
     expect(res.status).toBe(200);
-    return lastRunnerOption();
+    const chain = runnerChain();
+    expect(chain[0]).toBeInstanceOf(RunErrorReportingRunner);
+    return chain;
   }
 
-  it("strips reasoning for a plain student (no teacher claim)", async () => {
-    expect(await runnerFor({ user: { id: USER_ID } })).toBeInstanceOf(ReasoningStrippingRunner);
+  const strips = (chain: unknown[]) =>
+    chain.some((runner) => runner instanceof ReasoningStrippingRunner);
+
+  // Both requests that feed the SSE writer.
+  describe.each(["run", "connect"] as const)("on a tutor %s", (kind) => {
+    it("strips reasoning for a plain student (no teacher claim)", async () => {
+      expect(strips(await chainFor({ user: { id: USER_ID } }, { kind }))).toBe(true);
+    });
+
+    it("strips reasoning for a REAL teacher while student mode is active", async () => {
+      // THE security-critical case: "view as student" must show exactly what a
+      // student sees, so the raw isTeacher claim can never be the gate.
+      cookies.mockResolvedValue(studentModeCookies(true));
+      expect(strips(await chainFor({ user: { id: USER_ID, isTeacher: true } }, { kind }))).toBe(
+        true,
+      );
+    });
+
+    it("lets an EFFECTIVE teacher through on the library's own runner (reasoning streams)", async () => {
+      const chain = await chainFor({ user: { id: USER_ID, isTeacher: true } }, { kind });
+      expect(strips(chain)).toBe(false);
+      expect(chain.at(-1)).toBeInstanceOf(InMemoryAgentRunner);
+    });
+  });
+
+  // The decision does not depend on the module; one case each for the other
+  // runtime modules.
+  it.each([
+    ["quiz", "quizDiscussion"],
+    ["writing", "writing"],
+  ] as const)("strips reasoning for a plain student on a %s run", async (module, agent) => {
+    expect(strips(await chainFor({ user: { id: USER_ID } }, { module, agent }))).toBe(true);
   });
 
   it("strips reasoning for a session whose teacher claim is explicitly false", async () => {
-    expect(await runnerFor({ user: { id: USER_ID, isTeacher: false } })).toBeInstanceOf(
-      ReasoningStrippingRunner,
-    );
-  });
-
-  it("lets an EFFECTIVE teacher through on the library's own runner (reasoning streams)", async () => {
-    // The library's own InMemoryAgentRunner (behind the tutor's snapshot runner,
-    // which never touches reasoning) — the unmodified library stream, REASONING_*
-    // frames intact — and emphatically NOT the filter.
-    const runner = await runnerFor({ user: { id: USER_ID, isTeacher: true } });
-    expect(runner).not.toBeInstanceOf(ReasoningStrippingRunner);
-    expect(runner).toBeInstanceOf(HistorySnapshotRunner);
-    expect((runner as HistorySnapshotRunner).wrapped).toBeInstanceOf(InMemoryAgentRunner);
-  });
-
-  it("strips reasoning for a REAL teacher while student mode is active", async () => {
-    // THE security-critical case: "view as student" must show exactly what a
-    // student sees, so the raw isTeacher claim can never be the gate.
-    cookies.mockResolvedValue(studentModeCookies(true));
-    expect(await runnerFor({ user: { id: USER_ID, isTeacher: true } })).toBeInstanceOf(
-      ReasoningStrippingRunner,
-    );
+    expect(strips(await chainFor({ user: { id: USER_ID, isTeacher: false } }))).toBe(true);
   });
 
   it("ignores the student-mode cookie for a non-teacher (it only ever restricts)", async () => {
     cookies.mockResolvedValue(studentModeCookies(true));
-    expect(await runnerFor({ user: { id: USER_ID } })).toBeInstanceOf(ReasoningStrippingRunner);
+    expect(strips(await chainFor({ user: { id: USER_ID } }))).toBe(true);
   });
 
   it("FAILS CLOSED: strips reasoning when the teacher check throws", async () => {
     cookies.mockRejectedValue(new Error("cookies() blew up"));
-    expect(await runnerFor({ user: { id: USER_ID, isTeacher: true } })).toBeInstanceOf(
-      ReasoningStrippingRunner,
-    );
-  });
-
-  it("applies to the connect path as well as run (both feed the SSE writer)", async () => {
-    getSession.mockResolvedValue({ user: { id: USER_ID } });
-    const threadId = crypto.randomUUID();
-    const res = await POST(
-      new Request(`${BASE}/agent/tutor/connect`, {
-        method: "POST",
-        headers: {
-          "x-code": CODE,
-          "content-type": "application/json",
-          "x-thread-token": token(threadId),
-        },
-        body: runBody(threadId),
-      }),
-    );
-    expect(res.status).toBe(200);
-    expect(lastRunnerOption()).toBeInstanceOf(ReasoningStrippingRunner);
+    expect(strips(await chainFor({ user: { id: USER_ID, isTeacher: true } }))).toBe(true);
   });
 });
 
 // A tutor's `connect` is answered with the stored conversation by the snapshot
 // runner, which must sit INNERMOST — directly around the library's runner — so
 // the reasoning stripper and the failure reporter see its frames like any other.
-// Writing and quiz connect exactly as before.
+// Writing and quiz connect without it.
 describe("history snapshot runner (tutor only, innermost)", () => {
-  function runnerChain(): unknown[] {
-    const options = CopilotRuntime.mock.lastCall?.[0] as { runner?: unknown } | undefined;
-    const chain: unknown[] = [];
-    let runner: unknown = options?.runner;
-    while (runner) {
-      chain.push(runner);
-      runner = (runner as { wrapped?: unknown }).wrapped;
-    }
-    return chain;
-  }
-
   async function connectAs(session: unknown, agent = "tutor"): Promise<unknown[]> {
     getSession.mockResolvedValue(session);
     const threadId = crypto.randomUUID();
     const res = await POST(
-      new Request(`${BASE}/agent/${agent}/connect`, {
-        method: "POST",
-        headers: {
-          "x-code": CODE,
-          "content-type": "application/json",
-          "x-thread-token": token(threadId),
-        },
-        body: runBody(threadId),
-      }),
+      agentRequest({ kind: "connect", agent, threadId, token: token(threadId) }),
     );
     expect(res.status).toBe(200);
     return runnerChain();
@@ -566,6 +570,17 @@ describe("history snapshot runner (tutor only, innermost)", () => {
       HistorySnapshotRunner,
       InMemoryAgentRunner,
     ]);
+  });
+
+  it("scopes the snapshot to the code, its frozen anonymous flag, its file and the session user", async () => {
+    const chain = await connectAs({ user: { id: USER_ID } });
+    const snapshot = chain.find((runner) => runner instanceof HistorySnapshotRunner);
+    expect((snapshot as unknown as { scope: unknown }).scope).toEqual({
+      code: CODE,
+      frozenAnonymous: false,
+      fileUrl: "https://example.com/t.yaml",
+      userId: USER_ID,
+    });
   });
 
   it.each([
@@ -593,7 +608,7 @@ describe("quiz module (reached via a quiz-module code)", () => {
   it("forwards a discussion run to quizDiscussion, scoped to the CODE", async () => {
     const threadId = crypto.randomUUID();
     const res = await POST(
-      runRequest({ threadId, token: token(threadId), agent: "quizDiscussion" }),
+      agentRequest({ threadId, token: token(threadId), agent: "quizDiscussion" }),
     );
     expect(res.status).toBe(200);
     // resourceId is the CODE for every module (not the quiz URL).
@@ -604,41 +619,25 @@ describe("quiz module (reached via a quiz-module code)", () => {
     expect(lastRuntimeAgentIds()).toEqual(["quizDiscussion"]);
   });
 
-  it("404s a quiz-module request targeting quizEvaluator (grader is never web-reachable)", async () => {
-    const threadId = crypto.randomUUID();
-    const res = await POST(
-      runRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
-    );
-    expect(res.status).toBe(404);
-    expect(getLocalAgent).not.toHaveBeenCalled();
-    expect(CopilotRuntime).not.toHaveBeenCalled();
-  });
-
-  it("404s a quiz-module request targeting evalJudge (the judge is never web-reachable)", async () => {
-    // The second registered-but-internal agent (docs/cli-eval.md): its ONE caller is the
-    // teacher-only bearer route POST /api/eval/judge.
-    const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId), agent: "evalJudge" }));
-    expect(res.status).toBe(404);
-    expect(getLocalAgent).not.toHaveBeenCalled();
-    expect(CopilotRuntime).not.toHaveBeenCalled();
-  });
-
-  it("404s a quiz-module request targeting evalTutor (the eval tutor is never web-reachable)", async () => {
-    // The third registered-but-internal agent (docs/cli-eval.md): its ONE caller is the
-    // teacher-only bearer route POST /api/eval/respond.
-    const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId), agent: "evalTutor" }));
-    expect(res.status).toBe(404);
-    expect(getLocalAgent).not.toHaveBeenCalled();
-    expect(CopilotRuntime).not.toHaveBeenCalled();
-  });
+  // The registered-but-internal agents (docs/cli-eval.md): besides submitAnswer for
+  // the grader, their only callers are the teacher-only bearer routes
+  // POST /api/eval/{grade,judge,respond}.
+  it.each(INTERNAL_AGENT_IDS)(
+    "404s a quiz-module request targeting %s (never web-reachable)",
+    async (agent) => {
+      const threadId = crypto.randomUUID();
+      const res = await POST(agentRequest({ threadId, token: token(threadId), agent }));
+      expect(res.status).toBe(404);
+      expect(getLocalAgent).not.toHaveBeenCalled();
+      expect(CopilotRuntime).not.toHaveBeenCalled();
+    },
+  );
 
   it("forwards the runtime status when buildRequestContext fails (e.g. quiz load 502)", async () => {
     buildRequestContext.mockResolvedValue({ ok: false, status: 502, message: "quiz unavailable" });
     const threadId = crypto.randomUUID();
     const res = await POST(
-      runRequest({ threadId, token: token(threadId), agent: "quizDiscussion" }),
+      agentRequest({ threadId, token: token(threadId), agent: "quizDiscussion" }),
     );
     expect(res.status).toBe(502);
     expect(getLocalAgent).not.toHaveBeenCalled();
@@ -656,7 +655,7 @@ describe("writing module (reached via a writing-module code)", () => {
 
   it("forwards a run to the writing agent, scoped to the CODE, building its context", async () => {
     const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId), agent: "writing" }));
+    const res = await POST(agentRequest({ threadId, token: token(threadId), agent: "writing" }));
     expect(res.status).toBe(200);
     expect(buildRequestContext).toHaveBeenCalledOnce();
     expect(getLocalAgent).toHaveBeenCalledWith(
@@ -668,7 +667,7 @@ describe("writing module (reached via a writing-module code)", () => {
   it("404s a writing-module request targeting a non-runtime agent id", async () => {
     const threadId = crypto.randomUUID();
     const res = await POST(
-      runRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
+      agentRequest({ threadId, token: token(threadId), agent: "quizEvaluator" }),
     );
     expect(res.status).toBe(404);
     expect(getLocalAgent).not.toHaveBeenCalled();
@@ -682,10 +681,58 @@ describe("writing module (reached via a writing-module code)", () => {
       message: "writing unavailable",
     });
     const threadId = crypto.randomUUID();
-    const res = await POST(runRequest({ threadId, token: token(threadId), agent: "writing" }));
+    const res = await POST(agentRequest({ threadId, token: token(threadId), agent: "writing" }));
     expect(res.status).toBe(502);
     expect(getLocalAgent).not.toHaveBeenCalled();
     expect(CopilotRuntime).not.toHaveBeenCalled();
+  });
+});
+
+describe("coding module (no CopilotKit runtime)", () => {
+  it("404s a coding-module code and never builds a runtime", async () => {
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { module: "coding", fileUrl: "https://example.com/api/files/c" },
+    });
+    const threadId = crypto.randomUUID();
+    const res = await POST(agentRequest({ threadId, token: token(threadId) }));
+    expect(res.status).toBe(404);
+    expect(CopilotRuntime).not.toHaveBeenCalled();
+  });
+});
+
+// The user↔chat link is written after a run the runtime accepted; whether the
+// activity is anonymous is decided inside recordUserChat (lib/user-chat-store.ts).
+describe("attribution after a run", () => {
+  it("records a successful run once, with the verified thread and the session user", async () => {
+    const threadId = crypto.randomUUID();
+    const res = await POST(agentRequest({ threadId, token: token(threadId) }));
+    expect(res.status).toBe(200);
+    expect(recordUserChat).toHaveBeenCalledExactlyOnceWith(
+      CODE,
+      threadId,
+      USER_ID,
+      "https://example.com/t.yaml",
+      "tutor",
+    );
+    expect(recordUserMessage).toHaveBeenCalledExactlyOnceWith({
+      code: CODE,
+      module: "tutor",
+      userId: USER_ID,
+    });
+  });
+
+  it.each([
+    ["a connect", "connect", true, 200],
+    ["a stop", "stop", true, 200],
+    ["a run rejected by the token check", "run", false, 200],
+    ["a run the runtime answered with an error", "run", true, 500],
+  ] as const)("records nothing for %s", async (_what, kind, validToken, status) => {
+    endpointFetch.mockResolvedValue(new Response("{}", { status }));
+    const threadId = crypto.randomUUID();
+    await POST(agentRequest({ kind, threadId, token: validToken ? token(threadId) : "deadbeef" }));
+    expect(recordUserChat).not.toHaveBeenCalled();
+    expect(recordUserMessage).not.toHaveBeenCalled();
   });
 });
 
@@ -721,7 +768,7 @@ describe("trimToNewTurn (replayed-history trimming)", () => {
       { role: "assistant", content: "hello" },
       { role: "user", content: "the new turn" },
     ];
-    const res = await POST(runRequest({ threadId, token: token(threadId), messages }));
+    const res = await POST(agentRequest({ threadId, token: token(threadId), messages }));
     expect(res.status).toBe(200);
     const forwarded = endpointFetch.mock.calls[0]?.[0] as Request;
     const body = (await forwarded.json()) as { messages: unknown[]; threadId: string };

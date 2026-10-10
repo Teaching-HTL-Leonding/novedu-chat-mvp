@@ -161,7 +161,7 @@ test("a teacher in view-as-student mode receives ZERO reasoning frames", {
   await page.goto(`/${code}`);
 
   const composer = page.getByTestId("copilot-chat-textarea");
-  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await expect(composer).toBeVisible();
   await composer.fill(QUESTION);
   await page.getByTestId("copilot-send-button").click();
 

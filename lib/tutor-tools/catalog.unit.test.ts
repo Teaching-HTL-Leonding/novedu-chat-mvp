@@ -105,6 +105,7 @@ describe("random_number", () => {
       defaultTutorToolDeps,
     );
     expect(Number.isInteger(extreme.value)).toBe(true);
+    expect(Math.abs(extreme.value)).toBeLessThanOrEqual(RANDOM_NUMBER_BOUND);
   });
 
   it("output matches the declared output schema", () => {

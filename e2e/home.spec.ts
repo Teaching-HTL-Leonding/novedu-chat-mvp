@@ -2,6 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { BRAND } from "../lib/brand";
 import { STUDENT_MODE_COOKIE } from "../lib/student-mode-constants";
 import { STORAGE_STATE, TEACHER_STORAGE_STATE } from "./auth.constants";
+import { watchErrors } from "./page.utils";
 import { deletePrincipal, signInFreshStudent, signInFreshTeacher } from "./principal.utils";
 
 // Smoke: the start page opens without an error for every kind of visitor — a
@@ -9,16 +10,6 @@ import { deletePrincipal, signInFreshStudent, signInFreshTeacher } from "./princ
 // student page), and a brand-new student and teacher with no history at all
 // (the empty states). Hermetic: the fresh principals' auth rows are the only
 // writes, removed again afterwards.
-
-/** Collects uncaught page errors and console errors for the whole visit. */
-function watchErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(`console: ${message.text()}`);
-  });
-  return errors;
-}
 
 /** No Next.js error overlay (dev) and no error boundary. */
 async function expectNoErrorScreen(page: Page) {

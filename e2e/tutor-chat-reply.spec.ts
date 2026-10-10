@@ -1,8 +1,9 @@
 import { loadEnvConfig } from "@next/env";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { sendAndExpectReply } from "./chat.utils";
 import { LIVE_TOOLS_TUTOR_URL, LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
+import { setEditorContent } from "./page.utils";
 
 // A REAL end-to-end chat, run once per LLM PROVIDER: open a tutor code, send
 // "Hi!", and assert the tutor streams back a non-empty answer (content doesn't
@@ -60,17 +61,6 @@ prompt:
     You are a friendly tutor. Answer briefly.
 `;
 
-async function setEditorContent(page: Page, text: string): Promise<void> {
-  const content = page.locator(".cm-content");
-  await content.click();
-  await page.keyboard.press("ControlOrMeta+a");
-  await page.keyboard.press("Delete");
-  await page.keyboard.insertText(text);
-}
-
-// Fixture fetch + Next compile + a full model round-trip — give it room.
-test.setTimeout(120_000);
-
 // @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
 test("sending a message gets a non-empty reply from the tutor", {
   tag: ["@live", "@live-llm"],
@@ -93,7 +83,7 @@ test("a tutor with the random_number tool weaves a tool result into its reply", 
   await page.goto(`/${await mintTutorCode({ tutor: LIVE_TOOLS_TUTOR_URL })}`);
 
   const composer = page.getByTestId("copilot-chat-textarea");
-  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await expect(composer).toBeVisible();
   await composer.fill("Give me a random number between 100000 and 999999.");
   await page.getByTestId("copilot-send-button").click();
 
@@ -139,13 +129,6 @@ test.describe("via Azure Foundry", () => {
     const tutorUrl = `${new URL(page.url()).origin}/api/files/${name}`;
     await page.goto(`/${await mintTutorCode({ tutor: tutorUrl, note: "e2e foundry tutor" })}`);
     await sendAndExpectReply(page);
-
-    // 3. Clean up the tutor file (no automatic GC; the minted code lingers like
-    // the other mint-and-leave specs — harmless and tidied with the CI container).
-    await page.goto(`/files/edit/${name}`);
-    page.once("dialog", (dialog) => dialog.accept());
-    const del = page.getByRole("button", { name: /delete/i }).first();
-    if (await del.isVisible().catch(() => false)) await del.click();
   });
 });
 
@@ -174,12 +157,5 @@ test.describe("via OpenRouter", () => {
     const tutorUrl = `${new URL(page.url()).origin}/api/files/${name}`;
     await page.goto(`/${await mintTutorCode({ tutor: tutorUrl, note: "e2e openrouter tutor" })}`);
     await sendAndExpectReply(page);
-
-    // 3. Clean up the tutor file (no automatic GC; the minted code lingers like
-    // the other mint-and-leave specs — harmless and tidied with the CI container).
-    await page.goto(`/files/edit/${name}`);
-    page.once("dialog", (dialog) => dialog.accept());
-    const del = page.getByRole("button", { name: /delete/i }).first();
-    if (await del.isVisible().catch(() => false)) await del.click();
   });
 });

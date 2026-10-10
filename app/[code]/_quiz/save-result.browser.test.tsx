@@ -9,16 +9,7 @@ import { render } from "vitest-browser-react";
 
 const saveQuizResult = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/quiz-actions", () => ({ saveQuizResult }));
-// next/link reads Next-server globals that don't exist in the browser test
-// runner — a plain anchor keeps the href the assertions read.
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 import { SaveResult } from "./save-result";
 

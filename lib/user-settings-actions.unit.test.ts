@@ -57,6 +57,7 @@ describe("updateUserSettings", () => {
     storeSettings.mockResolvedValue(false);
     await expect(updateUserSettings({ saveQuizResults: false })).resolves.toMatchObject({
       ok: false,
+      message: expect.stringContaining("could not be saved"),
     });
     expect(invalidateHome).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
@@ -73,7 +74,10 @@ describe("deleteMyQuizResults", () => {
 
   it("needs a session and reports a store failure as a message", async () => {
     deleteOwnQuizResults.mockResolvedValue(undefined);
-    await expect(deleteMyQuizResults()).resolves.toMatchObject({ ok: false });
+    await expect(deleteMyQuizResults()).resolves.toMatchObject({
+      ok: false,
+      message: expect.stringContaining("could not be deleted"),
+    });
     getSession.mockResolvedValue(null);
     deleteOwnQuizResults.mockClear();
     await expect(deleteMyQuizResults()).resolves.toMatchObject({ ok: false });

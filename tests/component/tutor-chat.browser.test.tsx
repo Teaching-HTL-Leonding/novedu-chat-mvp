@@ -8,7 +8,7 @@ import {
   MAX_RAW_IMAGE_BYTES,
 } from "@/lib/image-normalize";
 
-// TutorChat is re-expressed on top of the shared ModuleChat primitive, so this
+// TutorChat composes the shared ModuleChat primitive, so this
 // suite mocks ModuleChat away and asserts only what is unique to the tutor: the
 // upload-error notice, the welcome view it composes, and the props it hands
 // ModuleChat. The shared chat wiring (provider headers, the threadId explicit
@@ -100,8 +100,7 @@ test("renders the shared chat primitive and nothing above it", async () => {
   const screen = await renderTutorChat();
 
   await expect.element(screen.getByTestId("module-chat")).toBeInTheDocument();
-  // The debug header (tutor URL + "System prompt & warnings" preview) is gone —
-  // students see only the chat.
+  // The surface is the chat alone: no debug header (tutor URL, system-prompt preview) above it.
   expect(document.querySelector("details")).toBeNull();
 });
 
@@ -222,7 +221,6 @@ test("keeps CopilotKit's default greeting when the tutor has no title", async ()
 });
 
 test("the welcome view forces the welcome screen back on in explicit-threadId mode", async () => {
-  viewSpy.mockClear();
   await renderTutorChat();
 
   // Explicit mode (the threadId ModuleChat pins) suppresses the view's welcome
@@ -334,15 +332,6 @@ async function confirmStartOver(screen: Awaited<ReturnType<typeof renderTutorCha
   await screen.getByRole("button", { name: "Start over" }).click();
   await screen.getByRole("dialog").getByRole("button", { name: "Start over" }).click();
 }
-
-test("the toolbar offers a labelled start-over control with a tooltip", async () => {
-  const screen = await renderTutorChat();
-
-  const button = screen.getByRole("button", { name: "Start over" });
-  await expect.element(button).toBeVisible();
-  // The icon is decorative; aria-label names the control and title is the tooltip.
-  await expect.element(button).toHaveAttribute("title", "Start over");
-});
 
 test("opening the confirmation changes nothing until the student confirms", async () => {
   startNewTutorThread.mockResolvedValue({ ok: true, ...NEW_THREAD });

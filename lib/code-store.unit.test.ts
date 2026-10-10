@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // operations. Behavior-level tests — what rows come back / what gets inserted —
 // not SQL-text assertions.
 const fake = vi.hoisted(() => {
-  const state = {
+  const initial = () => ({
     rows: [] as unknown[],
     // What the paginated list's COUNT(*) reports, plus every LIMIT/OFFSET window
     // the store asked for (so a test can pin the SQL-side paging).
@@ -22,7 +22,8 @@ const fake = vi.hoisted(() => {
     updated: [] as Record<string, unknown>[],
     updateError: undefined as unknown,
     updateRowCount: 1 as number,
-  };
+  });
+  const state = initial();
   // The query tail is a lazy thenable (NOT an eager promise): the rejected
   // promise only comes into existence when the store actually awaits it, so
   // error-path tests don't leak unhandled rejections.
@@ -93,7 +94,7 @@ const fake = vi.hoisted(() => {
       },
     }),
   });
-  return { state, db: { select, selectDistinct: select, insert, delete: del, update } };
+  return { state, initial, db: { select, selectDistinct: select, insert, delete: del, update } };
 });
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
@@ -156,17 +157,7 @@ const duplicateKeyError = () =>
   });
 
 beforeEach(() => {
-  fake.state.rows = [];
-  fake.state.total = 0;
-  fake.state.windows = [];
-  fake.state.inserted = [];
-  fake.state.insertErrors = [];
-  fake.state.selectError = undefined;
-  fake.state.deleteCalls = 0;
-  fake.state.deleteError = undefined;
-  fake.state.updated = [];
-  fake.state.updateError = undefined;
-  fake.state.updateRowCount = 1;
+  Object.assign(fake.state, fake.initial());
 });
 
 describe("generateCode", () => {

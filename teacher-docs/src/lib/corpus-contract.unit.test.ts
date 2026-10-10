@@ -64,7 +64,7 @@ describe("teacher-docs corpus contract", () => {
     for (const chapter of chapters) {
       const fm = chapter.frontmatter;
       for (const field of ["title", "description", "audience", "keywords"]) {
-        expect(fm[field], `${chapter.id}: frontmatter "${field}"`).toBeDefined();
+        expect(fm[field], `${chapter.id}: frontmatter "${field}"`).toBeTruthy();
       }
     }
   });

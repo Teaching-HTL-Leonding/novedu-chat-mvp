@@ -46,10 +46,13 @@ Drizzle at startup like every `novedu_*` table.
 ## The write seam — `lib/usage-store.ts`
 
 The **only** access to both tables. Mirrors `lib/user-chat-store.ts` discipline: it
-**never throws** — errors are logged and routed to `recordError`, then dropped
-(a lost increment can never break a chat, a grade, a save, or the coding proxy). All
-writes run **off the response path** (the exporter is async; the route/action
-counters use `after()`; the coding tap is fire-and-forget).
+**never throws** — a failed upsert is reported through `reportStoreFailure`
+(`lib/store-failure.ts`: a fixed `usage: <op> failed` message plus the SQLSTATE,
+logged and sent to `recordError` — never the raw error, whose Drizzle message
+embeds the user id among the bound values), then dropped (a lost increment can
+never break a chat, a grade, a save, or the coding proxy). All writes run **off
+the response path** (the exporter is async; the route/action counters use
+`after()`; the coding tap is fire-and-forget).
 
 - `recordLlmUsage({ code, module, userId?, provider?, model?, inputNew, inputCached, output, toolCalls, codingRequests?, at? })`
   — increments `usage_by_code` always, and `usage_by_user` **only when `userId` is

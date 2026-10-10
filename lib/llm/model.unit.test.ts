@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // app/mastra/scch.ts runs a top-level model-discovery fetch on import — replace it
 // with an equivalently-named provider so this test never touches the network. Only
@@ -19,6 +19,12 @@ vi.mock("@/app/mastra/scch", async () => {
     stripAssistantReasoning: (args: Record<string, unknown>) => args,
   };
 });
+
+// Only the Entra token is replaced; the URL getters stay real.
+vi.mock("@/lib/llm/foundry-endpoint", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/llm/foundry-endpoint")>()),
+  foundryBearerToken: async () => "entra-test-token",
+}));
 
 import { reasoningOptionsKey, resolveLanguageModel } from "@/lib/llm/model";
 import {
@@ -80,5 +86,45 @@ describe("reasoningOptionsKey", () => {
     expect(resolveLanguageModel("OpenRouter", "m").provider).toBe(
       `${reasoningOptionsKey("OpenRouter")}.chat`,
     );
+  });
+});
+
+// The wire contract of the two lazily-built providers, observed in the request the
+// package finally sends — only the HTTP call is stubbed (the SCCH counterpart is
+// app/mastra/scch.wire.unit.test.ts).
+describe("agent-path requests", () => {
+  const PROMPT = [{ role: "user" as const, content: [{ type: "text" as const, text: "hi" }] }];
+  let requests: { headers: Headers; body: Record<string, unknown> }[];
+
+  beforeEach(() => {
+    requests = [];
+    vi.stubGlobal("fetch", async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        headers: new Headers(init?.headers),
+        body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>,
+      });
+      return new Response("data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+    });
+  });
+
+  it("Azure Foundry authenticates with the Entra bearer from foundry-endpoint and sends no api-key header", async () => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "https://res.openai.azure.com/");
+    await resolveLanguageModel("Azure Foundry", "gpt-5.4-mini").doStream({ prompt: PROMPT });
+    expect(requests).toHaveLength(1);
+    const headers = requests[0]?.headers;
+    expect(headers?.get("authorization")).toBe("Bearer entra-test-token");
+    expect(headers?.has("api-key")).toBe(false);
+  });
+
+  it.each([
+    ["Azure Foundry", "gpt-5.4-mini"],
+    ["OpenRouter", "z-ai/glm-5.3-flash"],
+  ] as const)("%s streaming requests ask for usage (metering reads it)", async (provider, id) => {
+    vi.stubEnv("AZURE_FOUNDRY_ENDPOINT", "https://res.openai.azure.com/");
+    vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    await resolveLanguageModel(provider, id).doStream({ prompt: PROMPT });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.body.stream).toBe(true);
+    expect(requests[0]?.body.stream_options).toEqual({ include_usage: true });
   });
 });

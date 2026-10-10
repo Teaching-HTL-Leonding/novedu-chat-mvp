@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { beforeEach, expect, test, vi } from "vitest";
 import { cleanup, render } from "vitest-browser-react";
 import type { ResolvedQuiz } from "@/lib/quiz-types";
 
@@ -36,16 +36,7 @@ vi.mock("@/lib/quiz-actions", () => ({
   precheckAnswer,
   saveQuizResult,
 }));
-// next/link reads Next-server globals that don't exist in the browser test
-// runner — a plain anchor keeps the href the assertions read.
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 // The hook's two tunables, pinned here: the timings every assertion below is
 // written against are these, not whatever the module happens to hold.
@@ -120,13 +111,6 @@ beforeEach(() => {
   buildQuestionSequence.mockImplementation((pool: unknown[]) => [...pool]);
 });
 
-// cleanup() is ASYNC (it act-unmounts every root) — an unawaited call leaks
-// IS_REACT_ACT_ENVIRONMENT into the next test, and then the state update from
-// the file input's change event queues forever instead of flushing.
-afterEach(async () => {
-  await cleanup();
-});
-
 test("offers Add photo only on imageInput questions", async () => {
   const withPhotos = await render(<QuizRunner code={CODE} quiz={quizWith(true)} />);
   await expect.element(withPhotos.getByRole("button", { name: "Add photo" })).toBeVisible();
@@ -150,7 +134,7 @@ test("Submit gates on text OR at least one photo", async () => {
 });
 
 /**
- * A REAL image, built here rather than faked: photos now go through
+ * A REAL image, built here rather than faked: photos go through
  * `normalizeStudentImage`, which decodes every pick — a File of arbitrary bytes
  * with an image MIME type is exactly what the normalizer is meant to reject.
  */
@@ -482,13 +466,12 @@ test("typing again dims the hint until a fresh one replaces it", async () => {
 }, 15000);
 
 test("survives burst typing with a hint on screen — no nested-update overflow", async () => {
-  // Regression: the hook's effect runs on every keystroke, and React counts an
-  // update dispatched from inside a passive-effect flush as a NESTED update. An
-  // early version re-dispatched the stale marker (a fresh object) per keystroke,
-  // which fast typing turned into React's hard "Maximum update depth exceeded"
-  // error (seen live). The effect must only write on a real transition, so a
-  // long burst after a hint exists must neither throw nor ask more than once
-  // more.
+  // The hook's effect runs on every keystroke, and React counts an update
+  // dispatched from inside a passive-effect flush as a NESTED update. The effect
+  // must write only on a real transition: re-dispatching the stale marker (a
+  // fresh object) per keystroke overflows React's update depth ("Maximum update
+  // depth exceeded") on fast typing. So a long burst after a hint exists must
+  // neither throw nor ask more than once more.
   const screen = await render(<QuizRunner code={CODE} quiz={quizOf(1)} />);
   await expect.element(screen.getByRole("textbox")).toBeVisible();
   await screen.getByRole("textbox").fill("seed");

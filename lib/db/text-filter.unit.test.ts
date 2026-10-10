@@ -30,11 +30,6 @@ describe("containsAny", () => {
     expect(containsAny("x", [])).toBeUndefined();
   });
 
-  it("returns an SQL condition for a real term + column", () => {
-    const condition = containsAny("hello", [codes.note, codes.code]);
-    expect(condition).toBeDefined();
-  });
-
   it("builds the condition with ILIKE (case-insensitive on Postgres)", () => {
     const condition = containsAny("hello", [codes.note]);
     if (!condition) throw new Error("expected a condition");

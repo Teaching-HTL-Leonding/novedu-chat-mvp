@@ -23,6 +23,7 @@ vi.mock("@copilotkit/react-core/v2", () => ({
   },
 }));
 
+import { MarkdownRenderer } from "@/app/markdown-renderer";
 import { ModuleChat } from "@/app/module-chat";
 
 type ModuleChatProps = ComponentProps<typeof ModuleChat>;
@@ -36,7 +37,6 @@ const RUNTIME_HEADERS = {
 };
 
 test("points the provider at the runtime URL and forwards the headers verbatim", async () => {
-  providerSpy.mockClear();
   await render(
     <ModuleChat
       agentId={AGENT_ID}
@@ -56,7 +56,6 @@ test("points the provider at the runtime URL and forwards the headers verbatim",
 });
 
 test("pins the server-generated threadId on CopilotChat (explicit mode)", async () => {
-  chatSpy.mockClear();
   await render(
     <ModuleChat
       agentId={AGENT_ID}
@@ -73,7 +72,6 @@ test("pins the server-generated threadId on CopilotChat (explicit mode)", async 
 });
 
 test("mounts the chat for the passed agent", async () => {
-  chatSpy.mockClear();
   const screen = await render(
     <ModuleChat
       agentId="writing"
@@ -89,7 +87,6 @@ test("mounts the chat for the passed agent", async () => {
 });
 
 test("wires the shared markdown renderer for assistant messages", async () => {
-  chatSpy.mockClear();
   await render(
     <ModuleChat
       agentId={AGENT_ID}
@@ -101,13 +98,12 @@ test("wires the shared markdown renderer for assistant messages", async () => {
   );
 
   // The same renderer everywhere, so math/code/markdown match across modules.
-  expect(chatSpy.mock.lastCall?.[0].messageView?.assistantMessage?.markdownRenderer).toBeTypeOf(
-    "function",
+  expect(chatSpy.mock.lastCall?.[0].messageView?.assistantMessage?.markdownRenderer).toBe(
+    MarkdownRenderer,
   );
 });
 
 test("overrides the cursor slot with a readable 'Generating…' note", async () => {
-  chatSpy.mockClear();
   await render(
     <ModuleChat
       agentId={AGENT_ID}
@@ -134,7 +130,7 @@ test("overrides the cursor slot with a readable 'Generating…' note", async () 
   );
 });
 
-test("renders children inside the provider, before the chat", async () => {
+test("renders children directly inside the provider, before the chat", async () => {
   const screen = await render(
     <ModuleChat
       agentId={AGENT_ID}
@@ -148,10 +144,12 @@ test("renders children inside the provider, before the chat", async () => {
   );
 
   // The child lives inside the provider (frontend tools / feedback headers need
-  // the provider's React context).
+  // the provider's React context) as a direct fragment member, with no wrapping
+  // div: the primitive is layout-agnostic, so any module-specific layout container
+  // (e.g. quiz's discussion body) is the module's own concern, outside ModuleChat.
   const provider = screen.getByTestId("ck-provider").element();
   const child = screen.getByTestId("slot-child").element();
-  expect(provider.contains(child)).toBe(true);
+  expect(child.parentElement).toBe(provider);
 
   // ...and it precedes the chat in document order.
   const chat = screen.getByTestId("ck-chat").element();
@@ -159,7 +157,6 @@ test("renders children inside the provider, before the chat", async () => {
 });
 
 test("passes labels, chatView, and attachments through to CopilotChat verbatim", async () => {
-  chatSpy.mockClear();
   const labels: ModuleChatProps["labels"] = { welcomeMessageText: "Hallo" };
   // A module's chatView is a component (tutor's welcome-screen override); the
   // cast names it as ModuleChat's slot type so we can assert it is forwarded by
@@ -191,7 +188,6 @@ test("passes labels, chatView, and attachments through to CopilotChat verbatim",
 });
 
 test("omits the optional slots when not given", async () => {
-  chatSpy.mockClear();
   await render(
     <ModuleChat
       agentId={AGENT_ID}
@@ -206,27 +202,6 @@ test("omits the optional slots when not given", async () => {
   expect(props.labels).toBeUndefined();
   expect(props.chatView).toBeUndefined();
   expect(props.attachments).toBeUndefined();
-});
-
-test("renders children as direct members of the provider (no extra wrapper)", async () => {
-  const screen = await render(
-    <ModuleChat
-      agentId={AGENT_ID}
-      threadId={THREAD_ID}
-      headers={RUNTIME_HEADERS}
-      providerKey={PROVIDER_KEY}
-      className="chat"
-    >
-      <div data-testid="slot-child">slot</div>
-    </ModuleChat>,
-  );
-
-  // The primitive is layout-agnostic: children + chat are direct fragment members
-  // of the provider, with no wrapping div. Any module-specific layout container
-  // (e.g. quiz's discussion body) is the module's own concern, outside ModuleChat.
-  const provider = screen.getByTestId("ck-provider").element();
-  const child = screen.getByTestId("slot-child").element();
-  expect(child.parentElement).toBe(provider);
 });
 
 test("owns the base chat container and cn-merges className as a delta", async () => {

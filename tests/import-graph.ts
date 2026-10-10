@@ -1,18 +1,33 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
 
 // The mechanics behind the repo's import grep-guards (`lib/prompt-dump.unit.test.ts`,
-// `lib/telemetry-isolation.unit.test.ts`): read a module's import specifiers, resolve the
-// repo-relative ones, and walk a transitive closure from a set of roots. WHAT counts as an
-// offender and WHICH imports keep the walk going is the caller's business — every guard
-// expresses that through its `visit` callback, so this file holds no policy. Never used by
-// the app; a test helper only.
+// `lib/telemetry-isolation.unit.test.ts`, …): list the source files, read a module's
+// import specifiers, resolve the repo-relative ones, and walk a transitive closure from a
+// set of roots. WHAT counts as an offender and WHICH imports keep the walk going is the
+// caller's business — every guard expresses that through its `visit` callback, so this
+// file holds no policy. Never used by the app; a test helper only.
 
 /** Repo root, resolved from this file's own location (`tests/`). */
 export const REPO_ROOT = join(__dirname, "..");
 
 /** Reads a repo-relative source file. */
 export const readModule = (rel: string): string => readFileSync(join(REPO_ROOT, rel), "utf8");
+
+const SKIPPED_DIRS = new Set(["node_modules", "dist", ".next", ".turbo"]);
+
+/**
+ * Every non-test `.ts`/`.tsx` file under the given repo-relative directories, as
+ * repo-relative forward-slash paths (the form `resolveImport` returns).
+ */
+export const sourceFiles = (...dirs: string[]): string[] =>
+  dirs.flatMap((dir) =>
+    readdirSync(join(REPO_ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
+      const rel = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) return SKIPPED_DIRS.has(entry.name) ? [] : sourceFiles(rel);
+      return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [rel] : [];
+    }),
+  );
 
 /** Every static/dynamic/side-effect/re-export specifier in a module's source. */
 export const importSpecifiers = (source: string): string[] =>

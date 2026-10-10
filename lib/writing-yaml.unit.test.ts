@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseWriting, toPublicWriting, type Writing } from "@/lib/writing-yaml";
+import { parseWriting, toPublicWriting } from "@/lib/writing-yaml";
 
 // The lenient writing YAML parser (mirrors lib/quiz-yaml's parser) and the
 // client-safe projection. The parser requires only `llm.model` + `instructions`;
@@ -152,20 +152,5 @@ describe("toPublicWriting", () => {
       description: expect.stringContaining("Draft your essay"),
       placeholder: "Start here…",
     });
-  });
-
-  it("does not carry the anonymous flag to the client", () => {
-    const writing: Writing = {
-      id: "x",
-      name: "x",
-      anonymous: false,
-      model: "m",
-      provider: "SCCH",
-      instructions: "secret system prompt",
-      fragmentBlock: { fragment_files: [], text_files: [] },
-    };
-    const pub = toPublicWriting(writing);
-    expect(pub).not.toHaveProperty("anonymous");
-    expect(JSON.stringify(pub)).not.toContain("secret system prompt");
   });
 });

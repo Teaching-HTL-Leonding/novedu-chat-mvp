@@ -1,6 +1,6 @@
 import type { AnyExportedSpan, TracingEvent } from "@mastra/core/observability";
 import { SpanType } from "@mastra/core/observability";
-import { describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 
 // The usage exporter's pure span→delta mapping (the correctness core) plus the
 // exporter object's event gating. The store + telemetry are mocked so the module
@@ -92,14 +92,16 @@ describe("mapSpanToUsage — provider/model attribution (span attributes)", () =
 
   it("leaves provider/model undefined when the span lacks them", () => {
     const mapped = mapSpanToUsage(genWith({}));
-    expect(mapped?.provider).toBeUndefined();
-    expect(mapped?.model).toBeUndefined();
+    assert(mapped);
+    expect(mapped.provider).toBeUndefined();
+    expect(mapped.model).toBeUndefined();
   });
 
   it("carries no provider/model on tool-call spans (nothing to COALESCE-fill)", () => {
     const mapped = mapSpanToUsage(span({ type: SpanType.TOOL_CALL }));
-    expect(mapped?.provider).toBeUndefined();
-    expect(mapped?.model).toBeUndefined();
+    assert(mapped);
+    expect(mapped.provider).toBeUndefined();
+    expect(mapped.model).toBeUndefined();
   });
 });
 

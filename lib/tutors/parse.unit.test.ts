@@ -33,7 +33,11 @@ describe("validate — tutor", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.code).toBe("TUTOR_SCHEMA_ERROR");
-      expect(result.error.zodIssues).toBeDefined();
+      expect(result.error.zodIssues).toMatchObject({
+        properties: {
+          prompt: { properties: { tutor_instructions: { errors: [expect.any(String)] } } },
+        },
+      });
     }
   });
 

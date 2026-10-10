@@ -31,6 +31,7 @@ describe("resolveChatEndpoint", () => {
 
   it("OpenRouter → the public chat URL with the static Bearer key", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
+    vi.stubEnv("OPENROUTER_BASE_URL", "");
     const endpoint = resolveChatEndpoint("OpenRouter");
     expect(endpoint.url).toBe("https://openrouter.ai/api/v1/chat/completions");
     await expect(endpoint.authHeader()).resolves.toBe("Bearer sk-or-test");

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { mapWithConcurrency, withRetry } from "./retry";
 
-// The two eval primitives, with their timing seam injected so nothing waits.
+// The two eval primitives. withRetry has its sleep injected; the mapWithConcurrency tests
+// use few-ms real delays.
 
 describe("withRetry", () => {
   it("returns the first outcome shouldRetry rejects, without sleeping", async () => {

@@ -1,3 +1,5 @@
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // The store's own logic, with the database faked: the thread-id guard, the
@@ -8,7 +10,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const execute = vi.hoisted(() => vi.fn());
 const limit = vi.hoisted(() => vi.fn());
 // The Drizzle select chain `ownsTutorThread` uses, ending in `.limit()`.
-const select = vi.hoisted(() => vi.fn(() => ({ from: () => ({ where: () => ({ limit }) }) })));
+const where = vi.hoisted(() => vi.fn((_condition: unknown) => ({ limit })));
+const select = vi.hoisted(() => vi.fn(() => ({ from: () => ({ where }) })));
 vi.mock("@/lib/db", () => ({ getDb: () => ({ execute, select }) }));
 
 import {
@@ -20,6 +23,7 @@ import {
 } from "@/lib/tutor-history-store";
 
 const CODE = "c0de";
+const dialect = new PgDialect();
 const THREAD = "0b6f0c1e-1111-4222-8333-444455556666";
 
 function envelope(text: string): string {
@@ -142,8 +146,8 @@ describe("listOwnTutorThreads", () => {
     const query = execute.mock.calls[0]?.[0] as { queryChunks: unknown[] };
     const params = query.queryChunks.filter((chunk) => typeof chunk !== "object");
     expect(params).toEqual(expect.arrayContaining(["student-1", CODE]));
-    const text = JSON.stringify(query.queryChunks);
-    expect(text).not.toMatch(/SELECT m\.content|m\.content AS/);
+    const text = dialect.sqlToQuery(query as unknown as SQL).sql;
+    expect(text).not.toMatch(/\bm\.content\b(?!::jsonb)/);
   });
 
   it("yields undefined on a database error, never throws", async () => {
@@ -157,6 +161,16 @@ describe("ownsTutorThread", () => {
     limit.mockResolvedValueOnce([{ threadId: THREAD }]).mockResolvedValueOnce([]);
     expect(await ownsTutorThread("student-1", CODE, THREAD)).toBe(true);
     expect(await ownsTutorThread("student-1", CODE, THREAD)).toBe(false);
+  });
+
+  it("proves ownership by ANDing thread, code and user", async () => {
+    limit.mockResolvedValueOnce([]);
+    await ownsTutorThread("student-1", CODE, THREAD);
+    const { sql, params } = dialect.sqlToQuery(where.mock.calls[0]?.[0] as SQL);
+    expect(sql).toBe(
+      '(("novedu_user_chats"."thread_id" = $1) and ("novedu_user_chats"."code" = $2) and ("novedu_user_chats"."user_id" = $3))',
+    );
+    expect(params).toEqual([THREAD, CODE, "student-1"]);
   });
 
   it("is false for a malformed thread id without a query", async () => {

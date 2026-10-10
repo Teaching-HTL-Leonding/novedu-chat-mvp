@@ -1,6 +1,7 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
+import { sendAndExpectReply } from "./chat.utils";
 import { mintCode, VISION_QUIZ_URL } from "./code.utils";
 
 // A REAL multi-modal round-trip through the QUIZ grader: submit an IMAGE-ONLY
@@ -30,7 +31,7 @@ test("a photo answer is graded by the vision model and seeds the discussion", {
   await page.goto(`/${code}`);
 
   // The vision quiz enables photo answers, so the Add-photo control is offered.
-  await expect(page.getByRole("button", { name: "Add photo" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "Add photo" })).toBeVisible();
   await page.locator('input[type="file"]').setInputFiles(RED_PNG);
   await expect(page.getByAltText("red.png")).toBeVisible();
 
@@ -45,15 +46,8 @@ test("a photo answer is graded by the vision model and seeds the discussion", {
   // The discussion thread is seeded with the photo as a `file` part; one reply
   // proves the discussion agent handles the multimodal history.
   await page.getByRole("button", { name: "Chat about this" }).click();
-  const composer = page.getByTestId("copilot-chat-textarea");
-  await expect(composer).toBeVisible({ timeout: 30_000 });
-  await composer.fill("What color was the image I submitted? Answer with one word.");
-  await page.getByTestId("copilot-send-button").click();
-
-  const assistant = page.getByTestId("copilot-assistant-message");
-  await expect(assistant).toBeVisible({ timeout: 60_000 });
-  await expect
-    .poll(async () => (await assistant.innerText()).trim().length, { timeout: 60_000 })
-    .toBeGreaterThan(0);
-  await expect(page.getByText(/not found after runtime sync/i)).toHaveCount(0);
+  await sendAndExpectReply(page, {
+    message: "What color was the image I submitted? Answer with one word.",
+    timeout: 60_000,
+  });
 });

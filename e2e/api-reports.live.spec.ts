@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { mintSessionToken } from "./api-auth.utils";
-import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
+import { mintTutorCode } from "./code.utils";
 
 // @live-db lifecycle of the /api/reports bearer channel over real HTTP against
 // the real database, closing the CLI report-triage loop end-to-end: a STUDENT
@@ -23,28 +23,6 @@ import { deleteCode, deleteReportsByCode, mintTutorCode } from "./code.utils";
 // teacher principal, so the API is always queried with mine=0 to defeat the
 // "Only my codes" default filter.
 
-// Dev compilation of /[code] + the routes + DB round-trips; a report references a
-// zero-message thread, so no LLM latency is involved.
-test.setTimeout(120_000);
-
-// Best-effort cleanup: deleteCode drops only the code row, so the report rows are
-// removed explicitly (a raw code delete does NOT cascade to reports the way the
-// app's own delete transaction does). Cleaned even on a mid-test failure so no
-// strays leak into the shared dev database.
-let mintedCode: string | null = null;
-
-test.afterEach(async () => {
-  if (!mintedCode) return;
-  const code = mintedCode;
-  mintedCode = null;
-  try {
-    await deleteReportsByCode(code);
-    await deleteCode(code);
-  } catch {
-    // best-effort
-  }
-});
-
 test("file a chat report through the UI, then list → show → resolve it over the bearer API", {
   tag: ["@live", "@live-db"],
 }, async ({ page, request }) => {
@@ -52,7 +30,6 @@ test("file a chat report through the UI, then list → show → resolve it over 
   // The default fixture tutor pins the fake `test-model`; a zero-message report
   // never touches it, so this is deliberately NOT the live-model tutor.
   const code = await mintTutorCode({ note: `e2e api report code ${Date.now()}` });
-  mintedCode = code;
 
   // ---------------------------------------------------------------------------
   // STUDENT — open the chat and file a report (no message is ever sent), reusing
@@ -67,7 +44,7 @@ test("file a chat report through the UI, then list → show → resolve it over 
   await page.getByRole("button", { name: "Holy sh.." }).click();
   await page.getByLabel(/What happened/i).fill(`${marker} the tutor said something wild`);
   await page.getByRole("button", { name: "Send report" }).click();
-  await expect(page.getByText(/your teacher will take a look/i)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/your teacher will take a look/i)).toBeVisible();
 
   // ---------------------------------------------------------------------------
   // TEACHER — drive the bearer API over HTTP with a minted teacher token.
@@ -113,7 +90,7 @@ test("file a chat report through the UI, then list → show → resolve it over 
   expect(resolveRes.status()).toBe(200);
   expect(await resolveRes.json()).toEqual({ ok: true });
 
-  // LIST resolved: it now shows up under status=resolved, stamped.
+  // LIST resolved: it shows up under status=resolved, stamped.
   const resolvedRes = await request.get(
     `/api/reports?mine=0&status=resolved&q=${encodeURIComponent(marker)}`,
     { headers },
@@ -121,7 +98,7 @@ test("file a chat report through the UI, then list → show → resolve it over 
   expect(resolvedRes.status()).toBe(200);
   const resolvedList = await resolvedRes.json();
   const resolvedReport = resolvedList.find((r: { id: string }) => r.id === id);
-  expect(resolvedReport, "the report now appears in the resolved list").toBeDefined();
+  expect(resolvedReport, "the report appears in the resolved list").toBeDefined();
   expect(resolvedReport.resolvedAt).not.toBeNull();
   // Attributed to the authenticated teacher — the bearer session's principal.
   expect(resolvedReport.resolvedBy).toBe("e2e-api-teacher");

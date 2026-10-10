@@ -19,10 +19,10 @@ import { YamlEditor } from "../../yaml-editor";
 
 // Edit form: read-only name/kind + the copyable public URL + the CodeMirror
 // editor preloaded with the active version's content. "Validate" checks the YAML
-// WITHOUT saving (so teachers stop creating throwaway versions just to validate),
-// and "Validate & save" validates again server-side and stores a new version (an
+// WITHOUT saving (so teachers need no throwaway versions just to validate), and
+// "Validate & save" validates again server-side and stores a new version (an
 // invalid save is rejected with the specific validator errors). Any edit clears
-// the validate feedback. Delete soft-deletes and returns to the list.
+// the validate feedback. Deleting happens on the list page (bulk only).
 export function EditFileForm({
   name,
   kind,

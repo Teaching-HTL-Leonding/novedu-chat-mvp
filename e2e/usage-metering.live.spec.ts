@@ -25,7 +25,7 @@ test("a real tutor chat meters tokens + the user message into usage_by_code", {
   // One real round-trip so a MODEL_GENERATION span fires and the run completes.
   await page.goto(`/${code}`);
   const composer = page.getByTestId("copilot-chat-textarea");
-  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await expect(composer).toBeVisible();
   await composer.fill("Hi!");
   await page.getByTestId("copilot-send-button").click();
   const assistant = page.getByTestId("copilot-assistant-message");

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { type Fetcher, resolveFragmentUrl } from "@/lib/prompt-fragments";
 import { loadAndBuildTutorPrompt } from "./load";
 import {
@@ -22,6 +22,15 @@ describe("loadAndBuildTutorPrompt — happy path", () => {
     }
   });
 
+  it("applies the defaults for omitted reasoning, imageInput, anonymous and tools", async () => {
+    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
+    assert(result.ok);
+    expect(result.reasoning).toBeUndefined();
+    expect(result.imageInput).toBe(true);
+    expect(result.anonymous).toBe(true);
+    expect(result.tools).toEqual([]);
+  });
+
   it("only fetches the tutor URL and its declared fragment files", async () => {
     const seen: string[] = [];
     const base = fixtureFetcher();
@@ -41,12 +50,6 @@ describe("loadAndBuildTutorPrompt — reasoning level", () => {
   // exercise the field without a second fixture.
   const withReasoning = (value: string) =>
     TUTOR_YAML.replace("  model: test-model", `  model: test-model\n  reasoning: ${value}`);
-
-  it("leaves reasoning undefined when the tutor omits llm.reasoning", async () => {
-    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.reasoning).toBeUndefined();
-  });
 
   it("surfaces an explicit level from the tutor's llm block", async () => {
     const overrides = new Map([[TUTOR_URL, fixtureResponse(withReasoning("high"))]]);
@@ -69,12 +72,6 @@ describe("loadAndBuildTutorPrompt — image input flag", () => {
   const withImageInput = (value: string) =>
     TUTOR_YAML.replace("  model: test-model", `  model: test-model\n  imageInput: ${value}`);
 
-  it("defaults imageInput to true when the tutor omits llm.imageInput", async () => {
-    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.imageInput).toBe(true);
-  });
-
   it("surfaces an explicit imageInput: false opt-out from the tutor's llm block", async () => {
     const overrides = new Map([[TUTOR_URL, fixtureResponse(withImageInput("false"))]]);
     const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher(overrides));
@@ -94,12 +91,6 @@ describe("loadAndBuildTutorPrompt — anonymous flag", () => {
   // The tutor declares no `anonymous`; these variants prepend the top-level field
   // to exercise the flag without a second fixture.
   const withAnonymous = (value: string) => `anonymous: ${value}\n${TUTOR_YAML}`;
-
-  it("defaults anonymous to true when the tutor omits it", async () => {
-    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.anonymous).toBe(true);
-  });
 
   it("surfaces an explicit anonymous: false opt-in to chat attribution", async () => {
     const overrides = new Map([[TUTOR_URL, fixtureResponse(withAnonymous("false"))]]);
@@ -126,12 +117,6 @@ describe("loadAndBuildTutorPrompt — anonymous flag", () => {
 describe("loadAndBuildTutorPrompt — tools opt-in", () => {
   // The fixture declares no `tools:`; these variants prepend the top-level field.
   const withTools = (yamlList: string) => `tools:${yamlList}\n${TUTOR_YAML}`;
-
-  it("normalizes an omitted tools field to an empty selection", async () => {
-    const result = await loadAndBuildTutorPrompt(TUTOR_URL, fixtureFetcher());
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.tools).toEqual([]);
-  });
 
   it("surfaces an explicit random_number opt-in", async () => {
     const overrides = new Map([[TUTOR_URL, fixtureResponse(withTools("\n  - random_number"))]]);
@@ -341,7 +326,7 @@ describe("loadAndBuildTutorPrompt — failures", () => {
     }
   });
 
-  it("collects every failing fragment file (parallel, not short-circuited)", async () => {
+  it("reports every failing fragment file, not just the first", async () => {
     const overrides = new Map([
       [LIB_A_URL, fixtureResponse("", { ok: false, status: 500 })],
       [LIB_B_URL, fixtureResponse("", { ok: false, status: 503 })],

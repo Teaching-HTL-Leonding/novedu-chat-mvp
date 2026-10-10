@@ -12,8 +12,7 @@ import { registerCodes } from "./codes";
 // the whoami tests.
 //
 // `codes sync` additionally READS AND WRITES FILES (registry in, lock out), so
-// its cases run in a per-test temp directory — the only CLI unit tests that
-// touch the filesystem; keep that pattern inside this file.
+// its cases run in a per-test temp directory.
 
 vi.mock("../auth", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../auth")>();
@@ -39,6 +38,7 @@ let log: ReturnType<typeof vi.spyOn>;
 let error: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
+  fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   log = vi.spyOn(console, "log").mockImplementation(() => {});
   error = vi.spyOn(console, "error").mockImplementation(() => {});

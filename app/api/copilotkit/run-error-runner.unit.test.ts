@@ -6,7 +6,7 @@ import type {
   AgentRunnerRunRequest,
 } from "@copilotkit/runtime/v2";
 import { firstValueFrom, type Observable, of, throwError, toArray } from "rxjs";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { RunErrorReportingRunner } from "./run-error-runner";
 
 // The seam that makes a failed chat turn visible at all: the model call lives
@@ -41,10 +41,6 @@ function failedTurn(message: string, code?: string): BaseEvent[] {
     { type: EventType.RUN_ERROR, message, ...(code ? { code } : {}) },
   ] as unknown as BaseEvent[];
 }
-
-beforeEach(() => {
-  recordError.mockClear();
-});
 
 describe("RunErrorReportingRunner", () => {
   it("reports an in-band RUN_ERROR with the module that produced it", async () => {

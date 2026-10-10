@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // The cookie-session byte route. Pins the gate order (session → id shape → active
 // row → object), the shared authenticated-asset policy (a STUDENT session is
 // enough; no code or thread token is consulted), the status matrix, the six
-// response headers, and that a conditional request still pays for the session
-// and row checks. The session, the store and the adapter are mocked.
+// response headers (the hardening ones on every failure too), and that a
+// conditional request still pays for the session and row checks. The session,
+// the store and the adapter are mocked.
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -55,6 +56,13 @@ function get(id = ID, headers: HeadersInit = {}) {
   });
 }
 
+// Every failure response carries the same hardening headers as a success.
+function expectFailureHeaders(res: Response) {
+  expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(res.headers.get("content-security-policy")).toBe("sandbox; default-src 'none'");
+  expect(res.headers.get("cache-control")).toBe("no-store");
+}
+
 beforeEach(() => {
   mocks.getSession.mockResolvedValue(session(false));
   mocks.getActiveImageById.mockResolvedValue(row());
@@ -70,6 +78,7 @@ describe("GET /api/image-content/<id> — access", () => {
     mocks.getSession.mockResolvedValue(null);
     const res = await get();
     expect(res.status).toBe(401);
+    expectFailureHeaders(res);
     expect(await res.json()).toEqual({ message: "Unauthorized" });
     expect(mocks.getActiveImageById).not.toHaveBeenCalled();
     expect(mocks.openObject).not.toHaveBeenCalled();
@@ -79,6 +88,7 @@ describe("GET /api/image-content/<id> — access", () => {
     mocks.getSession.mockRejectedValue(new Error("auth db down"));
     const res = await get();
     expect(res.status).toBe(503);
+    expectFailureHeaders(res);
     expect(mocks.getActiveImageById).not.toHaveBeenCalled();
   });
 
@@ -100,6 +110,7 @@ describe("GET /api/image-content/<id> — lookup", () => {
     for (const bad of ["not-a-uuid", "..%2Fetc%2Fpasswd", `${ID}x`]) {
       const res = await get(bad);
       expect(res.status).toBe(404);
+      expectFailureHeaders(res);
     }
     expect(mocks.getActiveImageById).not.toHaveBeenCalled();
   });
@@ -108,6 +119,7 @@ describe("GET /api/image-content/<id> — lookup", () => {
     mocks.getActiveImageById.mockResolvedValue(null);
     const res = await get();
     expect(res.status).toBe(404);
+    expectFailureHeaders(res);
     expect(mocks.openObject).not.toHaveBeenCalled();
   });
 
@@ -115,12 +127,14 @@ describe("GET /api/image-content/<id> — lookup", () => {
     mocks.getActiveImageById.mockResolvedValue(null);
     const res = await get(ID, { "if-none-match": `"${ID}"` });
     expect(res.status).toBe(404);
+    expectFailureHeaders(res);
   });
 
   it("503s when the store is unreachable", async () => {
     mocks.getActiveImageById.mockResolvedValue(undefined);
     const res = await get();
     expect(res.status).toBe(503);
+    expectFailureHeaders(res);
     expect(mocks.openObject).not.toHaveBeenCalled();
   });
 
@@ -128,6 +142,7 @@ describe("GET /api/image-content/<id> — lookup", () => {
     mocks.openObject.mockResolvedValue({ ok: true, missing: true });
     const res = await get();
     expect(res.status).toBe(404);
+    expectFailureHeaders(res);
   });
 
   it("503s when the storage root is unavailable", async () => {
@@ -138,6 +153,7 @@ describe("GET /api/image-content/<id> — lookup", () => {
     });
     const res = await get();
     expect(res.status).toBe(503);
+    expectFailureHeaders(res);
   });
 });
 
@@ -181,14 +197,6 @@ describe("GET /api/image-content/<id> — response", () => {
     const res = await get(ID, { "if-none-match": '"some-other-id"' });
     expect(res.status).toBe(200);
     expect(mocks.openObject).toHaveBeenCalled();
-  });
-
-  it("carries the security headers and no-store on every failure", async () => {
-    mocks.getSession.mockResolvedValue(null);
-    const res = await get();
-    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(res.headers.get("content-security-policy")).toBe("sandbox; default-src 'none'");
-    expect(res.headers.get("cache-control")).toBe("no-store");
   });
 });
 

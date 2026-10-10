@@ -17,13 +17,7 @@ vi.mock("@/lib/home-data", async (importOriginal) => ({
   getStudentHome: mocks.getStudentHome,
 }));
 vi.mock("@/lib/achievement-actions", () => ({ markAchievementsSeen: mocks.markAchievementsSeen }));
-vi.mock("next/link", () => ({
-  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 import type { Grant } from "@/lib/achievements/evaluate";
 import type { CodeDay, TeacherCode, TeacherFacts } from "@/lib/achievements/teacher";

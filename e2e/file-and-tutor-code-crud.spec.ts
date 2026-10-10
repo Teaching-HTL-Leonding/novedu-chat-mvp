@@ -2,6 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { unixSecondsToDatetimeLocal } from "../lib/datetime-local";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { VALID_CODING_URL, VALID_TUTOR_URL } from "./code.utils";
+import { setEditorContent } from "./page.utils";
 
 // @live end-to-end CRUD over BOTH a hosted YAML file and a tutor link ("tutor
 // code"), as a teacher, against the real database (the dev server authenticates
@@ -11,8 +12,6 @@ import { VALID_CODING_URL, VALID_TUTOR_URL } from "./code.utils";
 // Covers the DB-side filtering (Apply → ?q=) on both list pages.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
-// Dev compilation of the routes + fixture fetch of the tutor YAML + DB round-trips.
-test.setTimeout(120_000);
 
 const FRAGMENT_V1 = `id: e2e_crud_fragments
 fragments:
@@ -27,16 +26,6 @@ fragments:
     content: "Hello from version two"
 `;
 
-// Replace the CodeMirror document with `text` (insertText pastes verbatim so YAML
-// indentation survives).
-async function setEditorContent(page: Page, text: string): Promise<void> {
-  const content = page.locator(".cm-content");
-  await content.click();
-  await page.keyboard.press("ControlOrMeta+a");
-  await page.keyboard.press("Delete");
-  await page.keyboard.insertText(text);
-}
-
 async function applyFilter(page: Page, label: string, term: string): Promise<void> {
   await page.getByLabel(label).fill(term);
   await page.getByRole("button", { name: "Apply" }).click();
@@ -44,7 +33,7 @@ async function applyFilter(page: Page, label: string, term: string): Promise<voi
 
 // Remove a single list row via the shared "Delete Selected" multi-delete — the only
 // delete affordance the codes/files/images lists expose (per-row delete lives on the
-// edit page now). Filters to the row, ticks it, confirms. The filter term doubles as
+// edit page). Filters to the row, ticks it, confirms. The filter term doubles as
 // the checkbox's accessible-name suffix ("Select <term>").
 async function bulkDeleteRow(
   page: Page,
@@ -54,49 +43,11 @@ async function bulkDeleteRow(
 ): Promise<void> {
   await page.goto(listPath);
   await applyFilter(page, filterLabel, term);
-  if ((await page.getByRole("row").filter({ hasText: term }).count()) === 0) return;
   await page.getByRole("checkbox", { name: `Select ${term}` }).check();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: /Delete .*selected/i }).click();
   await expect(page.getByRole("row").filter({ hasText: term })).toHaveCount(0);
 }
-
-// Best-effort cleanup so a mid-test failure does not leave strays in the shared
-// dev database (the file's filtered-unique index would otherwise reject a re-run).
-let createdFileName: string | null = null;
-let createdCodeLabel: string | null = null;
-// Extra files the multi-delete test creates; tidied here too so a mid-test failure
-// still leaves no strays.
-const createdFileNames: string[] = [];
-
-test.afterEach(async ({ page }) => {
-  if (createdFileName) {
-    const name = createdFileName;
-    createdFileName = null;
-    try {
-      await bulkDeleteRow(page, "/files", "Filter files", name);
-    } catch {
-      // best-effort
-    }
-  }
-  while (createdFileNames.length > 0) {
-    const name = createdFileNames.pop() as string;
-    try {
-      await bulkDeleteRow(page, "/files", "Filter files", name);
-    } catch {
-      // best-effort
-    }
-  }
-  if (createdCodeLabel) {
-    const label = createdCodeLabel;
-    createdCodeLabel = null;
-    try {
-      await bulkDeleteRow(page, "/codes", "Filter codes", label);
-    } catch {
-      // best-effort
-    }
-  }
-});
 
 test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   tag: ["@live", "@live-db"],
@@ -110,9 +61,8 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await page.getByLabel(/Name/).fill(fileName);
   await page.getByLabel("Kind").selectOption("fragment");
   await setEditorContent(page, FRAGMENT_V1);
-  createdFileName = fileName;
   await page.getByRole("button", { name: "Validate & create" }).click();
-  await expect(page).toHaveURL(new RegExp(`/files/edit/${fileName}$`), { timeout: 30_000 });
+  await expect(page).toHaveURL(new RegExp(`/files/edit/${fileName}$`));
 
   // FILE — read: it is in the list and filterable IN THE DB (Apply → ?q=).
   await page.goto("/files");
@@ -136,13 +86,12 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await expect(page.locator(".cm-content")).toContainText("Hello from version one");
   await setEditorContent(page, FRAGMENT_V2);
   await page.getByRole("button", { name: "Validate & save" }).click();
-  await expect(page.getByText("Saved")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Saved")).toBeVisible();
   const fileRes = await page.request.get(fileUrl);
   expect(await fileRes.text()).toContain("Hello from version two");
 
-  // FILE — delete (via the list's "Delete Selected" — the only delete path now).
+  // FILE — delete (via the list's "Delete Selected" — the only list delete path).
   await bulkDeleteRow(page, "/files", "Filter files", fileName);
-  createdFileName = null;
   expect((await page.request.get(fileUrl)).status()).toBe(404);
 
   // =========================================================================
@@ -158,13 +107,12 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   // The LLM override: the preset button fills both free-text fields at once.
   await page.getByRole("button", { name: "SCCH · Gemma 4" }).click();
   await expect(page.getByLabel(/LLM provider override/)).toHaveValue("SCCH");
-  createdCodeLabel = note;
   await page.getByRole("button", { name: "Create code" }).click();
 
   // Lands on the new code's edit page, which shows the shareable chat URL.
   await expect(page).toHaveURL(/\/codes\/edit\/[a-z0-9]{10}$/, { timeout: 60_000 });
   const link = page.getByLabel("Share link", { exact: true });
-  await expect(link).toBeVisible({ timeout: 30_000 });
+  await expect(link).toBeVisible();
   const linkValue = await link.inputValue();
   expect(linkValue).toMatch(/^http:\/\/localhost:3000\/[a-z0-9]{10}$/);
 
@@ -184,7 +132,7 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await page.goto(`/codes/${codeId}`);
   await expect(
     page.getByText(/a conversation counts once a student sends at least one message/i),
-  ).toBeVisible({ timeout: 30_000 });
+  ).toBeVisible();
   await expect(page.getByText(/Stats temporarily unavailable/i)).toHaveCount(0);
   // The detail chrome surfaces the code's LLM override.
   await expect(page.getByText(/LLM override:/)).toBeVisible();
@@ -196,9 +144,8 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   const editedNote = `${note} edited`;
   await page.getByLabel(/Note/).fill(editedNote);
   await page.getByRole("button", { name: "Clear LLM override" }).click();
-  createdCodeLabel = editedNote;
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByText("Saved")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Saved")).toBeVisible();
 
   // The cleared override is gone from the form and the detail chrome.
   await page.reload();
@@ -226,10 +173,7 @@ test("CRUD on a hosted file and a tutor link, with DB-side filtering", {
   await page.getByRole("checkbox", { name: `Select ${editedNote}` }).check();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: /Delete .*selected/i }).click();
-  await expect(page.getByRole("row").filter({ hasText: editedNote })).toHaveCount(0, {
-    timeout: 30_000,
-  });
-  createdCodeLabel = null;
+  await expect(page.getByRole("row").filter({ hasText: editedNote })).toHaveCount(0);
 });
 
 // CODING CODE — creating a CODING code lands on the same edit screen as any other
@@ -246,24 +190,21 @@ test("creating a coding code shows the share link like every other module", {
   await page.getByLabel("Activity", { exact: true }).selectOption("coding");
   await page.getByLabel("Activity YAML URL").fill(VALID_CODING_URL);
   await page.getByLabel(/Note/).fill(note);
-  createdCodeLabel = note;
   await page.getByRole("button", { name: "Create code" }).click();
 
   // Lands on the new code's edit screen.
   await expect(page).toHaveURL(/\/codes\/edit\/[a-z0-9]{10}$/, { timeout: 60_000 });
 
   // The share-link box is shown, exactly like tutor/quiz/writing…
-  await expect(page.getByLabel("Share link", { exact: true })).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page.getByLabel("Share link", { exact: true })).toBeVisible();
   // …and the little-coder connection config is NOT — that lives on the student page
   // and the teacher detail page, keyed to the visitor's personal key.
   await expect(page.getByRole("button", { name: "Copy models.json" })).toHaveCount(0);
 });
 
 // The shared multi-delete layer end-to-end: tick several rows and remove them all
-// in ONE "Delete Selected" action (the same store delete each row's trash button
-// runs). Files only — no LLM — so it runs in CI against the SQL container.
+// in ONE "Delete Selected" action. Files only — no LLM — so it runs in CI against
+// the SQL container.
 test("the files list pages, sorts and multi-deletes — all DB-side", {
   tag: ["@live", "@live-db"],
 }, async ({ page }) => {
@@ -279,9 +220,8 @@ test("the files list pages, sorts and multi-deletes — all DB-side", {
     await page.getByLabel(/Name/).fill(name);
     await page.getByLabel("Kind").selectOption("fragment");
     await setEditorContent(page, fragmentYaml(`e2e_multi_${stamp}_${i}`));
-    createdFileNames.push(name);
     await page.getByRole("button", { name: "Validate & create" }).click();
-    await expect(page).toHaveURL(new RegExp(`/files/edit/${name}$`), { timeout: 30_000 });
+    await expect(page).toHaveURL(new RegExp(`/files/edit/${name}$`));
   }
 
   // Both are listed under the shared prefix.
@@ -373,11 +313,8 @@ test("the files list pages, sorts and multi-deletes — all DB-side", {
 
   // Both rows are gone and neither file is served any more.
   for (const name of names) {
-    await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0, {
-      timeout: 30_000,
-    });
+    await expect(page.getByRole("row").filter({ hasText: name })).toHaveCount(0);
     expect((await page.request.get(`/api/files/${name}`)).status()).toBe(404);
   }
   expect(dialogMessage).toContain("2 files");
-  createdFileNames.length = 0; // all deleted; nothing for afterEach to tidy
 });

@@ -22,6 +22,7 @@ vi.mock("@/lib/image-service", () => ({
 vi.mock("@/lib/image-store", () => ({ softDeleteImages: mocks.softDeleteImages }));
 vi.mock("next/cache", () => ({ revalidatePath: mocks.revalidatePath }));
 
+import * as actions from "@/lib/images-actions";
 import { deleteSelectedImagesAction, uploadImage } from "@/lib/images-actions";
 
 // 5 MB ceiling the action enforces (matches MAX_IMAGE_BYTES in the service).
@@ -123,6 +124,24 @@ describe("uploadImage — form parsing", () => {
   });
 });
 
+// Every export of the "use server" module is a web-reachable endpoint, so a new
+// export without the teacher gate must fail here. Each gate runs before its
+// arguments are read, so the actions are called without any.
+describe("teacher gate on every exported action", () => {
+  it("refuses a non-teacher and touches no service or store", async () => {
+    mocks.requireTeacherUserId.mockResolvedValue({ ok: false });
+    const exported = Object.values(actions);
+    expect(exported.length).toBeGreaterThan(0);
+    for (const action of exported) {
+      expect(await (action as () => Promise<unknown>)()).toMatchObject({ ok: false });
+    }
+    expect(mocks.requireTeacherUserId).toHaveBeenCalledTimes(exported.length);
+    expect(mocks.createImageForUser).not.toHaveBeenCalled();
+    expect(mocks.softDeleteImages).not.toHaveBeenCalled();
+    expect(mocks.revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
 describe("uploadImage — forwarding and result", () => {
   it("forwards the exact name, mime, credit and file to the service and revalidates", async () => {
     const file = pngFile(8);
@@ -167,7 +186,10 @@ describe("uploadImage — forwarding and result", () => {
       message: "Image storage is unavailable right now. Try again later.",
     });
     const result = await uploadImage(uploadForm());
-    expect(result).toMatchObject({ ok: false, error: /storage is unavailable/ });
+    expect(result).toEqual({
+      ok: false,
+      error: "Image storage is unavailable right now. Try again later.",
+    });
   });
 });
 

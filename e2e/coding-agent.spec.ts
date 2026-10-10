@@ -1,12 +1,6 @@
 import { loadEnvConfig } from "@next/env";
 import { expect, test } from "@playwright/test";
-import {
-  deleteCode,
-  deleteCodingKeysByCode,
-  LIVE_CODING_URL,
-  mintCode,
-  mintCodingKey,
-} from "./code.utils";
+import { LIVE_CODING_URL, mintCode, mintCodingKey } from "./code.utils";
 import { fetchServedModel, type PiAgentResult, runPiAgent } from "./pi-agent.utils";
 
 // A REAL external coding agent (pi, the engine under little-coder) talking to
@@ -41,28 +35,6 @@ import { fetchServedModel, type PiAgentResult, runPiAgent } from "./pi-agent.uti
 // (AZURE_FOUNDRY_ENDPOINT / OPENROUTER_API_KEY) mirror exactly what the server sees.
 loadEnvConfig(process.cwd());
 
-// A full pi round-trip (fixture fetch + Next compile + the model) — give it room.
-test.setTimeout(120_000);
-
-// Best-effort cleanup: `deleteCode` drops only the code row, so the minted KEY
-// rows are removed explicitly (a raw code delete does NOT cascade to
-// `novedu_coding_keys` the way the app's own delete transaction does). Cleaned
-// even on a mid-test failure so no live credential leaks into the shared dev
-// database.
-let mintedCode: string | null = null;
-
-test.afterEach(async () => {
-  if (!mintedCode) return;
-  const code = mintedCode;
-  mintedCode = null;
-  try {
-    await deleteCodingKeysByCode(code);
-    await deleteCode(code);
-  } catch {
-    // best-effort
-  }
-});
-
 // On a failed run the report must show WHY (a 401 from a bad mint, a 403
 // window, a 502 fixture fetch, a provider error) — attach pi's full output.
 async function attachPiOutput(result: PiAgentResult): Promise<void> {
@@ -86,7 +58,6 @@ test("pi gets a non-empty reply through the coding proxy", {
     file: LIVE_CODING_URL,
     note: "e2e pi agent (SCCH)",
   });
-  mintedCode = code;
   const apiKey = await mintCodingKey({ code });
 
   const result = await runPiAgent({ apiKey, prompt: "Reply with exactly one word." });
@@ -118,7 +89,6 @@ test.describe("via Azure Foundry", () => {
       llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" },
       note: "e2e pi agent (Foundry)",
     });
-    mintedCode = code;
     const apiKey = await mintCodingKey({ code });
 
     const result = await runPiAgent({ apiKey, prompt: "Reply with exactly one word." });
@@ -152,7 +122,6 @@ test.describe("via OpenRouter", () => {
       llm: { provider: "OpenRouter", model: "z-ai/glm-5.3-flash" },
       note: "e2e pi agent (OpenRouter)",
     });
-    mintedCode = code;
     const apiKey = await mintCodingKey({ code });
 
     const result = await runPiAgent({ apiKey, prompt: "Reply with exactly one word." });

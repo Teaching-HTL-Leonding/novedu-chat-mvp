@@ -1,7 +1,7 @@
 import { context, TraceFlags, trace } from "@opentelemetry/api";
 import { logs } from "@opentelemetry/api-logs";
 import { logs as sdkLogs, node as sdkNode } from "@opentelemetry/sdk-node";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Both initializer boundaries are mocked; the facade's own logic (selection,
 // idempotency, failure caching, log hygiene) is what is under test. The event
@@ -119,7 +119,7 @@ describe("initTelemetry failure", () => {
   it("a failed OTLP start leaves telemetry off, never falls back to Azure, and redacts the endpoint", async () => {
     vi.stubEnv("OTEL_EXPORTER_OTLP_ENDPOINT", OTLP);
     vi.stubEnv("APPLICATIONINSIGHTS_CONNECTION_STRING", AZURE);
-    mocks.startOtlpSdk.mockImplementation(() => {
+    mocks.startOtlpSdk.mockImplementationOnce(() => {
       throw new Error(`cannot reach ${OTLP} (${AZURE})`);
     });
     const { initTelemetry } = await freshFacade();
@@ -136,9 +136,9 @@ describe("initTelemetry failure", () => {
     expect(log).not.toHaveBeenCalled();
   });
 
-  it("a rejected dynamic import is handled the same way", async () => {
+  it("a non-Error throw from the Azure start is logged and leaves telemetry off", async () => {
     vi.stubEnv("APPLICATIONINSIGHTS_CONNECTION_STRING", AZURE);
-    mocks.startAzureMonitor.mockImplementation(() => {
+    mocks.startAzureMonitor.mockImplementationOnce(() => {
       throw "not an Error instance";
     });
     const { initTelemetry } = await freshFacade();
@@ -185,44 +185,73 @@ describe("emitEvent record shape", () => {
 });
 
 describe("recordError sampling", () => {
-  it("exports a root exception span even when the ambient request span was dropped", async () => {
-    const exporter = new sdkNode.InMemorySpanExporter();
-    const provider = new sdkNode.NodeTracerProvider({
+  let exporter: InstanceType<typeof sdkNode.InMemorySpanExporter>;
+  let provider: InstanceType<typeof sdkNode.NodeTracerProvider>;
+
+  beforeEach(() => {
+    exporter = new sdkNode.InMemorySpanExporter();
+    provider = new sdkNode.NodeTracerProvider({
       sampler: new sdkNode.ParentBasedSampler({ root: new sdkNode.AlwaysOnSampler() }),
       spanProcessors: [new sdkNode.SimpleSpanProcessor(exporter)],
     });
     provider.register();
-    try {
-      const { recordError } = await freshFacade();
-      // A parent context whose span was NOT sampled — what an errored route's
-      // request span looks like to a child.
-      const dropped = trace.setSpanContext(context.active(), {
-        traceId: "0af7651916cd43dd8448eb211c80319c",
-        spanId: "b7ad6b7169203331",
-        traceFlags: TraceFlags.NONE,
-        isRemote: false,
-      });
-      context.with(dropped, () => {
-        // Control: an ordinary child inherits the dropped decision and never exports.
-        trace.getTracer("control").startSpan("child").end();
-        recordError(new Error("boom"), { path: "/x", routeType: "route" });
-        recordError({ not: "an error" });
-      });
+  });
 
-      const spans = exporter.getFinishedSpans();
-      expect(spans.map((s) => s.name)).toEqual(["exception", "exception"]);
-      const [first, second] = spans as [(typeof spans)[number], (typeof spans)[number]];
-      expect(first.parentSpanContext).toBeUndefined();
-      expect(first.spanContext().traceId).not.toBe("0af7651916cd43dd8448eb211c80319c");
-      expect(first.status.code).toBe(2); // SpanStatusCode.ERROR
-      expect(first.status.message).toBe("boom");
-      expect(first.attributes).toEqual({ path: "/x", routeType: "route" });
-      expect(first.events.map((e) => e.name)).toEqual(["exception"]);
-      expect(first.events[0]?.attributes?.["exception.message"]).toBe("boom");
-      expect(second.status.message).toBe("[object Object]");
-    } finally {
-      await provider.shutdown();
-      trace.disable();
-    }
+  afterEach(async () => {
+    await provider.shutdown();
+    trace.disable();
+  });
+
+  it("exports a root exception span even when the ambient request span was dropped", async () => {
+    const { recordError } = await freshFacade();
+    // A parent context whose span was NOT sampled — what an errored route's
+    // request span looks like to a child.
+    const dropped = trace.setSpanContext(context.active(), {
+      traceId: "0af7651916cd43dd8448eb211c80319c",
+      spanId: "b7ad6b7169203331",
+      traceFlags: TraceFlags.NONE,
+      isRemote: false,
+    });
+    context.with(dropped, () => {
+      // Control: an ordinary child inherits the dropped decision and never exports.
+      trace.getTracer("control").startSpan("child").end();
+      recordError(new Error("boom"), { path: "/x", routeType: "route" });
+      recordError({ not: "an error" });
+    });
+
+    const spans = exporter.getFinishedSpans();
+    expect(spans.map((s) => s.name)).toEqual(["exception", "exception"]);
+    const [first, second] = spans as [(typeof spans)[number], (typeof spans)[number]];
+    expect(first.parentSpanContext).toBeUndefined();
+    expect(first.spanContext().traceId).not.toBe("0af7651916cd43dd8448eb211c80319c");
+    expect(first.status.code).toBe(2); // SpanStatusCode.ERROR
+    expect(first.status.message).toBe("boom");
+    expect(first.attributes).toEqual({ path: "/x", routeType: "route" });
+    expect(first.events.map((e) => e.name)).toEqual(["exception"]);
+    expect(first.events[0]?.attributes?.["exception.message"]).toBe("boom");
+    expect(second.status.message).toBe("[message withheld]");
+  });
+
+  it("withholds the message of a foreign error and a non-Error throw, keeping type and frames", async () => {
+    const { recordError } = await freshFacade();
+    // The second message line mimics a stack frame, so only skipping past the
+    // whole message keeps it out of the exported frames.
+    recordError(new TypeError("Failed query: select $1\n    at Hauptstrasse 5"));
+    recordError("student wrote Hauptstrasse 5");
+    recordError(new Error("Jev pre-check failed"));
+
+    const [foreign, thrown, plain] = exporter.getFinishedSpans();
+    assert(foreign && thrown && plain, "expected three exception spans");
+    expect(JSON.stringify([foreign, thrown].map((s) => [s.events, s.status]))).not.toContain(
+      "Hauptstrasse",
+    );
+    const foreignEvent = foreign.events[0]?.attributes;
+    expect(foreignEvent?.["exception.type"]).toBe("TypeError");
+    expect(foreignEvent?.["exception.message"]).toBe("[message withheld]");
+    expect(foreignEvent?.["exception.stacktrace"]).toMatch(/^ {4}at /);
+    expect(foreign.status.message).toBe("[message withheld]");
+    expect(thrown.events[0]?.attributes?.["exception.type"]).toBe("string");
+    expect(plain.events[0]?.attributes?.["exception.message"]).toBe("Jev pre-check failed");
+    expect(plain.status.message).toBe("Jev pre-check failed");
   });
 });

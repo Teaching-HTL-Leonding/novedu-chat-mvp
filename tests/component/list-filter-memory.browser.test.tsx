@@ -7,16 +7,7 @@ import { render } from "vitest-browser-react";
 // these tests pin the two halves and the fact that nothing else is touched.
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/files" }));
-// next/link reads Next-server globals that don't exist in the browser test
-// runner — a plain anchor preserves exactly what these tests assert (the href).
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 import { BackLink } from "@/components/back-link";
 import { listFilterKey, rememberedListHref } from "@/components/list-filter-memory";

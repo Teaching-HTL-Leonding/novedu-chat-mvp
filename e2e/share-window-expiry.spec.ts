@@ -6,9 +6,6 @@ import { mintTutorCode } from "./code.utils";
 // survive — the student may still want to read or copy the conversation. Only
 // a reload shows the full-page "Code expired" explanation.
 
-// Page load + waiting out the window + the failed send.
-test.setTimeout(90_000);
-
 // @live: minting the code and every chat request need the live database.
 test("when the window closes mid-session the chat stays on screen", {
   tag: ["@live", "@live-db"],
@@ -21,19 +18,24 @@ test("when the window closes mid-session the chat stays on screen", {
   await page.goto(`/${code}`);
 
   const composer = page.getByTestId("copilot-chat-textarea");
-  await expect(composer).toBeVisible({ timeout: 30_000 });
+  await expect(composer).toBeVisible();
 
   // Wait until the window is definitely over.
   const remaining = end * 1000 - Date.now() + 1500;
   if (remaining > 0) await page.waitForTimeout(remaining);
 
   // Sending now hits the backend's per-request check → 403.
+  const rejectedRun = page.waitForResponse(
+    (res) => res.request().method() === "POST" && res.url().includes("/agent/tutor/run"),
+  );
   await composer.fill("Can I still ask?");
   await page.getByTestId("copilot-send-button").click();
+  expect((await rejectedRun).status()).toBe(403);
+  // Let the client finish reacting to the rejection (the run's streaming flag drops).
+  await expect(page.getByTestId("copilot-chat")).toHaveAttribute("data-copilot-running", "false");
 
   // The chat surface must NOT disappear: the transcript (with the student's
   // message) and the composer stay available for reading/copying.
-  await page.waitForTimeout(3000);
   await expect(page.getByTestId("copilot-user-message")).toContainText("Can I still ask?");
   await expect(composer).toBeVisible();
   // No full-page error replaced the chat (that only happens on reload).
@@ -55,7 +57,7 @@ test("an open-ended code (both bounds null) opens the chat", {
 
   // The code serves: the chat initializes and the composer appears (the runtime
   // route re-checks the code header server-side and accepts the null window).
-  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible();
   // Neither window bound rejected it — no full-page "not yet" / "expired" error.
   await expect(page.getByRole("heading", { name: "Not available yet" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Code expired" })).toHaveCount(0);

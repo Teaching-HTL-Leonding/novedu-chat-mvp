@@ -137,7 +137,7 @@ questions:
     if (!result.ok) expect(typeof result.message).toBe("string");
   });
 
-  it("accepts numeric and boolean scalar ids/titles (YAML types them by value)", () => {
+  it("accepts numeric scalar ids/titles (YAML types them by value)", () => {
     // A teacher writing the natural `- id: 1` must not lose the question: the
     // YAML parser hands `1` over as a number, which must still be a usable id.
     const result = parseQuiz(`

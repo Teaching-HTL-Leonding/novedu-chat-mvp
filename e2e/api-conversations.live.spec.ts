@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { mintSessionToken } from "./api-auth.utils";
-import { deleteCode, mintTutorCode, VALID_TUTOR_URL } from "./code.utils";
+import { mintTutorCode, VALID_TUTOR_URL } from "./code.utils";
 import { query } from "./db";
 
 // The conversation export route over REAL HTTP and the REAL SQL: the creator-only
@@ -11,30 +11,11 @@ import { query } from "./db";
 // URL goes in, only `{ mimeType, bytes }` comes out). Conversations are seeded
 // straight into the Mastra tables — no LLM involved, hence @live-db.
 
-test.setTimeout(120_000);
 test.use({ storageState: { cookies: [], origins: [] } });
 
 // A real 1×1 PNG; its base64 ends in "==" padding, so the byte math is exercised.
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
-
-let mintedCodes: string[] = [];
-let seededThreads: string[] = [];
-
-test.afterEach(async () => {
-  try {
-    if (seededThreads.length > 0) {
-      await query(`DELETE FROM mastra.mastra_messages WHERE thread_id = ANY($1)`, [seededThreads]);
-      await query(`DELETE FROM mastra.mastra_threads WHERE id = ANY($1)`, [seededThreads]);
-    }
-    for (const code of mintedCodes) await deleteCode(code);
-  } catch (error) {
-    console.error("api-conversations cleanup failed (best-effort)", error);
-  } finally {
-    mintedCodes = [];
-    seededThreads = [];
-  }
-});
 
 function iso(ms: number): string {
   return new Date(ms).toISOString();
@@ -48,7 +29,6 @@ async function seedThread(
   threadCreatedAt?: string,
 ) {
   const id = randomUUID();
-  seededThreads.push(id);
   const stamp = iso(at);
   await query(
     `INSERT INTO mastra.mastra_threads (id, "resourceId", title, "createdAt", "updatedAt", "createdAtZ", "updatedAtZ")
@@ -85,9 +65,7 @@ test("the creator walks every conversation page by page, photos as placeholders 
   });
   expect(created.status()).toBe(201);
   const code: string = (await created.json()).code;
-  mintedCodes.push(code);
   const foreign = await mintTutorCode({ note: `e2e export foreign ${Date.now()}` });
-  mintedCodes.push(foreign);
 
   const t0 = Date.now() - 60_000;
   const photoThread = await seedThread(code, t0, [
@@ -225,7 +203,6 @@ test("a conversation over the message cap exports only its last messages, marked
   });
   expect(created.status()).toBe(201);
   const code: string = (await created.json()).code;
-  mintedCodes.push(code);
 
   // 502 alternating user/assistant messages, one second apart, in one statement.
   const total = 502;

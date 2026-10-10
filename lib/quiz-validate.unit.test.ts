@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import { parse as parseYamlText } from "yaml";
 import type { Fetcher } from "@/lib/prompt-fragments";
 import { checkQuizValue, loadAndCheckQuiz } from "@/lib/quiz-validate";
@@ -151,7 +151,7 @@ questions:
   });
 
   it("rejects a quiz with no questions and no includes (QUIZ_NO_QUESTIONS)", () => {
-    // An empty `questions` passes the schema now (quiz_files may supply the pool);
+    // An empty `questions` passes the schema (quiz_files may supply the pool);
     // the resolved-pool check is what rejects a truly empty quiz.
     const result = check(`
 id: q
@@ -396,7 +396,7 @@ describe("loadAndCheckQuiz — fragments", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("a plain quiz (no fragments) is still valid and does no fetch", async () => {
+  it("a plain quiz (no fragments) is valid and fetches only the quiz itself", async () => {
     const plain = `
 id: q
 llm:
@@ -406,38 +406,26 @@ questions:
     question: "Q?"
     evaluation: "grade"
 `;
-    // Fetcher that throws if asked for anything but the quiz proves no library fetch happens.
-    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: plain }));
+    const fetcher = vi.fn(fetcherMap({ [URL_]: plain }));
+    const result = await loadAndCheckQuiz(URL_, fetcher);
     expect(result.ok).toBe(true);
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([URL_]);
   });
 
-  it("FRAGMENT_NOT_FOUND for a reference to a missing fragment id", async () => {
-    const quiz = quizWithFragments('  {{fragment "lib.nope"}}');
+  it.each([
+    ["FRAGMENT_NOT_FOUND", "a missing fragment id", '{{fragment "lib.nope"}}'],
+    ["UNKNOWN_FRAGMENT_FILE_ALIAS", "an undeclared file alias", '{{fragment "other.safety"}}'],
+    ["MISSING_REQUIRED_VARIABLE", "a required variable left out", '{{fragment "lib.lang"}}'],
+    [
+      "VARIABLE_TYPE_MISMATCH",
+      "a variable of the wrong type",
+      '{{fragment "lib.lang" language=(array "not" "a" "string")}}',
+    ],
+  ])("%s for %s", async (code, _label, marker) => {
+    const quiz = quizWithFragments(`  ${marker}`);
     const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("FRAGMENT_NOT_FOUND");
-  });
-
-  it("UNKNOWN_FRAGMENT_FILE_ALIAS for a reference to an undeclared file alias", async () => {
-    const quiz = quizWithFragments('  {{fragment "other.safety"}}');
-    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
-    expect(result.ok).toBe(false);
-    if (!result.ok)
-      expect(result.errors.map((e) => e.code)).toContain("UNKNOWN_FRAGMENT_FILE_ALIAS");
-  });
-
-  it("MISSING_REQUIRED_VARIABLE when a required fragment variable is not supplied", async () => {
-    const quiz = quizWithFragments('  {{fragment "lib.lang"}}');
-    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("MISSING_REQUIRED_VARIABLE");
-  });
-
-  it("VARIABLE_TYPE_MISMATCH when a fragment variable has the wrong type", async () => {
-    const quiz = quizWithFragments('  {{fragment "lib.lang" language=(array "not" "a" "string")}}');
-    const result = await loadAndCheckQuiz(URL_, fetcherMap({ [URL_]: quiz, [LIB_URL]: LIB_YAML }));
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors.map((e) => e.code)).toContain("VARIABLE_TYPE_MISMATCH");
+    assert(!result.ok);
+    expect(result.errors.map((e) => e.code)).toContain(code);
   });
 
   it("still catches duplicate question ids alongside a valid fragment block", async () => {

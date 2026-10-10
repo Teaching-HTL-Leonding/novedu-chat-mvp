@@ -53,7 +53,8 @@ an SDK and never selects a backend:
   redacts both destination values) and **never falls back** to the other backend.
 - **`recordError(error, attrs?)`** — records a caught error as an exception span
   (App Insights `AppExceptions`; an `exception` span with an exception event on
-  any other receiver). Safe when telemetry is off.
+  any other receiver). Safe when telemetry is off. What it withholds, and why:
+  see the privacy bullet below.
 - **`emitEvent(name, attrs?)`** — a **content-free** feature-usage event through
   the OpenTelemetry logs API. The name travels three ways at once: as the log
   body (so a plain receiver such as Aspire displays it), as the record's
@@ -248,9 +249,17 @@ backend. What holds this:
   detector set above).
 - The **one seam where content could leak is `emitEvent()` / `recordError()`** —
   so pass them only metadata: identifiers, names, counts, booleans. Never a
-  message, a prompt, or user-entered text. `recordError()` records the error's
-  own message/stack (keep thrown errors free of user content for the same
-  reason). `onRequestError` passes only `path` and `routeType`.
+  message, a prompt, or user-entered text. `recordError()` keeps the message of
+  a PLAIN `Error` only (prototype exactly `Error.prototype`, an identity check
+  that holds in a minified build) — ours or a dependency's, so keep the
+  messages you throw static or identifier-only. It withholds the message of
+  every subclass (a Drizzle/`pg` query error, an ai-sdk or provider error, a
+  `TypeError`) and of any non-Error throw, whose text can embed SQL
+  parameters, model output, or response bodies: those export only their type
+  (`code ?? name`, or the `typeof` of a non-Error) and their stack frames with
+  the `Name: message` header stripped, and the message and span status message
+  are the fixed text `[message withheld]`. `onRequestError` passes only `path`
+  and `routeType`.
 - SDK diagnostics: Novedu installs no diag logger; the SDKs' own console
   diagnostics (opt-in via `OTEL_LOG_LEVEL`) print status and configuration
   messages, not exported payloads.

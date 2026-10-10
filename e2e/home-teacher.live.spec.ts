@@ -9,6 +9,7 @@ import {
   weekdayOf,
 } from "@/lib/achievements/time";
 import { loadTeacherUsage } from "@/lib/teacher-facts-store";
+import { purgeCodes } from "./code.utils";
 import { query } from "./db";
 import { deletePrincipal, signInFreshTeacher } from "./principal.utils";
 
@@ -17,7 +18,7 @@ import { deletePrincipal, signInFreshTeacher } from "./principal.utils";
 // reports, attributed students, keys, file versions and Mastra threads — plus a
 // second teacher whose rows must never count. Covers the attention counters, the
 // six KPIs, the top activities with their share outside school hours (checked
-// against the pure `isSchoolHour` rule, also across both clock changes), the
+// against the pure `isSchoolHour` rule, also across both clock changes),
 // and the badges granted from those rows with their dates and the strip.
 
 test.use({ storageState: { cookies: [], origins: [] } });
@@ -36,7 +37,6 @@ interface Seeded {
   teacherId: string;
   otherTeacherId: string;
   codes: string[];
-  threads: string[];
   students: string[];
 }
 
@@ -84,7 +84,7 @@ async function insertUsage(
   );
 }
 
-async function insertThread(code: string, role: string, at: number): Promise<string> {
+async function insertThread(code: string, role: string, at: number) {
   const id = randomUUID();
   const stamp = iso(at);
   await query(
@@ -97,23 +97,6 @@ async function insertThread(code: string, role: string, at: number): Promise<str
      VALUES ($1, $2, '{}', $3, 'v2', $4, $5)`,
     [randomUUID(), id, role, stamp.replace("Z", ""), stamp],
   );
-  return id;
-}
-
-async function cleanup(seeded: Seeded) {
-  const { codes, threads } = seeded;
-  await query(`DELETE FROM mastra.mastra_messages WHERE thread_id = ANY($1)`, [threads]);
-  await query(`DELETE FROM mastra.mastra_threads WHERE id = ANY($1)`, [threads]);
-  for (const table of [
-    "novedu_usage_by_code",
-    "novedu_reports",
-    "novedu_user_chats",
-    "novedu_writing_submissions",
-    "novedu_coding_keys",
-    "novedu_codes",
-  ]) {
-    await query(`DELETE FROM ${table} WHERE code = ANY($1)`, [codes]);
-  }
 }
 
 // The seeded teacher's activities. Interactions in the window, by construction:
@@ -129,7 +112,6 @@ async function seed(teacherId: string): Promise<Seeded> {
     teacherId,
     otherTeacherId,
     codes: ["A", "B", "C", "D", "E", "F", "G", "X"].map(c),
-    threads: [],
     students: [1, 2, 3, 4, 5, 6, 7].map((i) => `e2e-student-${tag}-${i}`),
   };
   const [s1, s2, s3, s4, s5, s6, s7] = seeded.students;
@@ -207,10 +189,10 @@ async function seed(teacherId: string): Promise<Seeded> {
   }
 
   // Conversations: only A's thread has a user message in the window.
-  seeded.threads.push(await insertThread(c("A"), "user", now - 2 * DAY));
-  seeded.threads.push(await insertThread(c("B"), "assistant", now - DAY));
-  seeded.threads.push(await insertThread(c("B"), "user", now - 40 * DAY));
-  seeded.threads.push(await insertThread(c("X"), "user", now - HOUR));
+  await insertThread(c("A"), "user", now - 2 * DAY);
+  await insertThread(c("B"), "assistant", now - DAY);
+  await insertThread(c("B"), "user", now - 40 * DAY);
+  await insertThread(c("X"), "user", now - HOUR);
   return seeded;
 }
 
@@ -282,7 +264,7 @@ test("the teacher dashboard shows the seeded codes, usage and reports — and no
     );
     expect(errors).toEqual([]);
   } finally {
-    await cleanup(seeded);
+    await purgeCodes(seeded.codes);
     await deletePrincipal(principal.id);
   }
 });
@@ -306,7 +288,6 @@ test("the usage statement's school-hours cut matches isSchoolHour, across both c
     "2026-10-24T08:00:00Z", // Sat 10:00 CEST — weekend
   ].map((s) => new Date(s));
   const codes = instants.map((_, i) => `tz${randomUUID().slice(0, 8)}${i}`);
-  const seeded: Seeded = { teacherId, otherTeacherId: "", codes, threads: [], students: [] };
   try {
     for (const [i, instant] of instants.entries()) {
       await insertCode(codes[i] as string, "tutor", teacherId);
@@ -321,7 +302,7 @@ test("the usage statement's school-hours cut matches isSchoolHour, across both c
       expect(row?.outsideSchool, instant.toISOString()).toBe(isSchoolHour(instant) ? 0 : 1);
     }
   } finally {
-    await cleanup(seeded);
+    await purgeCodes(codes);
   }
 });
 
@@ -463,13 +444,7 @@ test("the teacher's badges are granted from real rows, dated by their evidence, 
   } finally {
     await query(`DELETE FROM novedu_files WHERE name = $1`, [fileName]);
     await query(`DELETE FROM novedu_reports WHERE id = ANY($1)`, [reportIds]);
-    await cleanup({
-      teacherId,
-      otherTeacherId: "",
-      codes: [code, otherCode],
-      threads: [],
-      students: [],
-    });
+    await purgeCodes([code, otherCode]);
     await deletePrincipal(teacherId);
   }
 });

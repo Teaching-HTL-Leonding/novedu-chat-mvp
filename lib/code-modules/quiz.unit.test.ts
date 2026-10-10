@@ -4,8 +4,7 @@ import { assert, describe, expect, it, vi } from "vitest";
 // discussion system prompt + model (502 on load failure), and renderDetail dispatches
 // to the shared conversation stats. Create-time validation (derived from fileKind by
 // the registry) and the share-link result (the registry default) are not the
-// descriptor's concern. loadQuiz is mocked; RequestContext is stubbed with a Map so the
-// keys can be read back without coupling to @mastra/core internals.
+// descriptor's concern. loadQuiz is mocked.
 
 const loadQuiz = vi.hoisted(() => vi.fn());
 const conversationStats = vi.hoisted(() => vi.fn());
@@ -19,17 +18,6 @@ vi.mock("@/app/mastra/quiz-agents", () => ({
   QUIZ_DISCUSSION_MODEL: "quiz-discussion-model",
   QUIZ_DISCUSSION_PROVIDER: "quiz-discussion-provider",
   QUIZ_DISCUSSION_REASONING: "quiz-discussion-reasoning",
-}));
-vi.mock("@mastra/core/request-context", () => ({
-  RequestContext: class {
-    private m = new Map<string, unknown>();
-    set(key: string, value: unknown) {
-      this.m.set(key, value);
-    }
-    get(key: string) {
-      return this.m.get(key);
-    }
-  },
 }));
 
 import { quizModule } from "@/lib/code-modules/quiz";

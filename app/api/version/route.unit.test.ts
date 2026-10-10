@@ -18,7 +18,7 @@ describe("GET /api/version", () => {
     vi.stubEnv("APP_GIT_SHA", "abc123");
     vi.stubEnv("APP_BUILD_TIME", "2026-01-02T03:04:05.000Z");
 
-    const body = await GET().json();
+    const body = (await GET().json()) as { cliVersion?: unknown };
 
     expect(body).toEqual({
       version: "0.1.0.142",
@@ -26,6 +26,8 @@ describe("GET /api/version", () => {
       builtAt: "2026-01-02T03:04:05.000Z",
       cliVersion: packageCliVersion,
     });
+    // `eval` treats anything but a semver-ish string as unverifiable.
+    expect(body.cliVersion).toMatch(/^\d+\.\d+\.\d+/);
   });
 
   it("falls back to the dev defaults when the image env vars are unset", async () => {
@@ -36,13 +38,5 @@ describe("GET /api/version", () => {
     const body = await GET().json();
 
     expect(body).toMatchObject({ version: "dev", gitSha: "unknown", builtAt: "unknown" });
-  });
-
-  it("reports cliVersion from cli/package.json — the contract the CLI checks", async () => {
-    const body = (await GET().json()) as { cliVersion?: unknown };
-
-    // A non-empty semver-ish string: `eval` treats anything else as unverifiable.
-    expect(body.cliVersion).toBe(packageCliVersion);
-    expect(body.cliVersion).toMatch(/^\d+\.\d+\.\d+/);
   });
 });

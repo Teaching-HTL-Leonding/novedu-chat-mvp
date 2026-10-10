@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { expect, type Page, test } from "@playwright/test";
 import { E2E_STUDENT } from "./auth.constants";
-import { deleteCode, mintCode, PER_USER_TUTOR_URL } from "./code.utils";
+import { mintCode, PER_USER_TUTOR_URL } from "./code.utils";
 import { query } from "./db";
+import { watchErrors } from "./page.utils";
 
 // "Previous conversations" in a per-user tutor (docs/chat.md), over the REAL
 // stack minus the LLM: the both-flags gate, the student-side list SQL scoped to
@@ -10,45 +11,11 @@ import { query } from "./db";
 // ownership branch for a conversation older than the resume limit. Conversations
 // and their `novedu_user_chats` rows are seeded directly — hence @live-db, run in CI.
 
-test.setTimeout(120_000);
-
 const WELCOME_TEXT = "Synthetic per-user tutor used only by automated tests";
 const DAY = 24 * 60 * 60 * 1000;
 
-let mintedCodes: string[] = [];
-let seededThreads: string[] = [];
-
-test.afterEach(async () => {
-  try {
-    if (seededThreads.length > 0) {
-      await query(`DELETE FROM mastra.mastra_messages WHERE thread_id = ANY($1)`, [seededThreads]);
-      await query(`DELETE FROM mastra.mastra_threads WHERE id = ANY($1)`, [seededThreads]);
-    }
-    for (const code of mintedCodes) {
-      await query(`DELETE FROM novedu_user_chats WHERE code = $1`, [code]);
-      await deleteCode(code);
-    }
-  } catch (error) {
-    console.error("tutor-history cleanup failed (best-effort)", error);
-  } finally {
-    mintedCodes = [];
-    seededThreads = [];
-  }
-});
-
-function watchErrors(page: Page): string[] {
-  const errors: string[] = [];
-  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(`console: ${message.text()}`);
-  });
-  return errors;
-}
-
-async function mintPerUserCode(): Promise<string> {
-  const code = await mintCode({ module: "tutor", file: PER_USER_TUTOR_URL, anonymous: false });
-  mintedCodes.push(code);
-  return code;
+function mintPerUserCode(): Promise<string> {
+  return mintCode({ module: "tutor", file: PER_USER_TUTOR_URL, anonymous: false });
 }
 
 /**
@@ -62,7 +29,6 @@ async function seedOwnConversation(
   userId: string = E2E_STUDENT.id,
 ): Promise<string> {
   const threadId = randomUUID();
-  seededThreads.push(threadId);
   const at = Date.now() - agoMs;
   const stamp = (ms: number) => new Date(ms).toISOString();
   await query(
@@ -97,7 +63,7 @@ async function seedOwnConversation(
 
 async function openTutor(page: Page, code: string) {
   await page.goto(`/${code}`);
-  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible();
 }
 
 test("lists only this code's own conversations, reopens one, and a reload keeps it", {
@@ -130,9 +96,7 @@ test("lists only this code's own conversations, reopens one, and a reload keeps 
   // Reopen the five-day-old one: its messages arrive with the connect.
   await rows.nth(1).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByTestId("copilot-user-message").getByText("HIST-OLDER")).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page.getByTestId("copilot-user-message").getByText("HIST-OLDER")).toBeVisible();
   await expect(
     page.getByTestId("copilot-assistant-message").getByText("ANSWER to HIST-OLDER"),
   ).toBeVisible();
@@ -140,9 +104,7 @@ test("lists only this code's own conversations, reopens one, and a reload keeps 
 
   // A reload keeps the reopened conversation, although it is older than an hour.
   await page.reload();
-  await expect(page.getByTestId("copilot-user-message").getByText("HIST-OLDER")).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page.getByTestId("copilot-user-message").getByText("HIST-OLDER")).toBeVisible();
   const stored = await page.evaluate(
     (key) => window.sessionStorage.getItem(key),
     `novedu.tutorThread.${code}`,
@@ -165,7 +127,7 @@ test("smoke: a per-user tutor loads, reloads, and shows an empty history", {
 
   await openTutor(page, code);
   await page.reload();
-  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("copilot-chat-textarea")).toBeVisible();
   await expect(page.getByText(WELCOME_TEXT)).toBeVisible();
 
   await page.getByRole("button", { name: "Previous conversations" }).click();

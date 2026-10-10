@@ -12,14 +12,7 @@ const mocks = vi.hoisted(() => ({ uploadImage: vi.fn(), push: vi.fn() }));
 
 vi.mock("@/lib/images-actions", () => ({ uploadImage: mocks.uploadImage }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
-// `next/link` (behind the "Back to images" link) reads `process` at import time,
-// which the browser project has no shim for — same stand-in as the file forms.
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children }: { href: unknown; children: unknown }) => (
-    <a href={String(href)}>{children as never}</a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 import { UploadImageForm } from "@/app/images/new/upload-image-form";
 

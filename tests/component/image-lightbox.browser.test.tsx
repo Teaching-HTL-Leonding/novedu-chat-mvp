@@ -10,9 +10,9 @@ import "@/app/globals.css";
 // View button) is the ONE DialogShell consumer whose `className` carries
 // height-adjacent overrides on top of the `size` variant — and `cn()` is
 // tailwind-merge, so caller classes BEAT the variant on conflict. That merge
-// path is exactly how the shipped `h-auto` bug got in (a 1122px dialog around
-// 429px of content), and the central dialog-shell tests cannot see a
-// per-consumer override. Its only other coverage is `@live-storage` e2e, which
+// path decides the final geometry (a winning `h-auto` would stretch a dialog
+// around ~430px of content to ~1100px), and the central dialog-shell tests cannot see
+// a per-consumer override. Its only other coverage is `@live-storage` e2e, which
 // CI never runs. So this file measures the lightbox's own geometry contract —
 // hug + center, the widened 88vh cap, the credit staying visible under
 // `min-h-0` — plus the load-failure fallback. Everything unique to the
@@ -41,15 +41,12 @@ test("hugs a small image and centers in both axes", async () => {
 
   const rect = dialog.getBoundingClientRect();
   // `w-fit` overrides the shell's 48rem default and wraps the 300px image
-  // (plus hairline borders). This assertion caught a REAL shipped bug when
-  // first written: the lightbox passed `w-auto`, and because the UA zeroes a
-  // dialog's inline insets too, the box stretched to the full 92vw cap
-  // (1177px around a 300px image) — the inline-axis twin of the `h-auto` bug.
+  // (plus hairline borders); `w-auto` would stretch the box to the 92vw cap.
   expect(rect.width).toBeLessThan(400);
   expect(rect.width).toBeGreaterThanOrEqual(300);
-  // …and `size="fit"` keeps the height to the content, not a screenful. This
-  // is the assertion the shipped bug would have failed: an indefinite height
-  // stretches an open modal to the viewport (block insets 0) and un-centers it.
+  // …and `size="fit"` keeps the height to the content, not a screenful: an
+  // indefinite height stretches an open modal to the viewport (block insets 0)
+  // and un-centers it.
   expect(rect.height).toBeLessThan(window.innerHeight / 2);
   expect(Math.abs(rect.top - (window.innerHeight - rect.bottom))).toBeLessThan(TOLERANCE);
   expect(Math.abs(rect.left - (window.innerWidth - rect.right))).toBeLessThan(TOLERANCE);

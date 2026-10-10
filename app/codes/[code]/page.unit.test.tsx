@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -25,12 +24,7 @@ vi.mock("@/lib/code-modules/registry", () => ({
     coding: { renderDetail },
   },
 }));
-// next/link needs no router in these static renders — a plain anchor is enough.
-vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: ReactNode }) => (
-    <a href={href}>{children}</a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 
 import CodeStatsPage from "./page";
 

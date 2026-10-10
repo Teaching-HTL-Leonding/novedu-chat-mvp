@@ -18,8 +18,6 @@ import { query } from "./db";
 // back with isTeacher: true — that is what proves the token carries the SERVER's
 // role for the approving user, not anything the caller asked for.
 test.use({ storageState: TEACHER_STORAGE_STATE });
-// Dev compilation of /device + /api/auth/** + several DB round-trips.
-test.setTimeout(120_000);
 
 const CLIENT_ID = "novedu-cli";
 // The browser context carries the teacher's session cookie, and better-auth

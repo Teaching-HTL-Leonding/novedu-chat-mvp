@@ -11,14 +11,7 @@ import "@/app/globals.css";
 // only appears on its thin rim. One case per recipe that renders such controls.
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock("next/link", () => ({
-  __esModule: true,
-  default: ({ href, children, ...props }: React.ComponentProps<"a">) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
+vi.mock("next/link", () => import("@/tests/mocks/next-link"));
 vi.mock("@/lib/auth-actions", () => ({ signOutAction: vi.fn(async () => {}) }));
 vi.mock("@/lib/student-mode-actions", () => ({
   enterStudentModeAction: vi.fn(async () => {}),
@@ -84,7 +77,9 @@ test("the lists' select-all / unselect-all icons pass through", async () => {
       <SelectAllControls />
     </SelectionProvider>,
   );
-  for (const button of screen.getByRole("button").elements()) {
+  const buttons = screen.getByRole("button").elements();
+  expect(buttons).toHaveLength(2);
+  for (const button of buttons) {
     expect(button.getAttribute("title")).toBeTruthy();
     expectCentreHitsControl(button);
   }

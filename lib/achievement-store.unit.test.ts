@@ -13,11 +13,19 @@ const fake = vi.hoisted(() => {
     inserted: [] as unknown[],
     updateSet: undefined as unknown,
     updateWhere: undefined as unknown,
+    selectWhere: [] as unknown[],
   };
   const fail = <T>(value: T) =>
     state.error ? Promise.reject(state.error) : Promise.resolve(value);
   const db = {
-    select: () => ({ from: () => ({ where: () => fail(state.selectRows) }) }),
+    select: () => ({
+      from: () => ({
+        where: (where: unknown) => {
+          state.selectWhere.push(where);
+          return fail(state.selectRows);
+        },
+      }),
+    }),
     insert: () => ({
       values: (values: unknown[]) => ({
         onConflictDoNothing: () => ({
@@ -67,6 +75,7 @@ beforeEach(() => {
     inserted: [],
     updateSet: undefined,
     updateWhere: undefined,
+    selectWhere: [],
   });
 });
 
@@ -75,6 +84,7 @@ describe("achievement-store", () => {
     const rows = [{ id: "a-1", qualifiedOn: "2026-09-01", seenAt: null }];
     fake.state.selectRows = rows;
     await expect(listGrants("u1")).resolves.toEqual(rows);
+    expect(fake.state.selectWhere).toEqual([eq(achievements.userId, "u1")]);
   });
 
   it("inserts new grants for the session user and returns existing + inserted", async () => {
@@ -105,6 +115,7 @@ describe("achievement-store", () => {
       [],
     );
     expect(result).toEqual(stored);
+    expect(fake.state.selectWhere).toEqual([eq(achievements.userId, "u1")]);
   });
 
   it("needs no statement when nothing is new", async () => {

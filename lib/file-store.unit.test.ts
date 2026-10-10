@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // fast CI counterpart to the @live e2e lifecycle.
 
 const fake = vi.hoisted(() => {
-  const state = {
+  const initial = () => ({
     // What every `select(...).from(...).where(...)` resolves to (the existence
     // check inside create, the active row inside update/getActiveFile, the list).
     rows: [] as Record<string, unknown>[],
@@ -24,7 +24,8 @@ const fake = vi.hoisted(() => {
     // The node-postgres result shape returned by `update(...).set(...).where(...)`.
     closeResult: { rowCount: 1 } as unknown,
     updateError: undefined as unknown,
-  };
+  });
+  const state = initial();
 
   // The list's COUNT(*) goes through the same select/from/where chain as its rows,
   // so the fake tells them apart by the projection: `{ n: … }` is the count.
@@ -92,7 +93,7 @@ const fake = vi.hoisted(() => {
     update,
     transaction: async (cb: (t: typeof tx) => unknown) => cb(tx),
   };
-  return { state, db };
+  return { state, initial, db };
 });
 
 vi.mock("@/lib/db", () => ({ getDb: () => fake.db }));
@@ -135,14 +136,7 @@ function activeRow(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  fake.state.rows = [];
-  fake.state.total = 0;
-  fake.state.windows = [];
-  fake.state.selectError = undefined;
-  fake.state.inserted = [];
-  fake.state.insertError = undefined;
-  fake.state.closeResult = { rowCount: 1 };
-  fake.state.updateError = undefined;
+  Object.assign(fake.state, fake.initial());
 });
 
 describe("listFiles", () => {
@@ -325,8 +319,8 @@ describe("updateFile", () => {
 // Bulk soft-delete (the list's "Delete Selected", the only delete path) loops the
 // `closeActiveFile` primitive inside ONE transaction. These pin the batch contract:
 // the count of rows actually closed, the already-gone no-op, the `rowCount`
-// presence/absence handling, all-or-nothing rollback on a DB error, and the
-// empty-input short-circuit.
+// absence handling, the failure result on a DB error, and the empty-input
+// short-circuit.
 describe("softDeleteFiles", () => {
   it("closes every named file and counts the rows actually closed", async () => {
     fake.state.closeResult = { rowCount: 1 };
@@ -344,17 +338,12 @@ describe("softDeleteFiles", () => {
     });
   });
 
-  it("treats rowCount present as the closed-row count", async () => {
-    fake.state.closeResult = { rowCount: 1 };
-    await expect(softDeleteFiles(["a"], "teacher-3")).resolves.toEqual({ ok: true, deleted: 1 });
-  });
-
   it("treats a missing rowCount as 0 (not counted, never a false success)", async () => {
     fake.state.closeResult = {};
     await expect(softDeleteFiles(["a"], "teacher-3")).resolves.toEqual({ ok: true, deleted: 0 });
   });
 
-  it("rolls the whole batch back on a database error (all-or-nothing)", async () => {
+  it("reports failure with deleted 0 when the update throws mid-batch", async () => {
     fake.state.updateError = new Error("down");
     await expect(softDeleteFiles(["a", "b"], "teacher-3")).resolves.toEqual({
       ok: false,

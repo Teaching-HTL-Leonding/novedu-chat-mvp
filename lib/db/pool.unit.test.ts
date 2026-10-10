@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // The one connection seam: what `DATABASE_URL` turns into, and above all WHICH
 // auth mode the URL selects. A password in the URL means password auth (dev/CI);
@@ -20,11 +20,6 @@ import { buildPoolConfig, databaseHost, getPool } from "@/lib/db/pool";
 const PASSWORD_URL = "postgresql://postgres:Test-Passw0rd!@localhost:5432/novedu";
 const ENTRA_URL =
   "postgresql://novedu-chat-mvp-at@db-pgnovedu.postgres.database.azure.com/novedu?sslmode=require";
-
-beforeEach(() => {
-  credential.build.mockClear();
-  credential.getToken.mockClear();
-});
 
 describe("buildPoolConfig", () => {
   it("parses host, port, database and user", () => {
@@ -121,6 +116,7 @@ describe("databaseHost", () => {
   });
 
   it("returns null for an unset or unparseable URL", () => {
+    // `undefined` falls back to the env default, which CI sets.
     vi.stubEnv("DATABASE_URL", "");
     expect(databaseHost(undefined)).toBeNull();
     expect(databaseHost("not a url")).toBeNull();

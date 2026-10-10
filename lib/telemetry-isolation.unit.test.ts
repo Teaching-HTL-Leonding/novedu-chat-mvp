@@ -1,7 +1,11 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { importSpecifiers, REPO_ROOT, walkClosure } from "../tests/import-graph";
+import {
+  importSpecifiers,
+  readModule,
+  resolveImport,
+  sourceFiles,
+  walkClosure,
+} from "../tests/import-graph";
 
 // The CLI never initializes telemetry and must not create an exporter — even
 // with OTEL_* or Azure variables in its environment (docs/telemetry.md). This
@@ -13,8 +17,6 @@ import { importSpecifiers, REPO_ROOT, walkClosure } from "../tests/import-graph"
 // the resolved path, so "@/lib/telemetry", "../lib/telemetry" and
 // "./telemetry" are the same offender.
 
-const IGNORE = new Set(["node_modules", "dist", ".next"]);
-
 const FORBIDDEN_PACKAGES = [
   /^@opentelemetry\/sdk-/,
   /^@opentelemetry\/instrumentation/,
@@ -23,20 +25,9 @@ const FORBIDDEN_PACKAGES = [
 ];
 const FORBIDDEN_MODULES = [/^lib\/telemetry(-[a-z]+)?\.ts$/];
 
-function* walk(dir: string): Generator<string> {
-  for (const entry of readdirSync(dir)) {
-    if (IGNORE.has(entry)) continue;
-    const full = join(dir, entry);
-    if (statSync(full).isDirectory()) yield* walk(full);
-    else if (/\.(ts|tsx|mts|cts)$/.test(entry) && !/\.test\.(ts|tsx)$/.test(entry)) yield full;
-  }
-}
-
 describe("CLI telemetry isolation", () => {
   it("cli/src's transitive import closure contains no telemetry facade and no OTel SDK", () => {
-    const roots = [...walk(join(REPO_ROOT, "cli", "src"))].map((f) =>
-      relative(REPO_ROOT, f).replace(/\\/g, "/"),
-    );
+    const roots = sourceFiles("cli/src");
     expect(roots.length).toBeGreaterThanOrEqual(20);
 
     const offenders: string[] = [];
@@ -61,17 +52,14 @@ describe("CLI telemetry isolation", () => {
   });
 
   it("the facade is in use by the server code (so a broken regex cannot pass vacuously)", () => {
-    const importers: string[] = [];
-    for (const dir of ["app", "lib"]) {
-      for (const file of walk(join(REPO_ROOT, dir))) {
-        if (importSpecifiers(readFileSync(file, "utf8")).includes("@/lib/telemetry")) {
-          importers.push(relative(REPO_ROOT, file));
-        }
-      }
-    }
+    // Server modules whose RESOLVED imports the forbidden-module patterns match.
+    const importers = sourceFiles("app", "lib").filter((rel) =>
+      importSpecifiers(readModule(rel)).some((spec) => {
+        const target = resolveImport(rel, spec).rel;
+        return target !== null && FORBIDDEN_MODULES.some((p) => p.test(target));
+      }),
+    );
     expect(importers.length).toBeGreaterThanOrEqual(5);
-    expect(FORBIDDEN_MODULES.some((p) => p.test("lib/telemetry.ts"))).toBe(true);
-    expect(FORBIDDEN_MODULES.some((p) => p.test("lib/telemetry-otlp.ts"))).toBe(true);
     expect(FORBIDDEN_PACKAGES.some((p) => p.test("@opentelemetry/sdk-node"))).toBe(true);
   });
 });

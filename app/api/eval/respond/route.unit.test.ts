@@ -20,17 +20,6 @@ vi.mock("@/app/mastra", () => ({
 vi.mock("@/lib/llm/availability", () => ({
   providerUnavailableReason: mocks.providerUnavailableReason,
 }));
-vi.mock("@mastra/core/request-context", () => ({
-  RequestContext: class {
-    private m = new Map<string, unknown>();
-    set(key: string, value: unknown) {
-      this.m.set(key, value);
-    }
-    get(key: string) {
-      return this.m.get(key);
-    }
-  },
-}));
 vi.mock("@/auth", () => ({ auth: { api: { getSession: vi.fn() } } }));
 
 import {
@@ -105,7 +94,7 @@ describe("POST /api/eval/respond auth", () => {
     expect(mocks.generate).not.toHaveBeenCalled();
   });
 
-  it("sends WWW-Authenticate with the generic body", async () => {
+  it("sends WWW-Authenticate: Bearer with a JSON message body", async () => {
     const res = await postRequest(VALID_BODY);
     expect(res.headers.get("www-authenticate")).toBe("Bearer");
     expect(await res.json()).toMatchObject({ message: expect.any(String) });
@@ -197,7 +186,8 @@ describe("POST /api/eval/respond generation", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    // `toolCalls` is ALWAYS present on a 200 — `[]` here, because nothing ran. A CLI must
+    // The default mock carries no usage: a missing measurement is never reported as zero
+    // tokens. `toolCalls` is ALWAYS present on a 200 — `[]` here, because nothing ran. A CLI must
     // be able to tell "called nothing" from a server that cannot report tool calls at all.
     expect(await res.json()).toEqual({
       text: "What happens after the first pass?",
@@ -288,15 +278,6 @@ describe("POST /api/eval/respond generation", () => {
       text: "Keep going.",
       toolCalls: [],
       usage: { input: 1200, cachedInput: 900, output: 87 },
-    });
-  });
-
-  it("OMITS usage entirely when the result carries none", async () => {
-    // A missing measurement must never be reported as zero tokens. `toolCalls` is NOT
-    // optional the same way: an empty list IS the measurement.
-    expect(await (await postRequest(VALID_BODY, await mint())).json()).toEqual({
-      text: "What happens after the first pass?",
-      toolCalls: [],
     });
   });
 

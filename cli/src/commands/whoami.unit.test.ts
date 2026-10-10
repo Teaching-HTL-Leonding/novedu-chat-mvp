@@ -90,14 +90,16 @@ describe("whoami", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it("exits 1 and names the server when it cannot be reached", async () => {
+  it("exits 1 and forwards the error message when the server cannot be reached", async () => {
     vi.mocked(fetchIdentity).mockRejectedValue(
       new Error("Could not reach http://localhost:1234: ECONNREFUSED"),
     );
 
     await runWhoami("--server", "http://localhost:1234");
 
-    expect(JSON.parse(stderr()[0] as string).message).toMatch(/localhost:1234/);
+    expect(JSON.parse(stderr()[0] as string).message).toBe(
+      "Could not reach http://localhost:1234: ECONNREFUSED",
+    );
     expect(process.exitCode).toBe(1);
   });
 });

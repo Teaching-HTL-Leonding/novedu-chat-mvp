@@ -1,10 +1,11 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { TEACHER_STORAGE_STATE } from "./auth.constants";
 import { sendAndExpectReply } from "./chat.utils";
 import { mintCode } from "./code.utils";
+import { setEditorContent } from "./page.utils";
 
-// End-to-end coverage for the Quizzes feature, now reached as first-class CODES
-// (a `novedu_codes` row with `module: "quiz"`) at `/<code>` — no signed links.
+// End-to-end coverage for the Quizzes feature, reached as CODES (a `novedu_codes`
+// row with `module: "quiz"`) at `/<code>`.
 // The code-expiry gate needs the DB but no LLM (@live-db, runs in CI). The full
 // author → code → answer → discuss flow is `@live` (`@live-llm`: it grades a real
 // answer and runs the discussion through the SCCH model) and is excluded from CI
@@ -36,21 +37,12 @@ questions:
       otherwise "incorrect" (or "partial" if unsure but mentions Vienna).
 `;
 
-async function setEditorContent(page: Page, text: string): Promise<void> {
-  const content = page.locator(".cm-content");
-  await content.click();
-  await page.keyboard.press("ControlOrMeta+a");
-  await page.keyboard.press("Delete");
-  await page.keyboard.insertText(text);
-}
-
 // A quiz code outside its window is refused exactly like any other code — the
 // shared window check fires before the quiz is ever loaded, so this needs the DB
 // (to mint the row) but no LLM.
 test("an expired quiz code shows the window-error notice", { tag: ["@live", "@live-db"] }, async ({
   page,
 }) => {
-  test.setTimeout(90_000); // dev compilation of /[code]
   // The file URL is never fetched — the expiry check rejects first.
   const code = await mintCode({
     module: "quiz",
@@ -59,9 +51,7 @@ test("an expired quiz code shows the window-error notice", { tag: ["@live", "@li
   });
   await page.goto(`/${code}`);
 
-  await expect(page.getByRole("heading", { name: "Code expired" })).toBeVisible({
-    timeout: 30_000,
-  });
+  await expect(page.getByRole("heading", { name: "Code expired" })).toBeVisible();
 });
 
 // Full @live flow: author a quiz file, mint a quiz CODE for it, open it, get a
@@ -89,7 +79,7 @@ test("author → code → answer → discuss", { tag: ["@live", "@live-llm"] }, 
   // 3. Open the quiz at /<code>: answer the question and get a verdict.
   await page.goto(`/${code}`);
   const answer = page.getByLabel("Your answer");
-  await expect(answer).toBeVisible({ timeout: 30_000 });
+  await expect(answer).toBeVisible();
   await answer.fill("The capital of Austria is Vienna.");
   await page.getByRole("button", { name: "Submit answer" }).click();
 
@@ -103,14 +93,7 @@ test("author → code → answer → discuss", { tag: ["@live", "@live-llm"] }, 
   // follow-up that must get a reply.
   await page.getByRole("button", { name: "Chat about this" }).click();
   const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await expect(dialog).toBeVisible();
 
   await sendAndExpectReply(page, { message: "Why is that the capital?" });
-
-  // 5. Clean up the quiz file (no automatic GC; the minted code lingers like the
-  // other mint-and-leave specs — harmless and tidied with the CI container).
-  await page.goto(`/files/edit/${name}`);
-  page.once("dialog", (dialog) => dialog.accept());
-  const del = page.getByRole("button", { name: /delete/i }).first();
-  if (await del.isVisible().catch(() => false)) await del.click();
 });

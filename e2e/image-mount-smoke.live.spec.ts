@@ -31,7 +31,6 @@ const RED_PNG = path.join(process.cwd(), "e2e", "fixtures", "red.png");
 
 test.describe("image storage mount smoke test", () => {
   test.use({ storageState: TEACHER_STORAGE_STATE });
-  test.setTimeout(60_000);
 
   test("the mounted root is healthy and a real upload/read/delete round-trips", {
     tag: ["@live", "@live-storage"],

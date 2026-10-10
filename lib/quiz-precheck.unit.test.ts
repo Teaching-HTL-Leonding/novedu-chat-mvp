@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildPrecheckRequest,
@@ -8,6 +6,7 @@ import {
 } from "@/lib/quiz-precheck";
 import type { QuizVerdict } from "@/lib/quiz-types";
 import type { QuizQuestion } from "@/lib/quiz-yaml";
+import { importSpecifiers, readModule } from "@/tests/import-graph";
 
 // The pure pre-check core: what the classifier is asked, and how its answer
 // becomes a hint. Plus the purity guard that keeps this module client-safe — the
@@ -82,13 +81,13 @@ describe("mapPrecheckAnswer", () => {
 });
 
 describe("client-safety invariant", () => {
-  const source = readFileSync(join(__dirname, "quiz-precheck.ts"), "utf8");
+  const source = readModule("lib/quiz-precheck.ts");
 
   it("imports only types, and only from the two client-safe quiz modules", () => {
-    // Import specifiers only, so the comments naming lib/llm and the SDK (they
-    // explain WHY those are forbidden) do not trip the guard.
-    const specifiers = [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1] ?? "");
-    expect(specifiers.sort()).toEqual(["@/lib/quiz-types", "@/lib/quiz-yaml"]);
+    // Import specifiers only (static, side-effect, re-export and dynamic), so the
+    // comments naming lib/llm and the SDK (they explain WHY those are forbidden) do
+    // not trip the guard.
+    expect(importSpecifiers(source).sort()).toEqual(["@/lib/quiz-types", "@/lib/quiz-yaml"]);
     // Every import must be type-only — a value import of quiz-yaml would pull the
     // YAML parser into the browser bundle.
     const valueImports = [...source.matchAll(/^import\s+(?!type\b)[^\n]*from/gm)];
