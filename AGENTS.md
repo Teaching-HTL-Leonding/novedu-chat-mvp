@@ -223,7 +223,7 @@ Read before touching: `scripts/db/provision-stage.*`, any `az` work on `rg-noved
 
 Read before touching: `.github/workflows/`, or adding a secret / real infra to CI.
 
-- Public teaching repo: fork PRs run untrusted code. `qa.yml` stays secret-free; secrets live only in `docker-publish.yml`'s `build-and-push` job.
+- Public teaching repo: fork PRs run untrusted code. `qa.yml` stays secret-free. The repo stores no secret at all: the image goes to GHCR with the built-in `GITHUB_TOKEN`, `packages: write` granted only to `docker-publish.yml`'s `build-and-push` job.
 - Azure deploys (`deploy-dev`, `promote.yml`) are OIDC-only — no stored Azure credential (the docs Static Web App's deployment token is fetched at runtime, never stored); don't widen a federated subject or the `production` environment's `main`-only branches. No job that can obtain the production Azure identity runs `npm ci` or a build.
 
 ### Testing → `docs/testing.md`
