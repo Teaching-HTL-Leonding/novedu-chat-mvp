@@ -13,6 +13,10 @@ const ALLOWED: Record<string, string> = {
   "lib/student-mode.ts": "teacherViewForSession, the one student-mode-aware reader",
   "lib/student-mode-actions.ts": "requireTeacher() gates ENTERING student mode",
   "lib/api-auth.ts": "bearer channel (no student mode) reads novedu_user.is_teacher",
+  "lib/coding-key-store.ts":
+    "coding key channel (no student mode) reads the key holder's novedu_user.is_teacher",
+  "app/api/coding/v1/chat/completions/route.ts":
+    "coding key channel: exempts the key holder's is_teacher from the student limits",
   "app/api/me/route.ts": "bearer identity probe echoes the bearer user's role",
   "components/user-menu.tsx": "reads its prop, already the EFFECTIVE role (status-bar.tsx)",
 };

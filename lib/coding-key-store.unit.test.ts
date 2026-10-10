@@ -276,11 +276,30 @@ describe("getStoredCodingKey", () => {
 
 describe("lookupCodingKey", () => {
   it("resolves a stored key to its (code, userId) pair", async () => {
-    fake.state.rows = [{ code: "a1b2c3d4e5", userId: "oid-student-1" }];
+    fake.state.rows = [{ code: "a1b2c3d4e5", userId: "oid-student-1", isTeacher: false }];
     await expect(lookupCodingKey(generateCodingKey())).resolves.toEqual({
       status: "found",
       code: "a1b2c3d4e5",
       userId: "oid-student-1",
+      isTeacher: false,
+    });
+  });
+
+  it("carries the holder's teacher role", async () => {
+    fake.state.rows = [{ code: "a1b2c3d4e5", userId: "oid-teacher-1", isTeacher: true }];
+    await expect(lookupCodingKey(generateCodingKey())).resolves.toMatchObject({
+      status: "found",
+      isTeacher: true,
+    });
+  });
+
+  // The role comes from a LEFT JOIN: a key whose user row is gone reads NULL and
+  // must count as a student (limited), never as a teacher.
+  it("treats a missing user row as a student", async () => {
+    fake.state.rows = [{ code: "a1b2c3d4e5", userId: "oid-gone", isTeacher: null }];
+    await expect(lookupCodingKey(generateCodingKey())).resolves.toMatchObject({
+      status: "found",
+      isTeacher: false,
     });
   });
 

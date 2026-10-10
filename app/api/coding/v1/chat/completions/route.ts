@@ -3,7 +3,14 @@ import { checkCode, effectiveLlm } from "@/lib/code-store";
 import { loadCoding } from "@/lib/coding-fetch";
 import { errorResponse, invalidApiKey, serviceUnavailable } from "@/lib/coding-http";
 import { lookupCodingKey } from "@/lib/coding-key-store";
-import { buildUpstreamChatBody, extractCodingUsage, parseBearerKey } from "@/lib/coding-proxy";
+import {
+  buildUpstreamChatBody,
+  clampMaxTokens,
+  extractCodingUsage,
+  parseBearerKey,
+} from "@/lib/coding-proxy";
+import { isLimitExempt } from "@/lib/limits/enabled";
+import { codingMaxOutputTokens } from "@/lib/limits/resolve";
 import { type ChatEndpoint, resolveChatEndpoint } from "@/lib/llm/endpoint";
 import { recordError } from "@/lib/telemetry";
 import { recordLlmUsage } from "@/lib/usage-store";
@@ -23,7 +30,8 @@ import { recordLlmUsage } from "@/lib/usage-store";
 // Foundry, resolved by the side-effect-free `resolveChatEndpoint` — this route never
 // learns which) and pipes the response stream straight back. No Mastra, no memory, no
 // server-side tool loop: client-side tools and streaming are preserved because the
-// body is forwarded verbatim and the response is never parsed.
+// body is forwarded verbatim (only the output length is clamped to the student
+// limit) and the response is never parsed.
 
 export const dynamic = "force-dynamic";
 
@@ -170,12 +178,22 @@ export async function POST(req: Request): Promise<Response> {
   if (!parsed.ok) {
     return errorResponse(parsed.message, parsed.status, "invalid_request_error", parsed.code);
   }
+  // The output cap is CLAMPED on the client's own request (a smaller value
+  // survives) and follows the EFFECTIVE provider, so a code override cannot dodge
+  // it. Teachers (server-owned `is_teacher`; no student mode on this channel) and
+  // a `LIMITS_ENABLED=false` environment get no cap (docs/coding.md).
+  const outputCap = isLimitExempt({ teacher: issued.isTeacher })
+    ? null
+    : codingMaxOutputTokens(llm.provider);
   const upstreamBody = endpoint.adaptBody(
-    buildUpstreamChatBody(parsed.value, {
-      instructions: loaded.coding.instructions,
-      model: llm.model,
-      reasoning: llm.reasoning,
-    }),
+    clampMaxTokens(
+      buildUpstreamChatBody(parsed.value, {
+        instructions: loaded.coding.instructions,
+        model: llm.model,
+        reasoning: llm.reasoning,
+      }),
+      outputCap,
+    ),
   );
 
   // 6. Await the (already in-flight) auth header.

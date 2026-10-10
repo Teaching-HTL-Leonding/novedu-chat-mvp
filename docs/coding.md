@@ -212,10 +212,18 @@ instructions: |
    `reasoning_effort` when the effective spec carries a reasoning level
    (docs/ai-models.md), overwriting a client-sent value; without one the client's
    own `reasoning_effort` passes through untouched. Everything else
-   (`messages`, `tools`, `tool_choice`, `stream`, …) passes through verbatim. The
-   endpoint's `adaptBody` hook then adjusts the provider's parameter dialect (see
-   above) — it never touches `stream`/`stream_options`, which carry the usage tap's
-   `include_usage`.
+   (`messages`, `tools`, `tool_choice`, `stream`, …) passes through verbatim, except
+   the output length: `clampMaxTokens` (`lib/coding-proxy.ts`) **clamps** the
+   client's `max_tokens` and `max_completion_tokens` to the student output cap
+   `codingMaxOutputTokens` of the **effective** provider (`lib/limits/`,
+   `docs/usage-metering.md` "Limits"). A smaller client value survives; a request
+   without either field gets `max_tokens` set to the cap. The key holder's
+   server-owned `novedu_user.is_teacher` (read by `lookupCodingKey` with a by-value
+   join) and `LIMITS_ENABLED=false` exempt the request. The cap is a parameter
+   because `lib/coding-proxy.ts` is CLI-bundled and must not import `lib/limits/`.
+   The endpoint's `adaptBody` hook then adjusts the provider's parameter dialect (see
+   above), so Foundry's rename sees the clamped value — it never touches
+   `stream`/`stream_options`, which carry the usage tap's `include_usage`.
 6. `fetch` to the resolved URL with the awaited auth header, passing
    `signal: req.signal` so a client disconnect cancels the upstream generation.
 7. `return new Response(upstream.body, …)` — copies the upstream `content-type` so
@@ -330,7 +338,8 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
 - **`lib/coding-key.unit.test.ts`**: the key format alone — alphabet/length/prefix
   and what `KEY_PATTERN` admits.
 - **`lib/coding-key-store.unit.test.ts`** (hermetic, fake-DB fluent mock): the
-  malformed-key fast path (no DB call), the miss/error split of `lookupCodingKey`,
+  malformed-key fast path (no DB call), the miss/error split of `lookupCodingKey`
+  and the holder's teacher role it carries (a missing user row reads as a student),
   the revisit read (one SELECT, no INSERT), the first-visit mint, a duplicate-key
   INSERT resolving to the race winner's row, a duplicate with no matching row →
   re-mint retry, the found/none/error split of `getStoredCodingKey` (and that it
@@ -339,7 +348,7 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
 - Hermetic unit tests: `parseCoding` (incl. the shipped sample) `lib/coding-yaml.unit.test.ts`;
   the strict authoring validator (schema errors, the always-anonymous mapping)
   `lib/coding-validate.unit.test.ts`; the pure proxy helpers (`buildUpstreamChatBody`,
-  `parseBearerKey`, `openaiError`) `lib/coding-proxy.unit.test.ts`; the descriptor + the
+  `clampMaxTokens`, `parseBearerKey`, `openaiError`) `lib/coding-proxy.unit.test.ts`; the descriptor + the
   validator seam + the `readAnonymousFlag` branch (`lib/code-modules/coding.unit.test.ts`,
   `lib/file-validators.unit.test.ts`). The `@novedu/cli validate --kind coding` path is
   covered in `cli/src/commands/validate.unit.test.ts`.
@@ -360,8 +369,9 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
   real `POST` with `Request`s, a mocked key lookup, and a mocked SCCH `fetch` —
   key/window gating (including the explicit **valid code sent as a bearer → the
   same opaque 401** case), non-coding rejection, the forwarded body transform,
-  OpenAI error shapes, metering asserted **with** `userId`, and both non-streamed
-  JSON and streamed SSE passthrough.
+  OpenAI error shapes, metering asserted **with** `userId`, both non-streamed
+  JSON and streamed SSE passthrough, and the output cap (clamped for a student, unset
+  for a teacher or with `LIMITS_ENABLED=false`, applied before Foundry's rename).
 - **`app/api/coding/v1/models/route.unit.test.ts`** (node env): the models route's
   own gate, plus the two properties that define it — its rejections are compared
   **against the completions route's own responses** (the same mocks, byte-for-byte
@@ -392,7 +402,9 @@ Then run, e.g. `little-coder --model novedu/coding -p "Write a Python program th
 - **Model allowlist**: let the teacher permit several SCCH models and honor the
   client's `model` when allowed, widening the models route's list beyond the single
   generic id.
-- **Per-key rate limiting** (`429`) to shield the SCCH GPU from a leaked key.
+- **Per-student rate limiting** (`429` in the OpenAI error format) to shield the SCCH
+  GPU from a leaked key — its per-minute value is already in `lib/limits/config.ts`
+  (`docs/usage-metering.md`, "Limits"); only the output cap is enforced today.
 - **Usage metrics** (request count / token usage) on the teacher detail page.
 - **Per-user quota enforcement** (e.g. bounded AI access during an exam) is out of
   scope for now; the `novedu_coding_keys` row is the natural anchor for a future

@@ -153,8 +153,10 @@ export async function getOrCreateCodingKey(
 }
 
 export type CodingKeyLookup =
-  // The bearer is a stored key — the `(code, userId)` pair it was issued for.
-  | { status: "found"; code: string; userId: string }
+  // The bearer is a stored key — the `(code, userId)` pair it was issued for, plus
+  // the holder's server-owned teacher role (`novedu_user.is_teacher`; false when
+  // the user row is gone), which exempts a teacher from the student limits.
+  | { status: "found"; code: string; userId: string; isTeacher: boolean }
   // No row with this key — malformed, never issued, or its row is gone.
   | { status: "miss" }
   // Database misconfigured/unreachable — retrying later may work.
@@ -176,11 +178,19 @@ export async function lookupCodingKey(apiKey: string): Promise<CodingKeyLookup> 
   if (!KEY_PATTERN.test(apiKey)) return { status: "miss" };
   try {
     const rows = await getDb()
-      .select({ code: codingKeys.code, userId: codingKeys.userId })
+      .select({
+        code: codingKeys.code,
+        userId: codingKeys.userId,
+        isTeacher: authUsers.isTeacher,
+      })
       .from(codingKeys)
+      // BY VALUE, no FK — the sanctioned cross-table pattern (as in `listCodingKeys`).
+      .leftJoin(authUsers, eq(authUsers.id, codingKeys.userId))
       .where(eq(codingKeys.apiKey, apiKey));
     const row = rows[0];
-    return row ? { status: "found", code: row.code, userId: row.userId } : { status: "miss" };
+    return row
+      ? { status: "found", code: row.code, userId: row.userId, isTeacher: row.isTeacher === true }
+      : { status: "miss" };
   } catch (error) {
     console.error("coding-key-store: key lookup failed", error);
     return { status: "error" };

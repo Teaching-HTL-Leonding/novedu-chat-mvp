@@ -99,6 +99,35 @@ export function buildUpstreamChatBody(
   return upstream;
 }
 
+/**
+ * Bounds the client's output-length request by `cap` — CLAMPS rather than
+ * overwrites, so a client asking for less keeps its own value. Both dialects are
+ * clamped (`max_tokens` and the newer `max_completion_tokens`); a client that
+ * sent neither gets `max_tokens = cap`, so an unbounded generation is impossible.
+ * A non-numeric value is replaced by the cap. Runs BEFORE the provider's
+ * `adaptBody`, so Foundry's `max_tokens` → `max_completion_tokens` rename sees
+ * the clamped value. `cap === null` (an exempt caller) returns the body as is.
+ *
+ * The cap is a PARAMETER: this module is CLI-bundled and must not import the
+ * server-only limits config (lib/limits/).
+ */
+export function clampMaxTokens(
+  body: Record<string, unknown>,
+  cap: number | null,
+): Record<string, unknown> {
+  if (cap === null) return body;
+  const clamp = (value: unknown): number =>
+    typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.min(value, cap) : cap;
+  const hasMax = "max_tokens" in body;
+  const hasCompletion = "max_completion_tokens" in body;
+  if (!hasMax && !hasCompletion) return { ...body, max_tokens: cap };
+  return {
+    ...body,
+    ...(hasMax ? { max_tokens: clamp(body.max_tokens) } : {}),
+    ...(hasCompletion ? { max_completion_tokens: clamp(body.max_completion_tokens) } : {}),
+  };
+}
+
 /** Token usage read back from an upstream Chat Completions response. */
 export interface CodingUsage {
   /** `prompt_tokens` — the TOTAL input (cached + new). */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildUpstreamChatBody,
+  clampMaxTokens,
   extractCodingUsage,
   openaiError,
   parseBearerKey,
@@ -150,6 +151,57 @@ describe("buildUpstreamChatBody", () => {
   it("sends no reasoning_effort at all when neither side asks for one", () => {
     const out = buildUpstreamChatBody({ messages: [] }, { instructions: "P", model: "m" });
     expect(out).not.toHaveProperty("reasoning_effort");
+  });
+});
+
+describe("clampMaxTokens", () => {
+  it("keeps a client value below the cap", () => {
+    expect(clampMaxTokens({ max_tokens: 900 }, 16_000)).toEqual({ max_tokens: 900 });
+  });
+
+  it("lowers a client value above the cap", () => {
+    expect(clampMaxTokens({ max_tokens: 999_999 }, 16_000)).toEqual({ max_tokens: 16_000 });
+  });
+
+  it("sets max_tokens to the cap when the client sent no limit", () => {
+    expect(clampMaxTokens({ model: "x", stream: true }, 16_000)).toEqual({
+      model: "x",
+      stream: true,
+      max_tokens: 16_000,
+    });
+  });
+
+  it("clamps max_completion_tokens without adding max_tokens", () => {
+    expect(clampMaxTokens({ max_completion_tokens: 50_000 }, 16_000)).toEqual({
+      max_completion_tokens: 16_000,
+    });
+  });
+
+  it("clamps both dialects when the client sent both", () => {
+    expect(clampMaxTokens({ max_tokens: 20_000, max_completion_tokens: 100 }, 16_000)).toEqual({
+      max_tokens: 16_000,
+      max_completion_tokens: 100,
+    });
+  });
+
+  it.each([null, "lots", -1, 0, Number.POSITIVE_INFINITY])(
+    "replaces a non-usable value %j with the cap",
+    (value) => {
+      expect(clampMaxTokens({ max_tokens: value }, 16_000)).toEqual({ max_tokens: 16_000 });
+    },
+  );
+
+  it("returns the body untouched for an exempt caller (null cap)", () => {
+    const body = { max_tokens: 999_999 };
+    expect(clampMaxTokens(body, null)).toBe(body);
+    const bare = { model: "x" };
+    expect(clampMaxTokens(bare, null)).toBe(bare);
+  });
+
+  it("does not mutate the client body", () => {
+    const body = { max_tokens: 999_999 };
+    clampMaxTokens(body, 16_000);
+    expect(body).toEqual({ max_tokens: 999_999 });
   });
 });
 

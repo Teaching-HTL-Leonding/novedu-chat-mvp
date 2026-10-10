@@ -34,6 +34,8 @@ vi.mock("@/lib/llm/foundry-endpoint", () => ({
 }));
 
 import { POST } from "@/app/api/coding/v1/chat/completions/route";
+import { LIMITS } from "@/lib/limits/config";
+import { codingMaxOutputTokens } from "@/lib/limits/resolve";
 
 const CODE = "abc123code";
 const USER_ID = "user-oid-1";
@@ -88,11 +90,17 @@ beforeEach(() => {
   vi.stubEnv("SCCH_API_KEY", "scch-secret");
   vi.stubEnv("OPENROUTER_API_KEY", "sk-or-test");
   vi.stubEnv("OPENROUTER_BASE_URL", "");
-  lookupCodingKey.mockResolvedValue({ status: "found", code: CODE, userId: USER_ID });
+  lookupCodingKey.mockResolvedValue({
+    status: "found",
+    code: CODE,
+    userId: USER_ID,
+    isTeacher: false,
+  });
   checkCode.mockResolvedValue({ ok: true, entry: codingEntry });
   loadCoding.mockResolvedValue({
     ok: true,
-    coding: { instructions: "TEACHER PROMPT", model: "gemma-pinned" },
+    // `provider` as the real loader always yields it (the schema defaults it to SCCH).
+    coding: { instructions: "TEACHER PROMPT", model: "gemma-pinned", provider: "SCCH" },
   });
   foundryBearerToken.mockResolvedValue("entra-token");
   fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -545,5 +553,63 @@ describe("POST /api/coding/v1/chat/completions — forwarding via Azure Foundry"
     const res = await POST(postStream(stream));
     expect(res.status).toBe(413);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/coding/v1/chat/completions — output cap", () => {
+  // The real limits config (lib/limits/) — the clamp is pinned against the value
+  // a student actually gets, not a test double.
+  const CAP = LIMITS.defaults.codingMaxOutputTokens;
+
+  beforeEach(() => {
+    vi.stubEnv("LIMITS_ENABLED", "true");
+    fetchSpy.mockResolvedValue(
+      new Response("{}", { status: 200, headers: { "content-type": "application/json" } }),
+    );
+  });
+
+  const sentBody = () => JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+
+  it("clamps a student's oversized max_tokens to the coding output cap", async () => {
+    await POST(post({ ...chatBody(), max_tokens: 999_999 }));
+    expect(sentBody().max_tokens).toBe(CAP);
+  });
+
+  it("sets the cap when the student's client sent no output limit", async () => {
+    await POST(post(chatBody()));
+    expect(sentBody().max_tokens).toBe(CAP);
+  });
+
+  it("keeps a student's smaller max_tokens", async () => {
+    await POST(post({ ...chatBody(), max_tokens: 900 }));
+    expect(sentBody().max_tokens).toBe(900);
+  });
+
+  it("does not cap a teacher's key", async () => {
+    lookupCodingKey.mockResolvedValue({
+      status: "found",
+      code: CODE,
+      userId: USER_ID,
+      isTeacher: true,
+    });
+    await POST(post({ ...chatBody(), max_tokens: 999_999 }));
+    expect(sentBody().max_tokens).toBe(999_999);
+  });
+
+  it("does not cap anyone when LIMITS_ENABLED=false", async () => {
+    vi.stubEnv("LIMITS_ENABLED", "false");
+    await POST(post(chatBody()));
+    expect(sentBody()).not.toHaveProperty("max_tokens");
+  });
+
+  it("clamps BEFORE Foundry's dialect rename, so the renamed field carries the cap", async () => {
+    checkCode.mockResolvedValue({
+      ok: true,
+      entry: { ...codingEntry, llm: { provider: "Azure Foundry", model: "gpt-5.4-mini" } },
+    });
+    await POST(post({ ...chatBody(), max_tokens: 999_999 }));
+    const sent = sentBody();
+    expect(sent.max_completion_tokens).toBe(codingMaxOutputTokens("Azure Foundry"));
+    expect(sent).not.toHaveProperty("max_tokens");
   });
 });
