@@ -13,8 +13,7 @@ import { mintTutorCode } from "./code.utils";
 //
 // The chat path is the only one this spec covers. The QUIZ-answer report path
 // cannot be reached without a graded answer, and grading calls the LLM (the
-// `quizEvaluator` agent) — so a quiz-grade report is inherently an `@live-llm`
-// flow and is out of scope here.
+// `quizEvaluator` agent, answered by the fake LLM in e2e) — out of scope here.
 //
 // Roles: the default chromium project runs as the STUDENT (its storageState),
 // which files the report. The teacher half opens a SEPARATE browser context with

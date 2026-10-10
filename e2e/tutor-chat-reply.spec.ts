@@ -5,12 +5,13 @@ import { sendAndExpectReply } from "./chat.utils";
 import { LIVE_TOOLS_TUTOR_URL, LIVE_TUTOR_URL, mintTutorCode } from "./code.utils";
 import { setEditorContent } from "./page.utils";
 
-// A REAL end-to-end chat, run once per LLM PROVIDER: open a tutor code, send
-// "Hi!", and assert the tutor streams back a non-empty answer (content doesn't
-// matter — only that it replies without error). Unlike `tutor-code-link.spec.ts`,
-// this DOES hit the LLM; it also exercises the `tutor` agent's Mastra Memory (the
-// turn is persisted to the configured database store, scoped to the tutor code
-// as resourceId).
+// A REAL end-to-end chat, run once per LLM PROVIDER (`@live-llm`, real mode
+// only): open a tutor code, send "Hi!", and assert the tutor streams back a
+// non-empty answer (content doesn't matter — only that it replies without
+// error). Unlike `tutor-code-link.spec.ts`, this DOES hit the LLM; it also
+// exercises the `tutor` agent's Mastra Memory (the turn is persisted to the
+// configured database store, scoped to the tutor code as resourceId). The
+// random_number tool test in between runs against the fake LLM instead.
 //
 // - SCCH: the local fixtures server's live-tutor.yaml (a real model).
 // - Azure Foundry: proves Managed-Identity/`az login` auth + deployment-as-model
@@ -61,12 +62,14 @@ prompt:
     You are a friendly tutor. Answer briefly.
 `;
 
-// @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
-test("sending a message gets a non-empty reply from the tutor", {
-  tag: ["@live", "@live-llm"],
-}, async ({ page }) => {
-  await page.goto(`/${await mintTutorCode({ tutor: LIVE_TUTOR_URL })}`);
-  await sendAndExpectReply(page);
+test.describe("via SCCH", () => {
+  // @live: needs the real SCCH endpoint + the database — excluded in CI (test:e2e:ci).
+  test("sending a message gets a non-empty reply from an SCCH tutor", {
+    tag: ["@live", "@live-llm"],
+  }, async ({ page }) => {
+    await page.goto(`/${await mintTutorCode({ tutor: LIVE_TUTOR_URL })}`);
+    await sendAndExpectReply(page);
+  });
 });
 
 // The tool round-trip: a tutor with `tools: [random_number]` is asked for a random

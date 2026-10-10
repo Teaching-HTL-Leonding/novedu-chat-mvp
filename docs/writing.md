@@ -394,8 +394,9 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   state), and the shared `ConversationStats` (summary/table + privacy gating).
 - **E2E** — `@live` Playwright flows through a minted writing code: (1) `@live-db` —
   write → save → reload restores → the teacher savers list → open the student to read
-  the saved text; (2) `@live-llm` — the assistant reads the draft via `getCurrentText`;
-  (3) `@live-llm` — the full round-trip (write → ask the coach and get SOME reply →
+  the saved text; (2) `@live-db` — the assistant reads the draft via `getCurrentText`
+  (the fake LLM calls the tool on a marker and echoes its result); (3) `@live-db` —
+  the full round-trip (write → ask the coach and get SOME reply →
   save → the savers list → the student text is retrievable), built straight on the
   published sample YAML. The SQL test runs hand-written SQL against the ephemeral
   Postgres container, checking the table's `(code, user_id)` upsert key, newest-first

@@ -38,8 +38,11 @@ Five kinds of e2e, by the external infra they need beyond that baseline:
   asserted: on test-sized tables the planner's choice depends on whatever rows
   happen to be there and says nothing about production.
 - **`@live-llm` e2e** — need a **real model or a specific provider** (the
-  provider smoke tests, vision, the health probe, the **coding-agent** round-trip in `e2e/coding-agent.spec.ts`, which drives
-  the real `pi` coding agent through the public coding endpoint, and the **eval
+  provider smoke tests — per provider for the tutor chat in
+  `e2e/tutor-chat-reply.spec.ts` and for the **coding-agent** override legs in
+  `e2e/coding-agent.spec.ts`, which drive the real `pi` coding agent through the
+  public coding endpoint — vision, a real thinking model's reasoning stream, the
+  health probe, and the **eval
   judge** probes in `e2e/eval-judge.live.spec.ts` — one test per eval kind (quiz
   feedback, tutor responses), because the one assertion of that feature that cannot be
   faked is whether a real judge flags planted violations and leaves compliant output
@@ -287,8 +290,10 @@ the real `novedu_files` table), the **image lifecycle**
 (`e2e/image-management.live.spec.ts`, which writes `novedu_images` against a
 temporary filesystem root — no real Azure Files needed), and the **database
 auth-matrix** (`e2e/db-auth.live.spec.ts`, below) — also run **in CI** against a
-container (next section). The **`@live-llm`** ones — the text round-trip, the vision round-trip,
-the health probe, the coding-agent round-trip, the eval feedback-judge probes — stay
+container (next section), as do the specs that run against the fake LLM (the quiz,
+writing, tool, persistence, metering, reload and coding-proxy flows). The
+**`@live-llm`** ones — the per-provider chat smokes, the vision round-trips, the
+health probe, the coding-agent override legs, the eval judge probes — stay
 **local** (the SCCH endpoint is geo-blocked to Austria). The
 **reasoning-visibility** set (`e2e/reasoning-visibility.spec.ts`) reads the raw
 `/api/copilotkit` SSE bodies to prove an effective teacher receives `REASONING_*`

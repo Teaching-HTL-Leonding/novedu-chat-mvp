@@ -20,23 +20,23 @@ import { FIXTURES_BASE } from "./fixtures.constants";
 // Every statement below must match lib/db/schema.ts — keep them in sync.
 export const VALID_TUTOR_URL = `${FIXTURES_BASE}/tutors/test-tutor.yaml`;
 export const BROKEN_TUTOR_URL = `${FIXTURES_BASE}/tutors/broken-tutor.yaml`;
-// A minimal tutor with a REAL model for the @live-llm chat specs (they send a
-// message and only assert a non-empty reply — content is irrelevant).
+// A minimal tutor with a real model id for the chat specs — against the fake LLM
+// or, in real mode, the live SCCH endpoint.
 export const LIVE_TUTOR_URL = `${FIXTURES_BASE}/tutors/live-tutor.yaml`;
 /** A per-user (`anonymous: false`) test-model tutor — offers "Previous conversations". */
 export const PER_USER_TUTOR_URL = `${FIXTURES_BASE}/tutors/per-user-tutor.yaml`;
-// A REAL-model tutor with image input enabled for the @live-llm image round-trip.
+// A real-model tutor with image input enabled for the @live-llm image round-trip.
 export const VISION_TUTOR_URL = `${FIXTURES_BASE}/tutors/vision-tutor.yaml`;
 // A tutor with the random_number tool for the tool-call spec (tutor-chat-reply.spec.ts).
 export const LIVE_TOOLS_TUTOR_URL = `${FIXTURES_BASE}/tutors/live-tools-tutor.yaml`;
 // A valid CODING activity URL — coding has a strict authoring gate, so a coding
 // code must point at a real coding YAML (a tutor URL would fail CODING_SCHEMA_ERROR).
 export const VALID_CODING_URL = `${FIXTURES_BASE}/coding/test-coding.yaml`;
-// A REAL-model coding activity for the @live-llm pi-agent spec (coding-agent.spec.ts).
+// A coding activity with a real model id for the pi-agent spec (coding-agent.spec.ts).
 export const LIVE_CODING_URL = `${FIXTURES_BASE}/coding/live-coding.yaml`;
 // A valid QUIZ activity URL, used by the teacher quiz-detail page.
 export const VALID_QUIZ_URL = `${FIXTURES_BASE}/quizzes/test-quiz.yaml`;
-// A REAL-model quiz with photo answers enabled for the @live-llm image round-trip.
+// A real-model quiz with photo answers enabled for the @live-llm image round-trip.
 export const VISION_QUIZ_URL = `${FIXTURES_BASE}/quizzes/vision-quiz.yaml`;
 // A valid WRITING activity URL (attributed, real model) for the full round-trip.
 export const VALID_WRITING_URL = `${FIXTURES_BASE}/writings/test-writing.yaml`;

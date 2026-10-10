@@ -28,8 +28,10 @@ permissions:
 
 # SECURITY: this workflow must stay secret-free. It runs on fork pull_request,
 # where untrusted PR code executes — anything in the environment here is
-# exfiltratable. The values below are test-only DUMMIES (NOT secrets). Tests
-# needing the SCCH LLM (geo-blocked to Austria, un-containerizable) are tagged
+# exfiltratable. The values below are test-only DUMMIES (NOT secrets). LLM-backed
+# e2e specs run here against the fake LLM (fake-llm/server.mjs, started by the
+# Playwright config — no key, no network). Tests needing a REAL model or a specific
+# provider (SCCH is geo-blocked to Austria, un-containerizable) are tagged
 # @live-llm and excluded via `npm run test:e2e:ci`; they stay local-only, as do
 # the @live-storage (real image mount) and @live-telemetry (real App Insights
 # query API, docs/diagnostics.md) tests. The DB-backed tests are tagged @live-db and DO run here, against the ephemeral
@@ -104,9 +106,9 @@ jobs:
     runs-on: ubuntu-latest
     # Ephemeral Postgres so the DB-backed @live-db tests run here via a throwaway
     # password (NOT Entra). The container's password is a non-secret DUMMY
-    # literal, so this stays secret-free / fork-safe. The @live-llm tests are NOT
-    # run here (the SCCH endpoint is geo-blocked + can't be containerized) — they
-    # stay local.
+    # literal, so this stays secret-free / fork-safe. LLM calls go to the fake LLM
+    # the Playwright config starts; the @live-llm tests (a real model or a specific
+    # provider) are NOT run here — they stay local.
     services:
       postgres:
         image: postgres:18
@@ -148,8 +150,8 @@ jobs:
       - name: Wait for Postgres
         run: node scripts/ci/wait-for-db.mjs
 
-      # Runs hermetic + @live-db (against the container), excludes @live-llm,
-      # @live-storage and @live-telemetry.
+      # Runs hermetic + @live-db (against the container and the fake LLM),
+      # excludes @live-llm, @live-storage and @live-telemetry.
       # Playwright's webServer boots `npm run dev`, which migrates novedu_* on start.
       - run: npm run test:e2e:ci
 

@@ -844,9 +844,9 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   module descriptor tests, `app/mastra/tutor-agent.unit.test.ts`,
   `lib/quiz-actions.unit.test.ts`, the coding route test), and the form round-trip
   in the `@live-db` CRUD spec (preset fill → stored → shown → cleared).
-- The chat flows **through codes** live in `e2e/quiz.spec.ts` (answer →
-  discuss, `@live-db` against the fake LLM) / `e2e/tutor-chat-reply.spec.ts` /
-  `e2e/writing.spec.ts` (`@live-llm`, local-only).
+- The chat flows **through codes** live in `e2e/quiz.spec.ts`,
+  `e2e/tutor-chat-reply.spec.ts` and `e2e/writing.spec.ts` — `@live-db` against the
+  fake LLM in CI, except the per-provider tutor smokes (`@live-llm`, local-only).
 
 ## Future work (deferred)
 
