@@ -824,8 +824,9 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
 - `e2e/code.utils.ts` mints codes (`mintCode({ module, file, … })`, plus a
   `mintTutorCode` wrapper) by inserting rows directly into `novedu_codes` (loads
   `.env` like Next does), so any browser spec that mints or resolves a code needs
-  the live database and is tagged `@live` plus `@live-db` (runs in CI) — or
-  `@live-llm` (local only) when it also needs the real LLM.
+  the live database and is tagged `@live` plus `@live-db` (runs in CI, its LLM
+  calls answered by the fake LLM) — or `@live-llm` (local only) when it needs a
+  real model or a specific provider.
 - The security-critical paths run in CI with **no** DB, because the gate
   short-circuits before any runtime is built: the runtime gate
   (`app/api/copilotkit/[[...slug]]/route.unit.test.ts`, real thread-token HMAC,
@@ -843,9 +844,9 @@ The overall approach (layers, the `@live` boundary, the no-infra patterns) is in
   module descriptor tests, `app/mastra/tutor-agent.unit.test.ts`,
   `lib/quiz-actions.unit.test.ts`, the coding route test), and the form round-trip
   in the `@live-db` CRUD spec (preset fill → stored → shown → cleared).
-- The `@live-llm` flows (the tutor chat, the quiz answer→discuss flow, and the
-  writing feedback flow **through codes**) live in `e2e/quiz.spec.ts` /
-  `e2e/tutor-chat-reply.spec.ts` / `e2e/writing.spec.ts`, local-only.
+- The chat flows **through codes** live in `e2e/quiz.spec.ts` (answer →
+  discuss, `@live-db` against the fake LLM) / `e2e/tutor-chat-reply.spec.ts` /
+  `e2e/writing.spec.ts` (`@live-llm`, local-only).
 
 ## Future work (deferred)
 

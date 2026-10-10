@@ -6,17 +6,16 @@ import { setEditorContent } from "./page.utils";
 
 // End-to-end coverage for the Quizzes feature, reached as CODES (a `novedu_codes`
 // row with `module: "quiz"`) at `/<code>`.
-// The code-expiry gate needs the DB but no LLM (@live-db, runs in CI). The full
-// author → code → answer → discuss flow is `@live` (`@live-llm`: it grades a real
-// answer and runs the discussion through the SCCH model) and is excluded from CI
-// like the tutor chat-reply spec.
+// Both tests need the DB (@live-db, run in CI). The full author → code → answer →
+// discuss flow grades and discusses through the fake LLM (docs/testing.md, "Fake
+// LLM"): the grader answers `correct`, the discussion gets the fake's echo.
 //
 // CopilotKit v2 testids (shared with the tutor chat): copilot-chat-textarea,
 // copilot-send-button, copilot-user-message, copilot-assistant-message.
 
 test.use({ storageState: TEACHER_STORAGE_STATE });
 
-// A tiny one-question quiz so the @live grade + discussion stay fast.
+// A tiny one-question quiz so the grade + discussion stay fast.
 const SAMPLE_QUIZ = `id: e2e-quiz
 name: "E2E Quiz"
 title: "E2E Quiz"
@@ -54,12 +53,9 @@ test("an expired quiz code shows the window-error notice", { tag: ["@live", "@li
   await expect(page.getByRole("heading", { name: "Code expired" })).toBeVisible();
 });
 
-// Full @live flow: author a quiz file, mint a quiz CODE for it, open it, get a
+// The full flow: author a quiz file, mint a quiz CODE for it, open it, get a
 // graded verdict, and run a discussion turn.
-// Tagged @live-llm only (not @live-db): like the tutor chat-reply spec, it also
-// writes the DB, but an LLM test implies the DB — tagging it @live-db too would
-// make a `--grep @live-db`-only run (CI) select it and fail without the LLM.
-test("author → code → answer → discuss", { tag: ["@live", "@live-llm"] }, async ({ page }) => {
+test("author → code → answer → discuss", { tag: ["@live", "@live-db"] }, async ({ page }) => {
   test.setTimeout(180_000);
 
   const name = `e2e-quiz-${Date.now()}`;
@@ -83,10 +79,11 @@ test("author → code → answer → discuss", { tag: ["@live", "@live-llm"] }, 
   await answer.fill("The capital of Austria is Vienna.");
   await page.getByRole("button", { name: "Submit answer" }).click();
 
-  // A verdict heading (correct / partly correct / wrong) appears with feedback.
-  await expect(page.getByRole("heading", { name: /correct|partly correct|wrong/i })).toBeVisible({
+  // The fake grader's default verdict, with its feedback.
+  await expect(page.getByRole("heading", { name: "correct", exact: true })).toBeVisible({
     timeout: 60_000,
   });
+  await expect(page.getByText("Fake LLM verdict: correct.")).toBeVisible();
 
   // 4. Open the discussion. It opens in a modal <dialog> that shows the graded
   // feedback at the top (not the full seeded conversation), then accepts a
@@ -96,4 +93,7 @@ test("author → code → answer → discuss", { tag: ["@live", "@live-llm"] }, 
   await expect(dialog).toBeVisible();
 
   await sendAndExpectReply(page, { message: "Why is that the capital?" });
+  await expect(dialog.getByTestId("copilot-assistant-message").last()).toContainText(
+    "You wrote: Why is that the capital?",
+  );
 });

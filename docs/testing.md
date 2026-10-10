@@ -9,7 +9,7 @@ tagging one `@live`, or changing the CI test jobs.
 Prefer fast, deterministic, **secret-free** unit/component tests that run in CI.
 Reserve full-stack e2e for what genuinely needs the real wired-together app. A
 test earns an `@live` tag **only** if its assertion truly needs the live
-database, the SCCH LLM, or a real mounted Azure Files share — not merely because
+database, a real LLM, or a real mounted Azure Files share — not merely because
 the code path happens to sit behind one. If the logic short-circuits before the
 runtime is built (the chat gate) or is pure-prop rendering, it belongs in a fast
 test.
@@ -37,15 +37,14 @@ Five kinds of e2e, by the external infra they need beyond that baseline:
   locally against real Azure Database for PostgreSQL. Query plans are not
   asserted: on test-sized tables the planner's choice depends on whatever rows
   happen to be there and says nothing about production.
-- **`@live-llm` e2e** — also need a real LLM endpoint (chat round-trips, vision,
-  the health probe, the **quiz** grade-and-discuss flow in `e2e/quiz.spec.ts`,
-  the **coding-agent** round-trip in `e2e/coding-agent.spec.ts`, which drives
+- **`@live-llm` e2e** — need a **real model or a specific provider** (the
+  provider smoke tests, vision, the health probe, the **coding-agent** round-trip in `e2e/coding-agent.spec.ts`, which drives
   the real `pi` coding agent through the public coding endpoint, and the **eval
   judge** probes in `e2e/eval-judge.live.spec.ts` — one test per eval kind (quiz
   feedback, tutor responses), because the one assertion of that feature that cannot be
   faked is whether a real judge flags planted violations and leaves compliant output
   alone, and `evalJudge` has no other real-backend coverage in the repo, unlike the
-  grader which `e2e/quiz.spec.ts` smokes indirectly. For the **tutor** kind the judge is
+  grader which `e2e/quiz-image.spec.ts` smokes indirectly. For the **tutor** kind the judge is
   the only check there is, so a regression means a tutor eval reports nothing at all).
   No provider is reachable from CI: the SCCH endpoint is **geo-blocked to
   Austria** and cannot be containerized, Azure Foundry needs a **Managed
@@ -67,7 +66,10 @@ Five kinds of e2e, by the external infra they need beyond that baseline:
   leg already drives (see `e2e/eval-judge.live.spec.ts`'s header for what that
   knowingly gives up).
   (Such a test is tagged `@live-llm` ONLY — the DB it also uses is implied — so a
-  `--grep @live-db` run never selects it.)
+  `--grep @live-db` run never selects it.) Every other LLM-backed spec runs against
+  the **fake LLM** (see "Fake LLM" below) and is tagged by what it needs beyond it:
+  `@live-db` when it touches the app's tables through `e2e/db.ts`, otherwise
+  untagged.
 - **`@live-storage` e2e** — need a REAL **mounted Azure Files share**
   (`e2e/image-mount-smoke.live.spec.ts`, gated on `IMAGE_SMOKE_ROOT`): the one
   manual, opt-in smoke proving the app-hosted image subsystem works against the
@@ -90,8 +92,9 @@ Five kinds of e2e, by the external infra they need beyond that baseline:
 
 Every live test carries **`@live`** (so the local `--grep @live` smoke runs them
 all) **plus exactly one** of `@live-db` / `@live-llm` / `@live-storage` /
-`@live-telemetry`. CI runs hermetic + `@live-db` and excludes the other three via
-`npm run test:e2e:ci` (`--grep-invert "@live-llm|@live-storage|@live-telemetry"`).
+`@live-telemetry`. CI runs hermetic + `@live-db` (the fake-LLM-backed specs among
+them) and excludes the other three via `npm run test:e2e:ci`
+(`--grep-invert "@live-llm|@live-storage|@live-telemetry"`).
 Real credentials (Azure Postgres / SCCH / a real mounted Azure Files share /
 Application Insights) must
 never run on a fork `pull_request`; the CI container's Postgres password is a
@@ -105,9 +108,9 @@ non-secret dummy — see `docs/ci-security.md`.
 | Component | Vitest `component` | `**/*.browser.test.tsx` | Playwright Chromium (real browser) | ✅ |
 | CLI unit | Vitest `unit` | `cli/src/**/*.unit.test.ts` | Node — colocated, rides the root `unit` glob | ✅ |
 | CLI integration | Vitest (`cli/vitest.config.mts`) | `cli/test/*.test.ts` | the built binary + the offline fixtures server | ✅ |
-| Hermetic e2e | Playwright | `e2e/*.spec.ts` (untagged) | dev server + the Postgres it boots against (session minting only) | ✅ |
+| Hermetic e2e | Playwright | `e2e/*.spec.ts` (untagged) | dev server + the Postgres it boots against (session minting only) + the fake LLM | ✅ |
 | `@live-db` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-db` | same Postgres, read/written beyond session minting (container in CI / Azure Postgres local) | ✅ |
-| `@live-llm` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-llm` | real DB + SCCH LLM | ❌ local only |
+| `@live-llm` e2e | Playwright (`playwright.live-llm.config.ts`) | `e2e/*.spec.ts` tagged `@live-llm` | real DB + a real model / specific provider | ❌ local only |
 | `@live-storage` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-storage` | real DB + a mounted Azure Files share | ❌ local only |
 | `@live-telemetry` e2e | Playwright | `e2e/*.spec.ts` tagged `@live-telemetry` | real DB + the App Insights query API (`az login`) | ❌ local only |
 
@@ -120,8 +123,9 @@ non-secret dummy — see `docs/ci-security.md`.
   explicit order (unit first). The `--maxWorkers` CLI flag does NOT reach the
   browser pool; it reads the project config.
 - Config: **`vitest.config.mts`** defines the `unit` + `component` projects;
-  **`playwright.config.ts`** the e2e suite (with `e2e/auth.setup.ts` minting
-  session cookies — see `docs/auth.md`).
+  **`playwright.config.ts`** the e2e suite in fake mode (with `e2e/auth.setup.ts`
+  minting session cookies — see `docs/auth.md`), **`playwright.live-llm.config.ts`**
+  its real-LLM variant (see "Fake LLM").
 - Unit tests run in Node. The few that need a DOM declare
   `// @vitest-environment jsdom`; real browser behaviour belongs in a component
   test.
@@ -193,9 +197,64 @@ builds its URLs from the same constant. The CLI integration test imports
 `startFixturesServer` (ephemeral port) for its served-URL cases.
 
 Hermetic fixtures pin a fake **`model: test-model`** (nothing calls an LLM). The
-`@live-llm` fixtures — `tutors/live-tutor.yaml`, `tutors/vision-tutor.yaml`,
+LLM-backed fixtures — `tutors/live-tutor.yaml`, `tutors/vision-tutor.yaml`,
 `writings/test-writing.yaml`, `coding/live-coding.yaml` — carry a **real** model
-id because those specs drive the live SCCH endpoint.
+id, so the same file works against the live SCCH endpoint in real mode; the fake
+LLM answers whatever model id it is asked for.
+
+## Fake LLM
+
+**`fake-llm/server.mjs`** is an OpenAI-compatible stand-in for a real model, built
+on CopilotKit's aimock (`@copilotkit/aimock`, an exact-pinned devDependency). It
+never pretends to be real: its default reply says it comes from Novedu's fake LLM.
+It lets every LLM-backed spec that does not test a specific provider or real model
+behaviour run in CI.
+
+**Two run modes.** A run is all-fake or all-real, never mixed:
+
+| Mode | Scripts | Config | The LLM | Selects |
+| --- | --- | --- | --- | --- |
+| fake (default) | `test:e2e`, `test:e2e:ci`, `test:e2e:db`, … | `playwright.config.ts` | the fake, started as the FIRST `webServer`; the app's dev server gets `SCCH_BASE_URL` / `SCCH_API_KEY` pointing at it | everything except `@live-llm` (the config's `grepInvert`) |
+| real | `test:e2e:live-llm` | `playwright.live-llm.config.ts` | the providers `.env` configures | only `@live-llm` |
+
+- The fake starts first because the app lists the SCCH models once at boot
+  (`app/mastra/scch.ts`). Its port lives in `e2e/fake-llm.constants.ts`.
+- Fake mode **never reuses** a running dev server: one already on `:3000`
+  normally talks to a real model, so the run fails with port-in-use instead of
+  silently hitting it — stop your `npm run dev` first. Real mode may reuse it.
+- Only SCCH is redirected; Foundry and OpenRouter keep whatever `.env` sets (the
+  specs that use them are all `@live-llm`). The SCCH env override in
+  `playwright.config.ts` is the fake's only coupling point — no app code knows
+  about it.
+- **What stays real:** a spec is `@live-llm` only if its purpose is a specific
+  provider or real model behaviour (the provider smoke tests, vision, the eval
+  judge, the health probe). Everything else uses the fake.
+
+**Markers.** The fake's behaviour is driven by markers in the **last user
+message**, never by a spec's wording. The first matching rule wins
+(`fake-llm/markers.mjs`, unit-tested in `fake-llm/markers.unit.test.ts`):
+
+| # | Request | Reply |
+| --- | --- | --- |
+| 1 | model id contains `no-such-model` | HTTP 404 `model not found` |
+| 2 | grader request + `[grade:correct\|partial\|incorrect]` | that verdict, feedback `Fake LLM verdict: <result>.` |
+| 3 | grader request without a marker | `correct` |
+| 4 | any other `response_format: json_schema` request | HTTP 400 `fake LLM: no fixture for this structured request` |
+| 5 | a tool result after the last user message | `Fake LLM received the tool result: <tool result>` |
+| 6 | `[tool:<name>]` or `[tool:<name> <json-args>]` | one call to that tool, with the arguments (default `{}`) |
+| 7 | `[reasoning:<text>]` | that reasoning, then the default reply |
+| 8 | `[reply:<text>]` | exactly that text |
+| 9 | anything else | `This reply comes from Novedu's fake LLM, not a real model. You wrote: <first 80 chars>` |
+
+- A **grader request** is a `json_schema` request whose schema has a top-level
+  `result` property (`QUIZ_VERDICT_SCHEMA`, `lib/quiz-verdict-schema.ts`). **A new
+  structured-output caller needs its own rule in `fake-llm/markers.mjs`**; until
+  then the fake fails it loudly with the 400.
+- The echoes (rules 5 and 9) let a spec assert that its input reached the model.
+- A malformed tool marker (bad JSON) is ignored, so the later rules apply.
+- Streamed replies arrive in 10-character chunks 40 ms apart, so a run stays in
+  flight long enough to observe the chat's "generating" note.
+- Usage is estimated from the text length, so usage metering works unchanged.
 
 ## Scripts
 
@@ -203,17 +262,21 @@ id because those specs drive the live SCCH endpoint.
 | --- | --- |
 | `npm run test` | Vitest `unit` + `component` (`test:unit` / `test:component` for one) |
 | `npm run test:cli` | Builds the CLI, then its integration suite (`cli/test/*`) |
-| `npm run test:e2e` | Playwright, all specs (needs `az login` + `.env` for `@live`) |
-| `npm run test:e2e:ci` | Playwright minus `@live-llm`/`@live-storage`/`@live-telemetry` — hermetic + `@live-db` (CI runs this) |
+| `npm run test:e2e` | Playwright in fake mode: all specs except `@live-llm` (needs `az login` + `.env` for `@live`) |
+| `npm run test:e2e:ci` | Playwright minus `@live-llm`/`@live-storage`/`@live-telemetry` — hermetic + `@live-db`, the fake-LLM-backed specs included (CI runs this) |
+| `npm run test:e2e:live-llm` | Playwright in real mode: `@live-llm` only, against `.env`'s real providers |
 | `npm run test:e2e:db` | Playwright `@live-db` only (against a local Postgres container) |
 | `npm run test:e2e:storage` | Playwright `@live-storage` only — the manual mounted-share smoke, skips cleanly without `IMAGE_SMOKE_ROOT` |
 | `npm run test:e2e:telemetry` | Playwright `@live-telemetry` only — the diagnostics page against real App Insights, skips cleanly without `APPLICATIONINSIGHTS_CONNECTION_STRING` |
 | `npm run qa` | `check` + `typecheck` + `test` + `test:cli` + `build` + `docs:build` (`qa:e2e` adds e2e) |
 
-Run the local-only smoke (with `az login` done and `.env` populated):
+Run the local-only smoke (with `az login` done and `.env` populated) — the first
+command covers `@live-db` / `@live-storage` / `@live-telemetry` in fake mode, the
+second the real-LLM specs:
 
 ```
 npm run test:e2e -- --grep @live
+npm run test:e2e:live-llm
 ```
 
 The kept `@live` set is deliberately small. The **`@live-db`** ones — a valid code
@@ -261,8 +324,9 @@ container — the hermetic specs' session minting (`e2e/auth.setup.ts`,
 `mintSessionToken`) writes `novedu_user`/`novedu_session` rows here too, it just
 never touches any other app table; the Playwright `webServer` boots `npm
 run dev`, whose startup creates the `mastra` schema, applies the `novedu_*`
-migrations and creates the `mastra.*` tables (`instrumentation.ts`). SCCH is intentionally unset — the app boots without models
-and the DB-only specs never call the LLM. The `db-auth` Entra test detects the
+migrations and creates the `mastra.*` tables (`instrumentation.ts`). The app's
+SCCH provider points at the fake LLM (see "Fake LLM"), so the LLM-backed
+`@live-db` specs run here too — no secret involved. The `db-auth` Entra test detects the
 password-carrying URL and **skips** in CI (CI already covers the password path
 itself through every other `@live-db` spec).
 
